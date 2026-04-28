@@ -84,7 +84,8 @@ def persist_review_item(
         return
     target = path or review_queue_path()
     latest = {stored.id: stored for stored in list_review_items(path=target, status="all")}
-    if latest.get(item.id) == item:
+    existing = latest.get(item.id)
+    if existing == item or _same_open_snapshot(existing, item):
         return
     write_review_item(target, item)
 
@@ -152,6 +153,19 @@ def load_review_items(path: Path) -> list[ReviewQueueItem]:
                 continue
             items.append(ReviewQueueItem(**json.loads(line)))
     return items
+
+
+def _same_open_snapshot(existing: ReviewQueueItem | None, item: ReviewQueueItem) -> bool:
+    if existing is None:
+        return False
+    return (
+        existing.status == "open"
+        and item.status == "open"
+        and existing.question == item.question
+        and existing.answer_id == item.answer_id
+        and existing.reason == item.reason
+        and existing.audit == item.audit
+    )
 
 
 def _review_reason(

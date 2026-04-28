@@ -112,6 +112,26 @@ def test_persist_list_and_resolve_review_items(tmp_path):
     assert resolved.resolution_note == "covered by guardrail"
 
 
+def test_persist_skips_duplicate_open_snapshot_with_new_timestamp(tmp_path):
+    path = tmp_path / "review.jsonl"
+    answer = StructuredAnswer(
+        answer="No grounded result found.",
+        intent="stat_query",
+        unsupported=True,
+        metadata={"query_id": "q_same"},
+    )
+    first = build_review_item("who led MLB in vibes", answer)
+    second = build_review_item("who led MLB in vibes", answer)
+
+    assert first.id == second.id
+    assert first.created_at != second.created_at
+
+    persist_review_item(first, path=path)
+    persist_review_item(second, path=path)
+
+    assert load_review_items(path) == [first]
+
+
 def test_resolve_unknown_review_item_raises(tmp_path):
     try:
         resolve_review_item("review_missing", "resolved", path=tmp_path / "review.jsonl")
