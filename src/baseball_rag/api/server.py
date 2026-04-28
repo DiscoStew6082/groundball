@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Baseball RAG API")
@@ -22,6 +22,13 @@ class QueryResponse(BaseModel):
     unsupported: bool
     metadata: dict[str, Any] = Field(default_factory=dict)
     review: dict[str, Any] | None = None
+
+
+class EvalRunRequest(BaseModel):
+    include_live: bool = False
+    strategy: str | None = None
+    all_strategies: bool = False
+    retrieval_only: bool = False
 
 
 @app.get("/health")
@@ -83,6 +90,83 @@ def _trace_to_dict(trace: Any) -> dict[str, Any]:
             }
             for stage in trace.stages
         ],
+    }
+
+
+@app.get("/evals/report")
+def evals_report(include_live: bool = False):
+    """Return the deterministic eval report without writing files."""
+    return _run_eval_payload(include_live=include_live)
+
+
+@app.post("/evals/run")
+def evals_run(req: EvalRunRequest):
+    """Run evals with explicit options, deterministic-only by default."""
+    live_options = req.strategy or req.all_strategies or req.retrieval_only
+    if live_options and not req.include_live:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Retrieval strategy and retrieval-only eval options may require Chroma or "
+                "LM Studio; set include_live=true to run them."
+            ),
+        )
+    if req.strategy or req.all_strategies or req.retrieval_only:
+        raise HTTPException(
+            status_code=400,
+            detail="Live strategy evals are supported by the CLI, not this deterministic API.",
+        )
+    payload = _run_eval_payload(include_live=req.include_live)
+    payload["options"] = req.model_dump()
+    if req.include_live:
+        payload.setdefault("warnings", []).append(
+            "include_live=true may require Chroma, corpus, and LM Studio services."
+        )
+    return payload
+
+
+@app.get("/guardrails/coverage")
+def guardrails_coverage():
+    """Return manifest-only guardrail coverage."""
+    from evals.questions import guardrail_coverage_payload, load_cases
+
+    return guardrail_coverage_payload(load_cases())
+
+
+def _run_eval_payload(*, include_live: bool) -> dict[str, Any]:
+    from evals.questions import (
+        EvalReport,
+        build_eval_artifact,
+        format_eval_report,
+        load_cases,
+        run_cases,
+    )
+
+    cases = load_cases()
+    result = run_cases(cases, include_live=include_live)
+    report = EvalReport(
+        command="api:/evals/report",
+        cases=cases,
+        include_live=include_live,
+        result=result,
+        mode="answer",
+    )
+    artifact = build_eval_artifact(report)
+    return {
+        "ok": artifact["summary"]["recommendation"] != "BLOCK",
+        "mode": artifact["mode"],
+        "include_live": include_live,
+        "minimum_pass_rate": artifact["minimum_pass_rate"],
+        "summary": artifact["summary"],
+        "results": {
+            "passed": [case for case in artifact["cases"] if case["status"] == "passed"],
+            "failed": [case for case in artifact["cases"] if case["status"] == "failed"],
+            "skipped": [case for case in artifact["cases"] if case["status"] == "skipped"],
+        },
+        "failed": [case for case in artifact["cases"] if case["status"] == "failed"],
+        "skipped": [case for case in artifact["cases"] if case["status"] == "skipped"],
+        "markdown": format_eval_report(report),
+        "warnings": [],
     }
 
 

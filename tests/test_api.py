@@ -72,3 +72,38 @@ class TestApi:
         assert data["dataset"]["name"] == "NeuML/baseballdata"
         assert data["files"]
         assert data["files"][0]["sha256"]
+
+    def test_evals_report_endpoint_returns_deterministic_report(self):
+        response = client.get("/evals/report")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["include_live"] is False
+        assert data["summary"]["attempted"] == 20
+        assert data["summary"]["recommendation"] in {"PASS", "WARN"}
+        assert data["markdown"].startswith("# Baseball RAG Eval Report")
+
+    def test_evals_run_rejects_live_options_without_opt_in(self):
+        response = client.post("/evals/run", json={"retrieval_only": True})
+
+        assert response.status_code == 400
+        assert "include_live=true" in response.json()["detail"]
+
+    def test_evals_run_default_matches_ci_gate(self):
+        response = client.post("/evals/run", json={})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["options"]["include_live"] is False
+        assert data["summary"]["attempted"] == 20
+        assert data["results"]["failed"] == []
+
+    def test_guardrails_coverage_endpoint_is_manifest_only(self):
+        response = client.get("/guardrails/coverage")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["summary"]["unsupported_guardrails"] >= 1
+        assert data["categories"]["unsupported"]
+        assert data["markdown"].startswith("# Baseball RAG Guardrail Coverage")
