@@ -1,6 +1,6 @@
 # Baseball RAG Eval Report
 
-- Command: `python -m evals.questions --report docs/eval-report.md`
+- Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md`
 - Mode: answer
 - Release recommendation: **PASS - deterministic release gate is green**
 - Cases loaded: 68

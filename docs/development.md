@@ -135,7 +135,7 @@ Python version: **3.11** (ubuntu-latest). All dependencies installed via pip (no
 The CI release gate is deterministic-only:
 
 ```bash
-python -m evals.questions --report eval-report.md
+python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md
 ```
 
 This command skips cases that require LM Studio, Chroma, external LMs, or live model services. Live and Chroma-backed evals remain local/manual opt-ins via `--include-live`, `--strategy`, `--all-strategies`, or `--retrieval-only`.

@@ -473,6 +473,60 @@ def write_eval_report(path: Path, report: EvalReport) -> None:
     path.write_text(format_eval_report(report), encoding="utf-8")
 
 
+def format_guardrail_report(cases: list[EvalCase]) -> str:
+    """Render deterministic guardrail coverage from the eval manifest."""
+    unsupported_cases = [case for case in cases if case.spec.get("expected_unsupported")]
+    sql_safety_cases = [
+        case
+        for case in cases
+        if case.spec.get("expected_sql_parameterized") or "sql_injection" in case.id
+    ]
+    provenance_cases = [
+        case
+        for case in cases
+        if case.required_sources
+        or case.spec.get("required_source_manifest_fields")
+        or case.spec.get("expected_sql_visible")
+    ]
+    ci_safe_guardrails = [
+        case for case in unsupported_cases + sql_safety_cases if case.should_run()
+    ]
+    live_guardrails = [
+        case
+        for case in unsupported_cases + sql_safety_cases
+        if not case.should_run() and case.requires_live_services()
+    ]
+
+    lines = [
+        "# Baseball RAG Guardrail Coverage",
+        "",
+        "## Summary",
+        "",
+        f"- CI-safe deterministic guardrails: {len(_dedupe_cases(ci_safe_guardrails))}",
+        f"- Unsupported guardrails: {len(unsupported_cases)}",
+        f"- SQL safety: {len(sql_safety_cases)}",
+        f"- Provenance/source visibility: {len(provenance_cases)}",
+        f"- Live/manual guardrail cases: {len(_dedupe_cases(live_guardrails))}",
+        "",
+        "## Unsupported Guardrails",
+        "",
+    ]
+    lines.extend(_case_lines(unsupported_cases) or ["- None"])
+    lines.extend(["", "## SQL Safety", ""])
+    lines.extend(_case_lines(sql_safety_cases) or ["- None"])
+    lines.extend(["", "## Provenance And Source Visibility", ""])
+    lines.extend(_case_lines(provenance_cases) or ["- None"])
+    lines.extend(["", "## Live/Manual Guardrail Cases", ""])
+    lines.extend(_case_lines(_dedupe_cases(live_guardrails)) or ["- None"])
+    return "\n".join(lines) + "\n"
+
+
+def write_guardrail_report(path: Path, cases: list[EvalCase]) -> None:
+    """Write a deterministic guardrail coverage report."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(format_guardrail_report(cases), encoding="utf-8")
+
+
 def validate_case(case: EvalCase, answer: StructuredAnswer) -> list[str]:
     """Validate supported golden expectations against a structured answer."""
     failures: list[str] = []
@@ -724,6 +778,26 @@ def _risk_category_lines(cases: list[EvalCase]) -> list[str]:
     return [f"- {name}: {count} case(s)" for name, count in categories.items()]
 
 
+def _dedupe_cases(cases: list[EvalCase]) -> list[EvalCase]:
+    result: list[EvalCase] = []
+    seen: set[str] = set()
+    for case in cases:
+        if case.id in seen:
+            continue
+        seen.add(case.id)
+        result.append(case)
+    return result
+
+
+def _case_lines(cases: list[EvalCase]) -> list[str]:
+    lines: list[str] = []
+    for case in _dedupe_cases(cases):
+        note = case.spec.get("notes")
+        suffix = f" - {note}" if note else ""
+        lines.append(f"- `{case.id}`: {case.question}{suffix}")
+    return lines
+
+
 def _release_gate_ok(
     *,
     passed: int,
@@ -819,11 +893,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="write a Markdown eval report to PATH",
     )
+    parser.add_argument(
+        "--guardrail-report",
+        type=Path,
+        default=None,
+        help="write a deterministic Markdown guardrail coverage report to PATH",
+    )
     args = parser.parse_args(argv)
 
     cases = load_cases(args.questions)
     minimum_pass_rate = _minimum_pass_rate(args.questions)
     command = _command_for_report(argv)
+    if args.guardrail_report:
+        write_guardrail_report(args.guardrail_report, cases)
     if args.all_strategies:
         if args.retrieval_only:
             strategy_result = StrategyRunResult(run_retrieval_strategy_cases(cases))

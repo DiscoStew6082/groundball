@@ -11,6 +11,7 @@ from evals.questions import (
     EvalReport,
     StrategyRunResult,
     format_eval_report,
+    format_guardrail_report,
     format_strategy_summary,
     load_cases,
     main,
@@ -472,6 +473,20 @@ def test_format_eval_report_includes_counts_coverage_and_live_note():
     assert "- `broken_case`: answer missing substring 'Ruth'" in report
 
 
+def test_format_guardrail_report_groups_coverage_by_risk():
+    report = format_guardrail_report(load_cases())
+
+    assert "# Baseball RAG Guardrail Coverage" in report
+    assert "## Summary" in report
+    assert "- Unsupported guardrails:" in report
+    assert "- SQL safety:" in report
+    assert "- `unsupported_betting`" in report
+    assert "- `stat_sql_injection_stat`" in report
+    assert "- `stat_sql_injection_team`" in report
+    assert "## Live/Manual Guardrail Cases" in report
+    assert "CI-safe deterministic guardrails" in report
+
+
 def test_main_writes_markdown_report(tmp_path: Path, monkeypatch):
     report_path = tmp_path / "eval-report.md"
     questions_path = tmp_path / "questions.yaml"
@@ -512,6 +527,43 @@ def test_main_writes_markdown_report(tmp_path: Path, monkeypatch):
     assert "- Passed:" in content
     assert "## Failed Cases" in content
     assert "- None" in content
+
+
+def test_main_writes_guardrail_report(tmp_path: Path, monkeypatch):
+    report_path = tmp_path / "eval-report.md"
+    guardrail_path = tmp_path / "guardrail-coverage.md"
+    questions_path = tmp_path / "questions.yaml"
+    questions_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "questions": [
+                    {
+                        "id": "unsupported_betting",
+                        "question": "which team should I bet on tonight",
+                        "expected_unsupported": True,
+                        "notes": "No betting advice.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("evals.questions.run_cases", lambda cases, **_kwargs: run_cases([]))
+
+    main(
+        [
+            "--questions",
+            str(questions_path),
+            "--report",
+            str(report_path),
+            "--guardrail-report",
+            str(guardrail_path),
+        ]
+    )
+
+    assert "# Baseball RAG Guardrail Coverage" in guardrail_path.read_text(encoding="utf-8")
 
 
 def test_main_blocks_release_when_no_deterministic_cases_attempted(tmp_path: Path):

@@ -43,10 +43,12 @@ jobs:
       - run: python -c "from baseball_rag.db.download import download_all; download_all()"
       - run: python -m pytest tests/ --ignore=tests/test_db_download.py -m "unit and not llm" --cov=baseball_rag --cov-report=xml --cov-report=term-missing -v
       - name: Deterministic eval release gate
-        run: python -m evals.questions --report eval-report.md
+        run: python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: deterministic-eval-report
-          path: eval-report.md
+          name: deterministic-reliability-reports
+          path: |
+            eval-report.md
+            guardrail-coverage.md
       - uses: codecov/codecov-action@v4
