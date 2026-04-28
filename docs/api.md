@@ -46,7 +46,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
       "type": "duckdb",
       "label": "RBI leaderboard for 1962-1962",
       "detail": "Tables: batting, people. Dataset: local Hugging Face NeuML/baseballdata CSVs.",
-      "sql": null,
+      "sql": "SELECT p.nameLast || ', ' || p.nameFirst AS name, SUM(<stat>) AS stat_value FROM batting b JOIN people p ON b.playerID = p.playerID WHERE b.yearID >= ? AND b.yearID <= ? GROUP BY p.nameLast, p.nameFirst ORDER BY stat_value DESC LIMIT 10",
       "rows": [
         { "name": "Davis, Tommy", "team": "Range", "stat_value": 153 }
       ],
@@ -72,7 +72,23 @@ Ask a baseball question and get a grounded answer with provenance metadata.
     }
   ],
   "warnings": [],
-  "unsupported": false
+  "unsupported": false,
+  "metadata": {
+    "route": "stat_query",
+    "unsupported": false,
+    "source_count": 1,
+    "source_types": ["duckdb"],
+    "sql_visible": true,
+    "latency_ms": 8.4,
+    "trace": {
+      "route_type": "stat_query",
+      "total_ms": 8.4,
+      "stages": [
+        { "component_id": "query-router", "label": "Route Query", "elapsed_ms": 0.2 },
+        { "component_id": "duckdb", "label": "DB Query", "elapsed_ms": 8.2 }
+      ]
+    }
+  }
 }
 ```
 
@@ -89,6 +105,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `sources` | array | DuckDB/Chroma evidence records used to ground the answer |
 | `warnings` | array | Non-fatal caveats, such as missing indexes or truncated results |
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
+| `metadata` | object | Additive audit metadata for route, unsupported status, source summary, SQL visibility, latency, and trace stages |
 | `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, and license notes for DuckDB-backed answers |
 
 ---

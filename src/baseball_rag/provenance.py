@@ -44,6 +44,7 @@ class StructuredAnswer:
     sources: list[SourceRecord] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     unsupported: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable answer payload."""
@@ -53,6 +54,7 @@ class StructuredAnswer:
             "sources": [source.to_dict() for source in self.sources],
             "warnings": self.warnings,
             "unsupported": self.unsupported,
+            "metadata": self.metadata,
         }
 
 
