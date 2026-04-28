@@ -78,6 +78,7 @@ uv run python -m evals.questions --all-strategies --retrieval-only
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | Embedding endpoint base URL |
 | `LMSTUDIO_EMBEDDING_MODEL` | `text-embedding-kalm-embedding-gemma3-12b-2511-i1` | Embedding model used for Chroma ingest/retrieval |
 | `CHROMA_PERSIST_DIR` | `data/` | Optional override for retrieval and diagnostics persist directory |
+| `BASEBALL_RAG_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue |
 
 ## Running Locally
 
@@ -128,9 +129,32 @@ Coverage report is also generated as `coverage.xml` and `coverage.html` (see `.c
 |-----|------------|--------------|
 | `lint` | — | `ruff check src/ tests/` |
 | `typecheck` | — | `mypy src/` + type stubs |
-| `test` | lint, typecheck | Full pytest suite with coverage upload to Codecov |
+| `test` | lint, typecheck | Unit pytest suite, deterministic eval release gate, reliability report artifacts/run summary, coverage artifact, and optional Codecov upload |
 
 Python version: **3.11** (ubuntu-latest). All dependencies installed via pip (not uv) in CI to avoid PATH issues.
+
+The CI release gate is deterministic-only:
+
+```bash
+python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md --json-report eval-report.json --baseline evals/baseline.json
+```
+
+This command skips cases that require LM Studio, Chroma, external LMs, or live model services. Live and Chroma-backed evals remain local/manual opt-ins via `--include-live`, `--strategy`, `--all-strategies`, or `--retrieval-only`.
+
+The JSON report is compared to `evals/baseline.json`. Behavioral regressions block CI; dataset/model/prompt drift is reported as `WARN` so the baseline can be reviewed and refreshed deliberately.
+
+CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporting, but it is non-blocking so releases do not depend on external coverage upload availability.
+
+## Governance Surfaces
+
+The API exposes release and review surfaces for local demos:
+
+- `GET /evals/report` returns the deterministic eval gate summary and Markdown report without writing files.
+- `POST /evals/run` defaults to deterministic-only evals and rejects live/retrieval options unless `include_live=true`.
+- `GET /guardrails/coverage` returns manifest-only guardrail coverage from `evals/questions.yaml`.
+- `GET /review-queue` and `PATCH /review-queue/{item_id}` list, resolve, or dismiss API-created review items.
+
+Only `/query` writes review queue items. CLI and Gradio calls do not persist review state.
 
 ## Project Conventions
 

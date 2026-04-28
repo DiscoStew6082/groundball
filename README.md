@@ -1,10 +1,10 @@
-# Grounded Baseball Analytics Assistant
+# Grounded Baseball Analytics Assistant: Eval-Gated RAG With Audit-Ready Provenance
 
 [![CI](https://github.com/DiscoStew6082/baseball-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/DiscoStew6082/baseball-rag/actions/workflows/ci.yml)
 
 Baseball RAG is a local-first question answering system for MLB history. It routes natural language questions to grounded sources, answers from DuckDB or retrieved corpus documents, and returns provenance with the rows, SQL, checksums, and dataset license metadata used to support the answer.
 
-The project is designed as an AI engineering portfolio piece: the interesting part is not that an LLM can produce baseball prose, but that the system constrains where facts come from and shows its work.
+The project is designed as an AI engineering portfolio piece: the interesting part is not that an LLM can produce baseball prose, but that the system constrains where facts come from, gates releases with deterministic evals, and leaves audit-ready evidence for review.
 
 ## Problem
 
@@ -41,6 +41,9 @@ Key choices:
 - Freeform SQL keeps the intent-to-SQL idea, but the model only returns a typed query spec. Python assembles parameterized SQL.
 - Every DuckDB source includes `data/manifest.json` provenance: source URL, files, row counts, year coverage, checksums, download time, and license notes.
 - ChromaDB is used for small curated corpus docs: stat definitions and Hall of Fame bios.
+- CI runs a deterministic-only AI release gate with Markdown/JSON artifacts and baseline comparison. Live LLM, Chroma, and retrieval strategy evals stay optional local commands.
+- API responses include audit metadata for route, unsupported status, SQL template hash, source summaries, latency, dataset/model versions, and exact eval-manifest matches.
+- Unsupported, ambiguous, or low-confidence API answers are written to a small JSONL human-review queue.
 
 ## API Example
 
@@ -69,7 +72,7 @@ Response shape:
       "type": "duckdb",
       "label": "RBI leaderboard for 1962-1962",
       "rows": [{ "name": "Davis, Tommy", "team": "Range", "stat_value": 153 }],
-      "sql": null,
+      "sql": "SELECT ... WHERE b.yearID >= ? AND b.yearID <= ? ...",
       "data_manifest": {
         "dataset": { "name": "NeuML/baseballdata", "license": "CC BY-SA 3.0" },
         "coverage": { "structured_stat_years": { "min": 1871, "max": 2025 } }
@@ -77,7 +80,22 @@ Response shape:
     }
   ],
   "warnings": [],
-  "unsupported": false
+  "unsupported": false,
+  "metadata": {
+    "query_id": "q_0c9ab4d71dfcb6ec",
+    "route": "stat_query",
+    "unsupported": false,
+    "unsupported_reason": null,
+    "sql_visible": true,
+    "sql": {
+      "template_hash": "sql_3f0c8e2cc6d1a8bb",
+      "parameterized": true,
+      "row_count": 10
+    },
+    "source_count": 1,
+    "latency_ms": 8.4
+  },
+  "review": null
 }
 ```
 
@@ -164,7 +182,9 @@ uv run python -m baseball_rag.corpus diagnostics --persist-dir data
 
 ## Evaluation
 
-The golden eval set lives in [evals/questions.yaml](evals/questions.yaml). It covers:
+The golden eval set lives in [evals/questions.yaml](evals/questions.yaml). CI treats the deterministic subset as an AI release gate. The gate emits Markdown and JSON artifacts, compares against [evals/baseline.json](evals/baseline.json), and returns `PASS`, `WARN`, or `BLOCK`.
+
+The eval manifest covers:
 
 - known stat answers and row-count expectations
 - freeform typed-query cases
@@ -173,6 +193,18 @@ The golden eval set lives in [evals/questions.yaml](evals/questions.yaml). It co
 - ambiguous player names
 - minimum sample size cases for AVG and ERA
 - source manifest requirements
+
+Run the deterministic release gate locally:
+
+```bash
+uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json
+```
+
+Artifacts:
+
+- [docs/eval-report.md](docs/eval-report.md) gives an executive-friendly release summary with pass rate, skipped live cases, risk categories, service requirements, and release recommendation.
+- [docs/eval-report.json](docs/eval-report.json) is the machine-readable artifact for CI and baseline review.
+- [docs/guardrail-coverage.md](docs/guardrail-coverage.md) presents unsupported-case, SQL safety, provenance, and live/manual coverage as intentional safety controls.
 
 Current automated tests:
 
@@ -186,11 +218,22 @@ Retrieval-only strategy comparison for Chroma-backed eval cases:
 uv run python -m evals.questions --all-strategies --retrieval-only
 ```
 
-The eval file is intentionally human-readable so it can drive a later test runner, CI report, or model-routing regression harness.
+Live, Chroma-backed, and LLM-assisted evals remain opt-in local/manual commands and do not block CI.
+
+## Governance API
+
+The FastAPI app exposes deterministic governance surfaces alongside `/query`:
+
+- `GET /evals/report` runs the deterministic eval gate and returns JSON plus Markdown without writing docs files.
+- `POST /evals/run` runs the deterministic gate by default and rejects live/retrieval options unless `include_live=true`.
+- `GET /guardrails/coverage` returns manifest-only guardrail coverage, with no DB, Chroma, or LLM dependency.
+- `GET /review-queue` and `PATCH /review-queue/{item_id}` expose the local human-review queue for unsupported or ambiguous API answers.
+
+See [docs/api.md](docs/api.md) for request and response details.
 
 ## Why Not Just Ask ChatGPT?
 
-The point is deterministic execution, not smarter-sounding baseball prose. The LLM classifies intent and narrates grounded results; DuckDB executes the structured stat work. Freeform database questions become typed specs, then Python builds parameterized/template SQL instead of trusting model-written SQL. Responses expose SQL where available, result rows, retrieved source docs, and the data manifest with checksums and license metadata. Ambiguous or unsupported questions fail closed, and the eval set protects common baseball-history claims, SQL visibility, source provenance, minimum-sample rules, and live-data limitations from drifting.
+The point is deterministic execution, not smarter-sounding baseball prose. The LLM classifies intent and narrates grounded results; DuckDB executes the structured stat work. Freeform database questions become typed specs, then Python builds parameterized/template SQL instead of trusting model-written SQL. Responses expose SQL where available, result rows, retrieved source docs, and the data manifest with checksums and license metadata. Ambiguous or unsupported questions fail closed, enter the human-review queue when they arrive through the API, and the eval gate protects common baseball-history claims, SQL visibility, source provenance, minimum-sample rules, and live-data limitations from drifting.
 
 ## Why This Is Grounded
 

@@ -68,7 +68,13 @@ def _answer_stat_query(question: str, decision: Any) -> StructuredAnswer:
                     "in the local Lahman-derived batting data."
                 ),
                 intent=decision.intent,
-                sources=[_duckdb_source("Player stat lookup", tables=["batting", "people"])],
+                sources=[
+                    _duckdb_source(
+                        "Player stat lookup",
+                        tables=["batting", "people"],
+                        sql=_stat_source_sql("player"),
+                    )
+                ],
                 warnings=[
                     "No fallback leaderboard was returned because the question named a player."
                 ],
@@ -84,6 +90,7 @@ def _answer_stat_query(question: str, decision: Any) -> StructuredAnswer:
                     "Player stat lookup",
                     tables=["batting", "people"],
                     rows=[result],
+                    sql=_stat_source_sql("player"),
                 )
             ],
         )
@@ -102,6 +109,7 @@ def _answer_stat_query(question: str, decision: Any) -> StructuredAnswer:
                     f"{stat} leaderboard for {start_year}-{end_year}",
                     tables=["batting", "people"],
                     rows=rows,
+                    sql=_stat_source_sql("range"),
                 )
             ],
         )
@@ -118,6 +126,7 @@ def _answer_stat_query(question: str, decision: Any) -> StructuredAnswer:
                 f"Career {stat} leaderboard",
                 tables=["batting", "people"],
                 rows=rows,
+                sql=_stat_source_sql("career"),
             )
         ],
     )
@@ -308,13 +317,37 @@ def _duckdb_source(
     *,
     tables: list[str],
     rows: list[dict[str, Any]] | None = None,
+    sql: str | None = None,
 ) -> SourceRecord:
     return SourceRecord(
         type="duckdb",
         label=label,
         detail=f"Tables: {', '.join(tables)}. Dataset: local Hugging Face NeuML/baseballdata CSVs.",
+        sql=sql,
         rows=rows or [],
         data_manifest=compact_data_manifest(),
+    )
+
+
+def _stat_source_sql(kind: str) -> str:
+    """Return parameterized SQL visibility for deterministic stat-query audit trails."""
+    if kind == "player":
+        return (
+            "SELECT p.nameFirst, p.nameLast, b.yearID, b.teamID, <stat> AS stat_value "
+            "FROM batting b JOIN people p ON b.playerID = p.playerID "
+            "WHERE p.nameFirst || ' ' || p.nameLast = ? AND (? IS NULL OR b.yearID = ?)"
+        )
+    if kind == "range":
+        return (
+            "SELECT p.nameLast || ', ' || p.nameFirst AS name, SUM(<stat>) AS stat_value "
+            "FROM batting b JOIN people p ON b.playerID = p.playerID "
+            "WHERE b.yearID >= ? AND b.yearID <= ? GROUP BY p.nameLast, p.nameFirst "
+            "ORDER BY stat_value DESC LIMIT 10"
+        )
+    return (
+        "SELECT p.nameLast || ', ' || p.nameFirst AS name, SUM(<stat>) AS stat_value "
+        "FROM batting b JOIN people p ON b.playerID = p.playerID "
+        "GROUP BY p.nameLast, p.nameFirst ORDER BY stat_value DESC LIMIT ?"
     )
 
 

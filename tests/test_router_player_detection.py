@@ -40,6 +40,21 @@ class TestPlayerDetection:
         assert hasattr(result, "player_name"), "RouteResult has no 'player' attribute"
         assert result.player_name is not None
 
+    def test_compact_player_stat_query_routes_without_llm(self, monkeypatch):
+        """'Matt Olson RBI in 2023' should stay deterministic in CI."""
+
+        def unavailable_llm(*_args, **_kwargs):
+            raise ConnectionError("LM Studio unavailable")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", unavailable_llm)
+
+        result = route("Matt Olson RBI in 2023")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "RBI"
+        assert result.year == 2023
+        assert result.player_name == "Matt Olson"
+
     def test_detect_player_name_preserves_existing_behavior(self):
         """Player detection should NOT break existing stat query classification."""
         # These already work - ensure they still do

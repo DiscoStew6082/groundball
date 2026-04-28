@@ -495,6 +495,17 @@ def _extract_player_name_heuristic(question: str) -> str | None:
     if did_pattern:
         return did_pattern.group(1)
 
+    compact_stat_pattern = re.search(
+        r"^\s*([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+?)\s+"
+        r"(?i:"
+        r"rbi|rbis|runs\s+batted\s+in|hr|hrs|home\s+runs?|homers?|"
+        r"sb|stolen\s+bases?|avg|batting\s+average|era|whip"
+        r")\b",
+        question,
+    )
+    if compact_stat_pattern:
+        return compact_stat_pattern.group(1)
+
     return None
 
 
