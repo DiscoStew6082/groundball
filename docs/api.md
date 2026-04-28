@@ -75,11 +75,39 @@ Ask a baseball question and get a grounded answer with provenance metadata.
   "unsupported": false,
   "review": null,
   "metadata": {
+    "query_id": "q_0c9ab4d71dfcb6ec",
+    "timestamp": "2026-04-28T12:00:00+00:00",
     "route": "stat_query",
     "unsupported": false,
+    "unsupported_reason": null,
     "source_count": 1,
     "source_types": ["duckdb"],
+    "source_labels": ["RBI leaderboard for 1962-1962"],
     "sql_visible": true,
+    "sql": {
+      "template": "SELECT ... WHERE b.yearID >= ? AND b.yearID <= ? ...",
+      "template_hash": "sql_3f0c8e2cc6d1a8bb",
+      "parameterized": true,
+      "params_count": 2,
+      "row_count": 10,
+      "truncated": false,
+      "source_label": "RBI leaderboard for 1962-1962"
+    },
+    "model": {
+      "name": "local-llm",
+      "prompt_version": "grounded-answer-v1"
+    },
+    "dataset": {
+      "name": "NeuML/baseballdata",
+      "version": "manifest",
+      "downloaded_at": "2026-04-20T13:29:00-04:00",
+      "hash": "manifest_..."
+    },
+    "eval": {
+      "matched": true,
+      "case_id": "stat_rbi_1962",
+      "category": "stat"
+    },
     "latency_ms": 8.4,
     "trace": {
       "route_type": "stat_query",
@@ -107,8 +135,154 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `warnings` | array | Non-fatal caveats, such as missing indexes or truncated results |
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
 | `review` | object/null | Human review queue hint for unsupported, ambiguous, or low-confidence answers |
-| `metadata` | object | Additive audit metadata for route, unsupported status, source summary, SQL visibility, latency, and trace stages |
+| `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match, latency, and trace stages |
 | `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, and license notes for DuckDB-backed answers |
+
+---
+
+### `GET /evals/report`
+
+Run the deterministic eval release gate and return JSON plus Markdown. The endpoint does not write report files and does not require Chroma, LM Studio, external LMs, or live services by default.
+
+**Query parameters**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `include_live` | boolean | `false` | Include live/manual eval cases. This may require local Chroma/corpus/LM Studio services. |
+
+**Response**
+
+```json
+{
+  "ok": true,
+  "mode": "answer",
+  "include_live": false,
+  "minimum_pass_rate": 1.0,
+  "summary": {
+    "passed": 20,
+    "failed": 0,
+    "skipped": 48,
+    "pass_rate": 1.0,
+    "recommendation": "PASS"
+  },
+  "results": {
+    "passed": [],
+    "failed": [],
+    "skipped": []
+  },
+  "markdown": "# Baseball RAG Eval Report\n..."
+}
+```
+
+---
+
+### `POST /evals/run`
+
+Run evals with explicit options. An empty body `{}` runs the same deterministic release gate as `GET /evals/report`.
+
+Live/retrieval strategy options are rejected unless `include_live=true`; strategy-backed live eval execution remains a CLI-only path so CI and the API default are deterministic.
+
+**Request**
+
+```json
+{
+  "include_live": false,
+  "strategy": null,
+  "all_strategies": false,
+  "retrieval_only": false
+}
+```
+
+**Common responses**
+
+| Status | Condition |
+|--------|-----------|
+| 200 OK | Deterministic eval run completed |
+| 400 Bad Request | Live/retrieval options were requested without `include_live=true`, or a CLI-only live strategy was requested |
+| 422 Unprocessable Entity | Invalid request body |
+
+---
+
+### `GET /guardrails/coverage`
+
+Return manifest-only guardrail coverage generated from `evals/questions.yaml`. This endpoint does not touch DuckDB, Chroma, LM Studio, or live services.
+
+**Response**
+
+```json
+{
+  "summary": {
+    "ci_safe_deterministic_guardrails": 10,
+    "unsupported_guardrails": 18,
+    "sql_safety": 11,
+    "provenance_source_visibility": 41,
+    "live_manual_guardrail_cases": 0
+  },
+  "categories": {
+    "unsupported": [],
+    "sql_safety": [],
+    "provenance_source_visibility": [],
+    "live_manual": []
+  },
+  "markdown": "# Baseball RAG Guardrail Coverage\n..."
+}
+```
+
+---
+
+### `GET /review-queue`
+
+Return the latest local human-review queue snapshots. The queue is append-only JSONL at `data/review_queue.jsonl` by default; set `BASEBALL_RAG_REVIEW_QUEUE_PATH` to override it.
+
+**Query parameters**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `status` | `open`, `resolved`, `dismissed`, `all` | `open` | Filter the latest snapshot for each item |
+
+**Response**
+
+```json
+{
+  "count": 1,
+  "items": [
+    {
+      "id": "review_...",
+      "question": "how many HRs did Totally Fakeplayer have in 2022",
+      "answer_id": "q_...",
+      "status": "open",
+      "reason": "unsupported",
+      "audit": {},
+      "created_at": "2026-04-28T12:00:00+00:00",
+      "resolved_at": null,
+      "resolution_note": null
+    }
+  ]
+}
+```
+
+---
+
+### `PATCH /review-queue/{item_id}`
+
+Resolve or dismiss an existing review item by appending a new latest snapshot.
+
+**Request**
+
+```json
+{
+  "status": "resolved",
+  "note": "Expected unsupported guardrail"
+}
+```
+
+**Common responses**
+
+| Status | Condition |
+|--------|-----------|
+| 200 OK | Item resolved or dismissed |
+| 404 Not Found | Unknown review item |
+| 422 Unprocessable Entity | Invalid status |
 
 ---
 

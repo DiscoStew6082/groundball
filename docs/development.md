@@ -78,6 +78,7 @@ uv run python -m evals.questions --all-strategies --retrieval-only
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | Embedding endpoint base URL |
 | `LMSTUDIO_EMBEDDING_MODEL` | `text-embedding-kalm-embedding-gemma3-12b-2511-i1` | Embedding model used for Chroma ingest/retrieval |
 | `CHROMA_PERSIST_DIR` | `data/` | Optional override for retrieval and diagnostics persist directory |
+| `BASEBALL_RAG_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue |
 
 ## Running Locally
 
@@ -143,6 +144,17 @@ This command skips cases that require LM Studio, Chroma, external LMs, or live m
 The JSON report is compared to `evals/baseline.json`. Behavioral regressions block CI; dataset/model/prompt drift is reported as `WARN` so the baseline can be reviewed and refreshed deliberately.
 
 CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporting, but it is non-blocking so releases do not depend on external coverage upload availability.
+
+## Governance Surfaces
+
+The API exposes release and review surfaces for local demos:
+
+- `GET /evals/report` returns the deterministic eval gate summary and Markdown report without writing files.
+- `POST /evals/run` defaults to deterministic-only evals and rejects live/retrieval options unless `include_live=true`.
+- `GET /guardrails/coverage` returns manifest-only guardrail coverage from `evals/questions.yaml`.
+- `GET /review-queue` and `PATCH /review-queue/{item_id}` list, resolve, or dismiss API-created review items.
+
+Only `/query` writes review queue items. CLI and Gradio calls do not persist review state.
 
 ## Project Conventions
 
