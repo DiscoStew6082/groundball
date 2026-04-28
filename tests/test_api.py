@@ -42,6 +42,7 @@ class TestApi:
         assert data["metadata"]["source_types"] == ["duckdb"]
         assert data["metadata"]["trace"]["route_type"] == "stat_query"
         assert data["metadata"]["trace"]["stages"]
+        assert data["review"] is None
 
         audit_records = [record for record in caplog.records if record.message == "query_audit"]
         assert len(audit_records) == 1
@@ -50,6 +51,19 @@ class TestApi:
         assert audit["unsupported"] is False
         assert audit["sql_visible"] is True
         assert audit["latency_ms"] >= 0
+
+    def test_query_endpoint_surfaces_review_item_for_unsupported_answer(self):
+        response = client.post(
+            "/query",
+            json={"question": "how many HRs did Totally Fakeplayer have in 2022"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is True
+        assert data["review"]["queued"] is True
+        assert data["review"]["reason"] == "unsupported"
+        assert data["review"]["item_id"].startswith("review_")
 
     def test_sources_endpoint_returns_manifest(self):
         response = client.get("/sources")

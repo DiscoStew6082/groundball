@@ -21,6 +21,7 @@ class QueryResponse(BaseModel):
     warnings: list[str]
     unsupported: bool
     metadata: dict[str, Any] = Field(default_factory=dict)
+    review: dict[str, Any] | None = None
 
 
 @app.get("/health")
@@ -37,8 +38,15 @@ def query(req: QueryRequest):
     result = answer(req.question)
     trace = finish_trace(route_type=result.intent)
     result.metadata.update(_query_metadata(result.to_dict(), trace=trace))
+    _attach_review(req.question, result)
     logger.info("query_audit", extra={"audit": result.metadata})
     return QueryResponse(**result.to_dict())
+
+
+def _attach_review(question: str, result: Any) -> None:
+    from baseball_rag.review_queue import build_review_item, review_payload
+
+    result.review = review_payload(build_review_item(question, result))
 
 
 def _query_metadata(payload: dict[str, Any], *, trace: Any) -> dict[str, Any]:

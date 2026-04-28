@@ -73,6 +73,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
   ],
   "warnings": [],
   "unsupported": false,
+  "review": null,
   "metadata": {
     "route": "stat_query",
     "unsupported": false,
@@ -105,6 +106,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `sources` | array | DuckDB/Chroma evidence records used to ground the answer |
 | `warnings` | array | Non-fatal caveats, such as missing indexes or truncated results |
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
+| `review` | object/null | Human review queue hint for unsupported, ambiguous, or low-confidence answers |
 | `metadata` | object | Additive audit metadata for route, unsupported status, source summary, SQL visibility, latency, and trace stages |
 | `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, and license notes for DuckDB-backed answers |
 

@@ -45,6 +45,7 @@ class StructuredAnswer:
     warnings: list[str] = field(default_factory=list)
     unsupported: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    review: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable answer payload."""
@@ -55,6 +56,7 @@ class StructuredAnswer:
             "warnings": self.warnings,
             "unsupported": self.unsupported,
             "metadata": self.metadata,
+            "review": self.review,
         }
 
 
