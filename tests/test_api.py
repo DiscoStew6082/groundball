@@ -61,7 +61,11 @@ class TestApi:
         assert audit["latency_ms"] >= 0
         assert audit["query_id"] == data["metadata"]["query_id"]
 
-    def test_query_endpoint_surfaces_review_item_for_unsupported_answer(self):
+    def test_query_endpoint_surfaces_review_item_for_unsupported_answer(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
         response = client.post(
             "/query",
             json={"question": "how many HRs did Totally Fakeplayer have in 2022"},
@@ -73,6 +77,38 @@ class TestApi:
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "unsupported"
         assert data["review"]["item_id"].startswith("review_")
+
+        queue_response = client.get("/review-queue")
+        assert queue_response.status_code == 200
+        queue = queue_response.json()
+        assert queue["count"] == 1
+        assert queue["items"][0]["id"] == data["review"]["item_id"]
+
+    def test_review_queue_endpoint_resolves_item(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+        response = client.post(
+            "/query",
+            json={"question": "how many HRs did Totally Fakeplayer have in 2022"},
+        )
+        item_id = response.json()["review"]["item_id"]
+
+        patch_response = client.patch(
+            f"/review-queue/{item_id}",
+            json={"status": "resolved", "note": "expected unsupported guardrail"},
+        )
+
+        assert patch_response.status_code == 200
+        assert patch_response.json()["item"]["status"] == "resolved"
+        assert client.get("/review-queue").json()["items"] == []
+        all_items = client.get("/review-queue", params={"status": "all"}).json()["items"]
+        assert all_items[0]["resolution_note"] == "expected unsupported guardrail"
+
+    def test_review_queue_endpoint_returns_404_for_missing_item(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.patch("/review-queue/review_missing", json={"status": "resolved"})
+
+        assert response.status_code == 404
 
     def test_sources_endpoint_returns_manifest(self):
         response = client.get("/sources")

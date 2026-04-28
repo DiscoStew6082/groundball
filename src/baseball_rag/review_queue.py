@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from baseball_rag.provenance import StructuredAnswer
 
 ReviewReason = Literal["unsupported", "ambiguous", "low_confidence"]
 ReviewStatus = Literal["open", "resolved", "dismissed"]
+DEFAULT_REVIEW_QUEUE_PATH = Path("data/review_queue.jsonl")
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,8 @@ class ReviewQueueItem:
     reason: ReviewReason
     audit: dict[str, Any]
     created_at: str
+    resolved_at: str | None = None
+    resolution_note: str | None = None
 
 
 def build_review_item(
@@ -63,6 +67,69 @@ def review_payload(item: ReviewQueueItem | None) -> dict[str, Any] | None:
     if item is None:
         return None
     return {"queued": True, "reason": item.reason, "item_id": item.id}
+
+
+def review_queue_path() -> Path:
+    """Return the configured local review queue path."""
+    return Path(os.environ.get("BASEBALL_RAG_REVIEW_QUEUE_PATH", DEFAULT_REVIEW_QUEUE_PATH))
+
+
+def persist_review_item(
+    item: ReviewQueueItem | None,
+    *,
+    path: Path | None = None,
+) -> None:
+    """Persist an open review item unless it is already the latest stored state."""
+    if item is None:
+        return
+    target = path or review_queue_path()
+    latest = {stored.id: stored for stored in list_review_items(path=target, status="all")}
+    if latest.get(item.id) == item:
+        return
+    write_review_item(target, item)
+
+
+def list_review_items(
+    *,
+    path: Path | None = None,
+    status: ReviewStatus | Literal["all"] | None = "open",
+) -> list[ReviewQueueItem]:
+    """Return latest review item snapshots, optionally filtered by status."""
+    latest: dict[str, ReviewQueueItem] = {}
+    for item in load_review_items(path or review_queue_path()):
+        latest[item.id] = item
+    items = list(latest.values())
+    if status in (None, "all"):
+        return items
+    return [item for item in items if item.status == status]
+
+
+def resolve_review_item(
+    item_id: str,
+    status: Literal["resolved", "dismissed"],
+    *,
+    note: str | None = None,
+    path: Path | None = None,
+) -> ReviewQueueItem:
+    """Append a resolved/dismissed snapshot for an existing review item."""
+    target = path or review_queue_path()
+    latest = {item.id: item for item in list_review_items(path=target, status="all")}
+    item = latest.get(item_id)
+    if item is None:
+        raise KeyError(f"review item {item_id!r} not found")
+    updated = ReviewQueueItem(
+        id=item.id,
+        question=item.question,
+        answer_id=item.answer_id,
+        status=status,
+        reason=item.reason,
+        audit=item.audit,
+        created_at=item.created_at,
+        resolved_at=datetime.now(UTC).isoformat(),
+        resolution_note=note,
+    )
+    write_review_item(target, updated)
+    return updated
 
 
 def write_review_item(path: Path, item: ReviewQueueItem | None) -> None:
@@ -114,7 +181,7 @@ def _review_id(*, question: str, reason: ReviewReason, audit: dict[str, Any]) ->
             "question": question,
             "reason": reason,
             "route": audit.get("route"),
-            "trace": audit.get("trace"),
+            "query_id": audit.get("query_id"),
         },
         sort_keys=True,
         default=str,

@@ -1,7 +1,8 @@
 """FastAPI server for Baseball RAG."""
 
 import logging
-from typing import Any
+from dataclasses import asdict
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -31,6 +32,11 @@ class EvalRunRequest(BaseModel):
     retrieval_only: bool = False
 
 
+class ReviewUpdateRequest(BaseModel):
+    status: Literal["resolved", "dismissed"]
+    note: str | None = None
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -53,9 +59,32 @@ def query(req: QueryRequest):
 
 
 def _attach_review(question: str, result: Any) -> None:
-    from baseball_rag.review_queue import build_review_item, review_payload
+    from baseball_rag.review_queue import build_review_item, persist_review_item, review_payload
 
-    result.review = review_payload(build_review_item(question, result))
+    item = build_review_item(question, result)
+    persist_review_item(item)
+    result.review = review_payload(item)
+
+
+@app.get("/review-queue")
+def review_queue(status: Literal["open", "resolved", "dismissed", "all"] = "open"):
+    """Return latest local human-review queue snapshots."""
+    from baseball_rag.review_queue import list_review_items
+
+    items = list_review_items(status=status)
+    return {"count": len(items), "items": [asdict(item) for item in items]}
+
+
+@app.patch("/review-queue/{item_id}")
+def update_review_queue_item(item_id: str, req: ReviewUpdateRequest):
+    """Resolve or dismiss a local human-review queue item."""
+    from baseball_rag.review_queue import resolve_review_item
+
+    try:
+        item = resolve_review_item(item_id, req.status, note=req.note)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"item": asdict(item)}
 
 
 @app.get("/evals/report")

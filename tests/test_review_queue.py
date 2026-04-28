@@ -3,7 +3,10 @@
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.review_queue import (
     build_review_item,
+    list_review_items,
     load_review_items,
+    persist_review_item,
+    resolve_review_item,
     review_payload,
     write_review_item,
 )
@@ -66,3 +69,53 @@ def test_review_payload_and_jsonl_round_trip(tmp_path):
 
     assert review_payload(item) == {"queued": True, "reason": "unsupported", "item_id": item.id}
     assert load_review_items(path) == [item]
+
+
+def test_review_id_ignores_volatile_trace_metadata():
+    first = StructuredAnswer(
+        answer="No grounded result found.",
+        intent="stat_query",
+        unsupported=True,
+        metadata={"trace": {"total_ms": 1.0}, "latency_ms": 1.0},
+    )
+    second = StructuredAnswer(
+        answer="No grounded result found.",
+        intent="stat_query",
+        unsupported=True,
+        metadata={"trace": {"total_ms": 9.0}, "latency_ms": 9.0},
+    )
+
+    assert (
+        build_review_item("who led MLB in vibes", first).id
+        == build_review_item("who led MLB in vibes", second).id
+    )
+
+
+def test_persist_list_and_resolve_review_items(tmp_path):
+    path = tmp_path / "review.jsonl"
+    item = build_review_item(
+        "who led MLB in vibes",
+        StructuredAnswer(answer="No grounded result found.", intent="stat_query", unsupported=True),
+    )
+
+    persist_review_item(item, path=path)
+    persist_review_item(item, path=path)
+
+    assert list_review_items(path=path) == [item]
+    resolved = resolve_review_item(item.id, "resolved", note="covered by guardrail", path=path)
+    open_items = list_review_items(path=path, status="open")
+    all_items = list_review_items(path=path, status="all")
+
+    assert open_items == []
+    assert all_items == [resolved]
+    assert resolved.status == "resolved"
+    assert resolved.resolution_note == "covered by guardrail"
+
+
+def test_resolve_unknown_review_item_raises(tmp_path):
+    try:
+        resolve_review_item("review_missing", "resolved", path=tmp_path / "review.jsonl")
+    except KeyError as exc:
+        assert "review_missing" in str(exc)
+    else:
+        raise AssertionError("expected KeyError")
