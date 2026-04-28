@@ -267,3 +267,4 @@ Useful docs:
 - [Architecture notes](docs/architecture.md)
 - [CLI notes](docs/cli.md)
 - [Demo checklist](docs/demo-checklist.md)
+- [Five-minute AI governance demo](docs/demo-governance.md)
