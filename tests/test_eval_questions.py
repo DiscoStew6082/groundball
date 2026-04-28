@@ -83,7 +83,7 @@ def test_selected_cases_defaults_to_ci_safe_stat_queries():
     assert "freeform_braves_1936" not in selected_ids
 
 
-def test_ci_safe_flag_allows_explicit_live_opt_in():
+def test_default_selection_rejects_live_cases_even_when_ci_safe_flag_is_set():
     cases = [
         load_cases()[0],
         load_cases()[0].__class__(
@@ -99,7 +99,18 @@ def test_ci_safe_flag_allows_explicit_live_opt_in():
         ),
     ]
 
-    assert [case.id for case in selected_cases(cases)] == ["stat_rbi_1962", "bio"]
+    assert [case.id for case in selected_cases(cases)] == ["stat_rbi_1962"]
+    assert [case.id for case in selected_cases(cases, include_live=True)] == [
+        "stat_rbi_1962",
+        "bio",
+    ]
+
+
+def test_default_selected_cases_do_not_require_live_services():
+    selected = selected_cases(load_cases())
+
+    assert selected
+    assert all(not case.requires_live_services() for case in selected)
 
 
 def test_selected_strategy_cases_filters_to_retrieval_relevant_cases():

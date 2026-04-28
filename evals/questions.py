@@ -22,7 +22,7 @@ PlayerResolverFn = Callable[[str], Any]
 
 DEFAULT_QUESTIONS_PATH = Path(__file__).with_name("questions.yaml")
 LIVE_SOURCE_TYPES = {"chroma"}
-LIVE_INTENTS = {"freeform_query", "player_biography", "general_explanation"}
+LIVE_INTENTS = {"player_biography", "general_explanation"}
 RETRIEVAL_CATEGORIES = {"player_biography", "general_explanation"}
 
 
@@ -65,8 +65,10 @@ class EvalCase:
 
     def should_run(self, *, include_live: bool = False) -> bool:
         """Select deterministic cases by default, plus explicit opt-ins."""
-        if include_live or self.ci_safe:
+        if include_live:
             return True
+        if self.ci_safe:
+            return not self.requires_live_services()
         return (
             self.intent == "stat_query"
             and self.required_sources == {"duckdb"}

@@ -13,15 +13,15 @@
 
 ## Service Requirements
 
-- Deterministic/CI-safe mode was used; non-default cases were skipped. 48 case(s) are available behind `--include-live`; 25 skipped case(s) may require Chroma, corpus, and LLM services.
+- Deterministic/CI-safe mode was used; non-default cases were skipped. 48 case(s) are available behind `--include-live`; 14 skipped case(s) may require Chroma, corpus, and LLM services.
 
 ## Skipped Live Cases
 
-- `stat_sql_injection_team`: who played for the Braves%' OR 1=1 -- in 1936
-- `freeform_braves_1936`: who played for the Braves in 1936
-- `freeform_yankees_1950`: who played for the Yankees in 1950
-- `freeform_dodgers_1955`: who played for the Dodgers in 1955
-- `min_sample_avg_2024`: who had the highest batting average in 2024 with at least 100 at bats
+- `player_bio_babe_ruth`: who was Babe Ruth
+- `player_bio_ted_williams`: tell me about Ted Williams
+- `player_bio_willie_mays`: who was Willie Mays
+- `player_bio_hank_aaron`: tell me about Hank Aaron
+- `player_bio_mickey_mantle`: who was Mickey Mantle
 
 ## Risk Categories
 
@@ -29,7 +29,7 @@
 - SQL safety: 12 case(s)
 - Unsupported guardrails: 18 case(s)
 - Provenance and source visibility: 41 case(s)
-- Live retrieval/LLM optional: 35 case(s)
+- Live retrieval/LLM optional: 14 case(s)
 
 ## Suite Coverage
 

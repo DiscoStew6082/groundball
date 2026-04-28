@@ -6,7 +6,7 @@
 - Unsupported guardrails: 18
 - SQL safety: 11
 - Provenance/source visibility: 41
-- Live/manual guardrail cases: 2
+- Live/manual guardrail cases: 0
 
 ## Unsupported Guardrails
 
@@ -89,5 +89,4 @@
 
 ## Live/Manual Guardrail Cases
 
-- `stat_sql_injection_team`: who played for the Braves%' OR 1=1 -- in 1936 - Team names must be bound parameters.
-- `min_sample_avg_2024`: who had the highest batting average in 2024 with at least 100 at bats
+- None

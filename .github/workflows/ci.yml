@@ -44,6 +44,16 @@ jobs:
       - run: python -m pytest tests/ --ignore=tests/test_db_download.py -m "unit and not llm" --cov=baseball_rag --cov-report=xml --cov-report=term-missing -v
       - name: Deterministic eval release gate
         run: python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md
+      - name: Publish reliability summary
+        if: always()
+        run: |
+          {
+            echo "## Deterministic Eval Report"
+            cat eval-report.md
+            echo
+            echo "## Guardrail Coverage Report"
+            cat guardrail-coverage.md
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -51,4 +61,10 @@ jobs:
           path: |
             eval-report.md
             guardrail-coverage.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
       - uses: codecov/codecov-action@v4
+        continue-on-error: true
