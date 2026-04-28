@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import os
 import sys
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -148,6 +152,16 @@ class EvalReport:
     result: EvalRunResult | None = None
     strategy_results: dict[str, EvalRunResult] | None = None
     mode: str = "answer"
+    baseline_comparison: "BaselineComparison | None" = None
+
+
+@dataclass(frozen=True)
+class BaselineComparison:
+    """Result of comparing a current eval artifact to a baseline artifact."""
+
+    recommendation: str
+    blockers: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def load_cases(path: Path = DEFAULT_QUESTIONS_PATH) -> list[EvalCase]:
@@ -367,24 +381,13 @@ def format_strategy_summary(result: StrategyRunResult | dict[str, EvalRunResult]
 
 def format_eval_report(report: EvalReport) -> str:
     """Render a deterministic Markdown report for portfolio/demo use."""
-    if report.strategy_results is None:
-        if report.result is None:
-            raise ValueError("EvalReport requires result or strategy_results")
-        passed = len(report.result.passed)
-        failed = len(report.result.failed)
-        skipped = len(report.result.skipped)
-        attempted = report.result.attempted
-    else:
-        passed = sum(len(result.passed) for result in report.strategy_results.values())
-        failed = sum(len(result.failed) for result in report.strategy_results.values())
-        skipped = sum(len(result.skipped) for result in report.strategy_results.values())
-        attempted = passed + failed
-    pass_rate = passed / attempted if attempted else 0.0
+    counts = _report_counts(report)
     release_recommendation = _release_recommendation(
-        passed=passed,
-        failed=failed,
-        attempted=attempted,
+        passed=counts["passed"],
+        failed=counts["failed"],
+        attempted=counts["attempted"],
         minimum_pass_rate=report.minimum_pass_rate,
+        baseline_comparison=report.baseline_comparison,
     )
 
     lines = [
@@ -394,11 +397,11 @@ def format_eval_report(report: EvalReport) -> str:
         f"- Mode: {report.mode}",
         f"- Release recommendation: **{release_recommendation}**",
         f"- Cases loaded: {len(report.cases)}",
-        f"- Attempted: {attempted}",
-        f"- Passed: {passed}",
-        f"- Failed: {failed}",
-        f"- Skipped: {skipped}",
-        f"- Pass rate: {pass_rate:.1%}",
+        f"- Attempted: {counts['attempted']}",
+        f"- Passed: {counts['passed']}",
+        f"- Failed: {counts['failed']}",
+        f"- Skipped: {counts['skipped']}",
+        f"- Pass rate: {counts['pass_rate']:.1%}",
         f"- Required pass rate: {report.minimum_pass_rate:.0%}",
         "",
         "## Service Requirements",
@@ -442,6 +445,14 @@ def format_eval_report(report: EvalReport) -> str:
         lines.extend(["", "## Suite Coverage", ""])
         lines.extend(coverage_lines)
 
+    if report.baseline_comparison is not None:
+        lines.extend(["", "## Baseline Comparison", ""])
+        lines.append(f"- Recommendation: {report.baseline_comparison.recommendation}")
+        if report.baseline_comparison.blockers:
+            lines.extend(f"- Blocker: {blocker}" for blocker in report.baseline_comparison.blockers)
+        if report.baseline_comparison.warnings:
+            lines.extend(f"- Warning: {warning}" for warning in report.baseline_comparison.warnings)
+
     failed_results: list[tuple[str | None, EvalCaseResult]]
     if report.strategy_results is not None:
         lines.extend(["", "## Strategy Summary", "", "```text"])
@@ -473,6 +484,108 @@ def write_eval_report(path: Path, report: EvalReport) -> None:
     """Write an eval report, creating parent directories as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(format_eval_report(report), encoding="utf-8")
+
+
+def build_eval_artifact(
+    report: EvalReport,
+    *,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Build a machine-readable eval artifact."""
+    counts = _report_counts(report)
+    baseline = report.baseline_comparison or BaselineComparison(recommendation="PASS")
+    recommendation = _recommendation_label(
+        passed=counts["passed"],
+        failed=counts["failed"],
+        attempted=counts["attempted"],
+        minimum_pass_rate=report.minimum_pass_rate,
+        baseline_comparison=baseline,
+    )
+    return {
+        "schema_version": 1,
+        "command": report.command,
+        "mode": report.mode,
+        "generated_at": generated_at or datetime.now(UTC).isoformat(),
+        "include_live": report.include_live,
+        "minimum_pass_rate": report.minimum_pass_rate,
+        "summary": {
+            "cases_loaded": len(report.cases),
+            **counts,
+            "recommendation": recommendation,
+            "release_recommendation": _release_recommendation(
+                passed=counts["passed"],
+                failed=counts["failed"],
+                attempted=counts["attempted"],
+                minimum_pass_rate=report.minimum_pass_rate,
+                baseline_comparison=baseline,
+            ),
+        },
+        "versions": _artifact_versions(),
+        "baseline_comparison": {
+            "recommendation": baseline.recommendation,
+            "blockers": baseline.blockers,
+            "warnings": baseline.warnings,
+        },
+        "cases": _artifact_case_results(report),
+    }
+
+
+def write_json_report(path: Path, artifact: dict[str, Any]) -> None:
+    """Write a JSON eval artifact."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def load_json_report(path: Path) -> dict[str, Any]:
+    """Load a JSON eval artifact."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def compare_to_baseline(current: dict[str, Any], baseline: dict[str, Any]) -> BaselineComparison:
+    """Compare a current eval artifact to a committed baseline."""
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    baseline_cases = {
+        str(case.get("case_id")): case for case in baseline.get("cases", []) if case.get("case_id")
+    }
+    current_cases = {
+        str(case.get("case_id")): case for case in current.get("cases", []) if case.get("case_id")
+    }
+    for case_id, baseline_case in baseline_cases.items():
+        current_case = current_cases.get(case_id)
+        if current_case is None:
+            blockers.append(f"case {case_id} missing from current artifact")
+            continue
+        if baseline_case.get("status") == "passed" and current_case.get("status") == "failed":
+            blockers.append(f"case {case_id} regressed from passed to failed")
+
+    current_pass_rate = float(current.get("summary", {}).get("pass_rate", 0.0))
+    baseline_pass_rate = float(baseline.get("summary", {}).get("pass_rate", 0.0))
+    if current_pass_rate < baseline_pass_rate:
+        blockers.append(
+            f"pass rate decreased from {baseline_pass_rate:.3f} to {current_pass_rate:.3f}"
+        )
+
+    current_versions = current.get("versions", {})
+    baseline_versions = baseline.get("versions", {})
+    if current_versions.get("dataset") != baseline_versions.get("dataset"):
+        warnings.append("dataset version changed")
+    if current_versions.get("model") != baseline_versions.get("model"):
+        warnings.append("model version changed")
+    if current_versions.get("prompt") != baseline_versions.get("prompt"):
+        warnings.append("prompt version changed")
+
+    current_skipped = int(current.get("summary", {}).get("skipped", 0))
+    baseline_skipped = int(baseline.get("summary", {}).get("skipped", current_skipped))
+    if current_skipped != baseline_skipped:
+        warnings.append(f"skipped case count changed from {baseline_skipped} to {current_skipped}")
+
+    if blockers:
+        return BaselineComparison(recommendation="BLOCK", blockers=blockers, warnings=warnings)
+    if warnings:
+        return BaselineComparison(recommendation="WARN", warnings=warnings)
+    return BaselineComparison(recommendation="PASS")
 
 
 def format_guardrail_report(cases: list[EvalCase]) -> str:
@@ -780,6 +893,48 @@ def _risk_category_lines(cases: list[EvalCase]) -> list[str]:
     return [f"- {name}: {count} case(s)" for name, count in categories.items()]
 
 
+def guardrail_coverage_payload(cases: list[EvalCase]) -> dict[str, Any]:
+    """Return structured guardrail coverage from the eval manifest."""
+    unsupported_cases = [case for case in cases if case.spec.get("expected_unsupported")]
+    sql_safety_cases = [
+        case
+        for case in cases
+        if case.spec.get("expected_sql_parameterized") or "sql_injection" in case.id
+    ]
+    provenance_cases = [
+        case
+        for case in cases
+        if case.required_sources
+        or case.spec.get("required_source_manifest_fields")
+        or case.spec.get("expected_sql_visible")
+    ]
+    ci_safe_guardrails = [
+        case for case in unsupported_cases + sql_safety_cases if case.should_run()
+    ]
+    live_guardrails = [
+        case
+        for case in unsupported_cases + sql_safety_cases
+        if not case.should_run() and case.requires_live_services()
+    ]
+    categories = {
+        "unsupported": _case_payloads(unsupported_cases),
+        "sql_safety": _case_payloads(sql_safety_cases),
+        "provenance_source_visibility": _case_payloads(provenance_cases),
+        "live_manual": _case_payloads(_dedupe_cases(live_guardrails)),
+    }
+    return {
+        "summary": {
+            "ci_safe_deterministic_guardrails": len(_dedupe_cases(ci_safe_guardrails)),
+            "unsupported_guardrails": len(unsupported_cases),
+            "sql_safety": len(sql_safety_cases),
+            "provenance_source_visibility": len(provenance_cases),
+            "live_manual_guardrail_cases": len(_dedupe_cases(live_guardrails)),
+        },
+        "categories": categories,
+        "markdown": format_guardrail_report(cases),
+    }
+
+
 def _dedupe_cases(cases: list[EvalCase]) -> list[EvalCase]:
     result: list[EvalCase] = []
     seen: set[str] = set()
@@ -800,6 +955,106 @@ def _case_lines(cases: list[EvalCase]) -> list[str]:
     return lines
 
 
+def _case_payloads(cases: list[EvalCase]) -> list[dict[str, Any]]:
+    return [
+        {
+            "case_id": case.id,
+            "question": case.question,
+            "notes": case.spec.get("notes"),
+        }
+        for case in _dedupe_cases(cases)
+    ]
+
+
+def _report_counts(report: EvalReport) -> dict[str, Any]:
+    if report.strategy_results is None:
+        if report.result is None:
+            raise ValueError("EvalReport requires result or strategy_results")
+        passed = len(report.result.passed)
+        failed = len(report.result.failed)
+        skipped = len(report.result.skipped)
+        attempted = report.result.attempted
+    else:
+        passed = sum(len(result.passed) for result in report.strategy_results.values())
+        failed = sum(len(result.failed) for result in report.strategy_results.values())
+        skipped = sum(len(result.skipped) for result in report.strategy_results.values())
+        attempted = passed + failed
+    pass_rate = passed / attempted if attempted else 0.0
+    return {
+        "attempted": attempted,
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "pass_rate": pass_rate,
+    }
+
+
+def _artifact_case_results(report: EvalReport) -> list[dict[str, Any]]:
+    if report.strategy_results is None:
+        if report.result is None:
+            raise ValueError("EvalReport requires result or strategy_results")
+        return [
+            _case_result_payload(case_result)
+            for case_result in report.result.passed + report.result.failed + report.result.skipped
+        ]
+    payloads: list[dict[str, Any]] = []
+    for strategy, result in report.strategy_results.items():
+        for case_result in result.passed + result.failed + result.skipped:
+            payload = _case_result_payload(case_result)
+            payload["strategy"] = strategy
+            payloads.append(payload)
+    return payloads
+
+
+def _case_result_payload(case_result: EvalCaseResult) -> dict[str, Any]:
+    return {
+        "case_id": case_result.case_id,
+        "status": case_result.status,
+        "failures": case_result.failures,
+        "reason": case_result.reason,
+    }
+
+
+def _artifact_versions() -> dict[str, Any]:
+    return {
+        "dataset": _dataset_version(),
+        "model": _model_version(),
+        "prompt": _prompt_version(),
+    }
+
+
+def _dataset_version() -> dict[str, Any]:
+    from baseball_rag.provenance import compact_data_manifest
+
+    try:
+        manifest = compact_data_manifest()
+    except FileNotFoundError:
+        return {"name": None, "version": None, "downloaded_at": None, "hash": None}
+    digest = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    dataset = manifest.get("dataset", {})
+    download = manifest.get("download", {})
+    return {
+        "name": dataset.get("name"),
+        "version": dataset.get("upstream_release"),
+        "downloaded_at": download.get("downloaded_at"),
+        "hash": f"sha256:{digest}",
+    }
+
+
+def _model_version() -> dict[str, Any]:
+    from baseball_rag.generation.llm import DEFAULT_MODEL
+
+    return {"name": os.environ.get("LMSTUDIO_MODEL", DEFAULT_MODEL)}
+
+
+def _prompt_version() -> dict[str, Any]:
+    from baseball_rag.generation.prompt import PROMPT_VERSION
+
+    return {"version": PROMPT_VERSION}
+
+
 def _release_gate_ok(
     *,
     passed: int,
@@ -817,15 +1072,42 @@ def _release_recommendation(
     failed: int,
     attempted: int,
     minimum_pass_rate: float,
+    baseline_comparison: BaselineComparison | None = None,
 ) -> str:
+    label = _recommendation_label(
+        passed=passed,
+        failed=failed,
+        attempted=attempted,
+        minimum_pass_rate=minimum_pass_rate,
+        baseline_comparison=baseline_comparison,
+    )
+    if label == "PASS":
+        return "PASS - deterministic release gate is green"
+    if label == "WARN":
+        return "WARN - deterministic gate is green with baseline drift"
+    return "BLOCK - investigate deterministic eval failures before release"
+
+
+def _recommendation_label(
+    *,
+    passed: int,
+    failed: int,
+    attempted: int,
+    minimum_pass_rate: float,
+    baseline_comparison: BaselineComparison | None = None,
+) -> str:
+    if baseline_comparison is not None and baseline_comparison.recommendation == "BLOCK":
+        return "BLOCK"
     if _release_gate_ok(
         passed=passed,
         failed=failed,
         attempted=attempted,
         minimum_pass_rate=minimum_pass_rate,
     ):
-        return "PASS - deterministic release gate is green"
-    return "BLOCK - investigate deterministic eval failures before release"
+        if baseline_comparison is not None and baseline_comparison.recommendation == "WARN":
+            return "WARN"
+        return "PASS"
+    return "BLOCK"
 
 
 def _minimum_pass_rate(path: Path) -> float:
@@ -862,6 +1144,54 @@ def _strategy_release_gate_ok(
 def _command_for_report(argv: list[str] | None) -> str:
     args = sys.argv[1:] if argv is None else argv
     return " ".join(["python", "-m", "evals.questions", *args])
+
+
+def _apply_baseline_and_write_reports(
+    report: EvalReport,
+    *,
+    markdown_path: Path | None,
+    json_path: Path | None,
+    baseline_path: Path | None,
+) -> tuple[EvalReport, dict[str, Any] | None]:
+    artifact = build_eval_artifact(report)
+    comparison: BaselineComparison | None = None
+    if baseline_path is not None:
+        try:
+            baseline = load_json_report(baseline_path)
+            comparison = compare_to_baseline(artifact, baseline)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            comparison = BaselineComparison(
+                recommendation="BLOCK",
+                blockers=[f"baseline could not be loaded: {type(exc).__name__}: {exc}"],
+            )
+        report = EvalReport(
+            command=report.command,
+            cases=report.cases,
+            include_live=report.include_live,
+            minimum_pass_rate=report.minimum_pass_rate,
+            result=report.result,
+            strategy_results=report.strategy_results,
+            mode=report.mode,
+            baseline_comparison=comparison,
+        )
+        artifact = build_eval_artifact(report)
+    if markdown_path:
+        write_eval_report(markdown_path, report)
+    if json_path:
+        write_json_report(json_path, artifact)
+    return report, artifact
+
+
+def _report_exit_code(report: EvalReport) -> int:
+    counts = _report_counts(report)
+    label = _recommendation_label(
+        passed=counts["passed"],
+        failed=counts["failed"],
+        attempted=counts["attempted"],
+        minimum_pass_rate=report.minimum_pass_rate,
+        baseline_comparison=report.baseline_comparison,
+    )
+    return 0 if label in {"PASS", "WARN"} else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -901,6 +1231,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="write a deterministic Markdown guardrail coverage report to PATH",
     )
+    parser.add_argument(
+        "--json-report",
+        type=Path,
+        default=None,
+        help="write a machine-readable JSON eval report to PATH",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="compare current eval results to a JSON baseline artifact",
+    )
     args = parser.parse_args(argv)
 
     cases = load_cases(args.questions)
@@ -915,26 +1257,20 @@ def main(argv: list[str] | None = None) -> int:
             for strategy, result in strategy_result.by_strategy.items():
                 for failed in result.failed:
                     print(f"- {strategy}/{failed.case_id}: " + "; ".join(failed.failures))
-            if args.report:
-                write_eval_report(
-                    args.report,
-                    EvalReport(
-                        command=command,
-                        cases=cases,
-                        include_live=args.include_live,
-                        minimum_pass_rate=minimum_pass_rate,
-                        strategy_results=strategy_result.by_strategy,
-                        mode="retrieval-only all-strategies",
-                    ),
-                )
-            return (
-                0
-                if _strategy_release_gate_ok(
-                    strategy_result.by_strategy,
+            report, _artifact = _apply_baseline_and_write_reports(
+                EvalReport(
+                    command=command,
+                    cases=cases,
+                    include_live=args.include_live,
                     minimum_pass_rate=minimum_pass_rate,
-                )
-                else 1
+                    strategy_results=strategy_result.by_strategy,
+                    mode="retrieval-only all-strategies",
+                ),
+                markdown_path=args.report,
+                json_path=args.json_report,
+                baseline_path=args.baseline,
             )
+            return _report_exit_code(report)
 
         strategy_result = StrategyRunResult(
             run_strategy_cases(cases, include_live=args.include_live)
@@ -943,26 +1279,20 @@ def main(argv: list[str] | None = None) -> int:
         for strategy, result in strategy_result.by_strategy.items():
             for failed in result.failed:
                 print(f"- {strategy}/{failed.case_id}: " + "; ".join(failed.failures))
-        if args.report:
-            write_eval_report(
-                args.report,
-                EvalReport(
-                    command=command,
-                    cases=cases,
-                    include_live=args.include_live,
-                    minimum_pass_rate=minimum_pass_rate,
-                    strategy_results=strategy_result.by_strategy,
-                    mode="answer all-strategies",
-                ),
-            )
-        return (
-            0
-            if _strategy_release_gate_ok(
-                strategy_result.by_strategy,
+        report, _artifact = _apply_baseline_and_write_reports(
+            EvalReport(
+                command=command,
+                cases=cases,
+                include_live=args.include_live,
                 minimum_pass_rate=minimum_pass_rate,
-            )
-            else 1
+                strategy_results=strategy_result.by_strategy,
+                mode="answer all-strategies",
+            ),
+            markdown_path=args.report,
+            json_path=args.json_report,
+            baseline_path=args.baseline,
         )
+        return _report_exit_code(report)
 
     answer_fn: AnswerFn | None = None
     if args.strategy:
@@ -973,26 +1303,20 @@ def main(argv: list[str] | None = None) -> int:
             print(format_strategy_summary(strategy_result))
             for failed in strategy_result.by_strategy[args.strategy].failed:
                 print(f"- {args.strategy}/{failed.case_id}: " + "; ".join(failed.failures))
-            if args.report:
-                write_eval_report(
-                    args.report,
-                    EvalReport(
-                        command=command,
-                        cases=cases,
-                        include_live=args.include_live,
-                        minimum_pass_rate=minimum_pass_rate,
-                        strategy_results=strategy_result.by_strategy,
-                        mode=f"retrieval-only strategy {args.strategy}",
-                    ),
-                )
-            return (
-                0
-                if _strategy_release_gate_ok(
-                    strategy_result.by_strategy,
+            report, _artifact = _apply_baseline_and_write_reports(
+                EvalReport(
+                    command=command,
+                    cases=cases,
+                    include_live=args.include_live,
                     minimum_pass_rate=minimum_pass_rate,
-                )
-                else 1
+                    strategy_results=strategy_result.by_strategy,
+                    mode=f"retrieval-only strategy {args.strategy}",
+                ),
+                markdown_path=args.report,
+                json_path=args.json_report,
+                baseline_path=args.baseline,
             )
+            return _report_exit_code(report)
 
         from baseball_rag.service import answer as service_answer
 
@@ -1008,19 +1332,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     for failed in result.failed:
         print(f"- {failed.case_id}: " + "; ".join(failed.failures))
-    if args.report:
-        write_eval_report(
-            args.report,
-            EvalReport(
-                command=command,
-                cases=cases,
-                include_live=args.include_live,
-                minimum_pass_rate=minimum_pass_rate,
-                result=result,
-                mode="answer",
-            ),
-        )
-    return 0 if _result_release_gate_ok(result, minimum_pass_rate=minimum_pass_rate) else 1
+    report, _artifact = _apply_baseline_and_write_reports(
+        EvalReport(
+            command=command,
+            cases=cases,
+            include_live=args.include_live,
+            minimum_pass_rate=minimum_pass_rate,
+            result=result,
+            mode="answer",
+        ),
+        markdown_path=args.report,
+        json_path=args.json_report,
+        baseline_path=args.baseline,
+    )
+    return _report_exit_code(report)
 
 
 if __name__ == "__main__":

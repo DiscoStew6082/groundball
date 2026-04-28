@@ -1,5 +1,6 @@
 """Tests for the golden eval question runner."""
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,8 @@ from baseball_rag.retrieval.chroma_store import RetrievedChunk
 from evals.questions import (
     EvalReport,
     StrategyRunResult,
+    build_eval_artifact,
+    compare_to_baseline,
     format_eval_report,
     format_guardrail_report,
     format_strategy_summary,
@@ -484,6 +487,67 @@ def test_format_eval_report_includes_counts_coverage_and_live_note():
     assert "- `broken_case`: answer missing substring 'Ruth'" in report
 
 
+def test_build_eval_artifact_includes_summary_versions_and_cases():
+    cases = load_cases()
+    result = run_cases(
+        cases[:1],
+        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+    )
+
+    artifact = build_eval_artifact(
+        EvalReport(
+            command="python -m evals.questions --json-report eval-report.json",
+            cases=cases,
+            include_live=False,
+            result=result,
+        ),
+        generated_at="2026-04-28T00:00:00+00:00",
+    )
+
+    assert artifact["schema_version"] == 1
+    assert artifact["summary"]["recommendation"] == "PASS"
+    assert artifact["summary"]["passed"] == 1
+    assert artifact["versions"]["dataset"]["name"] == "NeuML/baseballdata"
+    assert artifact["versions"]["model"]["name"]
+    assert artifact["versions"]["prompt"]["version"]
+    assert artifact["cases"][0]["case_id"] == "stat_rbi_1962"
+    assert artifact["cases"][0]["status"] == "passed"
+
+
+def test_compare_to_baseline_pass_warn_and_block():
+    versions = {
+        "dataset": {"hash": "a"},
+        "model": {"name": "m1"},
+        "prompt": {"version": "p1"},
+    }
+    current = {
+        "summary": {"pass_rate": 1.0},
+        "versions": versions,
+        "cases": [
+            {"case_id": "one", "status": "passed", "failures": []},
+            {"case_id": "two", "status": "skipped", "failures": []},
+        ],
+    }
+    assert compare_to_baseline(current, current).recommendation == "PASS"
+
+    drifted = {
+        **current,
+        "versions": {**versions, "dataset": {"hash": "b"}},
+    }
+    warn = compare_to_baseline(drifted, current)
+    assert warn.recommendation == "WARN"
+    assert "dataset version changed" in warn.warnings
+
+    regressed = {
+        **current,
+        "summary": {"pass_rate": 0.5},
+        "cases": [{"case_id": "one", "status": "failed", "failures": ["boom"]}],
+    }
+    block = compare_to_baseline(regressed, current)
+    assert block.recommendation == "BLOCK"
+    assert "case one regressed from passed to failed" in block.blockers
+
+
 def test_format_guardrail_report_groups_coverage_by_risk():
     report = format_guardrail_report(load_cases())
 
@@ -538,6 +602,127 @@ def test_main_writes_markdown_report(tmp_path: Path, monkeypatch):
     assert "- Passed:" in content
     assert "## Failed Cases" in content
     assert "- None" in content
+
+
+def test_main_writes_json_report_and_compares_baseline(tmp_path: Path, monkeypatch):
+    report_path = tmp_path / "eval-report.md"
+    json_path = tmp_path / "eval-report.json"
+    baseline_path = tmp_path / "baseline.json"
+    questions_path = tmp_path / "questions.yaml"
+    questions_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "questions": [
+                    {
+                        "id": "stat_rbi_1962",
+                        "question": "who had the most RBIs in 1962",
+                        "intent": "stat_query",
+                        "expected_answer_contains": ["Davis", "153", "RBI"],
+                        "expected_min_rows": 1,
+                        "required_sources": ["duckdb"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evals.questions.run_cases",
+        lambda cases, **_kwargs: run_cases(
+            cases,
+            answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+        ),
+    )
+
+    first_exit = main(["--questions", str(questions_path), "--json-report", str(baseline_path)])
+    second_exit = main(
+        [
+            "--questions",
+            str(questions_path),
+            "--report",
+            str(report_path),
+            "--json-report",
+            str(json_path),
+            "--baseline",
+            str(baseline_path),
+        ]
+    )
+
+    assert first_exit == 0
+    assert second_exit == 0
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert payload["baseline_comparison"]["recommendation"] == "PASS"
+    assert payload["summary"]["recommendation"] == "PASS"
+
+
+def test_main_blocks_when_baseline_regresses(tmp_path: Path, monkeypatch):
+    json_path = tmp_path / "eval-report.json"
+    baseline_path = tmp_path / "baseline.json"
+    questions_path = tmp_path / "questions.yaml"
+    questions_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "questions": [
+                    {
+                        "id": "stat_rbi_1962",
+                        "question": "who had the most RBIs in 1962",
+                        "intent": "stat_query",
+                        "expected_answer_contains": ["Davis"],
+                        "required_sources": ["duckdb"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "summary": {"pass_rate": 1.0},
+                "versions": {
+                    "dataset": {"hash": "same"},
+                    "model": {"name": "same"},
+                    "prompt": {"version": "same"},
+                },
+                "cases": [{"case_id": "stat_rbi_1962", "status": "passed", "failures": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "evals.questions.run_cases",
+        lambda cases, **_kwargs: run_cases(
+            cases,
+            answer_fn=lambda _question: _answer(answer="wrong answer", rows=[]),
+        ),
+    )
+    monkeypatch.setattr(
+        "evals.questions._artifact_versions",
+        lambda: {
+            "dataset": {"hash": "same"},
+            "model": {"name": "same"},
+            "prompt": {"version": "same"},
+        },
+    )
+
+    exit_code = main(
+        [
+            "--questions",
+            str(questions_path),
+            "--json-report",
+            str(json_path),
+            "--baseline",
+            str(baseline_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert payload["baseline_comparison"]["recommendation"] == "BLOCK"
 
 
 def test_main_writes_guardrail_report(tmp_path: Path, monkeypatch):

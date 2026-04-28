@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+PROMPT_VERSION = "grounded-answer-v1"
+
 
 @dataclass
 class PromptBundle:

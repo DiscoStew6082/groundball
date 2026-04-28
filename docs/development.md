@@ -135,10 +135,12 @@ Python version: **3.11** (ubuntu-latest). All dependencies installed via pip (no
 The CI release gate is deterministic-only:
 
 ```bash
-python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md
+python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md --json-report eval-report.json --baseline evals/baseline.json
 ```
 
 This command skips cases that require LM Studio, Chroma, external LMs, or live model services. Live and Chroma-backed evals remain local/manual opt-ins via `--include-live`, `--strategy`, `--all-strategies`, or `--retrieval-only`.
+
+The JSON report is compared to `evals/baseline.json`. Behavioral regressions block CI; dataset/model/prompt drift is reported as `WARN` so the baseline can be reviewed and refreshed deliberately.
 
 CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporting, but it is non-blocking so releases do not depend on external coverage upload availability.
 

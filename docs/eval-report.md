@@ -1,6 +1,6 @@
 # Baseball RAG Eval Report
 
-- Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md`
+- Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
 - Mode: answer
 - Release recommendation: **PASS - deterministic release gate is green**
 - Cases loaded: 68
@@ -38,6 +38,10 @@
 - freeform SQL query: `stat_sql_injection_team` - who played for the Braves%' OR 1=1 -- in 1936
 - player biography retrieval: `player_bio_babe_ruth` - who was Babe Ruth
 - baseball explanation retrieval: `strategy_broad_bio_query_yankees_slugger` - which indexed player biography talks about a Yankees switch-hitting slugger
+
+## Baseline Comparison
+
+- Recommendation: PASS
 
 ## Failed Cases
 
