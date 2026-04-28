@@ -20,7 +20,7 @@ class TestApi:
         # it returns a fallback message — that's fine.
         caplog.set_level("INFO", logger="baseball_rag.api.server")
 
-        response = client.post("/query", json={"question": "who had most RBIs in 1962"})
+        response = client.post("/query", json={"question": "who had the most RBIs in 1962"})
         assert response.status_code == 200
         data = response.json()
         assert "answer" in data
@@ -42,6 +42,14 @@ class TestApi:
         assert data["metadata"]["source_types"] == ["duckdb"]
         assert data["metadata"]["trace"]["route_type"] == "stat_query"
         assert data["metadata"]["trace"]["stages"]
+        assert data["metadata"]["query_id"].startswith("q_")
+        assert data["metadata"]["timestamp"]
+        assert data["metadata"]["unsupported_reason"] is None
+        assert data["metadata"]["sql"]["template_hash"].startswith("sha256:")
+        assert data["metadata"]["sql"]["row_count"] >= 1
+        assert data["metadata"]["model"]["prompt_version"] == "grounded-answer-v1"
+        assert data["metadata"]["dataset"]["name"] == "NeuML/baseballdata"
+        assert data["metadata"]["eval"]["case_id"] == "stat_rbi_1962"
         assert data["review"] is None
 
         audit_records = [record for record in caplog.records if record.message == "query_audit"]
@@ -51,6 +59,7 @@ class TestApi:
         assert audit["unsupported"] is False
         assert audit["sql_visible"] is True
         assert audit["latency_ms"] >= 0
+        assert audit["query_id"] == data["metadata"]["query_id"]
 
     def test_query_endpoint_surfaces_review_item_for_unsupported_answer(self):
         response = client.post(
