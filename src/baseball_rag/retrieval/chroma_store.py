@@ -1,5 +1,6 @@
 """Persistent vector store backed by ChromaDB."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -48,6 +49,27 @@ class RetrievedChunk:
     category: str | None = None
     player_id: str | None = None
     doc_kind: str | None = None
+
+
+def _retrieved_chunk_from_chroma(
+    *,
+    document: object,
+    metadata: Mapping[str, object] | None,
+    doc_id: object | None,
+    score: float,
+) -> RetrievedChunk:
+    """Build a RetrievedChunk from Chroma document/id/metadata values."""
+    meta = metadata or {}
+    return RetrievedChunk(
+        text=str(document or ""),
+        source=str(meta.get("source", "")),
+        title=str(meta.get("title", "")),
+        score=score,
+        id=str(doc_id) if doc_id is not None else None,
+        category=str(meta.get("category", "")) or None,
+        player_id=str(meta.get("player_id", "")) or None,
+        doc_kind=str(meta.get("doc_kind", "")) or None,
+    )
 
 
 def _resolve_persist_dir(persist_dir: Path | None) -> Path:
@@ -113,15 +135,11 @@ def _retrieve_impl(
         # ChromaDB L2 distance — lower is better; convert to a 0-1 "score"
         score = max(0.0, 1.0 - dist / 2.0)
         chunks.append(
-            RetrievedChunk(
-                text=doc,
-                source=str(meta.get("source", "")),
-                title=str(meta.get("title", "")),
+            _retrieved_chunk_from_chroma(
+                document=doc,
+                metadata=meta,
+                doc_id=results["ids"][0][i],
                 score=score,
-                id=str(results["ids"][0][i]),
-                category=str(meta.get("category", "")) or None,
-                player_id=str(meta.get("player_id", "")) or None,
-                doc_kind=str(meta.get("doc_kind", "")) or None,
             )
         )
 
@@ -151,15 +169,11 @@ def get_chunks_by_ids(
         doc = documents[index] if index < len(documents) else ""
         meta = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
         chunks.append(
-            RetrievedChunk(
-                text=str(doc),
-                source=str(meta.get("source", "")),
-                title=str(meta.get("title", "")),
+            _retrieved_chunk_from_chroma(
+                document=doc,
+                metadata=meta,
+                doc_id=doc_id,
                 score=1.0,
-                id=str(doc_id),
-                category=str(meta.get("category", "")) or None,
-                player_id=str(meta.get("player_id", "")) or None,
-                doc_kind=str(meta.get("doc_kind", "")) or None,
             )
         )
     return chunks

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,16 @@ from baseball_rag.retrieval.chroma_store import LMStudioEmbeddingFunction
 
 # Batch size for ChromaDB inserts when indexing players
 PLAYER_BATCH_SIZE = 500
+
+
+@dataclass(frozen=True)
+class CorpusDocumentRecord:
+    """Prepared Chroma document plus matching manifest entry."""
+
+    text: str
+    id: str
+    metadata: dict
+    manifest_entry: dict
 
 
 def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
@@ -45,12 +56,7 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
     )
 
     total_docs = 0
-    manifest: dict = {
-        "collection_name": "baseball_corpus",
-        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "static_documents": {"count": 0, "documents": []},
-        "generated_player_profiles": {"count": 0, "documents": []},
-    }
+    manifest = _new_manifest()
 
     # Index static corpus docs (stat_defs and hof_bios)
     static_texts = []
@@ -58,32 +64,18 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
     static_metas = []
 
     for path in [*get_stat_defs(), *get_hof_bios()]:
-        result = parse_frontmatter(path.read_text())
-        text = f"{result['metadata']['title']}\n\n{result['body'].strip()}"
-        static_texts.append(text)
-        static_ids.append(path.stem)
-        static_metas.append(
-            {
-                "source": str(path.name),
-                "category": result["metadata"].get("category", ""),
-                "title": result["metadata"].get("title", ""),
-            }
-        )
-        manifest["static_documents"]["documents"].append(
-            {
-                "id": path.stem,
-                "source": str(path.name),
-                "category": result["metadata"].get("category", ""),
-                "title": result["metadata"].get("title", ""),
-            }
-        )
+        record = _static_document_record(path)
+        static_texts.append(record.text)
+        static_ids.append(record.id)
+        static_metas.append(record.metadata)
+        manifest["static_documents"]["documents"].append(record.manifest_entry)
 
     if static_texts:
         collection.add(documents=static_texts, ids=static_ids, metadatas=static_metas)  # type: ignore[arg-type]
         total_docs += len(static_texts)
-        manifest["static_documents"]["count"] = len(static_texts)
 
     if not include_players:
+        _finalize_manifest_counts(manifest)
         _write_corpus_manifest(persist_dir, manifest)
         print(f"Indexed {total_docs} documents into baseball_corpus at {persist_dir}")
         return
@@ -113,33 +105,11 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
     for idx, player_id in enumerate(player_ids):
         try:
             bio_text = build_player_bio(str(player_id), conn)
-            parsed = parse_frontmatter(bio_text)
-            metadata = parsed["metadata"]
-            batch_texts.append(bio_text)
-            batch_ids.append(f"player:{player_id}")
-            batch_metas.append(
-                {
-                    "source": f"{player_id}.md",
-                    "category": "player_biography",
-                    "title": str(metadata.get("title", player_id)),
-                    "player_id": str(player_id),
-                    "doc_kind": "generated_player_profile",
-                    "source_tables": "people,batting,pitching,fielding",
-                }
-            )
-            manifest["generated_player_profiles"]["documents"].append(
-                {
-                    "id": f"player:{player_id}",
-                    "source": f"{player_id}.md",
-                    "category": "player_biography",
-                    "title": str(metadata.get("title", player_id)),
-                    "player_id": str(player_id),
-                    "doc_kind": "generated_player_profile",
-                    "source_tables": metadata.get(
-                        "source_tables", ["people", "batting", "pitching", "fielding"]
-                    ),
-                }
-            )
+            record = _player_profile_record(str(player_id), bio_text)
+            batch_texts.append(record.text)
+            batch_ids.append(record.id)
+            batch_metas.append(record.metadata)
+            manifest["generated_player_profiles"]["documents"].append(record.manifest_entry)
         except Exception as e:
             raise RuntimeError(f"Failed to build bio for {player_id}: {e}") from e
 
@@ -160,11 +130,76 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
         collection.add(documents=batch_texts, ids=batch_ids, metadatas=batch_metas)  # type: ignore[arg-type]
         total_docs += len(batch_texts)
 
+    _finalize_manifest_counts(manifest)
+    _write_corpus_manifest(persist_dir, manifest)
+    print(f"Indexed {total_docs} documents into baseball_corpus at {persist_dir}")
+
+
+def _new_manifest() -> dict:
+    return {
+        "collection_name": "baseball_corpus",
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "static_documents": {"count": 0, "documents": []},
+        "generated_player_profiles": {"count": 0, "documents": []},
+    }
+
+
+def _finalize_manifest_counts(manifest: dict) -> None:
+    manifest["static_documents"]["count"] = len(manifest["static_documents"]["documents"])
     manifest["generated_player_profiles"]["count"] = len(
         manifest["generated_player_profiles"]["documents"]
     )
-    _write_corpus_manifest(persist_dir, manifest)
-    print(f"Indexed {total_docs} documents into baseball_corpus at {persist_dir}")
+
+
+def _static_document_record(path: Path) -> CorpusDocumentRecord:
+    result = parse_frontmatter(path.read_text())
+    metadata = result["metadata"]
+    manifest_entry = {
+        "id": path.stem,
+        "source": str(path.name),
+        "category": metadata.get("category", ""),
+        "title": metadata.get("title", ""),
+    }
+    return CorpusDocumentRecord(
+        text=f"{metadata['title']}\n\n{result['body'].strip()}",
+        id=path.stem,
+        metadata={
+            "source": str(path.name),
+            "category": metadata.get("category", ""),
+            "title": metadata.get("title", ""),
+        },
+        manifest_entry=manifest_entry,
+    )
+
+
+def _player_profile_record(player_id: str, bio_text: str) -> CorpusDocumentRecord:
+    parsed = parse_frontmatter(bio_text)
+    metadata = parsed["metadata"]
+    source_tables = metadata.get(
+        "source_tables",
+        ["people", "batting", "pitching", "fielding"],
+    )
+    return CorpusDocumentRecord(
+        text=bio_text,
+        id=f"player:{player_id}",
+        metadata={
+            "source": f"{player_id}.md",
+            "category": "player_biography",
+            "title": str(metadata.get("title", player_id)),
+            "player_id": str(player_id),
+            "doc_kind": "generated_player_profile",
+            "source_tables": "people,batting,pitching,fielding",
+        },
+        manifest_entry={
+            "id": f"player:{player_id}",
+            "source": f"{player_id}.md",
+            "category": "player_biography",
+            "title": str(metadata.get("title", player_id)),
+            "player_id": str(player_id),
+            "doc_kind": "generated_player_profile",
+            "source_tables": source_tables,
+        },
+    )
 
 
 def _write_corpus_manifest(persist_dir: Path, manifest: dict) -> None:

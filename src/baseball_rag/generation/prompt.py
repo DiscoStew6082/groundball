@@ -28,22 +28,21 @@ _BASE_ANSWER_TEMPLATE = PromptBundle(
 
 def build_stat_query_prompt(question: str, context_docs: list) -> tuple[str, str]:
     """Render a stat query prompt with retrieved document context."""
-    ctx = "\n\n".join(f"[Source: {d.title}]\n{d.text}" for d in context_docs)
-    return _BASE_ANSWER_TEMPLATE.render()[0], _BASE_ANSWER_TEMPLATE.user.format(
-        context=ctx, question=question
-    )
+    return build_grounded_prompt(question, context_docs)
 
 
 def build_explanation_prompt(question: str, context_docs: list) -> tuple[str, str]:
     """Render a general explanation prompt with retrieved document context."""
-    ctx = "\n\n".join(f"[Source: {d.title}]\n{d.text}" for d in context_docs)
-    return _BASE_ANSWER_TEMPLATE.render()[0], _BASE_ANSWER_TEMPLATE.user.format(
-        context=ctx, question=question
-    )
+    return build_grounded_prompt(question, context_docs)
 
 
 def build_player_bio_prompt(question: str, context_docs: list) -> tuple[str, str]:
     """Render a player biography prompt with retrieved document context."""
+    return build_grounded_prompt(question, context_docs)
+
+
+def build_grounded_prompt(question: str, context_docs: list) -> tuple[str, str]:
+    """Render a grounded answer prompt with retrieved document context."""
     ctx = "\n\n".join(f"[Source: {d.title}]\n{d.text}" for d in context_docs)
     return _BASE_ANSWER_TEMPLATE.render()[0], _BASE_ANSWER_TEMPLATE.user.format(
         context=ctx, question=question

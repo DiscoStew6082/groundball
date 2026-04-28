@@ -68,19 +68,23 @@ def get_stat_leaders_range(stat: str, start_year: int, end_year: int) -> list[di
         List of dicts with keys: name, team ("Range"), stat_value
     """
     stat_def = get_stat(stat, table="batting")
-    expr = stat_def.expression("b")
+    expr = stat_def.aggregate_expression("b")
+    sample_clause = stat_def.aggregate_sample_clause("b")
+    having_parts = [f"{expr} IS NOT NULL", f"{expr} > 0"]
+    if sample_clause:
+        having_parts.append(sample_clause)
+    having_clause = " AND ".join(having_parts)
 
     query = f"""
     SELECT
         p.nameLast || ', ' || p.nameFirst AS name,
-        SUM({expr}) AS stat_value
+        {expr} AS stat_value
     FROM batting b
     JOIN people p ON b.playerID = p.playerID
     WHERE b.yearID >= ?
       AND b.yearID <= ?
-      AND {expr} IS NOT NULL
     GROUP BY p.nameLast, p.nameFirst
-    HAVING SUM({expr}) > 0
+    HAVING {having_clause}
     ORDER BY stat_value DESC
     LIMIT 10
     """
@@ -103,17 +107,21 @@ def get_career_stat_leaders(stat: str, limit: int = 10) -> list[dict]:
         List of dicts with keys: name, team, stat_value
     """
     stat_def = get_stat(stat, table="batting")
-    expr = stat_def.expression("b")
+    expr = stat_def.aggregate_expression("b")
+    sample_clause = stat_def.aggregate_sample_clause("b")
+    having_parts = [f"{expr} IS NOT NULL", f"{expr} > 0"]
+    if sample_clause:
+        having_parts.append(sample_clause)
+    having_clause = " AND ".join(having_parts)
 
     query = f"""
     SELECT
         p.nameLast || ', ' || p.nameFirst AS name,
-        SUM({expr}) AS stat_value
+        {expr} AS stat_value
     FROM batting b
     JOIN people p ON b.playerID = p.playerID
-    WHERE {expr} IS NOT NULL
     GROUP BY p.nameLast, p.nameFirst
-    HAVING SUM({expr}) > 0
+    HAVING {having_clause}
     ORDER BY stat_value DESC
     LIMIT ?
     """

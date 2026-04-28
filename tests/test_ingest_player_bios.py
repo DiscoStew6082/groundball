@@ -1,6 +1,7 @@
 """Tests for player bio ingestion into ChromaDB."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -171,3 +172,86 @@ source_tables:
         assert manifest["collection_name"] == "baseball_corpus"
         assert manifest["generated_player_profiles"]["count"] == 1
         assert manifest["generated_player_profiles"]["documents"][0]["player_id"] == "ruthba01"
+
+    def test_static_document_record_builds_chroma_and_manifest_data(self, tmp_path):
+        from baseball_rag.corpus.ingest import _static_document_record
+
+        doc_path = tmp_path / "OPS.md"
+        doc_path.write_text(
+            """---
+title: OPS
+category: stat_definition
+---
+On-base plus slugging.
+""",
+            encoding="utf-8",
+        )
+
+        record = _static_document_record(doc_path)
+
+        assert record.id == "OPS"
+        assert record.text == "OPS\n\nOn-base plus slugging."
+        assert record.metadata == {
+            "source": "OPS.md",
+            "category": "stat_definition",
+            "title": "OPS",
+        }
+        assert record.manifest_entry == {
+            "id": "OPS",
+            "source": "OPS.md",
+            "category": "stat_definition",
+            "title": "OPS",
+        }
+
+    def test_player_profile_record_builds_chroma_and_manifest_data(self):
+        from baseball_rag.corpus.ingest import _player_profile_record
+
+        bio = """---
+title: Babe Ruth
+player_id: ruthba01
+category: player_biography
+doc_kind: generated_player_profile
+source_tables:
+  - people
+  - batting
+---
+# Babe Ruth
+"""
+
+        record = _player_profile_record("ruthba01", bio)
+
+        assert record.id == "player:ruthba01"
+        assert record.text == bio
+        assert record.metadata["player_id"] == "ruthba01"
+        assert record.metadata["source_tables"] == "people,batting,pitching,fielding"
+        assert record.manifest_entry["source_tables"] == ["people", "batting"]
+
+    def test_build_index_static_only_writes_finalized_manifest_counts(self, tmp_path):
+        static_doc = tmp_path / "OPS.md"
+        static_doc.write_text(
+            """---
+title: OPS
+category: stat_definition
+---
+On-base plus slugging.
+""",
+            encoding="utf-8",
+        )
+
+        with patch("baseball_rag.corpus.ingest.chromadb.PersistentClient") as mock_client_class:
+            mock_collection = MagicMock()
+            mock_client_class.return_value.create_collection.return_value = mock_collection
+
+            from baseball_rag.corpus.ingest import build_index
+
+            with patch(
+                "baseball_rag.corpus.ingest.get_stat_defs",
+                return_value=[Path(static_doc)],
+            ):
+                with patch("baseball_rag.corpus.ingest.get_hof_bios", return_value=[]):
+                    build_index(tmp_path / "index", include_players=False)
+
+        manifest = json.loads((tmp_path / "index" / "corpus_manifest.json").read_text())
+        assert manifest["static_documents"]["count"] == 1
+        assert manifest["generated_player_profiles"]["count"] == 0
+        assert manifest["generated_player_profiles"]["documents"] == []

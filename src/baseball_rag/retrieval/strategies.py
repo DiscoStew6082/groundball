@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
+from baseball_rag.retrieval.static_vocab import (
+    query_mentions_stat_definition,
+    static_doc_ids_for_query,
+)
 
 RetrieveFn = Callable[..., list[RetrievedChunk]]
 
@@ -98,7 +102,7 @@ class SemanticChromaStrategy:
         if chunks:
             return chunks
 
-        exact_static = _static_doc_ids_for_query(search_query)
+        exact_static = static_doc_ids_for_query(search_query)
         if exact_static and self.retrieve_fn is retrieve:
             static_chunks = get_chunks_by_ids(exact_static, persist_dir=persist_dir)
             if static_chunks:
@@ -222,24 +226,35 @@ class HybridPlayerBioStrategy:
         )
 
 
+_StrategyClass = (
+    type[SemanticChromaStrategy] | type[ExactPlayerIdStrategy] | type[HybridPlayerBioStrategy]
+)
+
+_STRATEGY_CLASSES: tuple[_StrategyClass, ...] = (
+    SemanticChromaStrategy,
+    ExactPlayerIdStrategy,
+    HybridPlayerBioStrategy,
+)
+
+_STRATEGY_REGISTRY: dict[str, _StrategyClass] = {
+    strategy_class().name: strategy_class for strategy_class in _STRATEGY_CLASSES
+}
+
+
 def available_strategy_names() -> list[str]:
     """Return strategy names in stable benchmark display order."""
-    return ["semantic_chroma", "exact_player_id", "hybrid_player_bio"]
+    return list(_STRATEGY_REGISTRY)
 
 
 def available_strategy_metadata() -> list[StrategyMetadata]:
     """Return metadata for all built-in strategies in display order."""
-    return [get_strategy(name).metadata for name in available_strategy_names()]
+    return [strategy_class().metadata for strategy_class in _STRATEGY_REGISTRY.values()]
 
 
 def get_strategy(name: str, *, retrieve_fn: RetrieveFn = retrieve) -> RetrievalStrategy:
     """Build a retrieval strategy by name."""
-    if name == "semantic_chroma":
-        return SemanticChromaStrategy(retrieve_fn=retrieve_fn)
-    if name == "exact_player_id":
-        return ExactPlayerIdStrategy(retrieve_fn=retrieve_fn)
-    if name == "hybrid_player_bio":
-        return HybridPlayerBioStrategy(retrieve_fn=retrieve_fn)
+    if strategy_class := _STRATEGY_REGISTRY.get(name):
+        return strategy_class(retrieve_fn=retrieve_fn)
     choices = ", ".join(available_strategy_names())
     raise ValueError(f"unknown retrieval strategy {name!r}; choose one of: {choices}")
 
@@ -270,53 +285,9 @@ def _call_retrieve(
     return retrieve_fn(query, top_k=top_k, persist_dir=persist_dir, where=where)
 
 
-_STATIC_STAT_DOC_IDS = {
-    "2b": "2B",
-    "avg": "AVG",
-    "batting average": "AVG",
-    "bb": "BB",
-    "base on balls": "BB",
-    "era": "ERA",
-    "earned run average": "ERA",
-    "hr": "HR",
-    "home run": "HR",
-    "home runs": "HR",
-    "ops": "OPS",
-    "on-base plus slugging": "OPS",
-    "po": "PO",
-    "putout": "PO",
-    "putouts": "PO",
-    "rbi": "RBI",
-    "run batted in": "RBI",
-    "runs batted in": "RBI",
-    "sb": "SB",
-    "stolen base": "SB",
-    "stolen bases": "SB",
-    "whip": "WHIP",
-}
-
-_STATIC_HOF_DOC_IDS = {
-    "babe ruth": "Babe_Ruth",
-    "hank aaron": "Hank_Aaron",
-    "mickey mantle": "Mickey_Mantle",
-    "ted williams": "Ted_Williams",
-    "willie mays": "Willie_Mays",
-}
-
-
-def _static_doc_ids_for_query(query: str) -> list[str]:
-    lower_query = query.lower()
-    ids: list[str] = []
-    for phrase, doc_id in {**_STATIC_STAT_DOC_IDS, **_STATIC_HOF_DOC_IDS}.items():
-        if phrase in lower_query and doc_id not in ids:
-            ids.append(doc_id)
-    return ids
-
-
 def _fallback_filters_for_query(query: str) -> list[dict]:
-    lower_query = query.lower()
     filters: list[dict] = []
-    if any(phrase in lower_query for phrase in _STATIC_STAT_DOC_IDS):
+    if query_mentions_stat_definition(query):
         filters.append({"category": "stat_definition"})
     filters.append({"category": "hof_bio"})
     return filters

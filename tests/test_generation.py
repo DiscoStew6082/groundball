@@ -6,7 +6,13 @@ import pytest
 
 from baseball_rag.generation import answer
 from baseball_rag.generation.llm import _strip_reasoning_block
-from baseball_rag.generation.prompt import build_open_prompt
+from baseball_rag.generation.prompt import (
+    build_explanation_prompt,
+    build_grounded_prompt,
+    build_open_prompt,
+    build_player_bio_prompt,
+    build_stat_query_prompt,
+)
 from baseball_rag.retrieval.chroma_store import RetrievedChunk
 
 
@@ -94,6 +100,56 @@ class TestBuildOpenPrompt:
         assert "Question:" in user
         # Must not contain any document references (there are no docs)
         assert "[Source:" not in user
+
+
+class TestBuildGroundedPrompt:
+    """Tests for shared grounded prompt rendering."""
+
+    def test_formats_context_documents_with_sources(self):
+        """Grounded prompt includes source titles, document text, and question."""
+        chunks = [
+            RetrievedChunk(
+                text="Babe Ruth hit 714 career home runs.",
+                source="hof/babe_ruth.md",
+                title="Babe Ruth",
+                score=0.95,
+            ),
+            RetrievedChunk(
+                text="Hank Aaron hit 755 career home runs.",
+                source="hof/hank_aaron.md",
+                title="Hank Aaron",
+                score=0.93,
+            ),
+        ]
+
+        system, user = build_grounded_prompt("Who hit more home runs?", chunks)
+
+        assert "using ONLY the provided context documents" in system
+        assert "[Source: Babe Ruth]\nBabe Ruth hit 714 career home runs." in user
+        assert "[Source: Hank Aaron]\nHank Aaron hit 755 career home runs." in user
+        assert "Question: Who hit more home runs?" in user
+
+    @pytest.mark.parametrize(
+        "builder",
+        [
+            build_stat_query_prompt,
+            build_explanation_prompt,
+            build_player_bio_prompt,
+        ],
+    )
+    def test_specialized_grounded_prompts_delegate_to_shared_builder(self, builder):
+        """Specialized prompt builders render the same output as build_grounded_prompt."""
+        chunks = [
+            RetrievedChunk(
+                text="Jackie Robinson debuted for Brooklyn in 1947.",
+                source="hof/jackie_robinson.md",
+                title="Jackie Robinson",
+                score=0.97,
+            ),
+        ]
+        question = "When did Jackie Robinson debut?"
+
+        assert builder(question, chunks) == build_grounded_prompt(question, chunks)
 
 
 class TestStripReasoningBlock:

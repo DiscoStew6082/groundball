@@ -26,7 +26,9 @@ def test_available_strategy_names_includes_initial_benchmarks():
 
 
 def test_strategy_metadata_declares_applicability_categories():
-    metadata = {item.name: item for item in available_strategy_metadata()}
+    metadata_items = available_strategy_metadata()
+    assert [item.name for item in metadata_items] == available_strategy_names()
+    metadata = {item.name: item for item in metadata_items}
 
     assert metadata["semantic_chroma"].categories == frozenset(
         {"player_biography", "general_explanation"}

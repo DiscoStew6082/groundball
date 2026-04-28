@@ -31,6 +31,12 @@ from enum import Enum
 from typing import Any
 
 from baseball_rag.arch.tracing import traced
+from baseball_rag.db.stat_registry import (
+    find_stat_in_text,
+    normalize_stat,
+    supported_stat_prompt_list,
+)
+from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
 
 
 class TimePeriodType(str, Enum):
@@ -161,7 +167,7 @@ _ROUTING_PROMPT = (
     "- position: 'OF' or 'CF' etc. if a defensive position is specified; null otherwise\n"
     "- player_name: the full player name if one is mentioned "
     '(e.g., "Ronald Acuna Jr."); null otherwise\n\n'
-    "Stat name mapping: RBI, HR, AVG, ERA, WHIP, SO, SB, 2B, 3B, W, L, PO, BB, H, IP, K\n"
+    f"Stat name mapping: {', '.join(supported_stat_prompt_list())}\n"
     "Never guess — return null for any field not explicitly in the question.\n\n"
     "Examples:\n"
     '- "who led MLB in RBIs in 2022" → '
@@ -203,23 +209,8 @@ _ROUTING_PROMPT = (
 
 
 def _extract_json_blocks(text: str) -> list[tuple[int, int]]:
-    """Find all candidate JSON objects in text (start brace → balanced end brace).
-
-    Returns list of (start, end+1) byte positions for each {...} block found.
-    """
-    blocks = []
-    depth = 0
-    start = -1
-    for i, c in enumerate(text):
-        if c == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0 and start >= 0:
-                blocks.append((start, i + 1))
-    return blocks
+    """Backward-compatible wrapper for tests importing the private helper."""
+    return extract_json_blocks(text)
 
 
 def _parse_llm_json(raw: str) -> dict | None:
@@ -229,12 +220,7 @@ def _parse_llm_json(raw: str) -> dict | None:
     instructed to return only JSON. We find the {...} block that actually
     parses as valid RouteResult-shaped JSON.
     """
-    text = raw.strip()
-
-    # Try stripping markdown fences first
-    for fence in ("```json", "```"):
-        if text.startswith(fence):
-            text = text[len(fence) :].strip().rstrip("`").strip()
+    text = strip_markdown_fence(raw)
 
     try:
         return json.loads(text)
@@ -318,7 +304,7 @@ def route(question: str) -> RouteResult:
 
             return RouteResult(
                 intent=data["intent"],
-                stat=data.get("stat"),
+                stat=normalize_stat(data["stat"]) if data.get("stat") else None,
                 time_period=time_period,
                 position=data.get("position"),
                 player_name=data.get("player_name"),
@@ -420,36 +406,7 @@ def _heuristic_route(question: str) -> RouteResult:
     if m:
         year = int(m.group(1))
 
-    # Extract stat from the question text ("homer", "home runs", "HRs", etc.)
-    stat_aliases = {
-        "hr": "HR",
-        "hrs": "HR",
-        "homers": "HR",
-        "home run": "HR",
-        "home runs": "HR",
-        "rbi": "RBI",
-        "rbis": "RBI",
-        "runs batted in": "RBI",
-        "batting average": "AVG",
-        "avg": "AVG",
-        "hits": "H",
-        "runs": "R",
-        "stolen bases": "SB",
-        "sb": "SB",
-        "era": "ERA",
-        "whip": "WHIP",
-        "strikeouts": "SO",
-        "wins": "W",
-        "losses": "L",
-        "ops": "OPS",
-        "po": "PO",
-        "putouts": "PO",
-    }
-    stat: str | None = None
-    for phrase, resolved in stat_aliases.items():
-        if phrase in lower_q:
-            stat = resolved
-            break
+    stat = find_stat_in_text(question)
 
     player_name = _extract_player_name_heuristic(question)
 

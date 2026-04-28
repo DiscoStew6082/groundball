@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from baseball_rag.db import (
     get_career_stat_leaders,
@@ -14,11 +14,16 @@ from baseball_rag.db import (
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
+from baseball_rag.retrieval.static_vocab import (
+    query_asks_for_explanation,
+    stat_definition_doc_ids_for_query,
+)
 from baseball_rag.retrieval.strategies import RetrievalStrategy, get_strategy
 from baseball_rag.routing import route
 from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
 
 logger = logging.getLogger(__name__)
+PromptBuilder = Callable[[str, list[RetrievedChunk]], tuple[str, str] | str]
 
 
 def answer(
@@ -155,23 +160,9 @@ def _answer_player_biography(
             player_id=resolved_player_id,
         )
     except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
-        if "NotFoundError" in type(e).__name__ or "not found" in str(e).lower():
-            return StructuredAnswer(
-                answer="No corpus indexed yet - run: uv run python -m baseball_rag.corpus.ingest",
-                intent=decision.intent,
-                warnings=["Chroma collection was not available."],
-                unsupported=True,
-            )
-        if _is_recoverable_chroma_index_error(e):
-            return StructuredAnswer(
-                answer=(
-                    "The indexed corpus could not be queried. Rebuild it with: "
-                    "uv run python -m baseball_rag.corpus.ingest"
-                ),
-                intent=decision.intent,
-                warnings=[str(e)],
-                unsupported=True,
-            )
+        failure = _chroma_failure_answer(e, intent=decision.intent)
+        if failure is not None:
+            return failure
         logger.exception("ChromaDB retrieval failed for player biography query %r", question)
         raise
 
@@ -188,23 +179,12 @@ def _answer_player_biography(
 
     from baseball_rag.generation.prompt import build_player_bio_prompt
 
-    prompt = build_player_bio_prompt(decision.raw_question, chunks)
-    sources = [_chroma_source(chunk) for chunk in chunks]
-    try:
-        from baseball_rag.generation.llm import make_request
-
-        response = make_request(prompt, max_tokens=1500)
-        return StructuredAnswer(answer=response.content, intent=decision.intent, sources=sources)
-    except ConnectionError:
-        lines = ["(LM Studio not running - showing relevant documents instead):\n"]
-        for chunk in chunks[:3]:
-            lines.append(f"[{chunk.title}]\n{chunk.text}\n")
-        return StructuredAnswer(
-            answer="\n".join(lines),
-            intent=decision.intent,
-            sources=sources,
-            warnings=["LM Studio was unavailable, so retrieved context was shown directly."],
-        )
+    return _answer_with_grounded_chunks(
+        question=decision.raw_question,
+        intent=decision.intent,
+        chunks=chunks,
+        prompt_builder=build_player_bio_prompt,
+    )
 
 
 def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
@@ -256,23 +236,9 @@ def _answer_general(
         if not chunks:
             chunks = strategy.retrieve(question, top_k=3)
     except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
-        if "NotFoundError" in type(e).__name__ or "not found" in str(e).lower():
-            return StructuredAnswer(
-                answer="No corpus indexed yet - run: uv run python -m baseball_rag.corpus.ingest",
-                intent=decision.intent,
-                warnings=["Chroma collection was not available."],
-                unsupported=True,
-            )
-        if _is_recoverable_chroma_index_error(e):
-            return StructuredAnswer(
-                answer=(
-                    "The indexed corpus could not be queried. Rebuild it with: "
-                    "uv run python -m baseball_rag.corpus.ingest"
-                ),
-                intent=decision.intent,
-                warnings=[str(e)],
-                unsupported=True,
-            )
+        failure = _chroma_failure_answer(e, intent=decision.intent)
+        if failure is not None:
+            return failure
         logger.exception("ChromaDB retrieval failed for query %r", question)
         raise
 
@@ -290,20 +256,35 @@ def _answer_general(
 
     from baseball_rag.generation.prompt import build_explanation_prompt
 
-    prompt = build_explanation_prompt(question, chunks)
+    return _answer_with_grounded_chunks(
+        question=question,
+        intent=decision.intent,
+        chunks=chunks,
+        prompt_builder=build_explanation_prompt,
+    )
+
+
+def _answer_with_grounded_chunks(
+    *,
+    question: str,
+    intent: str,
+    chunks: list[RetrievedChunk],
+    prompt_builder: PromptBuilder,
+) -> StructuredAnswer:
+    prompt = prompt_builder(question, chunks)
     sources = [_chroma_source(chunk) for chunk in chunks]
     try:
         from baseball_rag.generation.llm import make_request
 
         response = make_request(prompt, max_tokens=1500)
-        return StructuredAnswer(answer=response.content, intent=decision.intent, sources=sources)
+        return StructuredAnswer(answer=response.content, intent=intent, sources=sources)
     except ConnectionError:
         lines = ["(LM Studio not running - showing relevant documents instead):\n"]
         for chunk in chunks[:3]:
             lines.append(f"[{chunk.title}]\n{chunk.text}\n")
         return StructuredAnswer(
             answer="\n".join(lines),
-            intent=decision.intent,
+            intent=intent,
             sources=sources,
             warnings=["LM Studio was unavailable, so retrieved context was shown directly."],
         )
@@ -358,6 +339,27 @@ def _is_recoverable_chroma_index_error(exc: Exception) -> bool:
     return "dimension" in message or "embedding" in message
 
 
+def _chroma_failure_answer(exc: Exception, *, intent: str) -> StructuredAnswer | None:
+    if "NotFoundError" in type(exc).__name__ or "not found" in str(exc).lower():
+        return StructuredAnswer(
+            answer="No corpus indexed yet - run: uv run python -m baseball_rag.corpus.ingest",
+            intent=intent,
+            warnings=["Chroma collection was not available."],
+            unsupported=True,
+        )
+    if _is_recoverable_chroma_index_error(exc):
+        return StructuredAnswer(
+            answer=(
+                "The indexed corpus could not be queried. Rebuild it with: "
+                "uv run python -m baseball_rag.corpus.ingest"
+            ),
+            intent=intent,
+            warnings=[str(exc)],
+            unsupported=True,
+        )
+    return None
+
+
 def _resolve_retrieval_strategy(
     strategy: str | RetrievalStrategy | None,
     *,
@@ -370,44 +372,11 @@ def _resolve_retrieval_strategy(
     return strategy
 
 
-_STAT_DEFINITION_DOC_IDS = {
-    "2b": "2B",
-    "avg": "AVG",
-    "batting average": "AVG",
-    "bb": "BB",
-    "base on balls": "BB",
-    "era": "ERA",
-    "earned run average": "ERA",
-    "hr": "HR",
-    "home run": "HR",
-    "home runs": "HR",
-    "ops": "OPS",
-    "on-base plus slugging": "OPS",
-    "po": "PO",
-    "putout": "PO",
-    "putouts": "PO",
-    "rbi": "RBI",
-    "run batted in": "RBI",
-    "runs batted in": "RBI",
-    "sb": "SB",
-    "stolen base": "SB",
-    "stolen bases": "SB",
-    "whip": "WHIP",
-}
-
-
 def _retrieve_static_explanation_chunks(question: str) -> list[RetrievedChunk]:
-    lower_question = question.lower()
-    if not any(
-        phrase in lower_question
-        for phrase in ("what is", "what does", "explain", "mean", "definition")
-    ):
+    if not query_asks_for_explanation(question):
         return []
 
-    doc_ids: list[str] = []
-    for phrase, doc_id in _STAT_DEFINITION_DOC_IDS.items():
-        if phrase in lower_question and doc_id not in doc_ids:
-            doc_ids.append(doc_id)
+    doc_ids = stat_definition_doc_ids_for_query(question)
     if doc_ids:
         chunks = get_chunks_by_ids(doc_ids)
         if chunks:

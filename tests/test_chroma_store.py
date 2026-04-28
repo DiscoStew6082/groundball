@@ -176,6 +176,41 @@ class TestChromaStore:
         assert results[0].category == "stat_definition"
         assert results[0].score == 1.0
 
+    def test_get_chunks_by_ids_defaults_missing_partial_metadata(self, monkeypatch, tmp_path):
+        """Missing metadata fields should default to empty strings or None."""
+        from unittest.mock import MagicMock
+
+        from baseball_rag.retrieval import chroma_store
+
+        mock_collection = MagicMock()
+        mock_collection.get.return_value = {
+            "ids": ["partial", "missing"],
+            "documents": ["Partial metadata", "Missing metadata"],
+            "metadatas": [{"source": "partial.md"}, None],
+        }
+        monkeypatch.setattr(chroma_store, "get_store", lambda _persist_dir: mock_collection)
+
+        results = get_chunks_by_ids(["partial", "missing"], persist_dir=tmp_path)
+
+        assert len(results) == 2
+        assert results[0].id == "partial"
+        assert results[0].text == "Partial metadata"
+        assert results[0].source == "partial.md"
+        assert results[0].title == ""
+        assert results[0].category is None
+        assert results[0].player_id is None
+        assert results[0].doc_kind is None
+        assert results[0].score == 1.0
+
+        assert results[1].id == "missing"
+        assert results[1].text == "Missing metadata"
+        assert results[1].source == ""
+        assert results[1].title == ""
+        assert results[1].category is None
+        assert results[1].player_id is None
+        assert results[1].doc_kind is None
+        assert results[1].score == 1.0
+
 
 class TestRelevanceThreshold:
     """Tests for relevance threshold — low-scoring retrievals should return empty."""

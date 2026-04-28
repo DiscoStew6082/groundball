@@ -6,6 +6,7 @@ from baseball_rag.db.queries import (
     get_career_stat_leaders,
     get_fielding_leaders,
     get_stat_leaders,
+    get_stat_leaders_range,
 )
 
 
@@ -38,6 +39,22 @@ def test_career_hr_leaders():
     assert any("Ruth" in name or "Babe" in name for name in top_10_names), (
         f"Babe Ruth not in top 10: {top_10_names}"
     )
+
+
+def test_career_ops_leaders_use_weighted_rate_not_summed_seasons():
+    """Career OPS must be calculated from aggregate components, not summed yearly OPS."""
+    result = get_career_stat_leaders("OPS")
+
+    assert len(result) > 0
+    assert 0 < result[0]["stat_value"] < 2
+
+
+def test_range_ops_leaders_use_weighted_rate_not_summed_seasons():
+    """Range OPS must be calculated from aggregate components, not summed yearly OPS."""
+    result = get_stat_leaders_range("OPS", 1970, 1979)
+
+    assert len(result) > 0
+    assert 0 < result[0]["stat_value"] < 2
 
 
 def test_outfield_putouts_1983():
