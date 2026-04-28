@@ -128,9 +128,17 @@ Coverage report is also generated as `coverage.xml` and `coverage.html` (see `.c
 |-----|------------|--------------|
 | `lint` | — | `ruff check src/ tests/` |
 | `typecheck` | — | `mypy src/` + type stubs |
-| `test` | lint, typecheck | Full pytest suite with coverage upload to Codecov |
+| `test` | lint, typecheck | Unit pytest suite, deterministic eval release gate, eval report artifact, and coverage upload to Codecov |
 
 Python version: **3.11** (ubuntu-latest). All dependencies installed via pip (not uv) in CI to avoid PATH issues.
+
+The CI release gate is deterministic-only:
+
+```bash
+python -m evals.questions --report eval-report.md
+```
+
+This command skips cases that require LM Studio, Chroma, external LMs, or live model services. Live and Chroma-backed evals remain local/manual opt-ins via `--include-live`, `--strategy`, `--all-strategies`, or `--retrieval-only`.
 
 ## Project Conventions
 

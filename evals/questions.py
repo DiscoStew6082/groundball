@@ -142,6 +142,7 @@ class EvalReport:
     command: str
     cases: list[EvalCase]
     include_live: bool
+    minimum_pass_rate: float = 0.85
     result: EvalRunResult | None = None
     strategy_results: dict[str, EvalRunResult] | None = None
     mode: str = "answer"
@@ -376,17 +377,27 @@ def format_eval_report(report: EvalReport) -> str:
         failed = sum(len(result.failed) for result in report.strategy_results.values())
         skipped = sum(len(result.skipped) for result in report.strategy_results.values())
         attempted = passed + failed
+    pass_rate = passed / attempted if attempted else 0.0
+    release_recommendation = _release_recommendation(
+        passed=passed,
+        failed=failed,
+        attempted=attempted,
+        minimum_pass_rate=report.minimum_pass_rate,
+    )
 
     lines = [
         "# Baseball RAG Eval Report",
         "",
         f"- Command: `{report.command}`",
         f"- Mode: {report.mode}",
+        f"- Release recommendation: **{release_recommendation}**",
         f"- Cases loaded: {len(report.cases)}",
         f"- Attempted: {attempted}",
         f"- Passed: {passed}",
         f"- Failed: {failed}",
         f"- Skipped: {skipped}",
+        f"- Pass rate: {pass_rate:.1%}",
+        f"- Required pass rate: {report.minimum_pass_rate:.0%}",
         "",
         "## Service Requirements",
         "",
@@ -411,6 +422,18 @@ def format_eval_report(report: EvalReport) -> str:
             f"{live_service_cases} skipped case(s) may require Chroma, corpus, "
             "and LLM services."
         )
+        live_examples = [
+            case for case in report.cases if case.requires_live_services() and not case.ci_safe
+        ][:5]
+        if live_examples:
+            lines.extend(["", "## Skipped Live Cases", ""])
+            for case in live_examples:
+                lines.append(f"- `{case.id}`: {case.question}")
+
+    risk_lines = _risk_category_lines(report.cases)
+    if risk_lines:
+        lines.extend(["", "## Risk Categories", ""])
+        lines.extend(risk_lines)
 
     coverage_lines = _coverage_examples(report.cases)
     if coverage_lines:
@@ -676,6 +699,90 @@ def _coverage_examples(cases: list[EvalCase]) -> list[str]:
     return examples
 
 
+def _risk_category_lines(cases: list[EvalCase]) -> list[str]:
+    categories = {
+        "Grounded stats": sum(1 for case in cases if case.intent == "stat_query"),
+        "SQL safety": sum(
+            1
+            for case in cases
+            if case.spec.get("expected_sql_parameterized")
+            or "sql_injection" in case.id
+            or case.spec.get("expected_sql_visible")
+        ),
+        "Unsupported guardrails": sum(
+            1 for case in cases if bool(case.spec.get("expected_unsupported", False))
+        ),
+        "Provenance and source visibility": sum(
+            1
+            for case in cases
+            if case.required_sources
+            or case.spec.get("required_source_manifest_fields")
+            or case.spec.get("expected_sql_visible")
+        ),
+        "Live retrieval/LLM optional": sum(1 for case in cases if case.requires_live_services()),
+    }
+    return [f"- {name}: {count} case(s)" for name, count in categories.items()]
+
+
+def _release_gate_ok(
+    *,
+    passed: int,
+    failed: int,
+    attempted: int,
+    minimum_pass_rate: float,
+) -> bool:
+    pass_rate = passed / attempted if attempted else 0.0
+    return failed == 0 and attempted > 0 and pass_rate >= minimum_pass_rate
+
+
+def _release_recommendation(
+    *,
+    passed: int,
+    failed: int,
+    attempted: int,
+    minimum_pass_rate: float,
+) -> str:
+    if _release_gate_ok(
+        passed=passed,
+        failed=failed,
+        attempted=attempted,
+        minimum_pass_rate=minimum_pass_rate,
+    ):
+        return "PASS - deterministic release gate is green"
+    return "BLOCK - investigate deterministic eval failures before release"
+
+
+def _minimum_pass_rate(path: Path) -> float:
+    with path.open(encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    return float(raw.get("minimum_pass_rate", 0.85))
+
+
+def _result_release_gate_ok(result: EvalRunResult, *, minimum_pass_rate: float) -> bool:
+    return _release_gate_ok(
+        passed=len(result.passed),
+        failed=len(result.failed),
+        attempted=result.attempted,
+        minimum_pass_rate=minimum_pass_rate,
+    )
+
+
+def _strategy_release_gate_ok(
+    results: dict[str, EvalRunResult],
+    *,
+    minimum_pass_rate: float,
+) -> bool:
+    passed = sum(len(result.passed) for result in results.values())
+    failed = sum(len(result.failed) for result in results.values())
+    attempted = passed + failed
+    return _release_gate_ok(
+        passed=passed,
+        failed=failed,
+        attempted=attempted,
+        minimum_pass_rate=minimum_pass_rate,
+    )
+
+
 def _command_for_report(argv: list[str] | None) -> str:
     args = sys.argv[1:] if argv is None else argv
     return " ".join(["python", "-m", "evals.questions", *args])
@@ -715,6 +822,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     cases = load_cases(args.questions)
+    minimum_pass_rate = _minimum_pass_rate(args.questions)
     command = _command_for_report(argv)
     if args.all_strategies:
         if args.retrieval_only:
@@ -730,11 +838,19 @@ def main(argv: list[str] | None = None) -> int:
                         command=command,
                         cases=cases,
                         include_live=args.include_live,
+                        minimum_pass_rate=minimum_pass_rate,
                         strategy_results=strategy_result.by_strategy,
                         mode="retrieval-only all-strategies",
                     ),
                 )
-            return 0 if strategy_result.ok else 1
+            return (
+                0
+                if _strategy_release_gate_ok(
+                    strategy_result.by_strategy,
+                    minimum_pass_rate=minimum_pass_rate,
+                )
+                else 1
+            )
 
         strategy_result = StrategyRunResult(
             run_strategy_cases(cases, include_live=args.include_live)
@@ -750,11 +866,19 @@ def main(argv: list[str] | None = None) -> int:
                     command=command,
                     cases=cases,
                     include_live=args.include_live,
+                    minimum_pass_rate=minimum_pass_rate,
                     strategy_results=strategy_result.by_strategy,
                     mode="answer all-strategies",
                 ),
             )
-        return 0 if strategy_result.ok else 1
+        return (
+            0
+            if _strategy_release_gate_ok(
+                strategy_result.by_strategy,
+                minimum_pass_rate=minimum_pass_rate,
+            )
+            else 1
+        )
 
     answer_fn: AnswerFn | None = None
     if args.strategy:
@@ -772,11 +896,19 @@ def main(argv: list[str] | None = None) -> int:
                         command=command,
                         cases=cases,
                         include_live=args.include_live,
+                        minimum_pass_rate=minimum_pass_rate,
                         strategy_results=strategy_result.by_strategy,
                         mode=f"retrieval-only strategy {args.strategy}",
                     ),
                 )
-            return 0 if strategy_result.ok else 1
+            return (
+                0
+                if _strategy_release_gate_ok(
+                    strategy_result.by_strategy,
+                    minimum_pass_rate=minimum_pass_rate,
+                )
+                else 1
+            )
 
         from baseball_rag.service import answer as service_answer
 
@@ -799,11 +931,12 @@ def main(argv: list[str] | None = None) -> int:
                 command=command,
                 cases=cases,
                 include_live=args.include_live,
+                minimum_pass_rate=minimum_pass_rate,
                 result=result,
                 mode="answer",
             ),
         )
-    return 0 if result.ok else 1
+    return 0 if _result_release_gate_ok(result, minimum_pass_rate=minimum_pass_rate) else 1
 
 
 if __name__ == "__main__":

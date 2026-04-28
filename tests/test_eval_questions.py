@@ -454,10 +454,19 @@ def test_format_eval_report_includes_counts_coverage_and_live_note():
 
     assert "# Baseball RAG Eval Report" in report
     assert "- Command: `python -m evals.questions --report docs/eval-report.md`" in report
+    assert (
+        "- Release recommendation: **BLOCK - investigate deterministic eval "
+        "failures before release**" in report
+    )
     assert "- Passed: 2" in report
     assert "- Failed: 1" in report
+    assert "- Pass rate: 66.7%" in report
+    assert "- Required pass rate: 85%" in report
     assert "Deterministic/CI-safe mode was used; non-default cases were skipped." in report
     assert "skipped case(s) may require Chroma, corpus, and LLM services" in report
+    assert "## Skipped Live Cases" in report
+    assert "## Risk Categories" in report
+    assert "- Unsupported guardrails:" in report
     assert "stat query: `stat_rbi_1962`" in report
     assert "player biography retrieval: `player_bio_babe_ruth`" in report
     assert "- `broken_case`: answer missing substring 'Ruth'" in report
@@ -499,6 +508,37 @@ def test_main_writes_markdown_report(tmp_path: Path, monkeypatch):
     assert exit_code == 0
     content = report_path.read_text(encoding="utf-8")
     assert f"- Command: `python -m evals.questions --questions {questions_path} --report" in content
+    assert "- Release recommendation: **PASS - deterministic release gate is green**" in content
     assert "- Passed:" in content
     assert "## Failed Cases" in content
     assert "- None" in content
+
+
+def test_main_blocks_release_when_no_deterministic_cases_attempted(tmp_path: Path):
+    report_path = tmp_path / "eval-report.md"
+    questions_path = tmp_path / "questions.yaml"
+    questions_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "minimum_pass_rate": 0.85,
+                "questions": [
+                    {
+                        "id": "bio",
+                        "question": "who was Babe Ruth",
+                        "intent": "player_biography",
+                        "required_sources": ["chroma"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(["--questions", str(questions_path), "--report", str(report_path)])
+
+    assert exit_code == 1
+    assert (
+        "- Release recommendation: **BLOCK - investigate deterministic eval "
+        "failures before release**" in report_path.read_text(encoding="utf-8")
+    )
