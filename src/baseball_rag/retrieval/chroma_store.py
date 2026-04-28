@@ -133,6 +133,38 @@ def _retrieve_impl(
     return chunks
 
 
+def get_chunks_by_ids(
+    ids: list[str],
+    *,
+    persist_dir: Path | None = None,
+) -> list[RetrievedChunk]:
+    """Fetch known corpus documents by Chroma ID without semantic search."""
+    if persist_dir is None:
+        persist_dir = _resolve_persist_dir(None)
+
+    collection = get_store(persist_dir)
+    results = collection.get(ids=ids, include=["documents", "metadatas"])
+    chunks: list[RetrievedChunk] = []
+    for index, doc_id in enumerate(results.get("ids", [])):
+        documents = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
+        doc = documents[index] if index < len(documents) else ""
+        meta = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
+        chunks.append(
+            RetrievedChunk(
+                text=str(doc),
+                source=str(meta.get("source", "")),
+                title=str(meta.get("title", "")),
+                score=1.0,
+                id=str(doc_id),
+                category=str(meta.get("category", "")) or None,
+                player_id=str(meta.get("player_id", "")) or None,
+                doc_kind=str(meta.get("doc_kind", "")) or None,
+            )
+        )
+    return chunks
+
+
 @traced(component_id="chroma-store", label="Vector Retrieval")
 def retrieve(
     query: str,

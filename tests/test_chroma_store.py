@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from baseball_rag.retrieval.chroma_store import LMStudioEmbeddingFunction, get_store, retrieve
+from baseball_rag.retrieval.chroma_store import (
+    LMStudioEmbeddingFunction,
+    get_chunks_by_ids,
+    get_store,
+    retrieve,
+)
 
 
 @pytest.fixture
@@ -141,6 +146,35 @@ class TestChromaStore:
 
         assert len(results) == 1
         assert results[0].player_id == "ruthba01"
+
+    def test_get_chunks_by_ids_maps_static_metadata(self, monkeypatch, tmp_path):
+        """Known static docs should be available without semantic search."""
+        from unittest.mock import MagicMock
+
+        from baseball_rag.retrieval import chroma_store
+
+        mock_collection = MagicMock()
+        mock_collection.get.return_value = {
+            "ids": ["OPS"],
+            "documents": [["On-Base Plus Slugging combines on-base and slugging."][0]],
+            "metadatas": [
+                {
+                    "source": "OPS.md",
+                    "category": "stat_definition",
+                    "title": "On-Base Plus Slugging (OPS)",
+                }
+            ],
+        }
+        monkeypatch.setattr(chroma_store, "get_store", lambda _persist_dir: mock_collection)
+
+        results = get_chunks_by_ids(["OPS"], persist_dir=tmp_path)
+
+        mock_collection.get.assert_called_once_with(ids=["OPS"], include=["documents", "metadatas"])
+        assert len(results) == 1
+        assert results[0].id == "OPS"
+        assert results[0].title == "On-Base Plus Slugging (OPS)"
+        assert results[0].category == "stat_definition"
+        assert results[0].score == 1.0
 
 
 class TestRelevanceThreshold:

@@ -78,3 +78,22 @@ class TestRouter:
         # .year is a backward-compat shim that only works for single-year queries
         assert result.year is None
         assert result.time_period is not None
+
+    def test_full_name_player_bio_routes_deterministically(self):
+        """Simple full-name biography questions should not depend on LLM routing."""
+        result = route("who was Babe Ruth")
+
+        assert result.intent == "player_biography"
+        assert result.player_name == "Babe Ruth"
+
+    def test_tell_me_about_full_name_routes_deterministically(self):
+        result = route("tell me about Matt Olson")
+
+        assert result.intent == "player_biography"
+        assert result.player_name == "Matt Olson"
+
+    def test_stat_definition_routes_as_general_explanation(self):
+        result = route("what is OPS")
+
+        assert result.intent == "general_explanation"
+        assert result.stat == "OPS"

@@ -128,6 +128,12 @@ def test_hybrid_player_bio_falls_back_to_semantic_search_when_exact_misses():
             "query": "Babe Ruth",
             "top_k": 3,
             "persist_dir": Path("store"),
+            "where": {"category": "player_biography"},
+        },
+        {
+            "query": "Babe Ruth",
+            "top_k": 3,
+            "persist_dir": Path("store"),
             "where": None,
         },
     ]
@@ -150,8 +156,38 @@ def test_hybrid_player_bio_with_no_player_id_falls_back_explicitly_to_semantic_s
             "query": "Smith",
             "top_k": 3,
             "persist_dir": None,
-            "where": None,
+            "where": {"category": "player_biography"},
         }
+    ]
+
+
+def test_semantic_chroma_falls_back_to_stat_definition_filter_when_broad_search_misses():
+    calls: list[dict] = []
+
+    def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
+        calls.append({"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where})
+        if where == {"category": "stat_definition"}:
+            return [_chunk("On-Base Plus Slugging (OPS)")]
+        return []
+
+    strategy = SemanticChromaStrategy(retrieve_fn=fake_retrieve)
+
+    result = strategy.retrieve("what is OPS", top_k=3, persist_dir=Path("store"))
+
+    assert result
+    assert calls == [
+        {
+            "query": "what is OPS",
+            "top_k": 3,
+            "persist_dir": Path("store"),
+            "where": None,
+        },
+        {
+            "query": "what is OPS",
+            "top_k": 3,
+            "persist_dir": Path("store"),
+            "where": {"category": "stat_definition"},
+        },
     ]
 
 

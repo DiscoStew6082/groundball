@@ -13,7 +13,7 @@ from baseball_rag.db import (
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
-from baseball_rag.retrieval.chroma_store import RetrievedChunk, retrieve
+from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
 from baseball_rag.retrieval.strategies import RetrievalStrategy, get_strategy
 from baseball_rag.routing import route
 from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
@@ -252,7 +252,9 @@ def _answer_general(
 ) -> StructuredAnswer:
     try:
         strategy = _resolve_retrieval_strategy(retrieval_strategy, default="semantic_chroma")
-        chunks = strategy.retrieve(question, top_k=3)
+        chunks = _retrieve_static_explanation_chunks(question)
+        if not chunks:
+            chunks = strategy.retrieve(question, top_k=3)
     except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
         if "NotFoundError" in type(e).__name__ or "not found" in str(e).lower():
             return StructuredAnswer(
@@ -366,3 +368,48 @@ def _resolve_retrieval_strategy(
     if isinstance(strategy, str):
         return get_strategy(strategy, retrieve_fn=retrieve)
     return strategy
+
+
+_STAT_DEFINITION_DOC_IDS = {
+    "2b": "2B",
+    "avg": "AVG",
+    "batting average": "AVG",
+    "bb": "BB",
+    "base on balls": "BB",
+    "era": "ERA",
+    "earned run average": "ERA",
+    "hr": "HR",
+    "home run": "HR",
+    "home runs": "HR",
+    "ops": "OPS",
+    "on-base plus slugging": "OPS",
+    "po": "PO",
+    "putout": "PO",
+    "putouts": "PO",
+    "rbi": "RBI",
+    "run batted in": "RBI",
+    "runs batted in": "RBI",
+    "sb": "SB",
+    "stolen base": "SB",
+    "stolen bases": "SB",
+    "whip": "WHIP",
+}
+
+
+def _retrieve_static_explanation_chunks(question: str) -> list[RetrievedChunk]:
+    lower_question = question.lower()
+    if not any(
+        phrase in lower_question
+        for phrase in ("what is", "what does", "explain", "mean", "definition")
+    ):
+        return []
+
+    doc_ids: list[str] = []
+    for phrase, doc_id in _STAT_DEFINITION_DOC_IDS.items():
+        if phrase in lower_question and doc_id not in doc_ids:
+            doc_ids.append(doc_id)
+    if doc_ids:
+        chunks = get_chunks_by_ids(doc_ids)
+        if chunks:
+            return chunks
+    return retrieve(question, top_k=3, where={"category": "stat_definition"})

@@ -271,6 +271,17 @@ def route(question: str) -> RouteResult:
             raw_question=question,
         )
 
+    player_bio_name = _extract_player_bio_name_heuristic(question)
+    if player_bio_name is not None:
+        return RouteResult(
+            intent="player_biography",
+            stat=None,
+            time_period=None,
+            position=None,
+            player_name=player_bio_name,
+            raw_question=question,
+        )
+
     if _should_use_deterministic_freeform_route(question):
         return RouteResult(
             intent="freeform_query",
@@ -430,6 +441,9 @@ def _heuristic_route(question: str) -> RouteResult:
         "strikeouts": "SO",
         "wins": "W",
         "losses": "L",
+        "ops": "OPS",
+        "po": "PO",
+        "putouts": "PO",
     }
     stat: str | None = None
     for phrase, resolved in stat_aliases.items():
@@ -524,6 +538,19 @@ def _extract_player_name_heuristic(question: str) -> str | None:
     if did_pattern:
         return did_pattern.group(1)
 
+    return None
+
+
+def _extract_player_bio_name_heuristic(question: str) -> str | None:
+    """Extract explicit full-name biography questions without LLM routing."""
+    patterns = (
+        r"^\s*who\s+was\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+)\??\s*$",
+        r"^\s*tell\s+me\s+about\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+)\.?\s*$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, question)
+        if match:
+            return match.group(1)
     return None
 
 
