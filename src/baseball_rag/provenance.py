@@ -6,6 +6,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 SourceType = Literal["duckdb", "chroma", "system"]
+UnsupportedReason = Literal[
+    "unsupported",
+    "ambiguous",
+    "no_data",
+    "missing_corpus",
+    "retrieval_failed",
+    "llm_unavailable",
+]
+ReviewReason = Literal["unsupported", "ambiguous", "low_confidence"]
 
 
 @dataclass
@@ -44,6 +53,8 @@ class StructuredAnswer:
     sources: list[SourceRecord] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     unsupported: bool = False
+    unsupported_reason: UnsupportedReason | None = None
+    review_reason: ReviewReason | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     review: dict[str, Any] | None = None
 
@@ -55,6 +66,8 @@ class StructuredAnswer:
             "sources": [source.to_dict() for source in self.sources],
             "warnings": self.warnings,
             "unsupported": self.unsupported,
+            "unsupported_reason": self.unsupported_reason,
+            "review_reason": self.review_reason,
             "metadata": self.metadata,
             "review": self.review,
         }

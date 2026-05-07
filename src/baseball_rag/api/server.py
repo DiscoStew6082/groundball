@@ -21,6 +21,8 @@ class QueryResponse(BaseModel):
     sources: list[dict[str, Any]]
     warnings: list[str]
     unsupported: bool
+    unsupported_reason: str | None = None
+    review_reason: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     review: dict[str, Any] | None = None
 

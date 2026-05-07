@@ -37,10 +37,11 @@ def _extract_min_ipouts(text: str, *, default: int) -> int:
     return int(match.group(1)) * 3 if match else default
 
 
-def _unsupported_sql(reason: str) -> AssembledSQL:
+def _unsupported_sql(reason: str, *, code: str = "unsupported") -> AssembledSQL:
     return AssembledSQL(
         "SELECT ? AS unsupported_reason WHERE FALSE",
         [reason],
+        unsupported_reason=code,
     )
 
 
@@ -50,7 +51,8 @@ def _detect_template(question: str) -> AssembledSQL | None:
 
     if "500 club" in q and "home run" not in q and "hr" not in q:
         return _unsupported_sql(
-            "The question says 500 club but does not specify home runs or pitching wins."
+            "The question says 500 club but does not specify home runs or pitching wins.",
+            code="ambiguous",
         )
 
     if "triple crown" in q:

@@ -53,6 +53,7 @@ def query(
         assembled.params,
         source_label=source_label,
         source_detail=source_detail,
+        unsupported_reason=assembled.unsupported_reason,
     )
 
 
@@ -106,6 +107,7 @@ def _execute_safe(
     source_detail: str = (
         "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
     ),
+    unsupported_reason: str | None = None,
 ) -> FreeformResult:
     """Execute with timeout and row limit guardrails."""
     try:
@@ -131,6 +133,7 @@ def _execute_safe(
             params=safe_params,
             source_label=source_label,
             source_detail=source_detail,
+            unsupported_reason=unsupported_reason,
         )
     except Exception as e:
         raise RuntimeError(f"Query failed: {e}\nSQL: {sql}") from e

@@ -154,6 +154,7 @@ class TestDeterministicTemplates:
         assert mock_call.call_count == 0
         assert result.row_count == 0
         assert result.columns == ["unsupported_reason"]
+        assert result.unsupported_reason == "ambiguous"
 
     def test_underqualified_era_is_unsupported_without_llm(self):
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
@@ -162,6 +163,7 @@ class TestDeterministicTemplates:
         assert mock_call.call_count == 0
         assert result.row_count == 0
         assert result.columns == ["unsupported_reason"]
+        assert result.unsupported_reason == "unsupported"
 
 
 class TestParseIntent:

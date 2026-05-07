@@ -135,6 +135,8 @@ def unsupported_reason(answer: StructuredAnswer) -> str | None:
     """Return a structured unsupported reason when available."""
     if not answer.unsupported:
         return None
+    if answer.unsupported_reason is not None:
+        return answer.unsupported_reason
     for source in answer.sources:
         for row in source.rows:
             reason = row.get("unsupported_reason")

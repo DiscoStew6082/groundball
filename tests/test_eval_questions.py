@@ -35,11 +35,15 @@ def _answer(
     unsupported: bool = False,
     source_type: str = "duckdb",
     rows: list[dict] | None = None,
+    unsupported_reason: str | None = None,
+    review_reason: str | None = None,
 ) -> StructuredAnswer:
     return StructuredAnswer(
         answer=answer,
         intent=intent,
         unsupported=unsupported,
+        unsupported_reason=unsupported_reason,  # type: ignore[arg-type]
+        review_reason=review_reason,  # type: ignore[arg-type]
         sources=[
             SourceRecord(
                 type=source_type,  # type: ignore[arg-type]
@@ -206,6 +210,40 @@ def test_validate_case_checks_expected_rows_and_parameterized_sql():
     )
 
     assert failures == []
+
+
+def test_validate_case_checks_structured_reason_expectations():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="reason_match",
+        question="who is in the 500 club",
+        spec={
+            "id": "reason_match",
+            "question": "who is in the 500 club",
+            "expected_unsupported": True,
+            "expected_unsupported_reason": "ambiguous",
+            "expected_review_reason": "ambiguous",
+        },
+    )
+
+    assert (
+        validate_case(
+            case,
+            _answer(
+                unsupported=True,
+                unsupported_reason="ambiguous",
+                review_reason="ambiguous",
+            ),
+        )
+        == []
+    )
+    failures = validate_case(
+        case,
+        _answer(unsupported=True, unsupported_reason="unsupported", review_reason="unsupported"),
+    )
+
+    assert "unsupported_reason: expected 'ambiguous', got 'unsupported'" in failures
+    assert "review_reason: expected 'ambiguous', got 'unsupported'" in failures
 
 
 def test_validate_case_reports_mismatches():

@@ -12,7 +12,12 @@ from baseball_rag.db import (
     init_db,
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
-from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
+from baseball_rag.provenance import (
+    SourceRecord,
+    StructuredAnswer,
+    UnsupportedReason,
+    compact_data_manifest,
+)
 from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
 from baseball_rag.retrieval.static_vocab import (
     query_asks_for_explanation,
@@ -79,6 +84,7 @@ def _answer_stat_query(question: str, decision: Any) -> StructuredAnswer:
                     "No fallback leaderboard was returned because the question named a player."
                 ],
                 unsupported=True,
+                unsupported_reason="no_data",
             )
 
         team_str = f" ({result['team']})" if result["team"] else ""
@@ -157,6 +163,8 @@ def _answer_player_biography(
                 intent=decision.intent,
                 warnings=["No biography was generated because the player name was ambiguous."],
                 unsupported=True,
+                unsupported_reason="ambiguous",
+                review_reason="ambiguous",
             )
         resolved_player_id = resolution.player_id
 
@@ -184,6 +192,7 @@ def _answer_player_biography(
             intent=decision.intent,
             warnings=["No LLM fallback was used because no grounding context was retrieved."],
             unsupported=True,
+            unsupported_reason="missing_corpus",
         )
 
     from baseball_rag.generation.prompt import build_player_bio_prompt
@@ -212,6 +221,7 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     )
 
     if query_result.row_count == 0:
+        reason = _freeform_unsupported_reason(query_result)
         return StructuredAnswer(
             answer=(
                 f"No results found for '{decision.raw_question}'.\n"
@@ -220,6 +230,8 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
             intent=decision.intent,
             sources=[source],
             unsupported=True,
+            unsupported_reason=reason,
+            review_reason="ambiguous" if reason == "ambiguous" else "unsupported",
         )
 
     warnings = []
@@ -261,6 +273,7 @@ def _answer_general(
             intent=decision.intent,
             warnings=["No LLM fallback was used because no grounding context was retrieved."],
             unsupported=True,
+            unsupported_reason="missing_corpus",
         )
 
     from baseball_rag.generation.prompt import build_explanation_prompt
@@ -367,6 +380,17 @@ def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]
     return [dict(zip(columns, row)) for row in rows]
 
 
+def _freeform_unsupported_reason(query_result: Any) -> UnsupportedReason:
+    reason = query_result.unsupported_reason
+    if reason == "ambiguous":
+        return "ambiguous"
+    if reason == "unsupported":
+        return "unsupported"
+    if "unsupported_reason" not in query_result.columns:
+        return "no_data"
+    return "unsupported"
+
+
 def _is_recoverable_chroma_index_error(exc: Exception) -> bool:
     message = str(exc).lower()
     return "dimension" in message or "embedding" in message
@@ -379,6 +403,7 @@ def _chroma_failure_answer(exc: Exception, *, intent: str) -> StructuredAnswer |
             intent=intent,
             warnings=["Chroma collection was not available."],
             unsupported=True,
+            unsupported_reason="missing_corpus",
         )
     if _is_recoverable_chroma_index_error(exc):
         return StructuredAnswer(
@@ -389,6 +414,7 @@ def _chroma_failure_answer(exc: Exception, *, intent: str) -> StructuredAnswer |
             intent=intent,
             warnings=[str(exc)],
             unsupported=True,
+            unsupported_reason="retrieval_failed",
         )
     return None
 

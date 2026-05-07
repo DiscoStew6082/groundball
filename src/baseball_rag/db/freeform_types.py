@@ -22,6 +22,7 @@ class FreeformResult:
     source_detail: str = (
         "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
     )
+    unsupported_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -41,3 +42,4 @@ QueryIntent = QuerySpec
 class AssembledSQL:
     sql: str
     params: list[object] = field(default_factory=list)
+    unsupported_reason: str | None = None

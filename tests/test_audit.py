@@ -1,6 +1,11 @@
 """Tests for audit-ready query metadata."""
 
-from baseball_rag.audit import build_query_metadata, eval_category_for_question, sql_template_hash
+from baseball_rag.audit import (
+    build_query_metadata,
+    eval_category_for_question,
+    sql_template_hash,
+    unsupported_reason,
+)
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 
 
@@ -47,3 +52,22 @@ def test_build_query_metadata_is_deterministic_except_timestamp_and_latency():
     assert first["model"]["prompt_version"] == "grounded-answer-v1"
     assert first["eval"]["case_id"] == "stat_rbi_1962"
     assert first["timestamp"]
+
+
+def test_unsupported_reason_prefers_structured_answer_reason():
+    answer = StructuredAnswer(
+        answer="No result.",
+        intent="freeform_query",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="Unsupported template",
+                rows=[{"unsupported_reason": "old row reason"}],
+            )
+        ],
+        warnings=["old warning reason"],
+        unsupported=True,
+        unsupported_reason="ambiguous",
+    )
+
+    assert unsupported_reason(answer) == "ambiguous"

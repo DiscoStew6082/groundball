@@ -35,6 +35,37 @@ def test_build_review_item_detects_ambiguous_warning():
         intent="player_biography",
         warnings=["No biography was generated because the player name was ambiguous."],
         unsupported=True,
+        review_reason="ambiguous",
+    )
+
+    item = build_review_item("who was Johnson", answer)
+
+    assert item is not None
+    assert item.reason == "ambiguous"
+
+
+def test_build_review_item_ignores_ambiguous_prose_without_structured_reason():
+    answer = StructuredAnswer(
+        answer="This unsupported result mentions ambiguous copy for display only.",
+        intent="player_biography",
+        warnings=["The user-facing warning also says ambiguous."],
+        unsupported=True,
+        unsupported_reason="no_data",
+    )
+
+    item = build_review_item("who was Johnson", answer)
+
+    assert item is not None
+    assert item.reason == "unsupported"
+
+
+def test_build_review_item_uses_structured_reason_without_sniffing_prose():
+    answer = StructuredAnswer(
+        answer="Multiple matching players were found.",
+        intent="player_biography",
+        warnings=["Choose a fuller name."],
+        unsupported=True,
+        review_reason="ambiguous",
     )
 
     item = build_review_item("who was Johnson", answer)

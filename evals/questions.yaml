@@ -69,6 +69,7 @@ questions:
     question: "how many HRs did Totally Fakeplayer have in 2022"
     intent: stat_query
     expected_unsupported: true
+    expected_unsupported_reason: no_data
     expected_answer_contains: ["No HR result found"]
     required_sources: ["duckdb"]
   - id: stat_unsupported_column
@@ -222,6 +223,8 @@ questions:
     intent: freeform_query
     ci_safe: true
     expected_unsupported: true
+    expected_unsupported_reason: ambiguous
+    expected_review_reason: ambiguous
     expected_max_rows: 0
     required_sources: ["duckdb"]
   - id: freeform_underqualified_career_era
@@ -229,6 +232,8 @@ questions:
     intent: freeform_query
     ci_safe: true
     expected_unsupported: true
+    expected_unsupported_reason: unsupported
+    expected_review_reason: unsupported
     expected_max_rows: 0
     required_sources: ["duckdb"]
   - id: min_sample_avg_2024

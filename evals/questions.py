@@ -659,6 +659,22 @@ def validate_case(case: EvalCase, answer: StructuredAnswer) -> list[str]:
             f"got {answer.unsupported!r}"
         )
 
+    expected_unsupported_reason = spec.get("expected_unsupported_reason")
+    if (
+        expected_unsupported_reason is not None
+        and answer.unsupported_reason != expected_unsupported_reason
+    ):
+        failures.append(
+            "unsupported_reason: expected "
+            f"{expected_unsupported_reason!r}, got {answer.unsupported_reason!r}"
+        )
+
+    expected_review_reason = spec.get("expected_review_reason")
+    if expected_review_reason is not None and answer.review_reason != expected_review_reason:
+        failures.append(
+            f"review_reason: expected {expected_review_reason!r}, got {answer.review_reason!r}"
+        )
+
     answer_text = _normalized_text(answer.answer)
     for needle in spec.get("expected_answer_contains", []) or []:
         if _normalized_text(str(needle)) not in answer_text:

@@ -33,6 +33,8 @@ class TestApi:
         assert data["sources"][0]["data_manifest"]["dataset"]["name"] == "NeuML/baseballdata"
         assert "warnings" in data
         assert data["unsupported"] is False
+        assert data["unsupported_reason"] is None
+        assert data["review_reason"] is None
         assert data["sources"][0]["sql"]
         assert data["metadata"]["route"] == "stat_query"
         assert data["metadata"]["unsupported"] is False
@@ -75,6 +77,8 @@ class TestApi:
         assert response.status_code == 200
         data = response.json()
         assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "no_data"
+        assert data["review_reason"] is None
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "unsupported"
         assert data["review"]["item_id"].startswith("review_")

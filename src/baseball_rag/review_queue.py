@@ -173,9 +173,10 @@ def _review_reason(
     *,
     low_confidence_threshold: float,
 ) -> ReviewReason | None:
+    if answer.review_reason is not None:
+        return answer.review_reason
     if answer.unsupported:
-        combined_text = " ".join([answer.answer, *answer.warnings]).casefold()
-        if "ambiguous" in combined_text:
+        if answer.unsupported_reason == "ambiguous":
             return "ambiguous"
         return "unsupported"
 
