@@ -65,3 +65,22 @@ class TestLatestYearLogic:
         assert latest_year > 2000, f"Latest year {latest_year} seems wrong"
 
         # This proves the DB has a "latest year" we could use as default
+
+
+class TestCliRequestSpine:
+    def test_cli_text_rendering_delegates_through_request_execution(self):
+        """CLI text output is adapted from the shared request execution path."""
+        from baseball_rag.cli import answer
+        from baseball_rag.provenance import StructuredAnswer
+
+        with patch("baseball_rag.cli.execute_request") as execute:
+            execute.return_value.answer = StructuredAnswer(
+                answer="No result",
+                intent="stat_query",
+                warnings=["Try a more specific year."],
+            )
+
+            result = answer("who led in made-up stat")
+
+        execute.assert_called_once_with("who led in made-up stat", adapter_component_id="cli")
+        assert result == "No result\n\nWarning: Try a more specific year."

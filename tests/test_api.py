@@ -42,6 +42,7 @@ class TestApi:
         assert data["metadata"]["source_types"] == ["duckdb"]
         assert data["metadata"]["trace"]["route_type"] == "stat_query"
         assert data["metadata"]["trace"]["stages"]
+        assert data["metadata"]["trace"]["stages"][0]["component_id"] == "api"
         assert data["metadata"]["query_id"].startswith("q_")
         assert data["metadata"]["timestamp"]
         assert data["metadata"]["unsupported_reason"] is None

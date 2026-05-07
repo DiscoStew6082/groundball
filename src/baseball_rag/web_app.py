@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 import gradio as gr
 
-from baseball_rag.cli import answer
-from baseball_rag.service import answer as answer_structured
+from baseball_rag.request_execution import RequestExecution, execute_request
+from baseball_rag.service import render_text
 
 if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
@@ -108,50 +108,26 @@ def run_all_tests() -> _TestResult:
 _anim_lock = threading.Lock()
 
 
-def _trace_and_animate(diagram: "ArchitectureDiagram", query: str) -> None:
-    """Run the answer() pipeline with tracing and animate the diagram.
-
-    This is called by the Query tab's respond() wrapper so that every
-    user query appears in the Architecture Explorer's trace history.
-    """
-    from baseball_rag.arch.tracing import (
-        finish_trace,
-        start_trace,
-        traced,
-    )
-
-    # Kick off a new trace for this query
-    start_trace(query)
-
-    try:
-        with traced(component_id="cli", label="CLI Entry Point"):
-            answer(query)
-
-        # Determine route type from the trace stages (set by @traced output_summary)
-        route_type = ""
-        current = _get_current_trace()
-        if current and current.stages:
-            last_stage = current.stages[-1]
-            summary = last_stage.output_summary.lower()
-            if "stat_query" in summary or "duckdb" in summary or "rbi" in summary:
-                route_type = "stat_query"
-            elif "general_explanation" in summary or "chroma" in summary:
-                route_type = "general_explanation"
-
-        trace = finish_trace(route_type=route_type)
-    except Exception:
-        # If tracing fails, still try to show something
-        trace = None
-
+def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
+    """Animate the diagram with the trace from a completed request."""
+    trace = execution.trace
     if trace is not None and hasattr(diagram, "animate_trace"):
         with _anim_lock:
             diagram.animate_trace(trace)
 
 
-def _get_current_trace():
-    from baseball_rag.arch.tracing import get_current_trace
-
-    return get_current_trace()
+def _execute_for_gradio(
+    query: str, *, diagram: "ArchitectureDiagram | None" = None
+) -> RequestExecution:
+    """Run one Gradio request and optionally animate its trace."""
+    execution = execute_request(
+        query,
+        adapter_component_id="gradio",
+        adapter_label="Gradio Query",
+    )
+    if diagram is not None:
+        _animate_execution(diagram, execution)
+    return execution
 
 
 # --------------------------------------------------------------------------
@@ -167,18 +143,12 @@ def respond(
     When *diagram* is provided the query is traced and animated through the
     Architecture Explorer.  Otherwise falls back to plain answer().
     """
-    if diagram is not None:
-        _trace_and_animate(diagram, message)
-    result = answer(message)
-    return result
+    return render_text(_execute_for_gradio(message, diagram=diagram).answer)
 
 
 def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = None):
     """Return answer text, evidence rows, source metadata, and SQL for Gradio."""
-    if diagram is not None:
-        _trace_and_animate(diagram, message)
-
-    result = answer_structured(message)
+    result = _execute_for_gradio(message, diagram=diagram).answer
     payload = result.to_dict()
     sources = payload["sources"]
     primary_source = sources[0] if sources else {}
@@ -270,7 +240,7 @@ def build_dashboard() -> gr.Blocks:
             )
 
     # Attach for test access
-    dashboard.arch_diagram = arch_diagram
+    dashboard.arch_diagram = arch_diagram  # type: ignore[attr-defined]
 
     return dashboard
 

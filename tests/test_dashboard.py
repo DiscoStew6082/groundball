@@ -11,6 +11,7 @@ instrumentation so the Architecture Explorer shows every query execution.
 from unittest.mock import patch
 
 from baseball_rag.arch.diagram import ArchitectureDiagram
+from baseball_rag.provenance import StructuredAnswer
 
 # --------------------------------------------------------------------------
 # Phase 4.1 — Dashboard structure
@@ -94,6 +95,35 @@ class TestTraceWiring:
         trace = diagram.trace_history[-1]
         assert trace.query == "who had the most RBIs in 1962"
         assert len(trace.stages) >= 1
+
+    def test_structured_query_answers_once_and_animates_trace(self):
+        """Structured Gradio responses reuse the traced answer execution."""
+        from baseball_rag.web_app import build_dashboard, respond_structured
+
+        dash = build_dashboard()
+        diagram = dash.arch_diagram
+        diagram.trace_history.clear()
+
+        calls = 0
+
+        def fake_answer(question: str, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
+
+        with (
+            patch("baseball_rag.request_execution.answer", side_effect=fake_answer),
+            patch.object(diagram.skip_btn, "click"),
+        ):
+            answer, rows, sources, sql = respond_structured("what is OPS", diagram=diagram)
+
+        assert calls == 1
+        assert answer == "answered what is OPS"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+        assert len(diagram.trace_history) == 1
+        assert diagram.trace_history[0].query == "what is OPS"
 
     def test_trace_shows_correct_route_type(self):
         """Trace correctly records stat_query vs general_explanation route."""

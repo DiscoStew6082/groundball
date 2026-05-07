@@ -44,26 +44,17 @@ def health():
 
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
-    from baseball_rag.arch.tracing import finish_trace, start_trace
-    from baseball_rag.service import answer
+    from baseball_rag.request_execution import execute_request
 
-    start_trace(req.question)
-    result = answer(req.question)
-    trace = finish_trace(route_type=result.intent)
-    from baseball_rag.audit import build_query_metadata
-
-    result.metadata.update(build_query_metadata(req.question, result, trace=trace))
-    _attach_review(req.question, result)
-    logger.info("query_audit", extra={"audit": result.metadata})
+    result = execute_request(
+        req.question,
+        adapter_component_id="api",
+        adapter_label="FastAPI Query",
+        attach_audit=True,
+        attach_review=True,
+        audit_logger=logger,
+    ).answer
     return QueryResponse(**result.to_dict())
-
-
-def _attach_review(question: str, result: Any) -> None:
-    from baseball_rag.review_queue import build_review_item, persist_review_item, review_payload
-
-    item = build_review_item(question, result)
-    persist_review_item(item)
-    result.review = review_payload(item)
 
 
 @app.get("/review-queue")

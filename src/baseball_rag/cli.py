@@ -2,13 +2,13 @@
 
 import sys
 
-from baseball_rag.service import answer as answer_structured
+from baseball_rag.request_execution import execute_request
 from baseball_rag.service import render_text
 
 
 def answer(question: str) -> str:
     """Answer a single question as CLI-friendly text."""
-    return render_text(answer_structured(question))
+    return render_text(execute_request(question, adapter_component_id="cli").answer)
 
 
 def main() -> None:
