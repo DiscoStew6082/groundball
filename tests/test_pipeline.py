@@ -29,7 +29,7 @@ class TestCliExceptionHandling:
         def fake_retrieve(query, top_k=3, persist_dir=None, where=None):
             raise RuntimeError("ChromaDB read-only volume")
 
-        with patch("baseball_rag.service.retrieve", fake_retrieve):
+        with patch("baseball_rag.retrieval.decision.retrieve", fake_retrieve):
             # General query goes through the RAG path (retrieve + generate)
             with pytest.raises(RuntimeError, match="read-only"):
                 answer("who was babe ruth")
@@ -43,6 +43,6 @@ class TestCliExceptionHandling:
         def fake_retrieve(query, top_k=3, persist_dir=None, where=None):
             raise FakeNotFoundError("collection not found")
 
-        with patch("baseball_rag.service.retrieve", fake_retrieve):
+        with patch("baseball_rag.retrieval.decision.retrieve", fake_retrieve):
             result = answer("who was babe ruth")
             assert "ingest" in result

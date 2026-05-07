@@ -25,7 +25,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -48,11 +48,11 @@ class TestPlayerBioQuery:
 
             answer("who was Wally Pipp")
 
-            mock_retrieve.assert_called_with(
-                "Wally Pipp",
-                top_k=1,
-                where={"player_id": "pippwa01"},
-            )
+            request = mock_retrieve.call_args.args[0]
+            assert request.question == "who was Wally Pipp"
+            assert request.intent == "player_biography"
+            assert request.player_name == "Wally Pipp"
+            assert request.player_id == "pippwa01"
 
     def test_player_biography_can_use_semantic_strategy_without_metadata_filter(self):
         """Strategy selection should let evals compare semantic-only retrieval."""
@@ -65,7 +65,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -89,7 +89,10 @@ class TestPlayerBioQuery:
 
             structured_answer("who was Wally Pipp", retrieval_strategy="semantic_chroma")
 
-            mock_retrieve.assert_called_with("Wally Pipp", top_k=3, where=None)
+            request = mock_retrieve.call_args.args[0]
+            assert request.question == "who was Wally Pipp"
+            assert request.player_name == "Wally Pipp"
+            assert request.retrieval_strategy == "semantic_chroma"
 
     def test_player_biography_uses_bio_prompt(self):
         """Player biography path should use build_player_bio_prompt, not explanation prompt."""
@@ -102,7 +105,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -145,7 +148,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -192,7 +195,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -225,7 +228,7 @@ class TestPlayerBioQuery:
         """If no bio chunks found, return a helpful message."""
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -251,7 +254,7 @@ class TestPlayerBioQuery:
         """If ChromaDB raises NotFoundError, suggest running ingest."""
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
@@ -281,7 +284,7 @@ class TestPlayerBioQuery:
         """Ambiguous names should not silently retrieve a random biography."""
         with (
             patch("baseball_rag.service.route") as mock_route,
-            patch("baseball_rag.service.retrieve") as mock_retrieve,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),

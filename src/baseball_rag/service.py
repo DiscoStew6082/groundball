@@ -18,12 +18,9 @@ from baseball_rag.provenance import (
     UnsupportedReason,
     compact_data_manifest,
 )
-from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
-from baseball_rag.retrieval.static_vocab import (
-    query_asks_for_explanation,
-    stat_definition_doc_ids_for_query,
-)
-from baseball_rag.retrieval.strategies import RetrievalStrategy, get_strategy
+from baseball_rag.retrieval.chroma_store import RetrievedChunk
+from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
+from baseball_rag.retrieval.strategies import RetrievalStrategy
 from baseball_rag.routing import route
 from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
 
@@ -169,12 +166,15 @@ def _answer_player_biography(
         resolved_player_id = resolution.player_id
 
     try:
-        strategy = _resolve_retrieval_strategy(retrieval_strategy, default="hybrid_player_bio")
-        chunks = strategy.retrieve(
-            decision.raw_question,
-            top_k=3,
-            player_name=player_name,
-            player_id=resolved_player_id,
+        chunks = retrieve_grounded_chunks(
+            RetrievalRequest(
+                question=decision.raw_question,
+                intent=decision.intent,
+                top_k=3,
+                retrieval_strategy=retrieval_strategy,
+                player_name=player_name,
+                player_id=resolved_player_id,
+            )
         )
     except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
         failure = _chroma_failure_answer(e, intent=decision.intent)
@@ -252,10 +252,14 @@ def _answer_general(
     retrieval_strategy: str | RetrievalStrategy | None = None,
 ) -> StructuredAnswer:
     try:
-        strategy = _resolve_retrieval_strategy(retrieval_strategy, default="semantic_chroma")
-        chunks = _retrieve_static_explanation_chunks(question)
-        if not chunks:
-            chunks = strategy.retrieve(question, top_k=3)
+        chunks = retrieve_grounded_chunks(
+            RetrievalRequest(
+                question=question,
+                intent=decision.intent,
+                top_k=3,
+                retrieval_strategy=retrieval_strategy,
+            )
+        )
     except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
         failure = _chroma_failure_answer(e, intent=decision.intent)
         if failure is not None:
@@ -417,27 +421,3 @@ def _chroma_failure_answer(exc: Exception, *, intent: str) -> StructuredAnswer |
             unsupported_reason="retrieval_failed",
         )
     return None
-
-
-def _resolve_retrieval_strategy(
-    strategy: str | RetrievalStrategy | None,
-    *,
-    default: str,
-) -> RetrievalStrategy:
-    if strategy is None:
-        return get_strategy(default, retrieve_fn=retrieve)
-    if isinstance(strategy, str):
-        return get_strategy(strategy, retrieve_fn=retrieve)
-    return strategy
-
-
-def _retrieve_static_explanation_chunks(question: str) -> list[RetrievedChunk]:
-    if not query_asks_for_explanation(question):
-        return []
-
-    doc_ids = stat_definition_doc_ids_for_query(question)
-    if doc_ids:
-        chunks = get_chunks_by_ids(doc_ids)
-        if chunks:
-            return chunks
-    return retrieve(question, top_k=3, where={"category": "stat_definition"})

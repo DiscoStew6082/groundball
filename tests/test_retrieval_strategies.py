@@ -1,8 +1,10 @@
 """Tests for retrieval strategy selection and call behavior."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 from baseball_rag.retrieval.chroma_store import RetrievedChunk
+from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
 from baseball_rag.retrieval.strategies import (
     ExactPlayerIdStrategy,
     HybridPlayerBioStrategy,
@@ -163,33 +165,25 @@ def test_hybrid_player_bio_with_no_player_id_falls_back_explicitly_to_semantic_s
     ]
 
 
-def test_semantic_chroma_falls_back_to_stat_definition_filter_when_broad_search_misses():
+def test_semantic_chroma_does_not_own_filtered_fallback_policy():
     calls: list[dict] = []
 
     def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
         calls.append({"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where})
-        if where == {"category": "stat_definition"}:
-            return [_chunk("On-Base Plus Slugging (OPS)")]
         return []
 
     strategy = SemanticChromaStrategy(retrieve_fn=fake_retrieve)
 
     result = strategy.retrieve("what is OPS", top_k=3, persist_dir=Path("store"))
 
-    assert result
+    assert result == []
     assert calls == [
         {
             "query": "what is OPS",
             "top_k": 3,
             "persist_dir": Path("store"),
             "where": None,
-        },
-        {
-            "query": "what is OPS",
-            "top_k": 3,
-            "persist_dir": Path("store"),
-            "where": {"category": "stat_definition"},
-        },
+        }
     ]
 
 
@@ -200,3 +194,100 @@ def test_get_strategy_rejects_unknown_strategy_name():
         assert "unknown retrieval strategy" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_retrieval_decision_uses_player_id_strategy_before_semantic_fallback():
+    calls: list[dict] = []
+
+    def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
+        calls.append({"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where})
+        if where == {"player_id": "ruthba01"}:
+            return [_chunk("Babe Ruth")]
+        return []
+
+    result = retrieve_grounded_chunks(
+        RetrievalRequest(
+            question="who was Babe Ruth",
+            intent="player_biography",
+            player_name="Babe Ruth",
+            player_id="ruthba01",
+            retrieval_strategy=HybridPlayerBioStrategy(retrieve_fn=fake_retrieve),
+        )
+    )
+
+    assert result
+    assert calls == [
+        {
+            "query": "Babe Ruth",
+            "top_k": 1,
+            "persist_dir": None,
+            "where": {"player_id": "ruthba01"},
+        }
+    ]
+
+
+def test_retrieval_decision_uses_exact_static_stat_definition_before_chroma_search():
+    searched = False
+
+    def fake_strategy_search(*_args, **_kwargs):
+        nonlocal searched
+        searched = True
+        return []
+
+    with patch("baseball_rag.retrieval.decision.get_chunks_by_ids") as get_by_ids:
+        get_by_ids.return_value = [_chunk("OPS")]
+        chunks = retrieve_grounded_chunks(
+            RetrievalRequest(
+                question="what is OPS",
+                intent="general_explanation",
+                retrieval_strategy=SemanticChromaStrategy(retrieve_fn=fake_strategy_search),
+            )
+        )
+
+    assert chunks[0].title == "OPS"
+    get_by_ids.assert_called_once_with(["OPS"], persist_dir=None)
+    assert searched is False
+
+
+def test_retrieval_decision_owns_filtered_stat_definition_fallback_when_exact_misses():
+    semantic_calls: list[dict] = []
+    fallback_calls: list[dict] = []
+
+    def fake_strategy_search(query, *, top_k=3, persist_dir=None, where=None):
+        semantic_calls.append(
+            {"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where}
+        )
+        return []
+
+    def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
+        fallback_calls.append(
+            {"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where}
+        )
+        if where == {"category": "stat_definition"}:
+            return [_chunk("OPS")]
+        return []
+
+    with (
+        patch("baseball_rag.retrieval.decision.get_chunks_by_ids", return_value=[]),
+        patch("baseball_rag.retrieval.decision.retrieve", side_effect=fake_retrieve),
+    ):
+        chunks = retrieve_grounded_chunks(
+            RetrievalRequest(
+                question="what is OPS",
+                intent="general_explanation",
+                retrieval_strategy=SemanticChromaStrategy(retrieve_fn=fake_strategy_search),
+            )
+        )
+
+    assert chunks[0].title == "OPS"
+    assert semantic_calls == [
+        {"query": "what is OPS", "top_k": 3, "persist_dir": None, "where": None}
+    ]
+    assert fallback_calls == [
+        {
+            "query": "what is OPS",
+            "top_k": 3,
+            "persist_dir": None,
+            "where": {"category": "stat_definition"},
+        }
+    ]

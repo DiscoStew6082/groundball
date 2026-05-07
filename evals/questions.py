@@ -17,6 +17,7 @@ import yaml  # type: ignore[import-untyped]
 
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.retrieval.chroma_store import RetrievedChunk, retrieve
+from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
 from baseball_rag.retrieval.strategies import available_strategy_names, get_strategy
 
 AnswerFn = Callable[[str], StructuredAnswer]
@@ -316,12 +317,16 @@ def run_retrieval_strategy_cases(
                     )
                     continue
 
-                chunks = strategy.retrieve(
-                    getattr(decision, "raw_question", None) or case.question,
-                    top_k=top_k,
-                    persist_dir=persist_dir,
-                    player_name=player_name,
-                    player_id=player_id,
+                chunks = retrieve_grounded_chunks(
+                    RetrievalRequest(
+                        question=getattr(decision, "raw_question", None) or case.question,
+                        intent=getattr(decision, "intent", category),
+                        top_k=top_k,
+                        persist_dir=persist_dir,
+                        player_name=player_name,
+                        player_id=player_id,
+                        retrieval_strategy=strategy,
+                    )
                 )
                 failures = validate_retrieved_chunks(case, chunks)
                 case_result = RetrievalCaseResult(

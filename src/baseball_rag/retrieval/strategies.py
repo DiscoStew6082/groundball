@@ -6,11 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
-from baseball_rag.retrieval.static_vocab import (
-    query_mentions_stat_definition,
-    static_doc_ids_for_query,
-)
+from baseball_rag.retrieval.chroma_store import RetrievedChunk, retrieve
 
 RetrieveFn = Callable[..., list[RetrievedChunk]]
 
@@ -99,26 +95,7 @@ class SemanticChromaStrategy:
             persist_dir=persist_dir,
             where=None,
         )
-        if chunks:
-            return chunks
-
-        exact_static = static_doc_ids_for_query(search_query)
-        if exact_static and self.retrieve_fn is retrieve:
-            static_chunks = get_chunks_by_ids(exact_static, persist_dir=persist_dir)
-            if static_chunks:
-                return static_chunks
-
-        for where in _fallback_filters_for_query(search_query):
-            chunks = _call_retrieve(
-                self.retrieve_fn,
-                search_query,
-                top_k=top_k,
-                persist_dir=persist_dir,
-                where=where,
-            )
-            if chunks:
-                return chunks
-        return []
+        return chunks
 
 
 @dataclass(frozen=True)
@@ -283,11 +260,3 @@ def _call_retrieve(
     if persist_dir is None:
         return retrieve_fn(query, top_k=top_k, where=where)
     return retrieve_fn(query, top_k=top_k, persist_dir=persist_dir, where=where)
-
-
-def _fallback_filters_for_query(query: str) -> list[dict]:
-    filters: list[dict] = []
-    if query_mentions_stat_definition(query):
-        filters.append({"category": "stat_definition"})
-    filters.append({"category": "hof_bio"})
-    return filters
