@@ -11,21 +11,13 @@ from typing import Any
 import chromadb
 
 from baseball_rag.corpus import get_hof_bios, get_stat_defs
-from baseball_rag.db.duckdb_schema import DATA_DIR
+from baseball_rag.corpus.lifecycle import (
+    COLLECTION_NAME,
+    MANIFEST_NAME,
+    manifest_section_count,
+    resolve_persist_dir,
+)
 from baseball_rag.embedder import DEFAULT_BASE_URL, DEFAULT_EMBEDDING_MODEL
-
-COLLECTION_NAME = "baseball_corpus"
-MANIFEST_NAME = "corpus_manifest.json"
-
-
-def resolve_persist_dir(persist_dir: Path | None = None) -> Path:
-    """Resolve the corpus persist directory without creating it."""
-    if persist_dir is not None:
-        return Path(persist_dir)
-    env_path = os.environ.get("CHROMA_PERSIST_DIR")
-    if env_path:
-        return Path(env_path)
-    return DATA_DIR
 
 
 def corpus_diagnostics(persist_dir: Path | None = None) -> dict[str, Any]:
@@ -124,22 +116,11 @@ def _manifest_diagnostics(path: Path) -> dict[str, Any]:
         diagnostics["error"] = f"{type(exc).__name__}: {exc}"
         return diagnostics
 
-    static_count = _manifest_section_count(manifest, "static_documents")
-    generated_count = _manifest_section_count(manifest, "generated_player_profiles")
+    static_count = manifest_section_count(manifest, "static_documents")
+    generated_count = manifest_section_count(manifest, "generated_player_profiles")
     diagnostics["collection_name"] = manifest.get("collection_name")
     diagnostics["generated_at"] = manifest.get("generated_at")
     diagnostics["static_document_count"] = static_count
     diagnostics["generated_player_profile_count"] = generated_count
     diagnostics["document_count"] = static_count + generated_count
     return diagnostics
-
-
-def _manifest_section_count(manifest: dict[str, Any], key: str) -> int:
-    section = manifest.get(key)
-    if not isinstance(section, dict):
-        return 0
-    count = section.get("count")
-    if isinstance(count, int):
-        return count
-    documents = section.get("documents")
-    return len(documents) if isinstance(documents, list) else 0

@@ -5,6 +5,22 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
+def _generated_bio(player_id: str, title: str = "Test Player") -> str:
+    return f"""---
+title: {title}
+player_id: {player_id}
+category: player_biography
+doc_kind: generated_player_profile
+source_tables:
+  - people
+  - batting
+  - pitching
+  - fielding
+---
+# {title}
+"""
+
+
 class TestIngestPlayerBios:
     """Test that build_index also ingests all player bios from DuckDB."""
 
@@ -23,7 +39,7 @@ class TestIngestPlayerBios:
         with patch("baseball_rag.corpus.ingest.get_duckdb", return_value=mock_conn):
             # Patch build_player_bio to avoid actual DB calls in test
             with patch("baseball_rag.corpus.ingest.build_player_bio") as mock_build:
-                mock_build.return_value = "Mocked bio text"
+                mock_build.side_effect = lambda player_id, _conn: _generated_bio(player_id)
 
                 # Mock ChromaDB client and collection
                 with patch(
@@ -62,7 +78,7 @@ class TestIngestPlayerBios:
 
         with patch("baseball_rag.corpus.ingest.get_duckdb", return_value=mock_conn):
             with patch("baseball_rag.corpus.ingest.build_player_bio") as mock_build:
-                mock_build.return_value = "Mocked bio text"
+                mock_build.side_effect = lambda player_id, _conn: _generated_bio(player_id)
 
                 with patch(
                     "baseball_rag.corpus.ingest.chromadb.PersistentClient"
@@ -86,7 +102,7 @@ class TestIngestPlayerBios:
 
         with patch("baseball_rag.corpus.ingest.get_duckdb", return_value=mock_conn):
             with patch("baseball_rag.corpus.ingest.build_player_bio") as mock_build:
-                mock_build.return_value = "Babe Ruth bio text"
+                mock_build.return_value = _generated_bio("ruthb01", "Babe Ruth")
 
                 with patch(
                     "baseball_rag.corpus.ingest.chromadb.PersistentClient"
@@ -112,7 +128,7 @@ class TestIngestPlayerBios:
 
         with patch("baseball_rag.corpus.ingest.get_duckdb", return_value=mock_conn):
             with patch("baseball_rag.corpus.ingest.build_player_bio") as mock_build:
-                mock_build.return_value = "Test bio"
+                mock_build.return_value = _generated_bio("testplay")
 
                 with patch(
                     "baseball_rag.corpus.ingest.chromadb.PersistentClient"
@@ -204,7 +220,7 @@ On-base plus slugging.
         }
 
     def test_player_profile_record_builds_chroma_and_manifest_data(self):
-        from baseball_rag.corpus.ingest import _player_profile_record
+        from baseball_rag.corpus.lifecycle import player_profile_record
 
         bio = """---
 title: Babe Ruth
@@ -218,13 +234,50 @@ source_tables:
 # Babe Ruth
 """
 
-        record = _player_profile_record("ruthba01", bio)
+        record = player_profile_record("ruthba01", bio)
 
         assert record.id == "player:ruthba01"
         assert record.text == bio
         assert record.metadata["player_id"] == "ruthba01"
-        assert record.metadata["source_tables"] == "people,batting,pitching,fielding"
+        assert record.metadata["source_tables"] == "people,batting"
         assert record.manifest_entry["source_tables"] == ["people", "batting"]
+
+    def test_player_profile_record_requires_generated_profile_frontmatter(self):
+        from baseball_rag.corpus.lifecycle import player_profile_record
+
+        bio = """---
+title: Babe Ruth
+category: player_biography
+doc_kind: generated_player_profile
+---
+# Babe Ruth
+"""
+
+        try:
+            player_profile_record("ruthba01", bio)
+        except ValueError as exc:
+            assert "player_id" in str(exc)
+        else:
+            raise AssertionError("expected missing player_id to fail validation")
+
+    def test_player_profile_record_requires_source_tables_frontmatter(self):
+        from baseball_rag.corpus.lifecycle import player_profile_record
+
+        bio = """---
+title: Babe Ruth
+player_id: ruthba01
+category: player_biography
+doc_kind: generated_player_profile
+---
+# Babe Ruth
+"""
+
+        try:
+            player_profile_record("ruthba01", bio)
+        except ValueError as exc:
+            assert "source_tables" in str(exc)
+        else:
+            raise AssertionError("expected missing source_tables to fail validation")
 
     def test_build_index_static_only_writes_finalized_manifest_counts(self, tmp_path):
         static_doc = tmp_path / "OPS.md"

@@ -10,8 +10,8 @@ import numpy as np
 
 from baseball_rag import embedder as _embedder
 from baseball_rag.arch.tracing import traced
+from baseball_rag.corpus.lifecycle import COLLECTION_NAME, resolve_persist_dir
 
-COLLECTION_NAME = "baseball_corpus"
 RELEVANCE_THRESHOLD = 0.7
 
 
@@ -74,16 +74,7 @@ def _retrieved_chunk_from_chroma(
 
 def _resolve_persist_dir(persist_dir: Path | None) -> Path:
     """Resolve the persist directory, checking CHROMA_PERSIST_DIR env var first."""
-    if persist_dir is not None:
-        return persist_dir
-    import os
-
-    env_path = os.environ.get("CHROMA_PERSIST_DIR")
-    if env_path:
-        return Path(env_path)
-    from baseball_rag.db.duckdb_schema import DATA_DIR
-
-    return DATA_DIR
+    return resolve_persist_dir(persist_dir)
 
 
 @lru_cache(maxsize=1)
