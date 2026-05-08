@@ -25,6 +25,8 @@ dev = [
     "ruff",
     "mypy",
     "httpx",
+    "types-pyyaml>=6.0.12.20260508",
+    "types-requests>=2.33.0.20260508",
 ]
 
 [project.scripts]

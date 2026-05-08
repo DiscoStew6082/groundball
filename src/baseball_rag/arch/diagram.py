@@ -6,7 +6,7 @@ Phase 3 of the Architecture Explorer plan.
 from __future__ import annotations
 
 import threading
-from typing import Callable
+from typing import Any, Callable
 
 import gradio as gr
 
@@ -209,9 +209,9 @@ class ArchitectureDiagram(gr.Blocks):
                 def click(self, **kwargs):  # noqa: ARG002
                     pass  # no-op in test mode
 
-            self.skip_btn = _DummyComp()
-            self.footer_html = _DummyComp()
-            self.diagram_html = _DummyComp()  # needed by _js_animate guard
+            self.skip_btn: Any = _DummyComp()
+            self.footer_html: Any = _DummyComp()
+            self.diagram_html: Any = _DummyComp()  # needed by _js_animate guard
             return  # Skip Gradio UI construction in unit tests
 
         # ---- Build the UI --------------------------------------------------------
@@ -452,7 +452,7 @@ class ArchitectureDiagram(gr.Blocks):
         # gr.State and change events.  We use a hidden Textbox as the bridge.
         self._js_bridge = gr.Textbox(visible=False, value="")
 
-        def handle_js_select(raw: str) -> tuple:
+        def handle_js_select(raw: str) -> Any:
             if raw:
                 comp_id = raw.strip()
                 for cb in self._on_select_callbacks:

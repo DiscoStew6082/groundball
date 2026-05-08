@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import mlbstatsapi
 from pybaseball import statcast, statcast_batter, statcast_pitcher
@@ -9,7 +9,7 @@ mlb = mlbstatsapi.Mlb()
 
 def get_multiple_player_stats(
     mlb, person_ids: list, stats: list, groups: list, season: Optional[int] = None, **params
-) -> dict:
+) -> list[Any] | dict[str, Any]:
     """
     returns stat data for a team
 
@@ -114,7 +114,7 @@ def get_sabermetrics_for_players(
         return {"error": "No stats data found"}
 
     # Extract the relevant data
-    result = {"season": season, "group": group, "players": []}
+    result: dict[str, Any] = {"season": season, "group": group, "players": []}
 
     # Filter for our specific players
     player_ids_int = [int(pid) for pid in player_ids]
@@ -247,7 +247,7 @@ def setup_mlb_tools(mcp):
         try:
             if season is None:
                 season = datetime.now().year
-            params = {}
+            params: dict[str, Any] = {}
             if standingsTypes is not None:
                 params["standingsTypes"] = standingsTypes
             if date is not None:
@@ -333,7 +333,7 @@ def setup_mlb_tools(mcp):
             dict: Team information.
         """
         try:
-            params = {}
+            params: dict[str, Any] = {}
             if season is not None:
                 params["season"] = season
             if sport_id is not None:
@@ -725,14 +725,14 @@ def setup_mlb_tools(mcp):
             # Get the boxscore data
             boxscore = mlb.get_game_box_score(game_id)
 
-            result = {"game_id": game_id, "teams": {}}
+            result: dict[str, Any] = {"game_id": game_id, "teams": {}}
 
             # Process both teams (away and home)
             for team_type in ["away", "home"]:
                 if hasattr(boxscore, "teams") and hasattr(boxscore.teams, team_type):
                     team_data = getattr(boxscore.teams, team_type)
 
-                    team_info = {
+                    team_info: dict[str, Any] = {
                         "team_name": getattr(team_data.team, "name", "Unknown"),
                         "team_id": getattr(team_data.team, "id", None),
                         "players": [],
@@ -745,7 +745,7 @@ def setup_mlb_tools(mcp):
                         # Extract player information
                         for player_key, player_data in players_dict.items():
                             if player_key.startswith("id"):
-                                player_info = {
+                                player_info: dict[str, Any] = {
                                     "player_id": getattr(player_data.person, "id", None),
                                     "player_name": getattr(player_data.person, "fullname", "Unknown"),
                                     "jersey_number": getattr(player_data, "jerseynumber", None),
