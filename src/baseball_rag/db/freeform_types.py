@@ -26,6 +26,15 @@ class FreeformResult:
 
 
 @dataclass(frozen=True)
+class TeamIdentity:
+    """Resolved historical team identity for a specific season."""
+
+    nickname: str
+    year: int
+    team_id: str
+
+
+@dataclass(frozen=True)
 class QuerySpec:
     """Structured intent extracted from a natural language question."""
 
@@ -33,6 +42,7 @@ class QuerySpec:
     team_name_pattern: str | None = None
     year_value: int | None = None
     leader_stats: list[str] = field(default_factory=list)
+    team_identity: TeamIdentity | None = None
 
 
 QueryIntent = QuerySpec
@@ -43,3 +53,26 @@ class AssembledSQL:
     sql: str
     params: list[object] = field(default_factory=list)
     unsupported_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class PlannedFreeformQuery:
+    """Executable freeform query plan with provenance."""
+
+    assembled: AssembledSQL
+    planning_path: str
+    source_label: str
+    source_detail: str
+    query_spec: QuerySpec | None = None
+
+    @property
+    def sql(self) -> str:
+        return self.assembled.sql
+
+    @property
+    def params(self) -> list[object]:
+        return self.assembled.params
+
+    @property
+    def unsupported_reason(self) -> str | None:
+        return self.assembled.unsupported_reason

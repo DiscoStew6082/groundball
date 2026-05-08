@@ -126,7 +126,7 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     from baseball_rag.db.freeform import format_result, query
 
     conn = get_duckdb()
-    query_result = query(decision.raw_question, conn)
+    query_result = query(decision.raw_question, conn, year=getattr(decision, "year", None))
     source = SourceRecord(
         type="duckdb",
         label=query_result.source_label,

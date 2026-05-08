@@ -7,6 +7,10 @@ appended to freeform questions before SQL generation so the LLM can reason corre
 
 from __future__ import annotations
 
+import re
+
+from baseball_rag.db.freeform_types import TeamIdentity
+
 # ---------------------------------------------------------------------------
 # Franchise history: {team_nickname} -> list of (start_year, end_year, team_id)
 # ---------------------------------------------------------------------------
@@ -17,12 +21,12 @@ _FRANCHISE_HISTORY: dict[str, list[tuple[int, int, str]]] = {
     "braves": [
         # (from_year, through_year, team_id)
         (1871, 1952, "BSN"),  # Boston Braves
-        (1953, 1965, "MLA"),  # Milwaukee Braves
+        (1953, 1965, "ML1"),  # Milwaukee Braves
         (1966, 2030, "ATL"),  # Atlanta Braves
     ],
     "athletics": [
         (1901, 1954, "PHA"),  # Philadelphia Athletics
-        (1955, 1967, "KCA"),  # Kansas City Athletics
+        (1955, 1967, "KC1"),  # Kansas City Athletics
         (1968, 2030, "OAK"),  # Oakland Athletics
     ],
     "dodgers": [
@@ -46,14 +50,14 @@ _FRANCHISE_HISTORY: dict[str, list[tuple[int, int, str]]] = {
         (1954, 2030, "BAL"),  # Baltimore Orioles
     ],
     "marlins": [
-        (1993, 2011, "MIA"),  # Florida Marlins
+        (1993, 2011, "FLO"),  # Florida Marlins
         (2012, 2030, "MIA"),  # Miami Marlins (same code, different name)
     ],
     "angels": [
         (1961, 1964, "LAA"),  # Los Angeles Angels
-        (1965, 1996, "ANA"),  # California/Anaheim Angels
-        (1997, 2013, "ANA"),  # Anaheim / Los Angeles Angels of Anaheim
-        (2014, 2030, "LAA"),  # Los Angeles Angels
+        (1965, 1996, "CAL"),  # California Angels
+        (1997, 2004, "ANA"),  # Anaheim Angels
+        (2005, 2030, "LAA"),  # Los Angeles Angels
     ],
 }
 
@@ -89,6 +93,36 @@ def _team_id_for_year(nickname: str, year: int) -> str | None:
     return None
 
 
+def resolve_team_identity(
+    question: str,
+    *,
+    team_name_pattern: str | None,
+    year: int | None,
+) -> TeamIdentity | None:
+    """Resolve a historical team nickname to a Lahman teamID for a season."""
+    if year is None:
+        return None
+
+    candidates: list[str] = []
+    if team_name_pattern:
+        candidates.append(team_name_pattern)
+    candidates.extend(_FRANCHISE_HISTORY)
+
+    lower_q = question.lower()
+    for candidate in candidates:
+        nickname = candidate.lower().strip()
+        if nickname not in _FRANCHISE_HISTORY:
+            continue
+        if not re.search(rf"\b{re.escape(nickname)}s?\b", lower_q):
+            continue
+        team_id = _team_id_for_year(nickname, year)
+        if team_id is None:
+            continue
+        return TeamIdentity(nickname=nickname, year=year, team_id=team_id)
+
+    return None
+
+
 def get_contextual_hint(question: str, year: int | None) -> str:
     """Build a plain-English hint about team locations based on the question and year.
 
@@ -118,10 +152,10 @@ def get_contextual_hint(question: str, year: int | None) -> str:
         # Derive a readable city name from the team ID
         city_map: dict[str, str] = {
             "BSN": "Boston",
-            "MLA": "Milwaukee",
+            "ML1": "Milwaukee",
             "ATL": "Atlanta",
             "PHA": "Philadelphia",
-            "KCA": "Kansas City",
+            "KC1": "Kansas City",
             "OAK": "Oakland",
             "BRO": "Brooklyn",
             "LAN": "Los Angeles",
@@ -133,8 +167,10 @@ def get_contextual_hint(question: str, year: int | None) -> str:
             "MIN": "Minnesota",
             "SLA": "St. Louis Browns",
             "BAL": "Baltimore",
-            "MIA": "Miami/Florida",
+            "FLO": "Florida",
+            "MIA": "Miami",
             "LAA": "Los Angeles Angels",
+            "CAL": "California",
             "ANA": "Anaheim",
         }
         city = city_map.get(code, code)

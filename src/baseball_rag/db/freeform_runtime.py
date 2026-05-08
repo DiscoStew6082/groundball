@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -14,8 +15,9 @@ from baseball_rag.db.freeform_types import (
     MAX_ROWS,
     SCHEMA_TIMEOUT_MS,
     FreeformResult,
+    PlannedFreeformQuery,
 )
-from baseball_rag.db.team_history import get_contextual_hint
+from baseball_rag.db.team_history import get_contextual_hint, resolve_team_identity
 from baseball_rag.generation.llm import make_request as default_make_request
 
 RequestFn = Callable[..., Any]
@@ -29,21 +31,59 @@ def query(
     request_fn: RequestFn = default_make_request,
 ) -> FreeformResult:
     """Convert a natural language question to SQL and execute it."""
+    planned = plan_query(question, conn, year=year, request_fn=request_fn)
+    return execute_plan(planned, conn)
+
+
+def plan_query(
+    question: str,
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    year: int | None = None,
+    request_fn: RequestFn = default_make_request,
+) -> PlannedFreeformQuery:
+    """Plan a natural language question as constrained SQL without executing it."""
     hint = get_contextual_hint(question, year)
     enriched_question = f"{question} {hint}".strip() if hint else question
 
     assembled = _detect_template(enriched_question)
     if assembled is not None:
-        source_label = "Deterministic template query"
-        source_detail = _template_source_detail(enriched_question)
-    else:
-        schema = _get_schema_cached(conn)
-        spec = _generate_query_spec(enriched_question, schema, request_fn=request_fn)
-        assembled = _assemble_sql(spec)
-        source_label = "LLM-backed typed freeform query"
-        source_detail = (
-            "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
+        return PlannedFreeformQuery(
+            assembled=assembled,
+            planning_path="deterministic_template",
+            source_label="Deterministic template query",
+            source_detail=_template_source_detail(enriched_question),
         )
+
+    schema = _get_schema_cached(conn)
+    spec = _generate_query_spec(enriched_question, schema, request_fn=request_fn)
+    if spec.year_value is None and year is not None:
+        spec = replace(spec, year_value=year)
+    team_identity = resolve_team_identity(
+        question,
+        team_name_pattern=spec.team_name_pattern,
+        year=spec.year_value,
+    )
+    if team_identity is not None:
+        spec = replace(spec, team_identity=team_identity)
+    assembled = _assemble_sql(spec)
+    return PlannedFreeformQuery(
+        assembled=assembled,
+        planning_path="llm_intent",
+        source_label="LLM-backed typed freeform query",
+        source_detail=(
+            "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
+        ),
+        query_spec=spec,
+    )
+
+
+def execute_plan(
+    planned: PlannedFreeformQuery,
+    conn: duckdb.DuckDBPyConnection,
+) -> FreeformResult:
+    """Validate and execute a planned freeform query."""
+    assembled = planned.assembled
     sql = assembled.sql.strip().rstrip(";")
 
     _validate_sql(sql, conn)
@@ -51,8 +91,8 @@ def query(
         sql,
         conn,
         assembled.params,
-        source_label=source_label,
-        source_detail=source_detail,
+        source_label=planned.source_label,
+        source_detail=planned.source_detail,
         unsupported_reason=assembled.unsupported_reason,
     )
 

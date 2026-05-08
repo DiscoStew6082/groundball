@@ -33,7 +33,15 @@ def _assemble_sql(intent: QuerySpec) -> AssembledSQL:
             raise ValueError(f"Unsupported stat table '{tbl}'")
         join_conditions = [f"p.playerID = {tbl}.playerID"]
 
-        if intent.team_name_pattern is not None:
+        if intent.team_identity is not None:
+            from_part = (
+                f"SELECT DISTINCT p.nameFirst, p.nameLast "
+                f"FROM people p "
+                f"JOIN {tbl} ON {' AND '.join(join_conditions)}"
+            )
+            params.append(intent.team_identity.team_id)
+            where_parts: list[str] = [f"{tbl}.teamID = ?"]
+        elif intent.team_name_pattern is not None:
             from_part = (
                 f"SELECT DISTINCT p.nameFirst, p.nameLast "
                 f"FROM people p "
@@ -42,14 +50,15 @@ def _assemble_sql(intent: QuerySpec) -> AssembledSQL:
                 f"AND t.name ILIKE ?"
             )
             params.append(f"%{intent.team_name_pattern}%")
+            where_parts = []
         else:
             from_part = (
                 f"SELECT DISTINCT p.nameFirst, p.nameLast "
                 f"FROM people p "
                 f"JOIN {tbl} ON {' AND '.join(join_conditions)}"
             )
+            where_parts = []
 
-        where_parts: list[str] = []
         if intent.year_value is not None:
             where_parts.append(f"{tbl}.yearID = ?")
             params.append(intent.year_value)

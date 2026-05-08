@@ -89,6 +89,23 @@ class TestApi:
         assert queue["count"] == 1
         assert queue["items"][0]["id"] == data["review"]["item_id"]
 
+    def test_query_endpoint_preserves_ambiguous_freeform_unsupported_reason(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post("/query", json={"question": "who is in the 500 club"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "freeform_query"
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "ambiguous"
+        assert data["review_reason"] == "ambiguous"
+        assert data["metadata"]["unsupported_reason"] == "ambiguous"
+        assert data["review"]["queued"] is True
+        assert data["review"]["reason"] == "ambiguous"
+
     def test_review_queue_endpoint_resolves_item(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
         response = client.post(

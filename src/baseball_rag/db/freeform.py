@@ -17,7 +17,11 @@ from baseball_rag.db.freeform_intent import (
 from baseball_rag.db.freeform_runtime import (
     _execute_safe,
     _validate_sql,
+    execute_plan,
     format_result,
+)
+from baseball_rag.db.freeform_runtime import (
+    plan_query as _plan_query_impl,
 )
 from baseball_rag.db.freeform_runtime import (
     query as _query_impl,
@@ -46,8 +50,10 @@ from baseball_rag.db.freeform_types import (
     SCHEMA_TIMEOUT_MS,
     AssembledSQL,
     FreeformResult,
+    PlannedFreeformQuery,
     QueryIntent,
     QuerySpec,
+    TeamIdentity,
 )
 from baseball_rag.generation.llm import make_request
 
@@ -56,10 +62,14 @@ __all__ = [
     "SCHEMA_TIMEOUT_MS",
     "AssembledSQL",
     "FreeformResult",
+    "PlannedFreeformQuery",
     "QueryIntent",
     "QuerySpec",
+    "TeamIdentity",
+    "execute_plan",
     "format_result",
     "make_request",
+    "plan_query",
     "query",
     "_INTENT_SYSTEM",
     "_assemble_sql",
@@ -98,6 +108,16 @@ def query(
 ) -> FreeformResult:
     """Convert a natural language question to SQL and execute it."""
     return _query_impl(question, conn, year=year, request_fn=make_request)
+
+
+def plan_query(
+    question: str,
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    year: int | None = None,
+) -> PlannedFreeformQuery:
+    """Compatibility wrapper that honors patches to freeform.make_request."""
+    return _plan_query_impl(question, conn, year=year, request_fn=make_request)
 
 
 def _generate_sql(question: str, schema: str) -> str:
