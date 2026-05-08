@@ -285,6 +285,12 @@ def route(question: str) -> RouteResult:
         and (_should_use_deterministic_stat_route(question) or deterministic.player_name)
     ):
         return deterministic
+    if (
+        deterministic.intent == "general_explanation"
+        and deterministic.stat is not None
+        and not _should_use_deterministic_stat_route(question)
+    ):
+        return deterministic
 
     try:
         from baseball_rag.generation.llm import make_request
@@ -364,7 +370,7 @@ def _heuristic_route(question: str) -> RouteResult:
     # Only classify as stat_query if it's clearly a league-wide leader request
     lower_q = question.lower()
     leader_re = re.compile(
-        r"\b(career|most|least|highest|lowest|lead|leader|leaders|top|bottom|best)\b"
+        r"\b(career|most|least|highest|lowest|lead|leads|leader|leaders|top|bottom|best)\b"
     )
     is_leaderboard = bool(leader_re.search(lower_q))
 
@@ -409,6 +415,7 @@ def _heuristic_route(question: str) -> RouteResult:
     stat = find_stat_in_text(question)
 
     player_name = _extract_player_name_heuristic(question)
+    position = _extract_position_heuristic(lower_q)
 
     # Build the most specific time_period available
     if year_range is not None:
@@ -424,10 +431,38 @@ def _heuristic_route(question: str) -> RouteResult:
         intent="stat_query" if is_leaderboard or (stat and player_name) else "general_explanation",
         stat=stat,
         time_period=time_period,
-        position=None,
+        position=position,
         player_name=player_name,
         raw_question=question,
     )
+
+
+def _extract_position_heuristic(lower_q: str) -> str | None:
+    """Extract common defensive position phrasing for deterministic fielding queries."""
+    position_aliases = [
+        ("center field", "OF"),
+        ("centre field", "OF"),
+        ("centerfielder", "OF"),
+        ("center fielder", "OF"),
+        ("left field", "OF"),
+        ("leftfielder", "OF"),
+        ("left fielder", "OF"),
+        ("right field", "OF"),
+        ("rightfielder", "OF"),
+        ("right fielder", "OF"),
+        ("outfield", "OF"),
+        ("outfielder", "OF"),
+        ("catcher", "C"),
+        ("first base", "1B"),
+        ("second base", "2B"),
+        ("third base", "3B"),
+        ("shortstop", "SS"),
+        ("pitcher", "P"),
+    ]
+    for text, position in position_aliases:
+        if text in lower_q:
+            return position
+    return None
 
 
 def _should_use_deterministic_stat_route(question: str) -> bool:

@@ -29,6 +29,14 @@ class TestRouter:
         assert result.stat == "ERA"
         assert result.year == 1968
 
+    def test_fielding_position_detection_maps_specific_outfield_to_dataset_granularity(self):
+        """Specific outfield phrases map to the Lahman fielding POS value."""
+        result = route("center field putouts leaders in 1983")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "PO"
+        assert result.position == "OF"
+
     def test_original_question_preserved(self):
         """raw_question always contains original text."""
         q = "who led MLB in RBI in 1957"

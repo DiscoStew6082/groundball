@@ -6,9 +6,6 @@ import logging
 from typing import Any, Callable
 
 from baseball_rag.db import (
-    get_career_stat_leaders,
-    get_player_stat,
-    get_stat_leaders_range,
     init_db,
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
@@ -22,7 +19,7 @@ from baseball_rag.retrieval.chroma_store import RetrievedChunk
 from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
 from baseball_rag.retrieval.strategies import RetrievalStrategy
 from baseball_rag.routing import route
-from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+from baseball_rag.stat_query import answer_stat_query
 
 logger = logging.getLogger(__name__)
 PromptBuilder = Callable[[str, list[RetrievedChunk]], tuple[str, str] | str]
@@ -38,7 +35,7 @@ def answer(
     decision = route(question)
 
     if decision.intent == "stat_query":
-        return _answer_stat_query(question, decision)
+        return answer_stat_query(decision)
     if decision.intent == "player_biography":
         return _answer_player_biography(question, decision, retrieval_strategy=retrieval_strategy)
     if decision.intent == "freeform_query":
@@ -53,86 +50,6 @@ def render_text(result: StructuredAnswer) -> str:
         lines.append("")
         lines.extend(f"Warning: {warning}" for warning in result.warnings)
     return "\n".join(lines)
-
-
-def _answer_stat_query(question: str, decision: Any) -> StructuredAnswer:
-    stat = decision.stat or "HR"
-    tp = _resolve_time_period(decision.time_period)
-
-    if decision.player_name:
-        conn = get_duckdb()
-        result = get_player_stat(conn, decision.player_name, stat, year=decision.year)
-        if not result:
-            qualifier = f" in {decision.year}" if decision.year else ""
-            return StructuredAnswer(
-                answer=(
-                    f"No {stat} result found for {decision.player_name}{qualifier} "
-                    "in the local Lahman-derived batting data."
-                ),
-                intent=decision.intent,
-                sources=[
-                    _duckdb_source(
-                        "Player stat lookup",
-                        tables=["batting", "people"],
-                        sql=_stat_source_sql("player"),
-                    )
-                ],
-                warnings=[
-                    "No fallback leaderboard was returned because the question named a player."
-                ],
-                unsupported=True,
-                unsupported_reason="no_data",
-            )
-
-        team_str = f" ({result['team']})" if result["team"] else ""
-        return StructuredAnswer(
-            answer=f"{result['name']}{team_str} ({result['year']}): {result['stat_value']} {stat}",
-            intent=decision.intent,
-            sources=[
-                _duckdb_source(
-                    "Player stat lookup",
-                    tables=["batting", "people"],
-                    rows=[result],
-                    sql=_stat_source_sql("player"),
-                )
-            ],
-        )
-
-    if tp is not None:
-        start_year, end_year = tp
-        rows = get_stat_leaders_range(stat, start_year, end_year)
-        lines = [f"Top {stat} leaders ({start_year}-{end_year}):"]
-        for i, row in enumerate(rows[:10], 1):
-            lines.append(f"  {i}. {row['name']}: {row['stat_value']} {stat}")
-        return StructuredAnswer(
-            answer="\n".join(lines),
-            intent=decision.intent,
-            sources=[
-                _duckdb_source(
-                    f"{stat} leaderboard for {start_year}-{end_year}",
-                    tables=["batting", "people"],
-                    rows=rows,
-                    sql=_stat_source_sql("range"),
-                )
-            ],
-        )
-
-    rows = get_career_stat_leaders(stat)
-    lines = [f"All-time career {stat} leaders:"]
-    for i, row in enumerate(rows[:10], 1):
-        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {stat}")
-    return StructuredAnswer(
-        answer="\n".join(lines),
-        intent=decision.intent,
-        sources=[
-            _duckdb_source(
-                f"Career {stat} leaderboard",
-                tables=["batting", "people"],
-                rows=rows,
-                sql=_stat_source_sql("career"),
-            )
-        ],
-    )
 
 
 def _answer_player_biography(
@@ -316,19 +233,6 @@ def _answer_with_grounded_chunks(
         )
 
 
-def _resolve_time_period(tp: TimePeriod | None) -> tuple[int, int] | None:
-    if tp is None:
-        return None
-    if tp.type == TimePeriodType.DECADE and isinstance(tp.value, int):
-        start_year = 1900 + tp.value
-        return start_year, start_year + 9
-    if tp.type == TimePeriodType.RANGE and isinstance(tp.value, list) and len(tp.value) >= 2:
-        return int(tp.value[0]), int(tp.value[-1])
-    if tp.type == TimePeriodType.SINGLE and isinstance(tp.value, int):
-        return tp.value, tp.value
-    return None
-
-
 def _duckdb_source(
     label: str,
     *,
@@ -343,28 +247,6 @@ def _duckdb_source(
         sql=sql,
         rows=rows or [],
         data_manifest=compact_data_manifest(),
-    )
-
-
-def _stat_source_sql(kind: str) -> str:
-    """Return parameterized SQL visibility for deterministic stat-query audit trails."""
-    if kind == "player":
-        return (
-            "SELECT p.nameFirst, p.nameLast, b.yearID, b.teamID, <stat> AS stat_value "
-            "FROM batting b JOIN people p ON b.playerID = p.playerID "
-            "WHERE p.nameFirst || ' ' || p.nameLast = ? AND (? IS NULL OR b.yearID = ?)"
-        )
-    if kind == "range":
-        return (
-            "SELECT p.nameLast || ', ' || p.nameFirst AS name, SUM(<stat>) AS stat_value "
-            "FROM batting b JOIN people p ON b.playerID = p.playerID "
-            "WHERE b.yearID >= ? AND b.yearID <= ? GROUP BY p.nameLast, p.nameFirst "
-            "ORDER BY stat_value DESC LIMIT 10"
-        )
-    return (
-        "SELECT p.nameLast || ', ' || p.nameFirst AS name, SUM(<stat>) AS stat_value "
-        "FROM batting b JOIN people p ON b.playerID = p.playerID "
-        "GROUP BY p.nameLast, p.nameFirst ORDER BY stat_value DESC LIMIT ?"
     )
 
 

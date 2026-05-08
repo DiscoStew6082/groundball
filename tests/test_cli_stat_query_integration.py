@@ -34,6 +34,20 @@ class TestStatQueryPipeline:
         result = answer("career home run leaders")
         assert "Ruth" in result or "Babe" in result
 
+    def test_fielding_putouts_query_uses_normal_stat_answer_path(self):
+        """Fielding PO leaders should answer through the normal stat query path."""
+        result = answer("outfield putouts leaders in 1983")
+
+        assert "Top PO leaders (1983-1983):" in result
+        assert "1. Manning, Rick: 471 PO" in result
+        assert "Dawson, Andre" in result
+
+    def test_specific_outfield_putouts_query_uses_supported_dataset_position(self):
+        result = answer("center field putouts leaders in 1983")
+
+        assert "Top PO leaders (1983-1983):" in result
+        assert "1. Manning, Rick: 471 PO" in result
+
 
 class TestTimePeriodResolution:
     """Unit tests for decade/range resolution logic extracted from cli.py."""

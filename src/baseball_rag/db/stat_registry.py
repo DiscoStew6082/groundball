@@ -110,7 +110,9 @@ _REGISTRY: dict[str, StatDefinition] = {
         "ERA",
         "pitching",
         "ERA",
+        aggregate_sql_expr="27.0 * SUM({alias}.ER) / NULLIF(SUM({alias}.IPouts), 0)",
         min_sample_clause="{alias}.IPouts >= 300",
+        aggregate_min_sample_clause="SUM({alias}.IPouts) >= 300",
         higher_is_better=False,
     ),
     "WHIP": StatDefinition(
@@ -118,7 +120,11 @@ _REGISTRY: dict[str, StatDefinition] = {
         "pitching",
         None,
         sql_expr="CAST({alias}.BB + {alias}.H AS DOUBLE) / NULLIF({alias}.IPouts / 3.0, 0)",
+        aggregate_sql_expr=(
+            "CAST(SUM({alias}.BB + {alias}.H) AS DOUBLE) / NULLIF(SUM({alias}.IPouts) / 3.0, 0)"
+        ),
         min_sample_clause="{alias}.IPouts >= 300",
+        aggregate_min_sample_clause="SUM({alias}.IPouts) >= 300",
         higher_is_better=False,
     ),
     "PO": StatDefinition("PO", "fielding", "PO"),
