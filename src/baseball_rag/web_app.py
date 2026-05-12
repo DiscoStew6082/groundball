@@ -177,7 +177,7 @@ def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = 
 
 
 def respond_conversation(
-    message: str,
+    message: str | None,
     chat_history: list[dict[str, str]] | None,
     conversation: list[dict[str, Any]] | None,
     *,
@@ -186,7 +186,7 @@ def respond_conversation(
     """Handle a conversational Gradio turn and retain structured prior context."""
     chat_history = list(chat_history or [])
     conversation = list(conversation or [])
-    message = message.strip()
+    message = (message or "").strip()
     if not message:
         return chat_history, "", "", [], [], "", chat_history, conversation
 
@@ -248,11 +248,23 @@ def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
 def _display_payload(result):
     """Return answer text, table rows, source metadata, and SQL for Gradio panels."""
     payload = result.to_dict()
-    sources = payload["sources"]
+    sources = _json_safe_for_gradio(payload["sources"])
     primary_source = sources[0] if sources else {}
     rows = _rows_for_dataframe(primary_source)
     sql = primary_source.get("sql") or ""
     return payload["answer"], rows, sources, sql
+
+
+def _json_safe_for_gradio(value: Any) -> Any:
+    """Avoid file-shaped JSON objects that Gradio tries to download."""
+    if isinstance(value, list):
+        return [_json_safe_for_gradio(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            ("file_path" if key == "path" else key): _json_safe_for_gradio(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def _rows_for_dataframe(source: dict[str, Any]) -> list[Any] | dict[str, list[Any]]:

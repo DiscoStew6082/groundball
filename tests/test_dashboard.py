@@ -246,6 +246,43 @@ class TestTraceWiring:
             "data": [["Davis, Tommy", 153], ["Mays, Willie", 141]],
         }
 
+    def test_structured_query_sources_do_not_expose_gradio_file_paths(self):
+        """Source JSON must not contain file-shaped `path` values Gradio fetches."""
+        from baseball_rag.web_app import build_dashboard, respond_structured
+
+        dash = build_dashboard()
+        diagram = dash.arch_diagram
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(
+                answer=f"answered {question}",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="RBI leaders",
+                        data_manifest={
+                            "files": [
+                                {
+                                    "path": "data/Batting.csv",
+                                    "table": "batting",
+                                }
+                            ]
+                        },
+                    )
+                ],
+            )
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            _, _, sources, _ = respond_structured(
+                "who had the most RBIs in 1962",
+                diagram=diagram,
+            )
+
+        assert sources[0]["data_manifest"]["files"] == [
+            {"file_path": "data/Batting.csv", "table": "batting"}
+        ]
+
     def test_conversation_query_appends_turn_and_passes_prior_context(self):
         """The Query tab can run follow-ups with prior grounded answer context."""
         from baseball_rag.web_app import build_dashboard, respond_conversation
@@ -321,6 +358,25 @@ class TestTraceWiring:
         assert chat == chat_history
         assert chat_state == chat_history
         assert conversation == prior_turns
+        assert textbox == ""
+        assert answer == ""
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
+    def test_conversation_query_ignores_none_message(self):
+        """Clicking Ask before textbox input exists should be a harmless no-op."""
+        from baseball_rag.web_app import respond_conversation
+
+        with patch("baseball_rag.web_app._execute_for_gradio") as execute:
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = (
+                respond_conversation(None, [], [])
+            )
+
+        execute.assert_not_called()
+        assert chat == []
+        assert chat_state == []
+        assert conversation == []
         assert textbox == ""
         assert answer == ""
         assert rows == []
