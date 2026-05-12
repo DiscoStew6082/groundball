@@ -79,6 +79,7 @@ uv run python -m evals.questions --all-strategies --retrieval-only
 | `LMSTUDIO_EMBEDDING_MODEL` | `text-embedding-kalm-embedding-gemma3-12b-2511-i1` | Embedding model used for Chroma ingest/retrieval |
 | `CHROMA_PERSIST_DIR` | `data/` | Optional override for retrieval and diagnostics persist directory |
 | `BASEBALL_RAG_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue |
+| `BASEBALL_RAG_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `0` disables it |
 
 ## Running Locally
 
@@ -91,6 +92,9 @@ uv run uvicorn baseball_rag.api.server:app --reload
 
 # Web UI (port 7860)
 uv run python -m baseball_rag.web_app
+
+# Web UI with a one-hour process TTL
+uv run python -m baseball_rag.web_app --ttl-seconds 3600
 ```
 
 ## Code Quality

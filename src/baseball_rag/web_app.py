@@ -10,11 +10,14 @@ that is appended to the ArchitectureDiagram's trace history and animated.
 
 from __future__ import annotations
 
+import argparse
+import math
+import os
 import re
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import gradio as gr
 
@@ -23,6 +26,12 @@ from baseball_rag.service import render_text
 
 if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
+
+
+_TTL_ENV_VAR = "BASEBALL_RAG_WEB_APP_TTL_SECONDS"
+_DEFAULT_SERVER_NAME = "0.0.0.0"
+_DEFAULT_SERVER_PORT = 7860
+_TTL_HARD_EXIT_GRACE_SECONDS = 5.0
 
 
 # --------------------------------------------------------------------------
@@ -271,5 +280,100 @@ def build_dashboard() -> gr.Blocks:
 demo = build_dashboard()
 
 
+def _parse_ttl_seconds(raw: str | None) -> float | None:
+    """Parse a server process TTL in seconds; ``None``/empty/zero disables it."""
+    if raw is None or raw.strip() == "":
+        return None
+
+    try:
+        ttl_seconds = float(raw)
+    except ValueError as exc:
+        raise ValueError("server TTL must be a number of seconds") from exc
+
+    if not math.isfinite(ttl_seconds):
+        raise ValueError("server TTL must be finite")
+    if ttl_seconds < 0:
+        raise ValueError("server TTL must be non-negative")
+    if ttl_seconds == 0:
+        return None
+    return ttl_seconds
+
+
+def _schedule_server_ttl(
+    ttl_seconds: float | None,
+    *,
+    close_fn: Callable[[], object],
+    exit_fn: Callable[[int], object] = os._exit,
+    hard_exit_grace_seconds: float = _TTL_HARD_EXIT_GRACE_SECONDS,
+) -> threading.Timer | None:
+    """Schedule graceful server close with a hard-exit fallback."""
+    if ttl_seconds is None:
+        return None
+
+    def close_then_force_exit() -> None:
+        force_exit = threading.Timer(hard_exit_grace_seconds, lambda: exit_fn(0))
+        force_exit.daemon = True
+        force_exit.start()
+        close_fn()
+
+    timer = threading.Timer(ttl_seconds, close_then_force_exit)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def _launch_dashboard(
+    *,
+    server_name: str,
+    server_port: int,
+    ttl_seconds: float | None,
+    exit_fn: Callable[[int], object] = os._exit,
+) -> None:
+    """Launch the module-level dashboard, optionally with a process TTL."""
+    if ttl_seconds is not None:
+        print(f"* Server TTL: closing after {ttl_seconds:g} seconds.")
+        demo.launch(
+            server_name=server_name,
+            server_port=server_port,
+            prevent_thread_lock=True,
+        )
+        _schedule_server_ttl(
+            ttl_seconds,
+            close_fn=lambda: demo.close(verbose=False),
+            exit_fn=exit_fn,
+        )
+        demo.block_thread()
+        return
+
+    demo.launch(server_name=server_name, server_port=server_port)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """CLI entrypoint for ``python -m baseball_rag.web_app``."""
+    parser = argparse.ArgumentParser(description="Launch the Baseball RAG Gradio dashboard.")
+    parser.add_argument("--server-name", default=_DEFAULT_SERVER_NAME)
+    parser.add_argument("--server-port", default=_DEFAULT_SERVER_PORT, type=int)
+    parser.add_argument(
+        "--ttl-seconds",
+        default=None,
+        help=(
+            "Optional process time to live in seconds. "
+            f"May also be set with {_TTL_ENV_VAR}. Use 0 to disable."
+        ),
+    )
+    args = parser.parse_args(argv)
+    raw_ttl = args.ttl_seconds if args.ttl_seconds is not None else os.environ.get(_TTL_ENV_VAR)
+    try:
+        ttl_seconds = _parse_ttl_seconds(raw_ttl)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    _launch_dashboard(
+        server_name=args.server_name,
+        server_port=args.server_port,
+        ttl_seconds=ttl_seconds,
+    )
+
+
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    main()

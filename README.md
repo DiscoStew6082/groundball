@@ -120,6 +120,14 @@ Gradio UI:
 uv run python -m baseball_rag.web_app
 ```
 
+Give the local Gradio process a time to live when you do not want it lingering:
+
+```bash
+uv run python -m baseball_rag.web_app --ttl-seconds 3600
+```
+
+You can also set `BASEBALL_RAG_WEB_APP_TTL_SECONDS`; `0` or an unset value disables the TTL.
+
 The UI shows the answer, evidence table, source JSON, and SQL for query paths that generate SQL.
 
 ## Try These Questions
