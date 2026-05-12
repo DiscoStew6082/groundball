@@ -11,6 +11,7 @@ that is appended to the ArchitectureDiagram's trace history and animated.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import re
@@ -219,10 +220,12 @@ def build_dashboard() -> gr.Blocks:
                 for example_question in _EXAMPLE_QUESTIONS:
                     example_button = gr.Button(example_question, size="sm")
                     example_button.click(
-                        fn=lambda value=example_question: value,
+                        fn=None,
                         inputs=[],
                         outputs=[question],
+                        js=f"() => {json.dumps(example_question)}",
                         queue=False,
+                        show_progress="hidden",
                     )
 
             answer_box = gr.Textbox(label="Answer", lines=8)

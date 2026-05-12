@@ -69,6 +69,26 @@ class TestDashboardTabs:
         assert "who had the most RBIs in 1962" in button_values
         assert "what is OPS" in button_values
 
+    def test_query_examples_fill_question_client_side(self):
+        """Example question buttons fill the textbox without backend progress."""
+        config = self.dash.get_config_file()
+        question_component = next(
+            component
+            for component in config["components"]
+            if component["type"] == "textbox"
+            and component.get("props", {}).get("label") == "Question"
+        )
+        example_dependencies = [
+            dependency
+            for dependency in config["dependencies"]
+            if dependency.get("outputs") == [question_component["id"]]
+        ]
+
+        assert len(example_dependencies) == 5
+        assert all(dependency["backend_fn"] is False for dependency in example_dependencies)
+        assert all(dependency["js"] for dependency in example_dependencies)
+        assert all(dependency["show_progress"] == "hidden" for dependency in example_dependencies)
+
 
 # --------------------------------------------------------------------------
 # Phase 4.2 — Trace wiring: query tab → arch diagram
