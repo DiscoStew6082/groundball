@@ -32,6 +32,7 @@ def execute_request(
     *,
     adapter_component_id: str | None = None,
     adapter_label: str | None = None,
+    conversation: list[dict[str, Any]] | None = None,
     attach_audit: bool = False,
     attach_review: bool = False,
     audit_logger: Any = logger,
@@ -44,13 +45,13 @@ def execute_request(
 
     try:
         if adapter_component_id is None:
-            result = answer(question)
+            result = answer(question, conversation=conversation)
         else:
             with traced(
                 component_id=adapter_component_id,
                 label=adapter_label or adapter_component_id.upper(),
             ):
-                result = answer(question)
+                result = answer(question, conversation=conversation)
     except Exception:
         if owns_trace:
             finish_trace(route_type="")

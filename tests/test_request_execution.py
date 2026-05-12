@@ -71,3 +71,39 @@ def test_execute_request_attaches_audit_and_review_once():
     build_review_item.assert_called_once_with("who led MLB in vibes", structured)
     persist_review_item.assert_called_once_with(build_review_item.return_value)
     review_payload.assert_called_once_with(build_review_item.return_value)
+
+
+def test_execute_request_passes_conversation_to_answer_service():
+    """Adapters can pass prior turns without changing trace ownership."""
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": {
+                "answer": "All-time career HR leaders",
+                "intent": "stat_query",
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "label": "Career HR leaders",
+                        "rows": [
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                        ],
+                    }
+                ],
+            },
+        }
+    ]
+
+    with patch("baseball_rag.request_execution.answer") as answer:
+        answer.return_value = StructuredAnswer(answer="OK", intent="player_biography")
+
+        execution = execute_request(
+            "tell me about the second player",
+            adapter_component_id="gradio",
+            conversation=prior_turns,
+        )
+
+    assert execution.trace is not None
+    assert execution.trace.query == "tell me about the second player"
+    answer.assert_called_once_with("tell me about the second player", conversation=prior_turns)

@@ -204,6 +204,55 @@ class TestTraceWiring:
             "data": [["Davis, Tommy", 153], ["Mays, Willie", 141]],
         }
 
+    def test_conversation_query_appends_turn_and_passes_prior_context(self):
+        """The Query tab can run follow-ups with prior grounded answer context."""
+        from baseball_rag.web_app import build_dashboard, respond_conversation
+
+        dash = build_dashboard()
+        diagram = dash.arch_diagram
+        prior_turns = [
+            {
+                "question": "career home run leaders",
+                "answer": {
+                    "answer": "All-time career HR leaders",
+                    "intent": "stat_query",
+                    "sources": [
+                        {
+                            "type": "duckdb",
+                            "label": "Career HR leaders",
+                            "rows": [{"name": "Bonds, Barry"}, {"name": "Aaron, Hank"}],
+                        }
+                    ],
+                },
+            }
+        ]
+        chat_history = [{"role": "user", "content": "career home run leaders"}]
+
+        def fake_answer(question: str, **kwargs):
+            assert question == "tell me about the second player"
+            assert kwargs["conversation"] == prior_turns
+            return StructuredAnswer(answer="Hank Aaron bio", intent="player_biography")
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            chat, textbox, answer, rows, sources, sql, conversation = respond_conversation(
+                "tell me about the second player",
+                chat_history,
+                prior_turns,
+                diagram=diagram,
+            )
+
+        assert textbox == ""
+        assert chat[-2:] == [
+            {"role": "user", "content": "tell me about the second player"},
+            {"role": "assistant", "content": "Hank Aaron bio"},
+        ]
+        assert conversation[-1]["question"] == "tell me about the second player"
+        assert conversation[-1]["answer"]["intent"] == "player_biography"
+        assert answer == "Hank Aaron bio"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
     def test_trace_shows_correct_route_type(self):
         """Trace correctly records stat_query vs general_explanation route."""
         from baseball_rag.arch.tracing import finish_trace, start_trace, traced

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class QueryRequest(BaseModel):
     question: str
+    conversation: list[dict[str, Any]] | None = None
 
 
 class QueryResponse(BaseModel):
@@ -52,6 +53,7 @@ def query(req: QueryRequest):
         req.question,
         adapter_component_id="api",
         adapter_label="FastAPI Query",
+        conversation=req.conversation,
         attach_audit=True,
         attach_review=True,
         audit_logger=logger,

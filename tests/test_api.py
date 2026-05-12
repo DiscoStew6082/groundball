@@ -1,8 +1,11 @@
 """Tests for FastAPI server — Phases 7.1 and 7.2."""
 
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from baseball_rag.api.server import app
+from baseball_rag.provenance import StructuredAnswer
 
 client = TestClient(app)
 
@@ -63,6 +66,44 @@ class TestApi:
         assert audit["sql_visible"] is True
         assert audit["latency_ms"] >= 0
         assert audit["query_id"] == data["metadata"]["query_id"]
+
+    def test_query_endpoint_accepts_conversation_context(self):
+        """API callers can continue a grounded conversation across turns."""
+        prior_turns = [
+            {
+                "question": "career home run leaders",
+                "answer": {
+                    "answer": "All-time career HR leaders",
+                    "intent": "stat_query",
+                    "sources": [
+                        {
+                            "type": "duckdb",
+                            "label": "Career HR leaders",
+                            "rows": [{"name": "Bonds, Barry"}, {"name": "Aaron, Hank"}],
+                        }
+                    ],
+                },
+            }
+        ]
+
+        class FakeExecution:
+            answer = StructuredAnswer(answer="Hank Aaron bio", intent="player_biography")
+
+        with patch("baseball_rag.request_execution.execute_request") as execute:
+            execute.return_value = FakeExecution()
+
+            response = client.post(
+                "/query",
+                json={
+                    "question": "tell me about the second player",
+                    "conversation": prior_turns,
+                },
+            )
+
+        assert response.status_code == 200
+        execute.assert_called_once()
+        assert execute.call_args.kwargs["conversation"] == prior_turns
+        assert response.json()["answer"] == "Hank Aaron bio"
 
     def test_query_endpoint_surfaces_review_item_for_unsupported_answer(
         self, tmp_path, monkeypatch

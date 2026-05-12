@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from baseball_rag.conversation import resolve_followup
 from baseball_rag.db import (
     init_db,
 )
@@ -29,18 +30,36 @@ def answer(
     question: str,
     *,
     retrieval_strategy: str | RetrievalStrategy | None = None,
+    conversation: list[dict[str, Any]] | None = None,
 ) -> StructuredAnswer:
     """Answer a question with explicit grounding metadata."""
     init_db()
-    decision = route(question)
+    resolution = resolve_followup(question, conversation)
+    routed_question = resolution.resolved_question
+    decision = route(routed_question)
 
     if decision.intent == "stat_query":
-        return answer_stat_query(decision)
-    if decision.intent == "player_biography":
-        return _answer_player_biography(question, decision, retrieval_strategy=retrieval_strategy)
-    if decision.intent == "freeform_query":
-        return _answer_freeform(question, decision)
-    return _answer_general(question, decision, retrieval_strategy=retrieval_strategy)
+        result = answer_stat_query(decision)
+    elif decision.intent == "player_biography":
+        result = _answer_player_biography(
+            routed_question,
+            decision,
+            retrieval_strategy=retrieval_strategy,
+        )
+    elif decision.intent == "freeform_query":
+        result = _answer_freeform(routed_question, decision)
+    else:
+        result = _answer_general(routed_question, decision, retrieval_strategy=retrieval_strategy)
+
+    if resolution.source_turn is not None:
+        result.metadata["original_question"] = question
+        result.metadata["context_question"] = routed_question
+        result.metadata["context_source"] = resolution.source_turn
+    if not result.unsupported and resolution.referenced_player_name is not None:
+        result.metadata["context_player_name"] = resolution.referenced_player_name
+    elif not result.unsupported and decision.intent == "player_biography" and decision.player_name:
+        result.metadata["context_player_name"] = decision.player_name
+    return result
 
 
 def render_text(result: StructuredAnswer) -> str:

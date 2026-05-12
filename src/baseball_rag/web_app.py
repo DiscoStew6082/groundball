@@ -137,13 +137,17 @@ def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecuti
 
 
 def _execute_for_gradio(
-    query: str, *, diagram: "ArchitectureDiagram | None" = None
+    query: str,
+    *,
+    diagram: "ArchitectureDiagram | None" = None,
+    conversation: list[dict[str, Any]] | None = None,
 ) -> RequestExecution:
     """Run one Gradio request and optionally animate its trace."""
     execution = execute_request(
         query,
         adapter_component_id="gradio",
         adapter_label="Gradio Query",
+        conversation=conversation,
     )
     if diagram is not None:
         _animate_execution(diagram, execution)
@@ -169,6 +173,34 @@ def respond(
 def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = None):
     """Return answer text, evidence rows, source metadata, and SQL for Gradio."""
     result = _execute_for_gradio(message, diagram=diagram).answer
+    return _display_payload(result)
+
+
+def respond_conversation(
+    message: str,
+    chat_history: list[dict[str, str]] | None,
+    conversation: list[dict[str, Any]] | None,
+    *,
+    diagram: "ArchitectureDiagram | None" = None,
+):
+    """Handle a conversational Gradio turn and retain structured prior context."""
+    chat_history = list(chat_history or [])
+    conversation = list(conversation or [])
+    execution = _execute_for_gradio(message, diagram=diagram, conversation=conversation)
+    result = execution.answer
+    chat_history.extend(
+        [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": render_text(result)},
+        ]
+    )
+    conversation.append({"question": message, "answer": result.to_dict()})
+    answer_text, rows, sources, sql = _display_payload(result)
+    return chat_history, "", answer_text, rows, sources, sql, conversation
+
+
+def _display_payload(result):
+    """Return answer text, table rows, source metadata, and SQL for Gradio panels."""
     payload = result.to_dict()
     sources = payload["sources"]
     primary_source = sources[0] if sources else {}
@@ -210,6 +242,8 @@ def build_dashboard() -> gr.Blocks:
         gr.Markdown("## ⚾ Baseball RAG — Query Engine & Architecture Explorer")
 
         with gr.Tab("Query"):
+            conversation_state = gr.State([])
+            chat = gr.Chatbot(label="Conversation", height=260)
             with gr.Row():
                 question = gr.Textbox(
                     label="Question",
@@ -236,14 +270,24 @@ def build_dashboard() -> gr.Blocks:
             sql = gr.Code(label="SQL", language="sql")
 
             submit.click(
-                fn=lambda msg: respond_structured(msg, diagram=arch_diagram),
-                inputs=[question],
-                outputs=[answer_box, table, sources, sql],
+                fn=lambda msg, chat_history, conversation: respond_conversation(
+                    msg,
+                    chat_history,
+                    conversation,
+                    diagram=arch_diagram,
+                ),
+                inputs=[question, chat, conversation_state],
+                outputs=[chat, question, answer_box, table, sources, sql, conversation_state],
             )
             question.submit(
-                fn=lambda msg: respond_structured(msg, diagram=arch_diagram),
-                inputs=[question],
-                outputs=[answer_box, table, sources, sql],
+                fn=lambda msg, chat_history, conversation: respond_conversation(
+                    msg,
+                    chat_history,
+                    conversation,
+                    diagram=arch_diagram,
+                ),
+                inputs=[question, chat, conversation_state],
+                outputs=[chat, question, answer_box, table, sources, sql, conversation_state],
             )
 
         with gr.Tab("Architecture"):
