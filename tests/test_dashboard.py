@@ -131,6 +131,7 @@ class TestDashboardTabs:
         assert len(query_dependencies) == 1
         for dependency in query_dependencies:
             assert len(dependency["targets"]) == 2
+            assert question_id in dependency["inputs"]
             assert chatbot_id not in dependency["inputs"]
             assert chatbot_id in dependency["outputs"]
             assert dependency["queue"] is True
@@ -341,7 +342,7 @@ class TestTraceWiring:
                 diagram=diagram,
             )
 
-        assert textbox == "who had the most RBIs in 1962"
+        assert textbox == "tell me about the second player"
         assert chat[-2:] == [
             {"role": "user", "content": "tell me about the second player"},
             {"role": "assistant", "content": "Hank Aaron bio"},

@@ -203,7 +203,7 @@ def respond_conversation(
     answer_text, rows, sources, sql = _display_payload(result)
     return (
         chat_history,
-        _DEFAULT_QUESTION,
+        message,
         answer_text,
         rows,
         sources,
