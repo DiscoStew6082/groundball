@@ -134,6 +134,25 @@ def test_execute_stat_query_uses_pitching_table_for_era():
     assert "SUM(pi.IPouts) >= 300" in result.sql
 
 
+@pytest.mark.parametrize("stat", ["ERA", "WHIP"])
+def test_execute_stat_query_orders_pitching_rate_stats_lowest_first(stat):
+    result = execute_stat_query(stat, start_year=1968, end_year=1968)
+
+    values = [row["stat_value"] for row in result.rows]
+    assert values == sorted(values)
+    assert result.tables == ["pitching", "people"]
+    assert "SUM(pi.IPouts) >= 300" in result.sql
+    assert "ORDER BY stat_value ASC" in result.sql
+
+
+def test_execute_stat_query_avg_range_uses_minimum_at_bats_guard():
+    result = execute_stat_query("AVG", start_year=1894, end_year=1894)
+
+    assert result.rows
+    assert all(0 < row["stat_value"] < 1 for row in result.rows)
+    assert "SUM(b.AB) >= 100" in result.sql
+
+
 def test_execute_stat_query_player_ops_uses_executed_guarded_sql_for_provenance():
     result = execute_stat_query("OPS", player_name="Ted Williams", year=1941)
 

@@ -106,6 +106,133 @@ class TestApi:
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "ambiguous"
 
+    def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post(
+            "/query",
+            json={"question": "who had most RBIs between 1980-1970"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "ambiguous"
+        assert data["review"]["reason"] == "ambiguous"
+        assert "1980-1970" in data["answer"]
+
+    def test_query_endpoint_rejects_years_outside_structured_coverage(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post(
+            "/query",
+            json={"question": "who had the most HRs in 2026"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "no_data"
+        assert data["review"]["reason"] == "unsupported"
+        assert "1871-2025" in data["answer"]
+
+    def test_query_endpoint_rejects_bare_current_century_decade(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post("/query", json={"question": "most HRs in the 20s"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "ambiguous"
+        assert data["review"]["reason"] == "ambiguous"
+        assert "20s" in data["answer"]
+
+    def test_query_endpoint_allows_explicit_historical_decade(self):
+        response = client.post("/query", json={"question": "most HRs in the 1920s"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is False
+        assert "Top HR leaders (1920-1929):" in data["answer"]
+        assert "Ruth, Babe: 467 HR" in data["answer"]
+
+    def test_query_endpoint_resolves_relative_last_year_from_configured_clock(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+        monkeypatch.setenv("BASEBALL_RAG_CURRENT_YEAR", "2025")
+
+        response = client.post(
+            "/query",
+            json={"question": "how many HRs did Aaron Judge have last year"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is False
+        assert data["review"] is None
+        assert "Judge, Aaron" in data["answer"]
+        assert "(2024): 58 HR" in data["answer"]
+
+    def test_query_endpoint_preserves_pitching_rate_stat_provenance(self):
+        response = client.post("/query", json={"question": "lowest ERA in 1968"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is False
+        source = data["sources"][0]
+        assert source["type"] == "duckdb"
+        assert source["rows"][0]["name"] == "Gibson, Bob"
+        assert "FROM pitching pi" in source["sql"]
+        assert "SUM(pi.IPouts) >= 300" in source["sql"]
+        assert "ORDER BY stat_value ASC" in source["sql"]
+
+    def test_query_endpoint_rejects_ambiguous_last_name_player_stat(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post(
+            "/query",
+            json={"question": "how many home runs did Williams have in 1941"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "ambiguous"
+        assert data["review_reason"] == "ambiguous"
+        assert data["review"]["reason"] == "ambiguous"
+
+    def test_query_endpoint_handles_accented_suffix_player_stat(self):
+        response = client.post(
+            "/query",
+            json={"question": "how many HRs did Ronald Acuña Jr. have in 2023"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is False
+        assert "Acuña, Ronald" in data["answer"]
+        assert "(2023): 41 HR" in data["answer"]
+
+    def test_query_endpoint_handles_possessive_player_stat_with_leading_words(self):
+        response = client.post("/query", json={"question": "what is Aaron Judge's HR in 2024"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent"] == "stat_query"
+        assert data["unsupported"] is False
+        assert "Judge, Aaron" in data["answer"]
+        assert "(2024): 58 HR" in data["answer"]
+
     def test_review_queue_endpoint_resolves_item(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
         response = client.post(

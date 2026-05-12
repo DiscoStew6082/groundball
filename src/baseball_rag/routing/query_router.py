@@ -38,6 +38,9 @@ from baseball_rag.db.stat_registry import (
 )
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
 
+_NAME_TOKEN_RE = r"[^\W\d_](?:[^\W\d_]|[.'-])*"
+_NAME_RE = rf"{_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})*"
+
 
 class TimePeriodType(str, Enum):
     """Discriminated union tag for time period extraction.
@@ -375,7 +378,10 @@ def _heuristic_route(question: str) -> RouteResult:
     is_leaderboard = bool(leader_re.search(lower_q))
 
     # Extract explicit ranges before single years.
-    range_match = re.search(r"\b(20\d{2}|19\d{2})\s*[-–]\s*(20\d{2}|19\d{2})\b", question)
+    range_match = re.search(
+        r"\b(20\d{2}|19\d{2}|18\d{2})\s*[-–]\s*(20\d{2}|19\d{2}|18\d{2})\b",
+        question,
+    )
     year_range: list[int] | None = None
     if range_match:
         year_range = [int(range_match.group(1)), int(range_match.group(2))]
@@ -396,19 +402,23 @@ def _heuristic_route(question: str) -> RouteResult:
         "nineties": 90,
     }
     decade: int | None = None
-    m = re.search(r"\b((?:19)?(\d{2})s)\b", question, re.IGNORECASE)
-    if m:
-        decade = int(m.group(2))
+    full_decade_match = re.search(r"\b((?:18|19|20)\d0)s\b", question, re.IGNORECASE)
+    if full_decade_match:
+        decade = int(full_decade_match.group(1))
     else:
-        # Try word forms: "seventies", "eighties", etc.
-        for words, val in decade_words.items():
-            if words in lower_q:
-                decade = val
-                break
+        m = re.search(r"\b((?:19)?(\d{2})s)\b", question, re.IGNORECASE)
+        if m:
+            decade = int(m.group(2))
+        else:
+            # Try word forms: "seventies", "eighties", etc.
+            for words, val in decade_words.items():
+                if words in lower_q:
+                    decade = val
+                    break
 
     # Extract a 4-digit year as last resort (fallback only — prefer decade above)
     year: int | None = None
-    m = re.search(r"\b(20\d{2}|19\d{2})\b", question)
+    m = re.search(r"\b(20\d{2}|19\d{2}|18\d{2})\b", question)
     if m:
         year = int(m.group(1))
 
@@ -420,6 +430,11 @@ def _heuristic_route(question: str) -> RouteResult:
     # Build the most specific time_period available
     if year_range is not None:
         time_period = TimePeriod(type=TimePeriodType.RANGE, value=year_range)
+    elif _looks_like_last_year(lower_q):
+        time_period = TimePeriod(
+            type=TimePeriodType.RELATIVE,
+            value={"direction": "past", "unit": "year", "count": 1},
+        )
     elif decade is not None:
         time_period = TimePeriod(type=TimePeriodType.DECADE, value=decade)
     elif year is not None:
@@ -435,6 +450,10 @@ def _heuristic_route(question: str) -> RouteResult:
         player_name=player_name,
         raw_question=question,
     )
+
+
+def _looks_like_last_year(lower_q: str) -> bool:
+    return "last year" in lower_q or "last season" in lower_q
 
 
 def _extract_position_heuristic(lower_q: str) -> str | None:
@@ -517,21 +536,24 @@ def _extract_player_name_heuristic(question: str) -> str | None:
     """Extract common two-word player-name patterns for stat questions."""
     import re
 
-    possessive = re.search(r"\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+)'s\b", question)
+    possessive = re.search(rf"\b({_NAME_RE})'s\b", question)
     if possessive:
-        return possessive.group(1)
+        candidate = _rightmost_name_phrase(possessive.group(1))
+        if candidate is not None:
+            return candidate
 
     did_pattern = re.search(
-        r"\b(?:did|does)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+?)\s+"
+        rf"\b(?:did|does)\s+({_NAME_RE})\s+"
         r"(?:hit|have|get|record)\b",
         question,
-        re.IGNORECASE,
     )
     if did_pattern:
-        return did_pattern.group(1)
+        candidate = did_pattern.group(1)
+        if _looks_like_player_name(candidate):
+            return candidate
 
     compact_stat_pattern = re.search(
-        r"^\s*([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+?)\s+"
+        rf"^\s*({_NAME_RE})\s+"
         r"(?i:"
         r"rbi|rbis|runs\s+batted\s+in|hr|hrs|home\s+runs?|homers?|"
         r"sb|stolen\s+bases?|avg|batting\s+average|era|whip"
@@ -539,7 +561,9 @@ def _extract_player_name_heuristic(question: str) -> str | None:
         question,
     )
     if compact_stat_pattern:
-        return compact_stat_pattern.group(1)
+        candidate = compact_stat_pattern.group(1)
+        if _looks_like_player_name(candidate):
+            return candidate
 
     return None
 
@@ -547,12 +571,12 @@ def _extract_player_name_heuristic(question: str) -> str | None:
 def _extract_player_bio_name_heuristic(question: str) -> str | None:
     """Extract explicit full-name biography questions without LLM routing."""
     patterns = (
-        r"^\s*who\s+was\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+)\??\s*$",
-        r"^\s*tell\s+me\s+about\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)+)\.?\s*$",
+        rf"^\s*who\s+was\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+)\??\s*$",
+        rf"^\s*tell\s+me\s+about\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+)\.?\s*$",
     )
     for pattern in patterns:
         match = re.search(pattern, question)
-        if match:
+        if match and _looks_like_player_name(match.group(1)):
             return match.group(1)
     return None
 
@@ -564,3 +588,26 @@ def _looks_like_player_bio_followup(question: str) -> bool:
         and "play" in lower_q
         and any(pronoun in lower_q for pronoun in (" he ", " she ", " they ", " this player"))
     )
+
+
+def _rightmost_name_phrase(text: str) -> str | None:
+    tokens = text.split()
+    name_tokens: list[str] = []
+    for token in reversed(tokens):
+        if not _looks_like_name_token(token):
+            break
+        name_tokens.append(token)
+    if not name_tokens:
+        return None
+    candidate = " ".join(reversed(name_tokens))
+    return candidate if _looks_like_player_name(candidate) else None
+
+
+def _looks_like_player_name(value: str) -> bool:
+    tokens = value.split()
+    return bool(tokens) and all(_looks_like_name_token(token) for token in tokens)
+
+
+def _looks_like_name_token(value: str) -> bool:
+    stripped = value.strip("'-.")
+    return bool(stripped) and stripped[0].isupper()

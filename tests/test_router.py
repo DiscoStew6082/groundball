@@ -37,6 +37,20 @@ class TestRouter:
         assert result.stat == "PO"
         assert result.position == "OF"
 
+    def test_fielding_position_detection_maps_corner_outfield_to_dataset_granularity(self):
+        result = route("left field putouts leaders in 1983")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "PO"
+        assert result.position == "OF"
+
+    def test_fielding_position_detection_preserves_infield_position(self):
+        result = route("shortstop putouts leaders in 1983")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "PO"
+        assert result.position == "SS"
+
     def test_original_question_preserved(self):
         """raw_question always contains original text."""
         q = "who led MLB in RBI in 1957"
@@ -64,6 +78,15 @@ class TestRouter:
         assert result.time_period is not None
         assert result.time_period.type.value == "decade"
         assert result.time_period.value == 80
+
+    def test_explicit_decade_preserves_century(self):
+        result = route("most HRs in the 1920s")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "HR"
+        assert result.time_period is not None
+        assert result.time_period.type.value == "decade"
+        assert result.time_period.value == 1920
 
     def test_range_1960_to_1980(self):
         """'between 1960-1980' → type=range, value=[1960, 1980]."""
@@ -99,6 +122,12 @@ class TestRouter:
 
         assert result.intent == "player_biography"
         assert result.player_name == "Matt Olson"
+
+    def test_generic_lowercase_bio_question_does_not_route_as_named_player(self):
+        result = route("who was the best hitter")
+
+        assert result.intent != "player_biography"
+        assert result.player_name is None
 
     def test_stat_definition_routes_as_general_explanation(self):
         result = route("what is OPS")
