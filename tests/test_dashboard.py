@@ -144,6 +144,39 @@ class TestDashboardTabs:
             ]
             assert len(state_inputs) == 2
 
+    def test_query_handler_records_trace_without_animating_architecture_components(self):
+        """Ask records Architecture history without side-effecting Architecture UI outputs."""
+        before_html = self.dash.arch_diagram.diagram_html.value
+        before_footer = self.dash.arch_diagram.footer_html.value
+        self.dash.arch_diagram.trace_history.clear()
+
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
+                "what is OPS", [], []
+            )
+
+        assert textbox == "what is OPS"
+        assert answer == "answered what is OPS"
+        assert chat[-1]["content"] == "answered what is OPS"
+        assert chat_state == chat
+        assert conversation[-1]["question"] == "what is OPS"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+        assert len(self.dash.arch_diagram.trace_history) == 1
+        assert self.dash.arch_diagram.trace_history[0].query == "what is OPS"
+        assert self.dash.arch_diagram.diagram_html.value == before_html
+        assert self.dash.arch_diagram.footer_html.value == before_footer
+
 
 # --------------------------------------------------------------------------
 # Phase 4.2 — Trace wiring: query tab → arch diagram
@@ -348,6 +381,7 @@ class TestTraceWiring:
             {"role": "assistant", "content": "Hank Aaron bio"},
         ]
         assert chat_state == chat
+        assert chat_state is not chat
         assert conversation[-1]["question"] == "tell me about the second player"
         assert conversation[-1]["answer"]["intent"] == "player_biography"
         assert answer == "Hank Aaron bio"

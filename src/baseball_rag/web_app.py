@@ -137,10 +137,22 @@ def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecuti
             diagram.animate_trace(trace)
 
 
+def _record_execution_trace(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
+    """Retain the completed trace without mutating Architecture-tab components."""
+    trace = execution.trace
+    if trace is None or not hasattr(diagram, "trace_history"):
+        return
+    with _anim_lock:
+        diagram.trace_history.append(trace)
+        if len(diagram.trace_history) > diagram.max_history:
+            diagram.trace_history.pop(0)
+
+
 def _execute_for_gradio(
     query: str,
     *,
     diagram: "ArchitectureDiagram | None" = None,
+    animate_diagram: bool = True,
     conversation: list[dict[str, Any]] | None = None,
 ) -> RequestExecution:
     """Run one Gradio request and optionally animate its trace."""
@@ -151,7 +163,10 @@ def _execute_for_gradio(
         conversation=conversation,
     )
     if diagram is not None:
-        _animate_execution(diagram, execution)
+        if animate_diagram:
+            _animate_execution(diagram, execution)
+        else:
+            _record_execution_trace(diagram, execution)
     return execution
 
 
@@ -183,6 +198,7 @@ def respond_conversation(
     conversation: list[dict[str, Any]] | None,
     *,
     diagram: "ArchitectureDiagram | None" = None,
+    animate_diagram: bool = True,
 ):
     """Handle a conversational Gradio turn and retain structured prior context."""
     chat_history = list(chat_history or [])
@@ -191,7 +207,12 @@ def respond_conversation(
     if not message:
         return chat_history, _DEFAULT_QUESTION, "", [], [], "", chat_history, conversation
 
-    execution = _execute_for_gradio(message, diagram=diagram, conversation=conversation)
+    execution = _execute_for_gradio(
+        message,
+        diagram=diagram,
+        animate_diagram=animate_diagram,
+        conversation=conversation,
+    )
     result = execution.answer
     chat_history.extend(
         [
@@ -208,8 +229,8 @@ def respond_conversation(
         rows,
         sources,
         sql,
-        chat_history,
-        conversation,
+        list(chat_history),
+        list(conversation),
     )
 
 
@@ -345,6 +366,7 @@ def build_dashboard() -> gr.Blocks:
                     chat_history,
                     conversation,
                     diagram=arch_diagram,
+                    animate_diagram=False,
                 )
 
             gr.on(
