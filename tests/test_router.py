@@ -16,6 +16,15 @@ class TestRouter:
         result = route("most home runs 1977")
         assert result.year == 1977
 
+    def test_year_variants_spelled_nineteen_twenty_five(self):
+        """Spoken four-digit years parse as single-season filters."""
+        result = route("How many homers did Babe Ruth have in nineteen twenty-five?")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "HR"
+        assert result.player_name == "Babe Ruth"
+        assert result.year == 1925
+
     def test_unknown_year_not_required(self):
         """Stat query without a year still routes correctly."""
         result = route("career home run leaders")

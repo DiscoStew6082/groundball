@@ -355,6 +355,43 @@ class TestTraceWiring:
         assert sources == []
         assert sql == ""
 
+    def test_conversation_query_answers_pronoun_followup_with_spelled_year(self):
+        """The submitted follow-up stays visible and answers the resolved player-year stat."""
+        from baseball_rag.web_app import respond_conversation
+
+        question = "How many homers did he have in nineteen twenty-five?"
+        chat_history = [
+            {"role": "user", "content": "who was Babe Ruth"},
+            {"role": "assistant", "content": "Babe Ruth biography"},
+        ]
+        prior_turns = [
+            {
+                "question": "who was Babe Ruth",
+                "answer": {
+                    "answer": "Babe Ruth biography",
+                    "intent": "player_biography",
+                    "metadata": {"context_player_name": "Babe Ruth"},
+                    "sources": [{"type": "system", "label": "LLM memory", "rows": []}],
+                },
+            }
+        ]
+
+        chat, textbox, answer, rows, sources, sql, chat_state, conversation = respond_conversation(
+            question, chat_history, prior_turns
+        )
+
+        assert chat[-2]["content"] == question
+        assert textbox == question
+        assert chat_state == chat
+        assert conversation[-1]["question"] == question
+        assert "Ruth, Babe" in answer
+        assert "(1925)" in answer
+        assert "25 HR" in answer
+        assert rows["data"][0][1] == 1925
+        assert rows["data"][0][3] == 25
+        assert sources[0]["rows"][0]["year"] == 1925
+        assert sql
+
     def test_conversation_query_ignores_blank_messages(self):
         """Blank messages must not run a query and should restore a runnable default."""
         from baseball_rag.web_app import respond_conversation
