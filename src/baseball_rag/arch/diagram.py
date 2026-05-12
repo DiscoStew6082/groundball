@@ -118,7 +118,24 @@ _DIAGRAM_CSS = """
 }
 
 #skip-btn { font-size: 11px; padding: 2px 10px; }
+#arch-select-bridge { display: none !important; }
 """
+
+_SELECTION_BRIDGE_ONCLICK = (
+    "(function(componentId){"
+    "var bridge=document.getElementById('arch-select-bridge');"
+    "if(!bridge)return;"
+    "var input=bridge.querySelector('textarea,input');"
+    "if(!input)return;"
+    "var descriptor=Object.getOwnPropertyDescriptor(input.constructor.prototype,'value');"
+    "if(descriptor&&descriptor.set){descriptor.set.call(input,componentId||'');}"
+    "else{input.value=componentId||'';}"
+    "input.dispatchEvent(new Event('input',{bubbles:true}));"
+    "input.dispatchEvent(new Event('change',{bubbles:true}));"
+    "})"
+)
+
+_SELECTION_BRIDGE_STYLE = "<style>#arch-select-bridge{display:none!important;}</style>"
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +160,7 @@ def _card_html(comp: DiagramComponent, extra_cls: str = "") -> str:
     return f"""
 <div class="arch-card {extra_cls}"
      id="card-{comp.id}"
-     onclick="select_component('{comp.id}')">
+     onclick="{_SELECTION_BRIDGE_ONCLICK}('{comp.id}')">
   <div class="card-id'>{status_emoji} {comp.id}</div>
   <div class="card-body">{comp.label}</div>
 </div>"""
@@ -380,7 +397,7 @@ class ArchitectureDiagram(gr.Blocks):
                 f"</div>"
             )
 
-        return "<div id='arch-diagram-inner'>" + "".join(rows) + "</div>"
+        return "<div id='arch-diagram-inner'>" + "".join(rows) + "</div>" + _SELECTION_BRIDGE_STYLE
 
     def _build_detail_html(self, component_id: str | None = None) -> str:
         """Render the detail panel HTML for *component_id* (or blank placeholder)."""
@@ -449,7 +466,13 @@ class ArchitectureDiagram(gr.Blocks):
 
         # Expose Python methods to JS via a small bridging approach using
         # gr.State and change events.  We use a hidden Textbox as the bridge.
-        self._js_bridge = gr.Textbox(visible=False, value="")
+        self._js_bridge = gr.Textbox(
+            visible=True,
+            value="",
+            elem_id="arch-select-bridge",
+            show_label=False,
+            container=False,
+        )
 
         def handle_js_select(raw: str) -> Any:
             if raw:

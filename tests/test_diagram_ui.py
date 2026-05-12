@@ -69,6 +69,15 @@ class TestDiagramRendersAllLayers:
         assert "cli" in html
         assert "api-server" in html
 
+    def test_component_cards_install_selection_bridge_function(self):
+        """Rendered cards include the JS bridge needed by their onclick handlers."""
+        html = self.diagram._build_diagram_html()
+
+        assert 'onclick="(function(componentId)' in html
+        assert "arch-select-bridge" in html
+        assert "display:none!important" in html
+        assert "dispatchEvent" in html
+
     def test_routing_layer_shows_query_router(self):
         """Routing layer shows the query-router component."""
         html = self.diagram._build_diagram_html()
