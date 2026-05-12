@@ -207,7 +207,7 @@ class TestGradio:
         assert calls[0]["ttl_seconds"] is None
 
     def test_dev_main_uses_short_local_defaults(self, monkeypatch):
-        """The short UI command starts local QA server defaults."""
+        """The short UI command starts local server defaults and waits for user exit."""
         calls = []
 
         monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
@@ -218,7 +218,7 @@ class TestGradio:
             {
                 "server_name": "127.0.0.1",
                 "server_port": 7861,
-                "ttl_seconds": 300.0,
+                "ttl_seconds": None,
             }
         ]
 
@@ -226,12 +226,12 @@ class TestGradio:
         """The short UI command still honors env-configured TTL values."""
         calls = []
 
-        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "0")
+        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "300")
         monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
 
         web_app.dev_main([])
 
-        assert calls[0]["ttl_seconds"] is None
+        assert calls[0]["ttl_seconds"] == 300.0
 
     def test_project_exposes_short_ui_script(self):
         """pyproject exposes a memorable command for local browser QA."""

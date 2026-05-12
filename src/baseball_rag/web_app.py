@@ -34,7 +34,6 @@ _DEFAULT_SERVER_NAME = "0.0.0.0"
 _DEFAULT_SERVER_PORT = 7860
 _DEV_SERVER_NAME = "127.0.0.1"
 _DEV_SERVER_PORT = 7861
-_DEV_TTL_SECONDS = "300"
 _TTL_HARD_EXIT_GRACE_SECONDS = 5.0
 
 
@@ -402,12 +401,12 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def dev_main(argv: list[str] | None = None) -> None:
-    """Short local UI entrypoint for browser QA."""
+    """Short local UI entrypoint that runs until the user exits it."""
     _main_with_defaults(
         argv,
         default_server_name=_DEV_SERVER_NAME,
         default_server_port=_DEV_SERVER_PORT,
-        default_ttl_seconds=_DEV_TTL_SECONDS,
+        default_ttl_seconds=None,
     )
 
 

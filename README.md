@@ -120,16 +120,16 @@ Gradio UI:
 uv run baseball-rag-ui
 ```
 
-The short UI command binds to `127.0.0.1:7861` and exits after 5 minutes. Override the
-TTL when you want a longer manual session:
+The short UI command binds to `127.0.0.1:7861` and runs until you stop it with
+Ctrl-C. Add a TTL only for short smoke tests where you want the process to exit
+automatically:
 
 ```bash
-uv run baseball-rag-ui --ttl-seconds 900
+uv run baseball-rag-ui --ttl-seconds 300
 ```
 
-You can also set `BASEBALL_RAG_WEB_APP_TTL_SECONDS`; `0` disables the TTL. If the
-variable is unset, `baseball-rag-ui` uses its 5-minute default while
-`python -m baseball_rag.web_app` runs without a TTL.
+You can also set `BASEBALL_RAG_WEB_APP_TTL_SECONDS`; `0` or an unset value disables
+the TTL.
 
 The UI shows the answer, evidence table, source JSON, and SQL for query paths that generate SQL.
 
