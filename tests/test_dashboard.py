@@ -116,10 +116,14 @@ class TestDashboardTabs:
             and dependency["targets"][0][1] in {"click", "submit"}
         ]
 
-        assert len(query_dependencies) == 2
+        assert len(query_dependencies) == 1
         for dependency in query_dependencies:
+            assert len(dependency["targets"]) == 2
             assert chatbot_id not in dependency["inputs"]
             assert chatbot_id in dependency["outputs"]
+            assert dependency["queue"] is True
+            assert dependency["show_progress"] == "hidden"
+            assert dependency["trigger_mode"] == "once"
             state_inputs = [
                 component_id
                 for component_id in dependency["inputs"]

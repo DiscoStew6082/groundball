@@ -1,5 +1,6 @@
 """Tests for pipeline tracing — Phase 2."""
 
+import threading
 from datetime import datetime
 
 import pytest
@@ -150,6 +151,72 @@ class TestTracedContextManager:
         trace = finish_trace()
         assert len(trace.stages) == 2
         assert [s.component_id for s in trace.stages] == ["outer", "inner"]
+
+    def test_sequential_traces_keep_call_order(self):
+        """Sibling traced blocks should be recorded in the order they ran."""
+        start_trace("sequential query")
+        with traced(component_id="first", label="First"):
+            pass
+        with traced(component_id="second", label="Second"):
+            pass
+
+        trace = finish_trace()
+
+        assert [s.component_id for s in trace.stages] == ["first", "second"]
+
+    def test_trace_depth_is_thread_isolated(self):
+        """Finishing a trace in one worker must not clear another worker's depth stack."""
+        first_entered = threading.Event()
+        second_finished = threading.Event()
+        errors: list[BaseException] = []
+        traces: list[PipelineTrace] = []
+
+        def record_error(exc: BaseException) -> None:
+            errors.append(exc)
+
+        def first_worker() -> None:
+            try:
+                start_trace("first query")
+                with traced(component_id="first", label="First"):
+                    first_entered.set()
+                    assert second_finished.wait(timeout=5)
+                trace = finish_trace(route_type="stat_query")
+                assert trace is not None
+                traces.append(trace)
+            except BaseException as exc:  # pragma: no cover - reported below
+                record_error(exc)
+            finally:
+                finish_trace("")
+
+        def second_worker() -> None:
+            try:
+                assert first_entered.wait(timeout=5)
+                start_trace("second query")
+                with traced(component_id="second", label="Second"):
+                    pass
+                trace = finish_trace(route_type="stat_query")
+                assert trace is not None
+                traces.append(trace)
+            except BaseException as exc:  # pragma: no cover - reported below
+                record_error(exc)
+            finally:
+                second_finished.set()
+                finish_trace("")
+
+        first = threading.Thread(target=first_worker)
+        second = threading.Thread(target=second_worker)
+        first.start()
+        second.start()
+        first.join(timeout=5)
+        second.join(timeout=5)
+
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert errors == []
+        assert sorted(stage.component_id for trace in traces for stage in trace.stages) == [
+            "first",
+            "second",
+        ]
 
     def test_disable_tracing_env_var(self, monkeypatch):
         """DISABLE_TRACING=1 skips tracing."""

@@ -33,6 +33,7 @@ class PipelineStage:
     elapsed_ms: float
     output_summary: str = ""
     error: str | None = None
+    order: int = field(default=0, repr=False, compare=False)
 
     @property
     def is_success(self) -> bool:
@@ -53,6 +54,7 @@ class PipelineTrace:
     query: str
     stages: list[PipelineStage] = field(default_factory=list)
     route_type: str = ""
+    _next_order: int = field(default=0, repr=False, compare=False)
 
     def add_stage(self, stage: PipelineStage) -> None:
         self.stages.append(stage)
@@ -72,8 +74,21 @@ class PipelineTrace:
 # ---------------------------------------------------------------------------
 
 _current_trace = threading.local()
-# Stack of entry indices (per-trace) — top of stack = current depth
-_depth_stack: list[int] = []
+_depth_stack_state = threading.local()
+
+
+@dataclass
+class _ActiveStage:
+    stage: PipelineStage
+    started_ns: int
+
+
+def _get_depth_stack() -> list[int]:
+    stack = getattr(_depth_stack_state, "stack", None)
+    if stack is None:
+        stack = []
+        _depth_stack_state.stack = stack
+    return stack
 
 
 def get_current_trace() -> PipelineTrace | None:
@@ -117,27 +132,45 @@ class traced:
         self.component_id = component_id
         self.label = label
         self.output_summary = output_summary
-        # Set on __enter__
-        self._stage: PipelineStage | None = None
+        self._local = threading.local()
+
+    def _active_stack(self) -> list[_ActiveStage]:
+        stack = getattr(self._local, "active_stack", None)
+        if stack is None:
+            stack = []
+            self._local.active_stack = stack
+        return stack
+
+    def _set_current_output_summary(self, output_summary: str) -> None:
+        active_stack = self._active_stack()
+        if active_stack:
+            active_stack[-1].stage.output_summary = output_summary
 
     def __enter__(self) -> "traced":
         if _TRACING_DISABLED:
             return self
         started_at = datetime.datetime.now()
-        self._started_ns = time.perf_counter_ns()
-        self._stage = PipelineStage(
+        started_ns = time.perf_counter_ns()
+        # Ensure a trace exists for this thread
+        trace = get_current_trace()
+        if trace is None:
+            trace = PipelineTrace(query="")
+            _set_current_trace(trace)
+        order = trace._next_order
+        trace._next_order += 1
+
+        stage = PipelineStage(
             component_id=self.component_id,
             label=self.label,
             started_at=started_at,
             elapsed_ms=0.0,
             output_summary=self.output_summary,
+            order=order,
         )
-        # Ensure a trace exists for this thread
-        if get_current_trace() is None:
-            _set_current_trace(PipelineTrace(query=""))
-        # Record the insertion index at current depth so nested stages insert in execution order
-        self._insert_at = len(_depth_stack)
-        _depth_stack.append(self._insert_at)
+        # Track nesting depth per thread so finish_trace() in another worker cannot disturb us.
+        depth_stack = _get_depth_stack()
+        depth_stack.append(order)
+        self._active_stack().append(_ActiveStage(stage=stage, started_ns=started_ns))
         return self
 
     def __exit__(
@@ -146,22 +179,28 @@ class traced:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        if _TRACING_DISABLED or self._stage is None:
+        if _TRACING_DISABLED:
             return
-        global _depth_stack
-        elapsed_ns = time.perf_counter_ns() - self._started_ns
-        self._stage.elapsed_ms = elapsed_ns / 1_000_000
+        active_stack = self._active_stack()
+        if not active_stack:
+            return
+        active = active_stack.pop()
+        elapsed_ns = time.perf_counter_ns() - active.started_ns
+        active.stage.elapsed_ms = elapsed_ns / 1_000_000
 
         trace = get_current_trace()
         if trace is not None:
             if exc_val is not None:
                 type_name = exc_type.__name__ if exc_type else type(exc_val).__name__
-                self._stage.error = f"{type_name}: {exc_val}"
+                active.stage.error = f"{type_name}: {exc_val}"
             else:
-                self._stage.output_summary = self.output_summary or self._stage.output_summary
-            # Insert at the recorded depth position to maintain execution order
-            trace.stages.insert(self._insert_at, self._stage)
-        _depth_stack.pop()
+                active.stage.output_summary = self.output_summary or active.stage.output_summary
+            # A nested stage may exit before its parent; sort by entry order to preserve call order.
+            trace.stages.append(active.stage)
+            trace.stages.sort(key=lambda stage: stage.order)
+        depth_stack = _get_depth_stack()
+        if depth_stack:
+            depth_stack.pop()
 
     def __call__(self, func):
         @functools.wraps(func)
@@ -170,7 +209,7 @@ class traced:
                 result = func(*args, **kwargs)
                 # If the function returns a route_type string, capture it as output_summary
                 if isinstance(result, str) and not self.output_summary:
-                    self.output_summary = result  # will be stored on exit
+                    self._set_current_output_summary(result)
                 return result
 
         return wrapper
@@ -185,11 +224,10 @@ def start_trace(query: str) -> PipelineTrace:
 
 def finish_trace(route_type: str = "") -> PipelineTrace | None:
     """Finalise and return the current trace."""
-    global _depth_stack
     trace = get_current_trace()
     if trace is None:
         return None
     trace.route_type = route_type
     _set_current_trace(None)  # clear
-    _depth_stack.clear()  # reset depth stack
+    _get_depth_stack().clear()  # reset this thread's depth stack
     return trace
