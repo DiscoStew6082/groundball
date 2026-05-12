@@ -89,6 +89,44 @@ class TestDashboardTabs:
         assert all(dependency["js"] for dependency in example_dependencies)
         assert all(dependency["show_progress"] == "hidden" for dependency in example_dependencies)
 
+    def test_query_events_do_not_read_visible_chatbot(self):
+        """Ask handlers keep rendered chat output out of the event input graph."""
+        config = self.dash.get_config_file()
+        components = config["components"]
+        component_types = {component["id"]: component["type"] for component in components}
+        chatbot_id = next(
+            component["id"] for component in components if component["type"] == "chatbot"
+        )
+        question_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "textbox"
+            and component.get("props", {}).get("label") == "Question"
+        )
+        ask_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "button" and component.get("props", {}).get("value") == "Ask"
+        )
+        query_dependencies = [
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["targets"]
+            and dependency["targets"][0][0] in {ask_id, question_id}
+            and dependency["targets"][0][1] in {"click", "submit"}
+        ]
+
+        assert len(query_dependencies) == 2
+        for dependency in query_dependencies:
+            assert chatbot_id not in dependency["inputs"]
+            assert chatbot_id in dependency["outputs"]
+            state_inputs = [
+                component_id
+                for component_id in dependency["inputs"]
+                if component_types[component_id] == "state"
+            ]
+            assert len(state_inputs) == 2
+
 
 # --------------------------------------------------------------------------
 # Phase 4.2 — Trace wiring: query tab → arch diagram
@@ -234,7 +272,16 @@ class TestTraceWiring:
             return StructuredAnswer(answer="Hank Aaron bio", intent="player_biography")
 
         with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
-            chat, textbox, answer, rows, sources, sql, conversation = respond_conversation(
+            (
+                chat,
+                textbox,
+                answer,
+                rows,
+                sources,
+                sql,
+                chat_state,
+                conversation,
+            ) = respond_conversation(
                 "tell me about the second player",
                 chat_history,
                 prior_turns,
@@ -246,9 +293,32 @@ class TestTraceWiring:
             {"role": "user", "content": "tell me about the second player"},
             {"role": "assistant", "content": "Hank Aaron bio"},
         ]
+        assert chat_state == chat
         assert conversation[-1]["question"] == "tell me about the second player"
         assert conversation[-1]["answer"]["intent"] == "player_biography"
         assert answer == "Hank Aaron bio"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
+    def test_conversation_query_ignores_blank_messages(self):
+        """Clearing the textbox must not kick off another answer pipeline."""
+        from baseball_rag.web_app import respond_conversation
+
+        chat_history = [{"role": "user", "content": "career home run leaders"}]
+        prior_turns = [{"question": "career home run leaders", "answer": {"sources": []}}]
+
+        with patch("baseball_rag.web_app._execute_for_gradio") as execute:
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = (
+                respond_conversation("   ", chat_history, prior_turns)
+            )
+
+        execute.assert_not_called()
+        assert chat == chat_history
+        assert chat_state == chat_history
+        assert conversation == prior_turns
+        assert textbox == ""
+        assert answer == ""
         assert rows == []
         assert sources == []
         assert sql == ""

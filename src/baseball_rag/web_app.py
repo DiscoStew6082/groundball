@@ -186,6 +186,10 @@ def respond_conversation(
     """Handle a conversational Gradio turn and retain structured prior context."""
     chat_history = list(chat_history or [])
     conversation = list(conversation or [])
+    message = message.strip()
+    if not message:
+        return chat_history, "", "", [], [], "", chat_history, conversation
+
     execution = _execute_for_gradio(message, diagram=diagram, conversation=conversation)
     result = execution.answer
     chat_history.extend(
@@ -194,9 +198,51 @@ def respond_conversation(
             {"role": "assistant", "content": render_text(result)},
         ]
     )
-    conversation.append({"question": message, "answer": result.to_dict()})
+    conversation.append(_conversation_turn(message, result))
     answer_text, rows, sources, sql = _display_payload(result)
-    return chat_history, "", answer_text, rows, sources, sql, conversation
+    return chat_history, "", answer_text, rows, sources, sql, chat_history, conversation
+
+
+def _conversation_turn(question: str, result) -> dict[str, Any]:
+    """Store only the answer fields needed to resolve future follow-ups."""
+    payload = result.to_dict()
+    metadata = payload.get("metadata") or {}
+    answer_payload = {
+        "answer": payload.get("answer"),
+        "intent": payload.get("intent"),
+        "metadata": {
+            key: metadata[key]
+            for key in (
+                "original_question",
+                "context_question",
+                "context_source",
+                "context_player_name",
+            )
+            if key in metadata
+        },
+        "sources": [_conversation_source(source) for source in payload.get("sources", [])],
+    }
+    return {"question": question, "answer": answer_payload}
+
+
+def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
+    rows = source.get("rows") or []
+    compact_rows = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        compact_row = {
+            key: row[key]
+            for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
+            if key in row
+        }
+        if compact_row:
+            compact_rows.append(compact_row)
+    return {
+        "type": source.get("type"),
+        "label": source.get("label"),
+        "rows": compact_rows,
+    }
 
 
 def _display_payload(result):
@@ -242,6 +288,7 @@ def build_dashboard() -> gr.Blocks:
         gr.Markdown("## ⚾ Baseball RAG — Query Engine & Architecture Explorer")
 
         with gr.Tab("Query"):
+            chat_state = gr.State([])
             conversation_state = gr.State([])
             chat = gr.Chatbot(label="Conversation", height=260)
             with gr.Row():
@@ -269,25 +316,47 @@ def build_dashboard() -> gr.Blocks:
             sources = gr.JSON(label="Sources")
             sql = gr.Code(label="SQL", language="sql")
 
-            submit.click(
-                fn=lambda msg, chat_history, conversation: respond_conversation(
+            def on_query(msg, chat_history, conversation):
+                return respond_conversation(
                     msg,
                     chat_history,
                     conversation,
                     diagram=arch_diagram,
-                ),
-                inputs=[question, chat, conversation_state],
-                outputs=[chat, question, answer_box, table, sources, sql, conversation_state],
+                )
+
+            submit.click(
+                fn=on_query,
+                inputs=[question, chat_state, conversation_state],
+                outputs=[
+                    chat,
+                    question,
+                    answer_box,
+                    table,
+                    sources,
+                    sql,
+                    chat_state,
+                    conversation_state,
+                ],
+                trigger_mode="once",
+                concurrency_limit=1,
+                concurrency_id="query",
             )
             question.submit(
-                fn=lambda msg, chat_history, conversation: respond_conversation(
-                    msg,
-                    chat_history,
-                    conversation,
-                    diagram=arch_diagram,
-                ),
-                inputs=[question, chat, conversation_state],
-                outputs=[chat, question, answer_box, table, sources, sql, conversation_state],
+                fn=on_query,
+                inputs=[question, chat_state, conversation_state],
+                outputs=[
+                    chat,
+                    question,
+                    answer_box,
+                    table,
+                    sources,
+                    sql,
+                    chat_state,
+                    conversation_state,
+                ],
+                trigger_mode="once",
+                concurrency_limit=1,
+                concurrency_id="query",
             )
 
         with gr.Tab("Architecture"):
