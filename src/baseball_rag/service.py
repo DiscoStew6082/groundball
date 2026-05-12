@@ -101,15 +101,10 @@ def _answer_player_biography(
         raise
 
     if not chunks:
-        return StructuredAnswer(
-            answer=(
-                f"No player biography found for '{decision.player_name or question}'. "
-                "The player may not be in the corpus or the corpus may need re-indexing."
-            ),
+        return _answer_player_biography_from_llm_memory(
+            question=decision.raw_question,
             intent=decision.intent,
-            warnings=["No LLM fallback was used because no grounding context was retrieved."],
-            unsupported=True,
-            unsupported_reason="missing_corpus",
+            player_name=decision.player_name or question,
         )
 
     from baseball_rag.generation.prompt import build_player_bio_prompt
@@ -231,6 +226,50 @@ def _answer_with_grounded_chunks(
             sources=sources,
             warnings=["LM Studio was unavailable, so retrieved context was shown directly."],
         )
+
+
+def _answer_player_biography_from_llm_memory(
+    *,
+    question: str,
+    intent: str,
+    player_name: str,
+) -> StructuredAnswer:
+    """Answer a missing corpus biography from LLM memory with explicit provenance."""
+    from baseball_rag.generation.llm import make_request
+    from baseball_rag.generation.prompt import build_open_prompt
+
+    try:
+        response = make_request(build_open_prompt(question), max_tokens=700)
+    except ConnectionError:
+        return StructuredAnswer(
+            answer=(
+                f"No player biography found for '{player_name}' in the local corpus, "
+                "and LM Studio was unavailable for an LLM-memory fallback."
+            ),
+            intent=intent,
+            warnings=[
+                "No local corpus biography was found, and LM Studio was unavailable.",
+            ],
+            unsupported=True,
+            unsupported_reason="llm_unavailable",
+        )
+
+    note = "Note: this answer came from LLM memory, not the local baseball corpus."
+    return StructuredAnswer(
+        answer=f"{response.content}\n\n{note}",
+        intent=intent,
+        sources=[
+            SourceRecord(
+                type="system",
+                label="LLM memory",
+                detail=(
+                    "No local corpus biography was retrieved; the local LLM answered from "
+                    "its model memory."
+                ),
+            )
+        ],
+        warnings=["No local corpus biography was found; the answer came from LLM memory."],
+    )
 
 
 def _duckdb_source(

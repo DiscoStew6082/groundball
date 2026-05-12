@@ -224,14 +224,15 @@ class TestPlayerBioQuery:
             assert result.sources[0].data_manifest is not None
             assert result.sources[0].data_manifest["dataset"]["name"] == "NeuML/baseballdata"
 
-    def test_player_biography_no_chunks_returns_helpful_message(self):
-        """If no bio chunks found, return a helpful message."""
+    def test_player_biography_no_chunks_and_llm_unavailable_returns_helpful_message(self):
+        """If no bio chunks or LLM fallback are available, return a helpful message."""
         with (
             patch("baseball_rag.service.route") as mock_route,
             patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
             patch("baseball_rag.service.get_duckdb"),
             patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
             patch("baseball_rag.service.init_db"),
+            patch("baseball_rag.generation.llm.make_request") as mock_llm,
         ):
             from baseball_rag.routing import RouteResult
 
@@ -245,10 +246,53 @@ class TestPlayerBioQuery:
             )
             mock_retrieve.return_value = []  # No results
             mock_resolve.return_value = PlayerResolution(query="Unknown Player", candidates=[])
+            mock_llm.side_effect = ConnectionError("LM Studio not running")
 
             result = answer("who was Unknown Player")
 
-            assert "No player biography found" in result or "not in the dataset" in result.lower()
+            assert "No player biography found" in result
+            assert "LM Studio was unavailable" in result
+
+    def test_missing_player_biography_uses_labeled_llm_memory_fallback(self):
+        """If no corpus bio is found, answer from LLM memory with clear provenance."""
+        with (
+            patch("baseball_rag.service.route") as mock_route,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
+            patch("baseball_rag.service.get_duckdb"),
+            patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
+            patch("baseball_rag.service.init_db"),
+            patch("baseball_rag.generation.llm.make_request") as mock_llm,
+        ):
+            from baseball_rag.generation.llm import LLMResponse
+            from baseball_rag.routing import RouteResult
+            from baseball_rag.service import answer as structured_answer
+
+            mock_route.return_value = RouteResult(
+                intent="player_biography",
+                stat=None,
+                time_period=None,
+                position=None,
+                player_name="Dale Murphy",
+                raw_question="who was Dale Murphy?",
+            )
+            mock_retrieve.return_value = []
+            mock_resolve.return_value = PlayerResolution(query="Dale Murphy", candidates=[])
+            mock_llm.return_value = LLMResponse(
+                content="Dale Murphy was a star outfielder for Atlanta.",
+                model="test-model",
+                done=True,
+            )
+
+            result = structured_answer("who was Dale Murphy?")
+
+            assert "Dale Murphy was a star outfielder" in result.answer
+            assert "LLM memory" in result.answer
+            assert result.warnings == [
+                "No local corpus biography was found; the answer came from LLM memory."
+            ]
+            assert result.sources[0].type == "system"
+            assert result.sources[0].label == "LLM memory"
+            assert result.unsupported is False
 
     def test_player_biography_not_found_error_shows_ingest_message(self):
         """If ChromaDB raises NotFoundError, suggest running ingest."""
