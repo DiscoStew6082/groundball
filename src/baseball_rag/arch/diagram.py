@@ -236,6 +236,7 @@ class ArchitectureDiagram(gr.Blocks):
                             visible=False,
                             size="sm",
                         )
+                        self.skip_btn.click(fn=self._on_skip_animation, inputs=[], outputs=[])
 
                 # Right: detail panel
                 with gr.Column(scale=1):
@@ -316,15 +317,13 @@ class ArchitectureDiagram(gr.Blocks):
         if hasattr(self, "skip_btn"):
             self.skip_btn.visible = True
 
-        def on_skip():
-            self.skip_animation()
-            return None  # don't change the HTML, just stop animating
-
-        if hasattr(self, "skip_btn"):
-            self.skip_btn.click(fn=on_skip, inputs=[], outputs=[])
-
         self._js_animate(stage_ids, elapsed_list)
         return self
+
+    def _on_skip_animation(self) -> None:
+        """Handle the Skip Animation button event registered during UI setup."""
+        self.skip_animation()
+        return None
 
     def skip_animation(self) -> None:
         """Stop any in-progress animation and show all trace stages at once."""

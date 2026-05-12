@@ -82,14 +82,9 @@ class TestTraceWiring:
         # Clear any prior history
         diagram.trace_history.clear()
 
-        # We must patch skip_btn.click itself so that animate_trace's .click() call
-        # (which requires a live Gradio Blocks context) is a no-op.
-        # trace_history still grows because we don't mock animate_trace itself —
-        # only its Gradio-side effects.
-        with patch.object(diagram.skip_btn, "click"):
-            from baseball_rag.web_app import respond
+        from baseball_rag.web_app import respond
 
-            respond("who had the most RBIs in 1962", [], diagram=diagram)
+        respond("who had the most RBIs in 1962", [], diagram=diagram)
 
         assert len(diagram.trace_history) >= 1
         trace = diagram.trace_history[-1]
@@ -111,13 +106,31 @@ class TestTraceWiring:
             calls += 1
             return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
 
-        with (
-            patch("baseball_rag.request_execution.answer", side_effect=fake_answer),
-            patch.object(diagram.skip_btn, "click"),
-        ):
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
             answer, rows, sources, sql = respond_structured("what is OPS", diagram=diagram)
 
         assert calls == 1
+        assert answer == "answered what is OPS"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+        assert len(diagram.trace_history) == 1
+        assert diagram.trace_history[0].query == "what is OPS"
+
+    def test_structured_query_animates_with_real_dashboard_diagram(self):
+        """Runtime Gradio requests can animate without rewiring component events."""
+        from baseball_rag.web_app import build_dashboard, respond_structured
+
+        dash = build_dashboard()
+        diagram = dash.arch_diagram
+        diagram.trace_history.clear()
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            answer, rows, sources, sql = respond_structured("what is OPS", diagram=diagram)
+
         assert answer == "answered what is OPS"
         assert rows == []
         assert sources == []
