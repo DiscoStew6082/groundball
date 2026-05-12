@@ -14,7 +14,7 @@ import re
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import gradio as gr
 
@@ -107,6 +107,14 @@ def run_all_tests() -> _TestResult:
 
 _anim_lock = threading.Lock()
 
+_EXAMPLE_QUESTIONS = (
+    "who had the most RBIs in 1962",
+    "career home run leaders",
+    "who was Babe Ruth",
+    "what is OPS",
+    "who played for the Braves in 1936",
+)
+
 
 def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
     """Animate the diagram with the trace from a completed request."""
@@ -152,9 +160,22 @@ def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = 
     payload = result.to_dict()
     sources = payload["sources"]
     primary_source = sources[0] if sources else {}
-    rows = primary_source.get("rows") or []
+    rows = _rows_for_dataframe(primary_source)
     sql = primary_source.get("sql") or ""
     return payload["answer"], rows, sources, sql
+
+
+def _rows_for_dataframe(source: dict[str, Any]) -> list[Any] | dict[str, list[Any]]:
+    """Return source rows in a shape Gradio Dataframe renders as scalar cells."""
+    rows = source.get("rows") or []
+    if not rows or not all(isinstance(row, dict) for row in rows):
+        return rows
+
+    columns = source.get("columns") or list(rows[0])
+    return {
+        "headers": columns,
+        "data": [[row.get(column) for column in columns] for row in rows],
+    }
 
 
 # --------------------------------------------------------------------------
@@ -186,17 +207,14 @@ def build_dashboard() -> gr.Blocks:
                 submit = gr.Button("Ask", variant="primary", scale=1)
 
             with gr.Row():
-                example = gr.Examples(
-                    examples=[
-                        "who had the most RBIs in 1962",
-                        "career home run leaders",
-                        "who was Babe Ruth",
-                        "what is OPS",
-                        "who played for the Braves in 1936",
-                    ],
-                    inputs=question,
-                )
-                _ = example
+                for example_question in _EXAMPLE_QUESTIONS:
+                    example_button = gr.Button(example_question, size="sm")
+                    example_button.click(
+                        fn=lambda value=example_question: value,
+                        inputs=[],
+                        outputs=[question],
+                        queue=False,
+                    )
 
             answer_box = gr.Textbox(label="Answer", lines=8)
             table = gr.Dataframe(label="Rows", interactive=False, wrap=True)
@@ -232,11 +250,12 @@ def build_dashboard() -> gr.Blocks:
             def on_run_all_tests():
                 run_all_tests()
                 arch_diagram._update_diagram()
+                return arch_diagram.diagram_html.value
 
             run_all_tests_btn.click(
                 fn=on_run_all_tests,
                 inputs=[],
-                outputs=[arch_diagram],
+                outputs=[arch_diagram.diagram_html],
             )
 
     # Attach for test access

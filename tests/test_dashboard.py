@@ -11,7 +11,7 @@ instrumentation so the Architecture Explorer shows every query execution.
 from unittest.mock import patch
 
 from baseball_rag.arch.diagram import ArchitectureDiagram
-from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.provenance import SourceRecord, StructuredAnswer
 
 # --------------------------------------------------------------------------
 # Phase 4.1 — Dashboard structure
@@ -54,6 +54,20 @@ class TestDashboardTabs:
         assert hasattr(diagram, "registry")
         assert hasattr(diagram, "highlight")
         assert hasattr(diagram, "animate_trace")
+
+    def test_query_examples_use_plain_buttons(self):
+        """Query examples render as buttons without the Dataset examples widget."""
+        config = self.dash.get_config_file()
+        component_types = {component["type"] for component in config["components"]}
+        button_values = {
+            component.get("props", {}).get("value")
+            for component in config["components"]
+            if component["type"] == "button"
+        }
+
+        assert "dataset" not in component_types
+        assert "who had the most RBIs in 1962" in button_values
+        assert "what is OPS" in button_values
 
 
 # --------------------------------------------------------------------------
@@ -138,6 +152,38 @@ class TestTraceWiring:
         assert len(diagram.trace_history) == 1
         assert diagram.trace_history[0].query == "what is OPS"
 
+    def test_structured_query_returns_dataframe_ready_rows(self):
+        """Structured Gradio table rows are shaped for Dataframe, not object cells."""
+        from baseball_rag.web_app import build_dashboard, respond_structured
+
+        dash = build_dashboard()
+        diagram = dash.arch_diagram
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(
+                answer=f"answered {question}",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="RBI leaders",
+                        columns=["name", "stat_value"],
+                        rows=[
+                            {"name": "Davis, Tommy", "stat_value": 153},
+                            {"name": "Mays, Willie", "stat_value": 141},
+                        ],
+                    )
+                ],
+            )
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            _, rows, _, _ = respond_structured("who had the most RBIs in 1962", diagram=diagram)
+
+        assert rows == {
+            "headers": ["name", "stat_value"],
+            "data": [["Davis, Tommy", 153], ["Mays, Willie", 141]],
+        }
+
     def test_trace_shows_correct_route_type(self):
         """Trace correctly records stat_query vs general_explanation route."""
         from baseball_rag.arch.tracing import finish_trace, start_trace, traced
@@ -187,6 +233,23 @@ class TestDashboardLaunch:
 
         dash = build_dashboard()
         assert isinstance(dash, gradio.Blocks)
+
+    def test_dashboard_events_output_rendered_components(self):
+        """Dashboard events only target concrete components present in Gradio config."""
+        from baseball_rag.web_app import build_dashboard
+
+        dash = build_dashboard()
+        config = dash.get_config_file()
+        component_ids = {component["id"] for component in config["components"]}
+
+        for dependency in config["dependencies"]:
+            missing_outputs = [
+                output_id
+                for output_id in dependency.get("outputs", [])
+                if output_id not in component_ids
+            ]
+            assert missing_outputs == []
+            assert dash.arch_diagram._id not in dependency.get("outputs", [])
 
     def test_web_app_module_has_main_block(self):
         """web_app.py defines a `demo` Blocks (for uvicorn/Gradio hosting)."""

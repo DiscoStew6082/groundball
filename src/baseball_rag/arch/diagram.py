@@ -456,13 +456,15 @@ class ArchitectureDiagram(gr.Blocks):
                 comp_id = raw.strip()
                 for cb in self._on_select_callbacks:
                     cb(comp_id)
-                return self.select_component(comp_id)
-            return self
+                self.select_component(comp_id)
+            else:
+                self.select_component(None)
+            return self.diagram_html.value, self.detail_panel.value
 
         self._js_bridge.change(
             fn=handle_js_select,
             inputs=[self._js_bridge],
-            outputs=[self],  # update the whole block
+            outputs=[self.diagram_html, self.detail_panel],
         )
 
     def _js_animate(self, stage_ids: list[str], elapsed_list: list[float]) -> None:
