@@ -126,6 +126,7 @@ _EXAMPLE_QUESTIONS = (
     "what is OPS",
     "who played for the Braves in 1936",
 )
+_DEFAULT_QUESTION = _EXAMPLE_QUESTIONS[0]
 
 
 def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
@@ -188,7 +189,7 @@ def respond_conversation(
     conversation = list(conversation or [])
     message = (message or "").strip()
     if not message:
-        return chat_history, "", "", [], [], "", chat_history, conversation
+        return chat_history, _DEFAULT_QUESTION, "", [], [], "", chat_history, conversation
 
     execution = _execute_for_gradio(message, diagram=diagram, conversation=conversation)
     result = execution.answer
@@ -200,7 +201,16 @@ def respond_conversation(
     )
     conversation.append(_conversation_turn(message, result))
     answer_text, rows, sources, sql = _display_payload(result)
-    return chat_history, "", answer_text, rows, sources, sql, chat_history, conversation
+    return (
+        chat_history,
+        _DEFAULT_QUESTION,
+        answer_text,
+        rows,
+        sources,
+        sql,
+        chat_history,
+        conversation,
+    )
 
 
 def _conversation_turn(question: str, result) -> dict[str, Any]:
@@ -306,7 +316,8 @@ def build_dashboard() -> gr.Blocks:
             with gr.Row():
                 question = gr.Textbox(
                     label="Question",
-                    placeholder="who had the most RBIs in 1962",
+                    value=_DEFAULT_QUESTION,
+                    placeholder=_DEFAULT_QUESTION,
                     scale=4,
                 )
                 submit = gr.Button("Ask", variant="primary", scale=1)

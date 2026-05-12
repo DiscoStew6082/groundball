@@ -89,6 +89,18 @@ class TestDashboardTabs:
         assert all(dependency["js"] for dependency in example_dependencies)
         assert all(dependency["show_progress"] == "hidden" for dependency in example_dependencies)
 
+    def test_query_textbox_starts_with_clickable_default_question(self):
+        """The first Ask click should run the visible default question."""
+        config = self.dash.get_config_file()
+        question_component = next(
+            component
+            for component in config["components"]
+            if component["type"] == "textbox"
+            and component.get("props", {}).get("label") == "Question"
+        )
+
+        assert question_component["props"]["value"] == "who had the most RBIs in 1962"
+
     def test_query_events_do_not_read_visible_chatbot(self):
         """Ask handlers keep rendered chat output out of the event input graph."""
         config = self.dash.get_config_file()
@@ -329,7 +341,7 @@ class TestTraceWiring:
                 diagram=diagram,
             )
 
-        assert textbox == ""
+        assert textbox == "who had the most RBIs in 1962"
         assert chat[-2:] == [
             {"role": "user", "content": "tell me about the second player"},
             {"role": "assistant", "content": "Hank Aaron bio"},
@@ -343,7 +355,7 @@ class TestTraceWiring:
         assert sql == ""
 
     def test_conversation_query_ignores_blank_messages(self):
-        """Clearing the textbox must not kick off another answer pipeline."""
+        """Blank messages must not run a query and should restore a runnable default."""
         from baseball_rag.web_app import respond_conversation
 
         chat_history = [{"role": "user", "content": "career home run leaders"}]
@@ -358,14 +370,14 @@ class TestTraceWiring:
         assert chat == chat_history
         assert chat_state == chat_history
         assert conversation == prior_turns
-        assert textbox == ""
+        assert textbox == "who had the most RBIs in 1962"
         assert answer == ""
         assert rows == []
         assert sources == []
         assert sql == ""
 
     def test_conversation_query_ignores_none_message(self):
-        """Clicking Ask before textbox input exists should be a harmless no-op."""
+        """Missing textbox input should restore a runnable default."""
         from baseball_rag.web_app import respond_conversation
 
         with patch("baseball_rag.web_app._execute_for_gradio") as execute:
@@ -377,7 +389,7 @@ class TestTraceWiring:
         assert chat == []
         assert chat_state == []
         assert conversation == []
-        assert textbox == ""
+        assert textbox == "who had the most RBIs in 1962"
         assert answer == ""
         assert rows == []
         assert sources == []
