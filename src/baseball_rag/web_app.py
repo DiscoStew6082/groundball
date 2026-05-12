@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 _TTL_ENV_VAR = "BASEBALL_RAG_WEB_APP_TTL_SECONDS"
 _DEFAULT_SERVER_NAME = "0.0.0.0"
 _DEFAULT_SERVER_PORT = 7860
+_DEV_SERVER_NAME = "127.0.0.1"
+_DEV_SERVER_PORT = 7861
+_DEV_TTL_SECONDS = "300"
 _TTL_HARD_EXIT_GRACE_SECONDS = 5.0
 
 
@@ -351,11 +354,17 @@ def _launch_dashboard(
     demo.launch(server_name=server_name, server_port=server_port)
 
 
-def main(argv: list[str] | None = None) -> None:
-    """CLI entrypoint for ``python -m baseball_rag.web_app``."""
+def _main_with_defaults(
+    argv: list[str] | None,
+    *,
+    default_server_name: str,
+    default_server_port: int,
+    default_ttl_seconds: str | None,
+) -> None:
+    """Run the web app CLI with caller-provided defaults."""
     parser = argparse.ArgumentParser(description="Launch the Baseball RAG Gradio dashboard.")
-    parser.add_argument("--server-name", default=_DEFAULT_SERVER_NAME)
-    parser.add_argument("--server-port", default=_DEFAULT_SERVER_PORT, type=int)
+    parser.add_argument("--server-name", default=default_server_name)
+    parser.add_argument("--server-port", default=default_server_port, type=int)
     parser.add_argument(
         "--ttl-seconds",
         default=None,
@@ -365,7 +374,11 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     args = parser.parse_args(argv)
-    raw_ttl = args.ttl_seconds if args.ttl_seconds is not None else os.environ.get(_TTL_ENV_VAR)
+    raw_ttl = (
+        args.ttl_seconds
+        if args.ttl_seconds is not None
+        else os.environ.get(_TTL_ENV_VAR, default_ttl_seconds)
+    )
     try:
         ttl_seconds = _parse_ttl_seconds(raw_ttl)
     except ValueError as exc:
@@ -375,6 +388,26 @@ def main(argv: list[str] | None = None) -> None:
         server_name=args.server_name,
         server_port=args.server_port,
         ttl_seconds=ttl_seconds,
+    )
+
+
+def main(argv: list[str] | None = None) -> None:
+    """CLI entrypoint for ``python -m baseball_rag.web_app``."""
+    _main_with_defaults(
+        argv,
+        default_server_name=_DEFAULT_SERVER_NAME,
+        default_server_port=_DEFAULT_SERVER_PORT,
+        default_ttl_seconds=None,
+    )
+
+
+def dev_main(argv: list[str] | None = None) -> None:
+    """Short local UI entrypoint for browser QA."""
+    _main_with_defaults(
+        argv,
+        default_server_name=_DEV_SERVER_NAME,
+        default_server_port=_DEV_SERVER_PORT,
+        default_ttl_seconds=_DEV_TTL_SECONDS,
     )
 
 

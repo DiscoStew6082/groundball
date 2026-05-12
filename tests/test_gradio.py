@@ -206,6 +206,44 @@ class TestGradio:
 
         assert calls[0]["ttl_seconds"] is None
 
+    def test_dev_main_uses_short_local_defaults(self, monkeypatch):
+        """The short UI command starts local QA server defaults."""
+        calls = []
+
+        monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
+
+        web_app.dev_main([])
+
+        assert calls == [
+            {
+                "server_name": "127.0.0.1",
+                "server_port": 7861,
+                "ttl_seconds": 300.0,
+            }
+        ]
+
+    def test_dev_main_env_ttl_overrides_short_default(self, monkeypatch):
+        """The short UI command still honors env-configured TTL values."""
+        calls = []
+
+        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "0")
+        monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
+
+        web_app.dev_main([])
+
+        assert calls[0]["ttl_seconds"] is None
+
+    def test_project_exposes_short_ui_script(self):
+        """pyproject exposes a memorable command for local browser QA."""
+        import tomllib
+        from pathlib import Path
+
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+
+        assert pyproject["project"]["scripts"]["baseball-rag-ui"] == (
+            "baseball_rag.web_app:dev_main"
+        )
+
     def test_main_rejects_invalid_env_ttl_before_launch(self, monkeypatch):
         """Invalid environment TTL values fail before launching Gradio."""
         calls = []

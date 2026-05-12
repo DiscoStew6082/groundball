@@ -117,16 +117,19 @@ uv run baseball-rag "who was Babe Ruth"
 Gradio UI:
 
 ```bash
-uv run python -m baseball_rag.web_app
+uv run baseball-rag-ui
 ```
 
-Give the local Gradio process a time to live when you do not want it lingering:
+The short UI command binds to `127.0.0.1:7861` and exits after 5 minutes. Override the
+TTL when you want a longer manual session:
 
 ```bash
-uv run python -m baseball_rag.web_app --ttl-seconds 3600
+uv run baseball-rag-ui --ttl-seconds 900
 ```
 
-You can also set `BASEBALL_RAG_WEB_APP_TTL_SECONDS`; `0` or an unset value disables the TTL.
+You can also set `BASEBALL_RAG_WEB_APP_TTL_SECONDS`; `0` disables the TTL. If the
+variable is unset, `baseball-rag-ui` uses its 5-minute default while
+`python -m baseball_rag.web_app` runs without a TTL.
 
 The UI shows the answer, evidence table, source JSON, and SQL for query paths that generate SQL.
 
