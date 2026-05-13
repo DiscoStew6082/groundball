@@ -115,17 +115,15 @@ class TestDashboardTabs:
             if component["type"] == "textbox"
             and component.get("props", {}).get("label") == "Question"
         )
-        ask_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "button" and component.get("props", {}).get("value") == "Ask"
+        clear_dependency = next(
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["api_name"] == "_clear_query_outputs"
         )
         query_dependencies = [
             dependency
             for dependency in config["dependencies"]
-            if dependency["targets"]
-            and dependency["targets"][0][0] in {ask_id, question_id}
-            and dependency["targets"][0][1] in {"click", "submit"}
+            if dependency["api_name"] == "on_query"
         ]
 
         assert len(query_dependencies) == 1
@@ -135,7 +133,7 @@ class TestDashboardTabs:
         assert query_fn.concurrency_limit == 1
         assert query_fn.concurrency_id == "query"
         for dependency in query_dependencies:
-            assert len(dependency["targets"]) == 2
+            assert dependency["trigger_after"] == clear_dependency["id"]
             assert question_id in dependency["inputs"]
             assert chatbot_id not in dependency["inputs"]
             assert chatbot_id in dependency["outputs"]
@@ -148,6 +146,69 @@ class TestDashboardTabs:
                 if component_types[component_id] == "state"
             ]
             assert len(state_inputs) == 2
+
+    def test_query_submit_clears_stale_structured_outputs_immediately(self):
+        """A new Ask should clear stale Answer/Rows/Sources/SQL before queued work runs."""
+        config = self.dash.get_config_file()
+        components = config["components"]
+        question_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "textbox"
+            and component.get("props", {}).get("label") == "Question"
+        )
+        ask_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "button" and component.get("props", {}).get("value") == "Ask"
+        )
+        answer_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "textbox"
+            and component.get("props", {}).get("label") == "Answer"
+        )
+        rows_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "dataframe"
+            and component.get("props", {}).get("label") == "Rows"
+        )
+        sources_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "json" and component.get("props", {}).get("label") == "Sources"
+        )
+        sql_id = next(
+            component["id"]
+            for component in components
+            if component["type"] == "code" and component.get("props", {}).get("label") == "SQL"
+        )
+        triggered_dependencies = [
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["targets"]
+            and dependency["targets"][0][0] in {ask_id, question_id}
+            and dependency["targets"][0][1] in {"click", "submit"}
+        ]
+        clear_dependencies = [
+            dependency
+            for dependency in triggered_dependencies
+            if dependency["outputs"] == [answer_id, rows_id, sources_id, sql_id]
+        ]
+
+        assert len(clear_dependencies) == 1
+        clear_dependency = clear_dependencies[0]
+        assert clear_dependency["queue"] is False
+        assert clear_dependency["show_progress"] == "hidden"
+        assert clear_dependency["trigger_mode"] == "always_last"
+        assert clear_dependency["backend_fn"] is True
+        query_dependency = next(
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["api_name"] == "on_query"
+        )
+        assert query_dependency["trigger_after"] == clear_dependency["id"]
 
     def test_query_handler_records_trace_without_animating_architecture_components(self):
         """Ask records Architecture history without side-effecting Architecture UI outputs."""

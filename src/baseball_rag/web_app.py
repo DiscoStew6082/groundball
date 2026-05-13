@@ -325,6 +325,11 @@ def _display_payload(result):
     return payload["answer"], rows, sources, sql
 
 
+def _clear_query_outputs():
+    """Clear structured result panels as soon as a new query starts."""
+    return "", [], [], ""
+
+
 def _json_safe_for_gradio(value: Any) -> Any:
     """Avoid file-shaped JSON objects that Gradio tries to download."""
     if isinstance(value, list):
@@ -408,8 +413,17 @@ def build_dashboard() -> gr.Blocks:
                     animate_diagram=False,
                 )
 
-            gr.on(
+            clear_query_outputs = gr.on(
                 triggers=[submit.click, question.submit],
+                fn=_clear_query_outputs,
+                inputs=[],
+                outputs=[answer_box, table, sources, sql],
+                trigger_mode="always_last",
+                show_progress="hidden",
+                queue=False,
+            )
+
+            clear_query_outputs.then(
                 fn=on_query,
                 inputs=[question, chat_state, conversation_state],
                 outputs=[
