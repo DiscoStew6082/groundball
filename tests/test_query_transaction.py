@@ -108,3 +108,24 @@ def test_transaction_returns_visible_failure_without_stale_outputs():
         {"role": "user", "content": "what is OPS"},
         {"role": "assistant", "content": f"{update.answer_text}\n\nWarning: slow"},
     ]
+
+
+def test_transaction_returns_visible_failure_for_runtime_errors():
+    """Runtime execution failures should not escape and strand UI controls."""
+
+    def execute(_question, *, conversation):
+        raise RuntimeError("query failed")
+
+    transaction = QueryTransaction(
+        execute=execute,
+        default_question="who had the most RBIs in 1962",
+    )
+
+    update = transaction.run("who played for the Braves in 1936", [], [])
+
+    assert update.status == "failed"
+    assert "could not return an answer" in update.answer_text
+    assert update.rows == []
+    assert update.sources == []
+    assert update.sql == ""
+    assert update.chat_history[-1]["content"] == f"{update.answer_text}\n\nWarning: query failed"

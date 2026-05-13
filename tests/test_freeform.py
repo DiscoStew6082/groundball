@@ -489,3 +489,66 @@ class TestFreeformProvenance:
 
         assert result.sources[0].label == "LLM-backed typed freeform query"
         assert "typed intent" in (result.sources[0].detail or "")
+
+
+class TestFreeformResultFormatting:
+    """Tests for display-quality freeform answer formatting."""
+
+    def test_player_roster_result_formats_names_without_python_tuples(self):
+        from baseball_rag.db.freeform import format_result
+        from baseball_rag.db.freeform_types import FreeformResult
+
+        result = FreeformResult(
+            sql="select distinct p.nameFirst, p.nameLast from people p",
+            rows=[
+                ("Wally", "Berger"),
+                ("Rabbit", "Warstler"),
+                ("Mickey", "Haslin"),
+            ],
+            columns=["nameFirst", "nameLast"],
+            row_count=37,
+            truncated=False,
+        )
+
+        text = format_result(result, "Who played for the Braves in 1936?")
+
+        assert text.startswith("37 players matched:")
+        assert "- Wally Berger" in text
+        assert "- Rabbit Warstler" in text
+        assert "['nameFirst', 'nameLast']" not in text
+        assert "('Wally', 'Berger')" not in text
+
+    def test_generic_result_formats_rows_as_labeled_values(self):
+        from baseball_rag.db.freeform import format_result
+        from baseball_rag.db.freeform_types import FreeformResult
+
+        result = FreeformResult(
+            sql="select nameFirst, nameLast, career_HR from leaders",
+            rows=[("Babe", "Ruth", 714)],
+            columns=["nameFirst", "nameLast", "career_HR"],
+            row_count=1,
+            truncated=False,
+        )
+
+        text = format_result(result, "500 home run club")
+
+        assert text == "1 result matched:\n- nameFirst: Babe; nameLast: Ruth; career_HR: 714"
+        assert "('Babe', 'Ruth', 714)" not in text
+
+    def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
+        from baseball_rag.db.freeform import format_result
+        from baseball_rag.db.freeform_types import FreeformResult
+
+        result = FreeformResult(
+            sql="select nameFirst, nameLast from people",
+            rows=[(f"First {index}", f"Last {index}") for index in range(150)],
+            columns=["nameFirst", "nameLast"],
+            row_count=150,
+            truncated=False,
+        )
+
+        text = format_result(result, "show players")
+
+        assert text.startswith("150 players matched, showing first 100:")
+        assert "- First 99 Last 99" in text
+        assert "- First 100 Last 100" not in text

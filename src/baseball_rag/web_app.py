@@ -334,7 +334,7 @@ def build_dashboard() -> gr.Blocks:
                 return registry.get("latest_turn_id") == begun.pending.turn_id
 
             def _no_component_updates():
-                return tuple(gr.update() for _ in range(8))
+                return tuple(gr.update() for _ in range(9))
 
             def _query_session_key(
                 request: gr.Request | None,
@@ -362,6 +362,7 @@ def build_dashboard() -> gr.Blocks:
                     begun.update.sql,
                     begun,
                     turn_registry,
+                    gr.update(interactive=begun.pending is None),
                 )
 
             def on_query(
@@ -379,13 +380,21 @@ def build_dashboard() -> gr.Blocks:
                     update = _query_transaction().complete(begun.pending)
                     if not _is_latest_query(begun, turn_registry, request):
                         return _no_component_updates()
-                return update.as_gradio_values()
+                return (*update.as_gradio_values(), gr.update(interactive=True))
 
             begin_query_outputs = gr.on(
                 triggers=[submit.click, question.submit],
                 fn=begin_query,
                 inputs=[question, chat_state, conversation_state, query_turn_registry],
-                outputs=[answer_box, table, sources, sql, query_turn_state, query_turn_registry],
+                outputs=[
+                    answer_box,
+                    table,
+                    sources,
+                    sql,
+                    query_turn_state,
+                    query_turn_registry,
+                    submit,
+                ],
                 trigger_mode="always_last",
                 show_progress="hidden",
                 queue=False,
@@ -403,6 +412,7 @@ def build_dashboard() -> gr.Blocks:
                     sql,
                     chat_state,
                     conversation_state,
+                    submit,
                 ],
                 trigger_mode="always_last",
                 show_progress="minimal",

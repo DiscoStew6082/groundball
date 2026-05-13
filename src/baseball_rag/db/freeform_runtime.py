@@ -184,16 +184,34 @@ def format_result(result: FreeformResult, question: str) -> str:
     if result.row_count == 0:
         return f"No results found for '{question}'."
 
-    lines = []
-    header = f"{result.columns}"
-    lines.append(header)
+    if _is_player_name_result(result):
+        return _format_player_name_result(result)
+    return _format_labeled_result(result)
 
-    if result.truncated:
-        lines.append(f"({result.row_count} rows total, showing first 100)")
-    else:
-        lines.append(f"({result.row_count} rows)")
 
+def _is_player_name_result(result: FreeformResult) -> bool:
+    return result.columns == ["nameFirst", "nameLast"]
+
+
+def _result_count_line(result: FreeformResult, noun: str) -> str:
+    plural = noun if result.row_count == 1 else f"{noun}s"
+    line = f"{result.row_count} {plural} matched"
+    if result.truncated or result.row_count > 100:
+        line += ", showing first 100"
+    return f"{line}:"
+
+
+def _format_player_name_result(result: FreeformResult) -> str:
+    lines = [_result_count_line(result, "player")]
+    for first_name, last_name in result.rows[:100]:
+        full_name = " ".join(str(part) for part in (first_name, last_name) if part)
+        lines.append(f"- {full_name}")
+    return "\n".join(lines)
+
+
+def _format_labeled_result(result: FreeformResult) -> str:
+    lines = [_result_count_line(result, "result")]
     for row in result.rows[:100]:
-        lines.append(str(row))
-
+        values = [f"{column}: {value}" for column, value in zip(result.columns, row, strict=False)]
+        lines.append(f"- {'; '.join(values)}")
     return "\n".join(lines)

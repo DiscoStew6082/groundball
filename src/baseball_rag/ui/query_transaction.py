@@ -169,6 +169,7 @@ class QueryTransaction:
             ConnectionError,
             IndexError,
             KeyError,
+            RuntimeError,
             TypeError,
             ValueError,
         ) as exc:

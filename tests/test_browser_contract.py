@@ -21,7 +21,7 @@ def test_default_query_clears_stale_panels_then_shows_final_answer():
     stale_conversation = [{"question": "stale query", "answer": {"sources": []}}]
     turn_registry = {"latest_turn_id": None}
 
-    answer, rows, sources, sql, begun, turn_registry = begin_fn(
+    answer, rows, sources, sql, begun, turn_registry, ask_button = begin_fn(
         "who had the most RBIs in 1962",
         stale_chat,
         stale_conversation,
@@ -33,6 +33,7 @@ def test_default_query_clears_stale_panels_then_shows_final_answer():
     assert sources == []
     assert sql == ""
     assert begun.update.status == "pending"
+    assert ask_button == {"interactive": False, "__type__": "update"}
 
     def fake_answer(question: str, **_kwargs):
         return StructuredAnswer(
@@ -50,7 +51,7 @@ def test_default_query_clears_stale_panels_then_shows_final_answer():
         )
 
     with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
-        chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
+        chat, textbox, answer, rows, sources, sql, chat_state, conversation, ask_button = query_fn(
             begun,
             turn_registry,
         )
@@ -64,3 +65,4 @@ def test_default_query_clears_stale_panels_then_shows_final_answer():
     assert chat[-1]["content"] == "fresh answer for who had the most RBIs in 1962"
     assert chat_state == chat
     assert conversation[-1]["question"] == "who had the most RBIs in 1962"
+    assert ask_button == {"interactive": True, "__type__": "update"}

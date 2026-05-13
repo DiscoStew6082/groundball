@@ -161,7 +161,7 @@ class TestDashboardTabs:
             return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
 
         turn_registry = {"latest_turn_id": None}
-        answer, rows, sources, sql, begun, turn_registry = begin_fn(
+        answer, rows, sources, sql, begun, turn_registry, ask_button = begin_fn(
             "what is OPS",
             [],
             [],
@@ -173,11 +173,14 @@ class TestDashboardTabs:
         assert sources == []
         assert sql == ""
         assert begun.update.status == "pending"
+        assert ask_button == {"interactive": False, "__type__": "update"}
 
         with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
-            chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
-                begun,
-                turn_registry,
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation, ask_button = (
+                query_fn(
+                    begun,
+                    turn_registry,
+                )
             )
 
         assert textbox == "what is OPS"
@@ -188,6 +191,7 @@ class TestDashboardTabs:
         assert rows == []
         assert sources == []
         assert sql == ""
+        assert ask_button == {"interactive": True, "__type__": "update"}
 
     def test_stale_query_completion_does_not_overwrite_newer_pending_turn(self):
         """An older in-flight completion must not replace a newer cleared UI state."""
@@ -202,7 +206,7 @@ class TestDashboardTabs:
             if dependency.api_name == "on_query"
         )
         turn_registry = {"latest_turn_id": None}
-        _, _, _, _, old_begun, turn_registry = begin_fn("what is OPS", [], [], turn_registry)
+        _, _, _, _, old_begun, turn_registry, _ = begin_fn("what is OPS", [], [], turn_registry)
 
         def fake_answer(question: str, **_kwargs):
             begin_fn("career home run leaders", [], [], turn_registry)
@@ -217,6 +221,7 @@ class TestDashboardTabs:
         assert all(
             isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
         )
+        assert len(outputs) == 9
 
     def test_stale_query_completion_uses_latest_turn_after_state_snapshot(self):
         """A copied Gradio state snapshot must not let an older answer overwrite newer UI."""
@@ -231,7 +236,7 @@ class TestDashboardTabs:
             if dependency.api_name == "on_query"
         )
         turn_registry = {"latest_turn_id": None}
-        _, _, _, _, old_begun, turn_registry = begin_fn("what is OPS", [], [], turn_registry)
+        _, _, _, _, old_begun, turn_registry, _ = begin_fn("what is OPS", [], [], turn_registry)
         old_registry_snapshot = dict(turn_registry)
         begin_fn("career home run leaders", [], [], turn_registry)
         calls = []
@@ -249,6 +254,7 @@ class TestDashboardTabs:
         assert all(
             isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
         )
+        assert len(outputs) == 9
         assert calls == []
 
     def test_same_session_stale_snapshot_does_not_execute_backend(self):
@@ -265,7 +271,7 @@ class TestDashboardTabs:
         )
         session = gr.Request(session_hash="session-a")
         turn_registry = {"latest_turn_id": None}
-        _, _, _, _, old_begun, turn_registry = begin_fn(
+        _, _, _, _, old_begun, turn_registry, _ = begin_fn(
             "what is OPS", [], [], turn_registry, session
         )
         old_registry_snapshot = dict(turn_registry)
@@ -285,7 +291,48 @@ class TestDashboardTabs:
         assert all(
             isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
         )
+        assert len(outputs) == 9
         assert calls == []
+
+    def test_query_adapter_reenables_ask_after_runtime_failure(self):
+        """A backend runtime failure still returns a visible error and enables Ask."""
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, begun, turn_registry, ask_button = begin_fn(
+            "who played for the Braves in 1936", [], [], turn_registry
+        )
+        assert ask_button == {"interactive": False, "__type__": "update"}
+
+        def fail_answer(_question: str, **_kwargs):
+            raise RuntimeError("query failed")
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fail_answer):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation, ask_button = (
+                query_fn(
+                    begun,
+                    turn_registry,
+                )
+            )
+
+        assert textbox == "who played for the Braves in 1936"
+        assert "could not return an answer" in answer
+        assert chat[-1]["content"] == f"{answer}\n\nWarning: query failed"
+        assert chat_state == chat
+        assert conversation[-1]["question"] == "who played for the Braves in 1936"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+        assert ask_button == {"interactive": True, "__type__": "update"}
 
     def test_stale_query_guard_is_scoped_to_gradio_session(self):
         """A newer query in another browser session must not suppress this session."""
@@ -303,7 +350,7 @@ class TestDashboardTabs:
         session_b = gr.Request(session_hash="session-b")
         registry_a = {"latest_turn_id": None}
         registry_b = {"latest_turn_id": None}
-        _, _, _, _, begun_a, registry_a = begin_fn("what is OPS", [], [], registry_a, session_a)
+        _, _, _, _, begun_a, registry_a, _ = begin_fn("what is OPS", [], [], registry_a, session_a)
         begin_fn("career home run leaders", [], [], registry_b, session_b)
 
         def fake_answer(question: str, **_kwargs):
@@ -313,10 +360,12 @@ class TestDashboardTabs:
             )
 
         with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
-            chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
-                begun_a,
-                registry_a,
-                session_a,
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation, ask_button = (
+                query_fn(
+                    begun_a,
+                    registry_a,
+                    session_a,
+                )
             )
 
         assert textbox == "what is OPS"
@@ -327,6 +376,7 @@ class TestDashboardTabs:
         assert rows == []
         assert sources == []
         assert sql == ""
+        assert ask_button == {"interactive": True, "__type__": "update"}
 
     def test_query_handler_records_trace_without_animating_architecture_components(self):
         """Ask records Architecture history without side-effecting Architecture UI outputs."""
@@ -349,11 +399,10 @@ class TestDashboardTabs:
             return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
 
         turn_registry = {"latest_turn_id": None}
-        _, _, _, _, begun, turn_registry = begin_fn("what is OPS", [], [], turn_registry)
+        _, _, _, _, begun, turn_registry, _ = begin_fn("what is OPS", [], [], turn_registry)
         with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
-            chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
-                begun,
-                turn_registry,
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation, _ = query_fn(
+                begun, turn_registry
             )
 
         assert textbox == "what is OPS"
