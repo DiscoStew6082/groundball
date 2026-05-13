@@ -134,7 +134,7 @@ class TestDashboardTabs:
             assert question_id in dependency["inputs"]
             assert chatbot_id not in dependency["inputs"]
             assert chatbot_id in dependency["outputs"]
-            assert dependency["queue"] is True
+            assert dependency["queue"] is False
             assert dependency["show_progress"] == "hidden"
             assert dependency["trigger_mode"] == "once"
             state_inputs = [
