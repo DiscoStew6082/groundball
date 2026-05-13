@@ -136,7 +136,7 @@ class TestDashboardTabs:
             assert chatbot_id in dependency["outputs"]
             assert dependency["queue"] is False
             assert dependency["show_progress"] == "hidden"
-            assert dependency["trigger_mode"] == "once"
+            assert dependency["trigger_mode"] == "multiple"
             state_inputs = [
                 component_id
                 for component_id in dependency["inputs"]
@@ -463,6 +463,28 @@ class TestTraceWiring:
         assert conversation == []
         assert textbox == "who had the most RBIs in 1962"
         assert answer == ""
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
+    def test_conversation_query_returns_visible_timeout_message(self):
+        """LLM timeouts should become chat output instead of wedging the Ask event."""
+        from baseball_rag.web_app import respond_conversation
+
+        with patch("baseball_rag.web_app._execute_for_gradio", side_effect=TimeoutError("slow")):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = (
+                respond_conversation("what is slugging percentage", [], [])
+            )
+
+        assert textbox == "what is slugging percentage"
+        assert "timed out" in answer.lower()
+        assert chat == [
+            {"role": "user", "content": "what is slugging percentage"},
+            {"role": "assistant", "content": f"{answer}\n\nWarning: slow"},
+        ]
+        assert chat_state == chat
+        assert conversation[-1]["question"] == "what is slugging percentage"
+        assert conversation[-1]["answer"]["intent"] == "error"
         assert rows == []
         assert sources == []
         assert sql == ""

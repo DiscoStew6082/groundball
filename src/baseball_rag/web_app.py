@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import gradio as gr
 
+from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
 
@@ -207,13 +208,16 @@ def respond_conversation(
     if not message:
         return chat_history, _DEFAULT_QUESTION, "", [], [], "", chat_history, conversation
 
-    execution = _execute_for_gradio(
-        message,
-        diagram=diagram,
-        animate_diagram=animate_diagram,
-        conversation=conversation,
-    )
-    result = execution.answer
+    try:
+        execution = _execute_for_gradio(
+            message,
+            diagram=diagram,
+            animate_diagram=animate_diagram,
+            conversation=conversation,
+        )
+        result = execution.answer
+    except TimeoutError as exc:
+        result = _timeout_answer(exc)
     chat_history.extend(
         [
             {"role": "user", "content": message},
@@ -231,6 +235,19 @@ def respond_conversation(
         sql,
         list(chat_history),
         list(conversation),
+    )
+
+
+def _timeout_answer(exc: TimeoutError) -> StructuredAnswer:
+    return StructuredAnswer(
+        answer=(
+            "The local LM Studio request timed out before it returned an answer. "
+            "Try again, or ask a stat/database-backed question while the model catches up."
+        ),
+        intent="error",
+        warnings=[str(exc)],
+        unsupported=True,
+        unsupported_reason="llm_unavailable",
     )
 
 
@@ -383,7 +400,7 @@ def build_dashboard() -> gr.Blocks:
                     chat_state,
                     conversation_state,
                 ],
-                trigger_mode="once",
+                trigger_mode="multiple",
                 show_progress="hidden",
                 queue=False,
             )

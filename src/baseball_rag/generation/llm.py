@@ -19,6 +19,7 @@ class LLMResponse:
 
 DEFAULT_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_MODEL = "google/gemma-4-26b-a4b"
+DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
 def _resolve_config(base_url: str | None, model: str | None) -> tuple[str, str]:
@@ -45,12 +46,33 @@ def _build_payload(
     }
 
 
-def _post(base_url: str, payload: dict, timeout: int = 120) -> requests.Response:
+def _resolve_timeout(timeout: float | None) -> float:
+    if timeout is not None:
+        return timeout
+    raw_timeout = os.environ.get("LMSTUDIO_TIMEOUT_SECONDS")
+    if raw_timeout:
+        try:
+            return float(raw_timeout)
+        except ValueError:
+            return DEFAULT_TIMEOUT_SECONDS
+    return DEFAULT_TIMEOUT_SECONDS
+
+
+def _post(base_url: str, payload: dict, timeout: float | None = None) -> requests.Response:
     """POST to the chat completions endpoint with a friendly error message."""
+    resolved_timeout = _resolve_timeout(timeout)
     try:
-        resp = requests.post(f"{base_url}/chat/completions", json=payload, timeout=timeout)
+        resp = requests.post(
+            f"{base_url}/chat/completions",
+            json=payload,
+            timeout=resolved_timeout,
+        )
         resp.raise_for_status()
         return resp
+    except requests.Timeout as exc:
+        raise TimeoutError(
+            f"LM Studio timed out after {resolved_timeout:g}s at {base_url}."
+        ) from exc
     except requests.ConnectionError as exc:
         raise ConnectionError(
             f"Could not connect to LM Studio at {base_url}. "

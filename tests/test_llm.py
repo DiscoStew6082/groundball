@@ -32,6 +32,31 @@ class TestLLMClient:
             with pytest.raises(ConnectionError, match="Could not connect"):
                 make_request("test query")
 
+    def test_timeout_uses_short_default_and_raises_timeout_error(self):
+        """LM Studio stalls should fail quickly enough for web requests to recover."""
+        import requests
+
+        with patch("requests.post", side_effect=requests.Timeout("read timed out")) as mock_post:
+            with pytest.raises(TimeoutError, match="timed out"):
+                make_request("test query")
+
+        assert mock_post.call_args.kwargs["timeout"] == 20.0
+
+    def test_timeout_can_be_overridden_by_env(self, monkeypatch):
+        """Local deployments can tune the LM Studio timeout."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "Answer."}}],
+            "model": "gemma-4-26b",
+        }
+        monkeypatch.setenv("LMSTUDIO_TIMEOUT_SECONDS", "3.5")
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            make_request("test query")
+
+        assert mock_post.call_args.kwargs["timeout"] == 3.5
+
     def test_tuple_prompt_sends_system_and_user(self):
         """A (system, user) tuple is sent as separate message roles."""
         mock_resp = MagicMock()
