@@ -169,6 +169,70 @@ parallel exploration is encouraged.
   and UI failure reason consistency. Planned pytest, ruff, mypy, eval baseline,
   and code review passed.
 
+## Completion Log
+
+This plan was executed as eight phase commits on `main`, following the TDD,
+subagent review, verification, and per-phase commit rules above. The inclusive
+phase commit range is `7cb1b1b^..efe855c`.
+
+| Phase | Commit | Verification Notes |
+| --- | --- | --- |
+| 1. Request-to-answer dispatch spine | `7cb1b1b` | Request execution, API, dashboard, tracing, and player biography suites passed; code-review subagent found no blocking issues. |
+| 2. Structured routed intent cases | `f78b11a` | Router, player detection, stat-query integration, player biography, request execution, and freeform suites passed; ruff/mypy passed on touched modules; review findings were addressed before commit. |
+| 3. Deterministic `stat_query` module | `3427906` | Query/API/stat-registry suites and eval baseline passed; ruff/mypy passed; code-review findings were addressed before commit. |
+| 4. `freeform_query` planning seam | `1a8807c` | Freeform, eval-question, router, API, and eval baseline checks passed; ruff/mypy passed; code-review findings were addressed before commit. |
+| 5. Corpus lifecycle contract | `584d912` | Ingest player bios, corpus diagnostics/content, Chroma store, player-bio tests, and `uv run python -m baseball_rag.corpus --static-only` passed; ruff/mypy passed; code review found no blocking issues after fixes. |
+| 6. Retrieval decision module | `d88a89c` | Retrieval strategy, Chroma store, and player-bio suites passed; ruff/mypy and `git diff --check` passed. Retrieval-only eval was attempted, but the local Chroma index was static-only/unavailable for generated player profiles; the documented deterministic fallback suite passed. |
+| 7. Gradio query adapter/session state | `12e3f09` | Query transaction, dashboard, answer presentation, browser contract, and query session suites passed; ruff/mypy and `git diff --check` passed. Browser smoke on `http://127.0.0.1:7861/` returned the default 1962 RBI answer with rows, DuckDB source metadata, and SQL populated. |
+| 8. Answer outcome policy | `efe855c` | Provenance, audit, review queue, API, query transaction, and eval baseline checks passed; ruff/mypy and `git diff --check` passed; code-review subagent found no tracked-code issues. |
+
+Global gate notes:
+
+- The full `uv run pytest tests/ -v` suite was not run as one command after all
+  phases. Instead, each phase ran the targeted verification suites listed
+  above, with additional compatibility suites where risk warranted it.
+- The full report-writing eval command from the Global Verification Matrix was
+  not run. The non-mutating baseline command
+  `uv run python -m evals.questions --baseline evals/baseline.json` passed for
+  phases that changed answer semantics.
+- The retrieval-only all-strategies eval was attempted in Phase 6 and failed
+  because the local Chroma index was static-only/unavailable for generated
+  player profiles. The documented deterministic fallback suite passed and the
+  condition was recorded in the Phase 6 notes.
+- GitHub CI was not checked because no push was performed.
+
+Code-review subagent summary:
+
+| Phase | Review Result |
+| --- | --- |
+| 1 | No blocking issues; trace ownership intentionally remained in `request_execution.py`. |
+| 2 | Findings addressed before commit; no blocking issues remained. |
+| 3 | Findings addressed before commit; no blocking issues remained. |
+| 4 | Findings addressed before commit; no blocking issues remained. |
+| 5 | Findings addressed before commit; no blocking issues remained. |
+| 6 | No tracked-code issues; generated `data/review_queue.jsonl` remained out of scope. |
+| 7 | No findings; Browser smoke evidence was recorded in the phase notes. |
+| 8 | No tracked-code issues; `data/review_queue.jsonl` was flagged as stale generated local state and intentionally left unstaged. |
+
+Final status after Phase 8 implementation:
+
+- Branch `main` is ahead of `origin/main` by 9 commits, including the original
+  plan expansion commit and the eight phase commits listed above.
+- No GitHub push was performed, so GitHub Actions/CI was not triggered.
+- The local UI server was already running on `127.0.0.1:7861` and was left
+  running after the Browser smoke test, per project instructions.
+- `data/review_queue.jsonl` remains intentionally unstaged because it is
+  generated review-queue state. Review subagents flagged it as stale local
+  state that should not be included in these architecture commits.
+
+Documentation audit follow-up:
+
+- This completion log was added after re-auditing the plan against the phase
+  commits and is intended to be committed separately from the eight
+  implementation phases.
+- After that documentation commit, the only expected unstaged path is
+  `data/review_queue.jsonl`.
+
 ## Phase 1: Request-To-Answer Dispatch Spine
 
 ### Goal
