@@ -12,6 +12,7 @@ from baseball_rag.db import execute_stat_query
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.queries import StatQueryResult
 from baseball_rag.db.stat_registry import StatTable, get_stat
+from baseball_rag.outcomes import ambiguous_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 from baseball_rag.routing.query_router import StatQueryCase, TimePeriod, TimePeriodType
 
@@ -47,44 +48,35 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
     stat_def = get_stat(decision.stat)
     stat = stat_def.canonical
     if _is_ambiguous_current_century_decade(decision.time_period, decision.raw_question):
-        return StructuredAnswer(
+        return ambiguous_outcome(
             answer=(
                 f"The decade in '{decision.raw_question}' is ambiguous. "
                 "Use a full decade like 1920s or 2020s."
             ),
             intent=decision.intent,
             sources=[_coverage_source()],
-            unsupported=True,
-            unsupported_reason="ambiguous",
-            review_reason="ambiguous",
         )
 
     time_period = _resolve_time_period(decision.time_period, decision.raw_question)
 
     if decision.player_name:
         if _is_partial_player_name(decision.player_name):
-            return StructuredAnswer(
+            return ambiguous_outcome(
                 answer=(
                     f"'{decision.player_name}' is ambiguous for a player-specific {stat} lookup. "
                     "Ask with a fuller player name."
                 ),
                 intent=decision.intent,
                 sources=[_coverage_source()],
-                unsupported=True,
-                unsupported_reason="ambiguous",
-                review_reason="ambiguous",
             )
         if time_period is not None and time_period[0] != time_period[1]:
-            return StructuredAnswer(
+            return ambiguous_outcome(
                 answer=(
                     f"Player-specific {stat} lookups need one season, not "
                     f"{time_period[0]}-{time_period[1]}."
                 ),
                 intent=decision.intent,
                 sources=[_coverage_source()],
-                unsupported=True,
-                unsupported_reason="ambiguous",
-                review_reason="ambiguous",
             )
         year = time_period[0] if time_period is not None else None
         unsupported = _unsupported_for_single_year(stat, decision.intent, year)
@@ -162,7 +154,7 @@ def _answer_player_stat_result(
 ) -> StructuredAnswer:
     if not query_result.rows:
         qualifier = f" in {plan.year}" if plan.year else ""
-        return StructuredAnswer(
+        return no_data_outcome(
             answer=(
                 f"No {plan.stat} result found for {plan.player_name}{qualifier} "
                 f"in the local Lahman-derived {plan.table} data."
@@ -170,8 +162,6 @@ def _answer_player_stat_result(
             intent=plan.intent,
             sources=[_source_from_result(query_result)],
             warnings=["No fallback leaderboard was returned because the question named a player."],
-            unsupported=True,
-            unsupported_reason="no_data",
         )
 
     result = query_result.rows[0]
@@ -189,7 +179,7 @@ def _answer_leaderboard_result(
 ) -> StructuredAnswer:
     rows = query_result.rows
     if not rows:
-        return StructuredAnswer(
+        return no_data_outcome(
             answer=(
                 f"No {plan.stat} results found for {plan.start_year}-{plan.end_year} "
                 "in the local Lahman-derived data."
@@ -199,8 +189,6 @@ def _answer_leaderboard_result(
             warnings=[
                 "No fallback leaderboard was returned because the question specified a year."
             ],
-            unsupported=True,
-            unsupported_reason="no_data",
         )
 
     lines = [f"Top {plan.stat} leaders ({plan.start_year}-{plan.end_year}):"]
@@ -344,16 +332,13 @@ def _unsupported_for_year_range(
     max_year = coverage.get("max")
 
     if start_year > end_year:
-        return StructuredAnswer(
+        return ambiguous_outcome(
             answer=(
                 f"The requested {stat} range {start_year}-{end_year} is reversed. "
                 "Ask with the earlier year first."
             ),
             intent=intent,
             sources=[_coverage_source()],
-            unsupported=True,
-            unsupported_reason="ambiguous",
-            review_reason="ambiguous",
         )
 
     if (
@@ -361,15 +346,13 @@ def _unsupported_for_year_range(
         and isinstance(max_year, int)
         and (start_year < min_year or end_year > max_year)
     ):
-        return StructuredAnswer(
+        return no_data_outcome(
             answer=(
                 f"The local structured stat data covers {min_year}-{max_year}; "
                 f"the requested {stat} range was {start_year}-{end_year}."
             ),
             intent=intent,
             sources=[_coverage_source()],
-            unsupported=True,
-            unsupported_reason="no_data",
         )
 
     return None

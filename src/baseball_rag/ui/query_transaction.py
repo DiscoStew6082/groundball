@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from baseball_rag.outcomes import local_request_failure_outcome, timeout_outcome
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.request_execution import RequestExecution
 from baseball_rag.ui.presentation import AnswerPresenter, RowsPayload
@@ -213,26 +214,8 @@ class QueryTransaction:
 
 
 def request_failure_answer(exc: Exception) -> StructuredAnswer:
-    return StructuredAnswer(
-        answer=(
-            "The local request could not return an answer after a service responded. "
-            "Try again, or check the server logs for the response-shape error."
-        ),
-        intent="error",
-        warnings=[str(exc)],
-        unsupported=True,
-        unsupported_reason="llm_unavailable",
-    )
+    return local_request_failure_outcome(exc)
 
 
 def timeout_answer(exc: TimeoutError) -> StructuredAnswer:
-    return StructuredAnswer(
-        answer=(
-            "The local LM Studio request timed out before it returned an answer. "
-            "Try again, or ask a stat/database-backed question while the model catches up."
-        ),
-        intent="error",
-        warnings=[str(exc)],
-        unsupported=True,
-        unsupported_reason="llm_unavailable",
-    )
+    return timeout_outcome(exc)

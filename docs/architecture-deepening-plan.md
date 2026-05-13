@@ -160,7 +160,14 @@ parallel exploration is encouraged.
   Planned pytest, ruff, mypy, and Browser smoke passed; the Browser default
   query returned 1962 RBI rows, DuckDB source metadata, and SQL on the existing
   local `127.0.0.1:7861` server.
-- [ ] Phase 8: Answer outcome policy.
+- [x] Phase 8: Answer outcome policy. Added `outcomes.py` with focused
+  helpers for ambiguous, no-data, missing-corpus, retrieval-failed,
+  LLM-unavailable, timeout, and local request failures. Migrated service,
+  stat-query, and UI transaction unsupported/failure construction so audit and
+  review queue consume structured reason fields rather than prose. Added
+  provenance tests for ambiguous review/audit policy, no-data review fallback,
+  and UI failure reason consistency. Planned pytest, ruff, mypy, eval baseline,
+  and code review passed.
 
 ## Phase 1: Request-To-Answer Dispatch Spine
 

@@ -11,7 +11,15 @@ from baseball_rag.db import (
     init_db,
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
+from baseball_rag.outcomes import (
+    ambiguous_outcome,
+    llm_unavailable_outcome,
+    missing_corpus_outcome,
+    retrieval_failed_outcome,
+    unsupported_outcome,
+)
 from baseball_rag.provenance import (
+    ReviewReason,
     SourceRecord,
     StructuredAnswer,
     UnsupportedReason,
@@ -78,16 +86,13 @@ def _answer_player_biography(
                 f"{c.full_name} ({c.debut or '?'}-{c.final_game or '?'})"
                 for c in resolution.candidates[:5]
             )
-            return StructuredAnswer(
+            return ambiguous_outcome(
                 answer=(
                     f"'{decision.player_name}' is ambiguous in the local player registry. "
                     f"Try a fuller name. Possible matches: {choices}."
                 ),
                 intent=decision.intent,
                 warnings=["No biography was generated because the player name was ambiguous."],
-                unsupported=True,
-                unsupported_reason="ambiguous",
-                review_reason="ambiguous",
             )
         resolved_player_id = resolution.player_id
 
@@ -141,16 +146,16 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
 
     if query_result.row_count == 0:
         reason = _freeform_unsupported_reason(query_result)
-        return StructuredAnswer(
+        review_reason: ReviewReason = "ambiguous" if reason == "ambiguous" else "unsupported"
+        return unsupported_outcome(
             answer=(
                 f"No results found for '{decision.raw_question}'.\n"
                 "Try rephrasing with a specific team, player, stat, or year."
             ),
             intent=decision.intent,
             sources=[source],
-            unsupported=True,
-            unsupported_reason=reason,
-            review_reason="ambiguous" if reason == "ambiguous" else "unsupported",
+            reason=reason,
+            review_reason=review_reason,
         )
 
     warnings = []
@@ -187,7 +192,7 @@ def _answer_general(
         raise
 
     if not chunks:
-        return StructuredAnswer(
+        return missing_corpus_outcome(
             answer=(
                 "No relevant grounded documents were found for that query. "
                 "Try asking about an indexed stat definition, indexed player biography, "
@@ -195,8 +200,6 @@ def _answer_general(
             ),
             intent=decision.intent,
             warnings=["No LLM fallback was used because no grounding context was retrieved."],
-            unsupported=True,
-            unsupported_reason="missing_corpus",
         )
 
     from baseball_rag.generation.prompt import build_explanation_prompt
@@ -248,7 +251,7 @@ def _answer_player_biography_from_llm_memory(
     try:
         response = make_request(build_open_prompt(question), max_tokens=700)
     except ConnectionError:
-        return StructuredAnswer(
+        return llm_unavailable_outcome(
             answer=(
                 f"No player biography found for '{player_name}' in the local corpus, "
                 "and LM Studio was unavailable for an LLM-memory fallback."
@@ -257,8 +260,6 @@ def _answer_player_biography_from_llm_memory(
             warnings=[
                 "No local corpus biography was found, and LM Studio was unavailable.",
             ],
-            unsupported=True,
-            unsupported_reason="llm_unavailable",
         )
 
     note = "Note: this answer came from LLM memory, not the local baseball corpus."
@@ -332,22 +333,18 @@ def _is_recoverable_chroma_index_error(exc: Exception) -> bool:
 
 def _chroma_failure_answer(exc: Exception, *, intent: str) -> StructuredAnswer | None:
     if "NotFoundError" in type(exc).__name__ or "not found" in str(exc).lower():
-        return StructuredAnswer(
+        return missing_corpus_outcome(
             answer="No corpus indexed yet - run: uv run python -m baseball_rag.corpus.ingest",
             intent=intent,
             warnings=["Chroma collection was not available."],
-            unsupported=True,
-            unsupported_reason="missing_corpus",
         )
     if _is_recoverable_chroma_index_error(exc):
-        return StructuredAnswer(
+        return retrieval_failed_outcome(
             answer=(
                 "The indexed corpus could not be queried. Rebuild it with: "
                 "uv run python -m baseball_rag.corpus.ingest"
             ),
             intent=intent,
-            warnings=[str(exc)],
-            unsupported=True,
-            unsupported_reason="retrieval_failed",
+            warning=str(exc),
         )
     return None
