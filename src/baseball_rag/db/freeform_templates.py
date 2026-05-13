@@ -97,6 +97,48 @@ def _detect_template(question: str) -> AssembledSQL | None:
     return None
 
 
+def can_plan_deterministically(question: str) -> bool:
+    """Return whether a question is owned by a deterministic freeform template."""
+    return _detect_template(question) is not None
+
+
+def should_route_deterministic_freeform(
+    question: str,
+    *,
+    competing_stat: str | None = None,
+) -> bool:
+    """Return whether deterministic freeform should win routing precedence."""
+    if _detect_template(question) is None:
+        return False
+    if competing_stat is None:
+        return True
+
+    q = _normalize_question(question)
+    if competing_stat == "HR" and _is_plain_career_home_run_leaderboard(q):
+        return False
+    if competing_stat == "ERA" and _is_plain_season_era_leaderboard(q):
+        return False
+    return True
+
+
+def _is_plain_career_home_run_leaderboard(q: str) -> bool:
+    return (
+        "career" in q
+        and ("home run" in q or "homer" in q or bool(re.search(r"\bhrs?\b", q)))
+        and "club" not in q
+        and "500" not in q
+    )
+
+
+def _is_plain_season_era_leaderboard(q: str) -> bool:
+    return (
+        "era" in q
+        and _extract_year(q) is not None
+        and "career" not in q
+        and not _has_era_qualification_guard(q)
+    )
+
+
 def _template_source_detail(question: str) -> str:
     """Return portfolio-facing provenance detail for matched templates."""
     q = _normalize_question(question)

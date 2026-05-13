@@ -10,7 +10,16 @@ import duckdb
 from baseball_rag.db.freeform_assembler import _assemble_sql
 from baseball_rag.db.freeform_intent import _generate_query_spec
 from baseball_rag.db.freeform_schema import _get_schema_cached
-from baseball_rag.db.freeform_templates import _detect_template, _template_source_detail
+from baseball_rag.db.freeform_templates import (
+    _detect_template,
+    _template_source_detail,
+)
+from baseball_rag.db.freeform_templates import (
+    can_plan_deterministically as _templates_can_plan_deterministically,
+)
+from baseball_rag.db.freeform_templates import (
+    should_route_deterministic_freeform as _templates_should_route_deterministic_freeform,
+)
 from baseball_rag.db.freeform_types import (
     MAX_ROWS,
     SCHEMA_TIMEOUT_MS,
@@ -21,6 +30,23 @@ from baseball_rag.db.team_history import get_contextual_hint, resolve_team_ident
 from baseball_rag.generation.llm import make_request as default_make_request
 
 RequestFn = Callable[..., Any]
+
+
+def can_plan_deterministically(question: str) -> bool:
+    """Return whether planning can bypass LLM-backed extraction for this question."""
+    return _templates_can_plan_deterministically(question)
+
+
+def should_route_deterministic_freeform(
+    question: str,
+    *,
+    competing_stat: str | None = None,
+) -> bool:
+    """Return whether deterministic freeform should win over a competing route."""
+    return _templates_should_route_deterministic_freeform(
+        question,
+        competing_stat=competing_stat,
+    )
 
 
 def query(

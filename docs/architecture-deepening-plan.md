@@ -133,7 +133,12 @@ parallel exploration is encouraged.
   DuckDB as the adapter with explicit table input and retained legacy query
   helpers as compatibility adapters. Code review found no blocking issues after
   fixes.
-- [ ] Phase 4: `freeform_query` planning seam.
+- [x] Phase 4: `freeform_query` planning seam. Added a DB-free freeform planner
+  capability and route-precedence interface so the router no longer mirrors
+  deterministic template patterns, while templates and LLM extraction still
+  converge on `PlannedFreeformQuery`. Preserved stat-query precedence for plain
+  leaderboards such as career HR and season ERA. Code review found no blocking
+  issues after fixes.
 - [ ] Phase 5: Corpus lifecycle contract.
 - [ ] Phase 6: Retrieval decision module.
 - [ ] Phase 7: Gradio query adapter/session state.

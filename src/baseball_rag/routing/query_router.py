@@ -356,25 +356,42 @@ def route(question: str) -> RoutedCase:
             raw_question=question,
         )
 
-    if _should_use_deterministic_freeform_route(question):
-        return routed_case(
-            intent="freeform_query",
-            raw_question=question,
-        )
-
+    freeform_can_plan = _can_plan_deterministic_freeform(question)
     deterministic = _heuristic_route(question)
     if (
         deterministic.intent == "stat_query"
         and deterministic.stat is not None
         and (_should_use_deterministic_stat_route(question) or deterministic.player_name)
     ):
+        if freeform_can_plan and _should_use_deterministic_freeform_route(
+            question,
+            competing_stat=deterministic.stat,
+        ):
+            return routed_case(
+                intent="freeform_query",
+                raw_question=question,
+            )
         return deterministic
     if (
         deterministic.intent == "general_explanation"
         and deterministic.stat is not None
         and not _should_use_deterministic_stat_route(question)
     ):
+        if freeform_can_plan and _should_use_deterministic_freeform_route(
+            question,
+            competing_stat=deterministic.stat,
+        ):
+            return routed_case(
+                intent="freeform_query",
+                raw_question=question,
+            )
         return deterministic
+
+    if freeform_can_plan:
+        return routed_case(
+            intent="freeform_query",
+            raw_question=question,
+        )
 
     try:
         from baseball_rag.generation.llm import LLMError, LLMRoutingOutputError, make_request
@@ -659,34 +676,22 @@ def _should_use_deterministic_stat_route(question: str) -> bool:
     return any(term in lower_q for term in leaderboard_terms)
 
 
-def _should_use_deterministic_freeform_route(question: str) -> bool:
-    """Return True for freeform templates that do not need router LLM help."""
-    lower_q = question.lower()
-    compact = re.sub(r"[^a-z0-9]+", " ", lower_q)
+def _can_plan_deterministic_freeform(question: str) -> bool:
+    """Return True when the freeform planner owns a deterministic template."""
+    from baseball_rag.db.freeform_runtime import can_plan_deterministically
 
-    if "triple crown" in compact:
-        return True
-    if re.search(r"\b30\s*30\b", compact) or "thirty thirty" in compact:
-        return True
-    if "500 club" in compact:
-        return True
-    if ("home run" in compact or "homer" in compact or re.search(r"\bhrs?\b", compact)) and (
-        "500" in compact or "club" in compact
-    ):
-        return True
-    if ("pitching" in compact or "pitcher" in compact or "career" in compact) and (
-        "wins" in compact and ("leader" in compact or "500" in compact or "300" in compact)
-    ):
-        return True
-    if "era" in compact and (
-        "career" in compact
-        or "qualified" in compact
-        or "qualifying" in compact
-        or "enough innings" in compact
-        or " innings" in compact
-    ):
-        return True
-    return False
+    return can_plan_deterministically(question)
+
+
+def _should_use_deterministic_freeform_route(
+    question: str,
+    *,
+    competing_stat: str | None = None,
+) -> bool:
+    """Return True when deterministic freeform should win route precedence."""
+    from baseball_rag.db.freeform_runtime import should_route_deterministic_freeform
+
+    return should_route_deterministic_freeform(question, competing_stat=competing_stat)
 
 
 def _extract_player_name_heuristic(question: str) -> str | None:

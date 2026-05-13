@@ -17,8 +17,10 @@ from baseball_rag.db.freeform_intent import (
 from baseball_rag.db.freeform_runtime import (
     _execute_safe,
     _validate_sql,
+    can_plan_deterministically,
     execute_plan,
     format_result,
+    should_route_deterministic_freeform,
 )
 from baseball_rag.db.freeform_runtime import (
     plan_query as _plan_query_impl,
@@ -66,6 +68,8 @@ __all__ = [
     "QueryIntent",
     "QuerySpec",
     "TeamIdentity",
+    "can_plan_deterministically",
+    "should_route_deterministic_freeform",
     "execute_plan",
     "format_result",
     "make_request",

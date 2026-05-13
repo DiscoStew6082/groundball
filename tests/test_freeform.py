@@ -124,17 +124,35 @@ class TestDeterministicTemplates:
 
     def test_career_pitching_wins_template_is_planned_before_execution(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import plan_query
+        from baseball_rag.db.freeform import can_plan_deterministically, plan_query
+        from baseball_rag.routing import FreeformQueryCase, route
 
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             planned = plan_query("career pitching wins leaders", get_duckdb())
 
+        assert can_plan_deterministically("career pitching wins leaders") is True
+        assert isinstance(route("career pitching wins leaders"), FreeformQueryCase)
         assert mock_call.call_count == 0
         assert planned.planning_path == "deterministic_template"
         assert planned.params == [25]
         assert planned.source_label == "Deterministic template query"
         assert "career pitching wins leaders template" in planned.source_detail
         assert "SUM(pi.W) AS career_W" in planned.sql
+
+    def test_plain_batting_leaderboard_stays_on_stat_route(self):
+        from baseball_rag.db.freeform import can_plan_deterministically
+        from baseball_rag.routing import StatQueryCase, route
+
+        assert can_plan_deterministically("career home run leaders") is True
+        assert isinstance(route("career home run leaders"), StatQueryCase)
+
+    def test_plain_season_era_leaderboard_stays_on_stat_route(self):
+        from baseball_rag.db.freeform import can_plan_deterministically
+        from baseball_rag.routing import StatQueryCase, route
+
+        assert can_plan_deterministically("who had the best ERA in 1968") is True
+        assert isinstance(route("who had the best ERA in 1968"), StatQueryCase)
+        assert isinstance(route("best ERA in 1968"), StatQueryCase)
 
     def test_runtime_executes_planned_query_without_result_shape_changes(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
@@ -353,7 +371,7 @@ class TestGenerateSQLDeterminism:
 
     def test_llm_intent_is_planned_before_execution(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import plan_query
+        from baseball_rag.db.freeform import can_plan_deterministically, plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = (
@@ -363,6 +381,7 @@ class TestGenerateSQLDeterminism:
         with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp) as mock_call:
             planned = plan_query("Who played for the Yankees in 1950?", get_duckdb())
 
+        assert can_plan_deterministically("Who played for the Yankees in 1950?") is False
         assert mock_call.call_count == 1
         assert planned.planning_path == "llm_intent"
         assert planned.params == ["%Yankees%", 1950]
