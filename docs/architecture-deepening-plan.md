@@ -152,7 +152,14 @@ parallel exploration is encouraged.
   filters. Planned pytest, ruff, and mypy checks passed; retrieval-only eval was
   attempted but the local Chroma index was static-only/unavailable for generated
   player profiles, so the documented deterministic fallback path was used.
-- [ ] Phase 7: Gradio query adapter/session state.
+- [x] Phase 7: Gradio query adapter/session state. Added
+  `ui.query_session.QuerySession` to own latest-turn/session policy and
+  trace-recording hooks around `QueryTransaction`, leaving `web_app.py` with
+  thin Gradio wiring and tuple mapping. Added public session tests for
+  overlapping submissions, session scoping, trace recording, and empty input.
+  Planned pytest, ruff, mypy, and Browser smoke passed; the Browser default
+  query returned 1962 RBI rows, DuckDB source metadata, and SQL on the existing
+  local `127.0.0.1:7861` server.
 - [ ] Phase 8: Answer outcome policy.
 
 ## Phase 1: Request-To-Answer Dispatch Spine

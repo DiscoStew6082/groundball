@@ -26,7 +26,8 @@ import gradio as gr
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
 from baseball_rag.ui.presentation import AnswerPresenter
-from baseball_rag.ui.query_transaction import BegunQuery, QueryTransaction
+from baseball_rag.ui.query_session import QuerySession
+from baseball_rag.ui.query_transaction import BegunQuery
 
 if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
@@ -40,27 +41,6 @@ _DEFAULT_SERVER_PORT = 7860
 _DEV_SERVER_NAME = "127.0.0.1"
 _DEV_SERVER_PORT = 7861
 _TTL_HARD_EXIT_GRACE_SECONDS = 5.0
-_SESSIONLESS_QUERY_KEY = "__sessionless_query__"
-
-
-class _LatestQueryTurns:
-    """Track the latest submitted query per browser session."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._latest_by_session: dict[str, str | None] = {}
-
-    def mark(self, session_key: str, turn_id: str | None) -> None:
-        with self._lock:
-            self._latest_by_session[session_key] = turn_id
-
-    def has_session(self, session_key: str) -> bool:
-        with self._lock:
-            return session_key in self._latest_by_session
-
-    def is_latest(self, session_key: str, turn_id: str) -> bool:
-        with self._lock:
-            return self._latest_by_session.get(session_key) == turn_id
 
 
 # --------------------------------------------------------------------------
@@ -175,28 +155,39 @@ def _record_execution_trace(diagram: "ArchitectureDiagram", execution: RequestEx
 
 
 def _execute_for_gradio(
-    query: str,
+    question: str,
     *,
-    diagram: "ArchitectureDiagram | None" = None,
-    animate_diagram: bool = True,
     conversation: list[dict[str, Any]] | None = None,
 ) -> RequestExecution:
-    """Run one Gradio request and optionally animate its trace."""
-    execution = execute_request(
-        query,
+    """Run one Gradio request."""
+    return execute_request(
+        question,
         adapter_component_id="gradio",
         adapter_label="Gradio Query",
         conversation=conversation,
     )
-    if diagram is not None:
+
+
+def _diagram_execution_recorder(
+    diagram: "ArchitectureDiagram | None",
+    *,
+    animate_diagram: bool,
+) -> Callable[[RequestExecution], None] | None:
+    """Return the trace update policy for a UI session."""
+    if diagram is None:
+        return None
+
+    def record(execution: RequestExecution) -> None:
         try:
             if animate_diagram:
                 _animate_execution(diagram, execution)
             else:
                 _record_execution_trace(diagram, execution)
         except Exception:
+            query = execution.trace.query if execution.trace is not None else ""
             logger.exception("Gradio diagram trace update failed for %r", query)
-    return execution
+
+    return record
 
 
 # --------------------------------------------------------------------------
@@ -212,12 +203,20 @@ def respond(
     When *diagram* is provided the query is traced and animated through the
     Architecture Explorer.  Otherwise falls back to plain answer().
     """
-    return render_text(_execute_for_gradio(message, diagram=diagram).answer)
+    execution = _execute_for_gradio(message)
+    recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
+    if recorder is not None:
+        recorder(execution)
+    return render_text(execution.answer)
 
 
 def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = None):
     """Return answer text, evidence rows, source metadata, and SQL for Gradio."""
-    result = _execute_for_gradio(message, diagram=diagram).answer
+    execution = _execute_for_gradio(message)
+    recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
+    if recorder is not None:
+        recorder(execution)
+    result = execution.answer
     presentation = AnswerPresenter().present(result)
     return presentation.answer_text, presentation.rows, presentation.sources, presentation.sql
 
@@ -231,16 +230,16 @@ def respond_conversation(
     animate_diagram: bool = True,
 ):
     """Handle a conversational Gradio turn and retain structured prior context."""
-    transaction = QueryTransaction(
-        execute=lambda question, *, conversation: _execute_for_gradio(
-            question,
-            diagram=diagram,
-            animate_diagram=animate_diagram,
-            conversation=conversation,
-        ),
+    session = QuerySession(
+        execute=_execute_for_gradio,
         default_question=_DEFAULT_QUESTION,
+        record_execution=_diagram_execution_recorder(diagram, animate_diagram=animate_diagram),
     )
-    return transaction.run(message, chat_history, conversation).as_gradio_values()
+    begun = session.begin(message, chat_history, conversation, {}, session_key=None)
+    completed = session.complete(begun.begun, begun.registry, session_key=None)
+    if completed is None:
+        return begun.update.as_gradio_values()
+    return completed.update.as_gradio_values()
 
 
 # --------------------------------------------------------------------------
@@ -256,7 +255,6 @@ def build_dashboard() -> gr.Blocks:
     from baseball_rag.arch.diagram import ArchitectureDiagram
 
     arch_diagram = ArchitectureDiagram(registry=get_registry())
-    latest_query_turns = _LatestQueryTurns()
 
     dashboard = gr.Blocks(title="Baseball RAG — Architecture Explorer")
 
@@ -295,56 +293,22 @@ def build_dashboard() -> gr.Blocks:
             sources = gr.JSON(label="Sources")
             sql = gr.Code(label="SQL", language="sql")
 
-            def _query_transaction() -> QueryTransaction:
-                return QueryTransaction(
-                    execute=lambda query, *, conversation: _execute_for_gradio(
-                        query,
-                        diagram=arch_diagram,
-                        animate_diagram=False,
-                        conversation=conversation,
-                    ),
-                    default_question=_DEFAULT_QUESTION,
-                )
-
-            def _mark_latest_query(
-                registry: dict[str, str | None] | None,
-                begun: BegunQuery,
-                request: gr.Request | None,
-            ) -> dict[str, str | None]:
-                registry = dict(registry or {})
-                turn_id = begun.pending.turn_id if begun.pending is not None else None
-                session_key = _query_session_key(request, registry)
-                registry["latest_turn_id"] = turn_id
-                registry["session_key"] = session_key
-                latest_query_turns.mark(session_key, turn_id)
-                return registry
-
-            def _is_latest_query(
-                begun: BegunQuery,
-                registry: dict[str, str | None] | None,
-                request: gr.Request | None,
-            ) -> bool:
-                if begun.pending is None:
-                    return True
-                session_key = _query_session_key(request, registry)
-                if latest_query_turns.has_session(session_key):
-                    return latest_query_turns.is_latest(session_key, begun.pending.turn_id)
-                if registry is None:
-                    return False
-                return registry.get("latest_turn_id") == begun.pending.turn_id
+            query_session = QuerySession(
+                execute=_execute_for_gradio,
+                default_question=_DEFAULT_QUESTION,
+                record_execution=_diagram_execution_recorder(
+                    arch_diagram,
+                    animate_diagram=False,
+                ),
+            )
 
             def _no_component_updates():
                 return tuple(gr.update() for _ in range(9))
 
-            def _query_session_key(
-                request: gr.Request | None,
-                registry: dict[str, str | None] | None,
-            ) -> str:
+            def _request_session_key(request: gr.Request | None) -> str | None:
                 if request is not None and request.session_hash:
                     return request.session_hash
-                if registry is not None and registry.get("session_key"):
-                    return str(registry["session_key"])
-                return _SESSIONLESS_QUERY_KEY
+                return None
 
             def begin_query(
                 msg,
@@ -353,16 +317,21 @@ def build_dashboard() -> gr.Blocks:
                 turn_registry,
                 request: Optional[gr.Request] = None,
             ):
-                begun = _query_transaction().begin(msg, chat_history, conversation)
-                turn_registry = _mark_latest_query(turn_registry, begun, request)
+                begun = query_session.begin(
+                    msg,
+                    chat_history,
+                    conversation,
+                    turn_registry,
+                    session_key=_request_session_key(request),
+                )
                 return (
                     begun.update.answer_text,
                     begun.update.rows,
                     begun.update.sources,
                     begun.update.sql,
-                    begun,
-                    turn_registry,
-                    gr.update(interactive=begun.pending is None),
+                    begun.begun,
+                    begun.registry,
+                    gr.update(interactive=begun.ask_interactive),
                 )
 
             def on_query(
@@ -370,17 +339,14 @@ def build_dashboard() -> gr.Blocks:
                 turn_registry: dict[str, str | None] | None,
                 request: Optional[gr.Request] = None,
             ):
-                if begun is None:
-                    update = _query_transaction().run(None, [], [])
-                elif begun.pending is None:
-                    update = begun.update
-                else:
-                    if not _is_latest_query(begun, turn_registry, request):
-                        return _no_component_updates()
-                    update = _query_transaction().complete(begun.pending)
-                    if not _is_latest_query(begun, turn_registry, request):
-                        return _no_component_updates()
-                return (*update.as_gradio_values(), gr.update(interactive=True))
+                completed = query_session.complete(
+                    begun,
+                    turn_registry,
+                    session_key=_request_session_key(request),
+                )
+                if completed is None:
+                    return _no_component_updates()
+                return (*completed.update.as_gradio_values(), gr.update(interactive=True))
 
             begin_query_outputs = gr.on(
                 triggers=[submit.click, question.submit],
