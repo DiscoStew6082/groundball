@@ -34,6 +34,30 @@ class TestRouter:
         assert result.stat == "H"
         assert result.year == 1956
 
+    def test_year_variants_spelled_century_with_digit_pair(self):
+        """Spoken years can use typed digits after the century word."""
+        result = route("who had the most hits in Nineteen 4 7")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "H"
+        assert result.year == 1947
+
+    def test_year_variants_spelled_century_with_zero_digit_pair(self):
+        """Digit-pair spoken years preserve zero as a decade digit."""
+        result = route("who had the most hits in Nineteen 0 7")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "H"
+        assert result.year == 1907
+
+    def test_incomplete_digit_pair_is_not_a_spoken_year(self):
+        """A lone digit after a century word is too ambiguous to infer a season."""
+        result = route("who had the most hits in Nineteen 4")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "H"
+        assert result.year is None
+
     def test_unknown_year_not_required(self):
         """Stat query without a year still routes correctly."""
         result = route("career home run leaders")

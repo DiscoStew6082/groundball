@@ -599,7 +599,7 @@ def _extract_spelled_year(lower_q: str) -> int | None:
         "eight": 8,
         "nine": 9,
     }
-    digit_units = {str(value): value for value in units.values()}
+    digit_units = {"0": 0} | {str(value): value for value in units.values()}
     unit_tokens = units | digit_units
     teens = {
         "ten": 10,
@@ -622,6 +622,8 @@ def _extract_spelled_year(lower_q: str) -> int | None:
         century = century_prefixes[match.group(1)]
         first = match.group(2)
         second = match.group(3)
+        if first in digit_units and second in unit_tokens:
+            return century + (digit_units[first] * 10) + unit_tokens[second]
         if first in {"oh", "zero"} and second is not None:
             return century + unit_tokens[second]
         if first in teens and second is None:
