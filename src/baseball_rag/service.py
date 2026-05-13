@@ -112,7 +112,15 @@ def _answer_player_biography(
         logger.exception("ChromaDB retrieval failed for player biography query %r", question)
         raise
 
+    if resolved_player_id is not None:
+        chunks = [chunk for chunk in chunks if chunk.player_id in {None, resolved_player_id}]
+
     if not chunks:
+        if resolved_player_id is not None:
+            return _answer_player_biography_from_duckdb(
+                player_id=resolved_player_id,
+                intent=decision.intent,
+            )
         return _answer_player_biography_from_llm_memory(
             question=decision.raw_question,
             intent=decision.intent,
@@ -277,6 +285,34 @@ def _answer_player_biography_from_llm_memory(
             )
         ],
         warnings=["No local corpus biography was found; the answer came from LLM memory."],
+    )
+
+
+def _answer_player_biography_from_duckdb(
+    *,
+    player_id: str,
+    intent: str,
+) -> StructuredAnswer:
+    """Build a deterministic player biography from local DuckDB records."""
+    from baseball_rag.corpus.frontmatter import parse_frontmatter
+    from baseball_rag.corpus.player_bios import build_player_bio
+
+    bio_text = build_player_bio(player_id, get_duckdb())
+    parsed = parse_frontmatter(bio_text)
+    metadata = parsed["metadata"]
+    title = str(metadata.get("title") or player_id)
+    body = parsed["body"].strip()
+    return StructuredAnswer(
+        answer=body,
+        intent=intent,
+        sources=[
+            _duckdb_source(
+                f"Generated player biography for {title}",
+                tables=["people", "batting", "pitching", "fielding"],
+                rows=[{"player_id": player_id, "name": title}],
+            )
+        ],
+        warnings=["No indexed corpus biography was found; generated one from local DuckDB data."],
     )
 
 

@@ -161,6 +161,20 @@ class TestRouter:
         assert result.intent == "player_biography"
         assert result.player_name == "Babe Ruth"
 
+    def test_lowercase_full_name_player_bio_routes_deterministically(self, monkeypatch):
+        """Lowercase biography questions should not wait on LLM routing."""
+
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("LLM router should not be called")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+        result = route("who was tom seaver")
+
+        assert isinstance(result, PlayerBiographyCase)
+        assert result.intent == "player_biography"
+        assert result.player_name == "Tom Seaver"
+
     def test_tell_me_about_full_name_routes_deterministically(self):
         result = route("tell me about Matt Olson")
 

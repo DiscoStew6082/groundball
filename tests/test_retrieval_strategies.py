@@ -123,14 +123,12 @@ def test_exact_player_id_requires_a_resolved_player_id():
     ]
 
 
-def test_hybrid_player_bio_falls_back_to_semantic_search_when_exact_misses():
+def test_hybrid_player_bio_does_not_fallback_when_resolved_player_id_misses():
     calls: list[dict] = []
 
     def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
         calls.append({"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where})
-        if where:
-            return []
-        return [_chunk()]
+        return []
 
     strategy = HybridPlayerBioStrategy(retrieve_fn=fake_retrieve)
 
@@ -142,26 +140,14 @@ def test_hybrid_player_bio_falls_back_to_semantic_search_when_exact_misses():
         player_id="ruthba01",
     )
 
-    assert result
+    assert result == []
     assert calls == [
         {
             "query": "Babe Ruth",
             "top_k": 1,
             "persist_dir": Path("store"),
             "where": player_id_filter("ruthba01"),
-        },
-        {
-            "query": "Babe Ruth",
-            "top_k": 3,
-            "persist_dir": Path("store"),
-            "where": category_filter(PLAYER_BIOGRAPHY_CATEGORY),
-        },
-        {
-            "query": "Babe Ruth",
-            "top_k": 3,
-            "persist_dir": Path("store"),
-            "where": None,
-        },
+        }
     ]
 
 

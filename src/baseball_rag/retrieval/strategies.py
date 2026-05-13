@@ -189,6 +189,8 @@ class HybridPlayerBioStrategy:
         )
         if exact:
             return exact
+        if player_id:
+            return []
         search_query = player_name or query
         player_chunks = _call_retrieve(
             self.retrieve_fn,

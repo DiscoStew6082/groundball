@@ -741,10 +741,24 @@ def _extract_player_bio_name_heuristic(question: str) -> str | None:
         rf"^\s*tell\s+me\s+about\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+)\.?\s*$",
     )
     for pattern in patterns:
-        match = re.search(pattern, question)
-        if match and _looks_like_player_name(match.group(1)):
-            return match.group(1)
+        match = re.search(pattern, question, flags=re.IGNORECASE)
+        if match and _looks_like_explicit_player_bio_name(match.group(1)):
+            return _normalize_player_name_casing(match.group(1))
     return None
+
+
+def _looks_like_explicit_player_bio_name(value: str) -> bool:
+    tokens = value.split()
+    if len(tokens) < 2:
+        return False
+    if tokens[0].lower() in {"a", "an", "the"}:
+        return False
+    return _looks_like_player_name(value) or value.islower()
+
+
+def _normalize_player_name_casing(value: str) -> str:
+    """Return title-cased spacing for explicit player-name biography queries."""
+    return " ".join(token[:1].upper() + token[1:] for token in value.split())
 
 
 def _looks_like_player_bio_followup(question: str) -> bool:

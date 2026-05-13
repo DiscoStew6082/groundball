@@ -295,6 +295,69 @@ class TestPlayerBioQuery:
             assert result.sources[0].label == "LLM memory"
             assert result.unsupported is False
 
+    def test_resolved_player_biography_ignores_unrelated_retrieved_profiles(self):
+        """A resolved player should not be answered from another player's corpus chunk."""
+        unrelated_chunk = RetrievedChunk(
+            text="Sandy Alomar was a second baseman.",
+            source="alomasa01.md",
+            title="Sandy Alomar",
+            score=0.5,
+            id="player:alomasa01",
+            category="player_biography",
+            player_id="alomasa01",
+            doc_kind="generated_player_profile",
+        )
+
+        with (
+            patch("baseball_rag.service.route") as mock_route,
+            patch("baseball_rag.service.retrieve_grounded_chunks") as mock_retrieve,
+            patch("baseball_rag.service.get_duckdb"),
+            patch("baseball_rag.corpus.player_bios.resolve_player_by_name") as mock_resolve,
+            patch("baseball_rag.corpus.player_bios.build_player_bio") as mock_build_bio,
+            patch("baseball_rag.service.init_db"),
+            patch("baseball_rag.generation.llm.make_request") as mock_llm,
+        ):
+            from baseball_rag.routing import RouteResult
+            from baseball_rag.service import answer as structured_answer
+
+            mock_route.return_value = RouteResult(
+                intent="player_biography",
+                stat=None,
+                time_period=None,
+                position=None,
+                player_name="Tom Seaver",
+                raw_question="who was Tom Seaver",
+            )
+            mock_retrieve.return_value = [unrelated_chunk]
+            mock_resolve.return_value = PlayerResolution(
+                query="Tom Seaver",
+                candidates=[PlayerCandidate("seaveto01", "Tom Seaver", "1967-04-13", "1986-09-19")],
+            )
+            mock_build_bio.return_value = """---
+title: Tom Seaver
+player_id: seaveto01
+category: player_biography
+doc_kind: generated_player_profile
+source_tables:
+  - people
+---
+
+# Tom Seaver
+
+**Primary position:** P
+
+## Career Summary
+New York Mets (1967-1977), Cincinnati Reds (1977-1982)
+"""
+
+            result = structured_answer("who was tom seaver")
+
+            assert "Tom Seaver" in result.answer
+            assert "New York Mets" in result.answer
+            assert result.sources[0].type == "duckdb"
+            assert result.sources[0].label == "Generated player biography for Tom Seaver"
+            mock_llm.assert_not_called()
+
     def test_player_biography_not_found_error_shows_ingest_message(self):
         """If ChromaDB raises NotFoundError, suggest running ingest."""
         with (
