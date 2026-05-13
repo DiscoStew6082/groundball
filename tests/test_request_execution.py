@@ -3,8 +3,9 @@
 from unittest.mock import patch
 
 from baseball_rag.arch.tracing import finish_trace, get_current_trace, traced
-from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.request_execution import execute_request
+from baseball_rag.routing import RouteResult
 
 
 def test_execute_request_replaces_stale_empty_trace_with_request_trace():
@@ -107,3 +108,62 @@ def test_execute_request_passes_conversation_to_answer_service():
     assert execution.trace is not None
     assert execution.trace.query == "tell me about the second player"
     answer.assert_called_once_with("tell me about the second player", conversation=prior_turns)
+
+
+def test_execute_request_resolves_followup_dispatches_and_attaches_context(monkeypatch):
+    """Follow-up context is resolved, answered, and annotated by the request path."""
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": StructuredAnswer(
+                answer="Career home run leaders",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="Career HR leaders",
+                        rows=[
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                        ],
+                    )
+                ],
+            ),
+        }
+    ]
+    routed_questions = []
+
+    def fake_route(question: str) -> RouteResult:
+        routed_questions.append(question)
+        return RouteResult(
+            intent="player_biography",
+            stat=None,
+            player_name="Hank Aaron",
+            raw_question=question,
+        )
+
+    def fake_player_answer(question, decision, *, retrieval_strategy=None):
+        assert question == "tell me about Hank Aaron"
+        assert decision.raw_question == "tell me about Hank Aaron"
+        return StructuredAnswer(answer="Hank Aaron biography", intent="player_biography")
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", fake_route)
+    monkeypatch.setattr("baseball_rag.service._answer_player_biography", fake_player_answer)
+
+    execution = execute_request(
+        "tell me about the second player",
+        adapter_component_id="gradio",
+        conversation=prior_turns,
+    )
+
+    assert routed_questions == ["tell me about Hank Aaron"]
+    assert execution.answer.answer == "Hank Aaron biography"
+    assert execution.answer.metadata == {
+        "original_question": "tell me about the second player",
+        "context_question": "tell me about Hank Aaron",
+        "context_source": "career home run leaders",
+        "context_player_name": "Hank Aaron",
+    }
+    assert execution.trace is not None
+    assert execution.trace.route_type == "player_biography"

@@ -113,6 +113,22 @@ Do not run implementation phases in parallel unless their write sets are
 disjoint and the coordinator can integrate them before verification. Safe
 parallel exploration is encouraged.
 
+## Implementation Progress
+
+- [x] Phase 1: Request-to-answer dispatch spine. Added
+  `request_dispatch.RequestAnswerDispatcher`, kept `service.answer()` as the
+  compatibility wrapper, added a public `execute_request()` follow-up tracer
+  test, and verified adapter/tracing/player-biography compatibility. Code review
+  found no blocking issues; trace ownership remains in `request_execution.py` as
+  the shared adapter execution spine.
+- [ ] Phase 2: Structured routed intent cases.
+- [ ] Phase 3: Deterministic `stat_query` module.
+- [ ] Phase 4: `freeform_query` planning seam.
+- [ ] Phase 5: Corpus lifecycle contract.
+- [ ] Phase 6: Retrieval decision module.
+- [ ] Phase 7: Gradio query adapter/session state.
+- [ ] Phase 8: Answer outcome policy.
+
 ## Phase 1: Request-To-Answer Dispatch Spine
 
 ### Goal

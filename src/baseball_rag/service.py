@@ -16,6 +16,7 @@ from baseball_rag.provenance import (
     UnsupportedReason,
     compact_data_manifest,
 )
+from baseball_rag.request_dispatch import AnswerHandlers, RequestAnswerDispatcher
 from baseball_rag.retrieval.chroma_store import RetrievedChunk
 from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
 from baseball_rag.retrieval.strategies import RetrievalStrategy
@@ -33,33 +34,22 @@ def answer(
     conversation: list[dict[str, Any]] | None = None,
 ) -> StructuredAnswer:
     """Answer a question with explicit grounding metadata."""
-    init_db()
-    resolution = resolve_followup(question, conversation)
-    routed_question = resolution.resolved_question
-    decision = route(routed_question)
-
-    if decision.intent == "stat_query":
-        result = answer_stat_query(decision)
-    elif decision.intent == "player_biography":
-        result = _answer_player_biography(
-            routed_question,
-            decision,
-            retrieval_strategy=retrieval_strategy,
-        )
-    elif decision.intent == "freeform_query":
-        result = _answer_freeform(routed_question, decision)
-    else:
-        result = _answer_general(routed_question, decision, retrieval_strategy=retrieval_strategy)
-
-    if resolution.source_turn is not None:
-        result.metadata["original_question"] = question
-        result.metadata["context_question"] = routed_question
-        result.metadata["context_source"] = resolution.source_turn
-    if not result.unsupported and resolution.referenced_player_name is not None:
-        result.metadata["context_player_name"] = resolution.referenced_player_name
-    elif not result.unsupported and decision.intent == "player_biography" and decision.player_name:
-        result.metadata["context_player_name"] = decision.player_name
-    return result
+    dispatcher = RequestAnswerDispatcher(
+        initialize=init_db,
+        resolve_followup=resolve_followup,
+        route_question=route,
+        handlers=AnswerHandlers(
+            stat_query=answer_stat_query,
+            player_biography=_answer_player_biography,
+            freeform_query=_answer_freeform,
+            general_explanation=_answer_general,
+        ),
+    )
+    return dispatcher.answer(
+        question,
+        retrieval_strategy=retrieval_strategy,
+        conversation=conversation,
+    )
 
 
 def render_text(result: StructuredAnswer) -> str:
