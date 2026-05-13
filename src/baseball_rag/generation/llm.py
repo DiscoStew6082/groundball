@@ -124,6 +124,29 @@ def _strip_reasoning_block(text: str) -> str:
     return original
 
 
+def _content_to_text(value: object) -> str:
+    """Normalize OpenAI-compatible message content variants into text."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(_content_to_text(item) for item in value)
+    if isinstance(value, dict):
+        for key in ("text", "content", "reasoning_content"):
+            text = _content_to_text(value.get(key))
+            if text:
+                return text
+    return ""
+
+
+def _message_content(choice: dict) -> str:
+    content = _content_to_text(choice.get("content"))
+    if content:
+        return content
+    return _content_to_text(choice.get("reasoning_content"))
+
+
 @traced(component_id="llm", label="Generate Answer")
 def make_request(
     prompt: str | tuple[str, str],
@@ -164,7 +187,7 @@ def make_request(
 
     data = resp.json()
     choice = data["choices"][0]["message"]
-    raw = choice.get("content") or choice.get("reasoning_content", "")
+    raw = _message_content(choice)
     content = _strip_reasoning_block(raw)
 
     return LLMResponse(content=content, model=data.get("model", model), done=True)
@@ -200,6 +223,8 @@ def make_request_stream(
 
             chunk = _json.loads(line[6:])
             delta = chunk.get("choices", [{}])[0].get("delta", {})
-            token = delta.get("content", "") + delta.get("reasoning_content", "")
+            token = _content_to_text(delta.get("content")) + _content_to_text(
+                delta.get("reasoning_content")
+            )
             if token:
                 yield token

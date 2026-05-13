@@ -177,6 +177,35 @@ class TestDashboardTabs:
         assert self.dash.arch_diagram.diagram_html.value == before_html
         assert self.dash.arch_diagram.footer_html.value == before_footer
 
+    def test_query_handler_keeps_answer_when_diagram_recording_fails(self):
+        """A trace-display failure should not replace a successful query answer."""
+        from baseball_rag.web_app import respond_conversation
+
+        class BrokenDiagram:
+            def __init__(self):
+                self.trace_history = []
+                self.max_history = 10
+
+            def animate_trace(self, _trace):
+                raise RuntimeError("diagram failed")
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = (
+                respond_conversation("what is OPS", [], [], diagram=BrokenDiagram())
+            )
+
+        assert textbox == "what is OPS"
+        assert answer == "answered what is OPS"
+        assert chat[-1]["content"] == "answered what is OPS"
+        assert chat_state == chat
+        assert conversation[-1]["answer"]["intent"] == "general_explanation"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
 
 # --------------------------------------------------------------------------
 # Phase 4.2 — Trace wiring: query tab → arch diagram
@@ -484,6 +513,28 @@ class TestTraceWiring:
         ]
         assert chat_state == chat
         assert conversation[-1]["question"] == "what is slugging percentage"
+        assert conversation[-1]["answer"]["intent"] == "error"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
+    def test_conversation_query_returns_visible_failure_message(self):
+        """Post-LM failures should become chat output instead of wedging the Ask event."""
+        from baseball_rag.web_app import respond_conversation
+
+        with patch(
+            "baseball_rag.web_app._execute_for_gradio",
+            side_effect=ValueError("missing choices in LM response"),
+        ):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = (
+                respond_conversation("who was Babe Ruth", [], [])
+            )
+
+        assert textbox == "who was Babe Ruth"
+        assert "could not return an answer" in answer.lower()
+        assert "missing choices in LM response" in chat[-1]["content"]
+        assert chat_state == chat
+        assert conversation[-1]["question"] == "who was Babe Ruth"
         assert conversation[-1]["answer"]["intent"] == "error"
         assert rows == []
         assert sources == []

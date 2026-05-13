@@ -24,6 +24,29 @@ class TestLLMClient:
         assert len(result.content) > 0
         assert result.model == "gemma-4-26b"
 
+    def test_generate_returns_text_from_content_parts(self):
+        """OpenAI-compatible content parts should be joined into returned text."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {"type": "text", "text": "Babe Ruth"},
+                            {"type": "text", "text": " played for the Yankees."},
+                        ]
+                    }
+                }
+            ],
+            "model": "gemma-4-26b",
+        }
+
+        with patch("requests.post", return_value=mock_resp):
+            result = make_request("who was Babe Ruth")
+
+        assert result.content == "Babe Ruth played for the Yankees."
+
     def test_connection_error_raises(self):
         """ConnectionError is raised when LM Studio is not running."""
         import requests
@@ -95,6 +118,25 @@ class TestLLMClient:
         assert "Mickey" in tokens
         # Note: token may include leading space from SSE delta
         assert any("Mantle" in t for t in tokens)
+
+    def test_stream_joins_content_parts_and_reasoning_content(self):
+        """Streaming keeps content plus reasoning fields while normalizing parts."""
+        lines = [
+            (
+                'data: {"choices":[{"delta":{"content":'
+                '[{"type":"text","text":"Babe Ruth"}],'
+                '"reasoning_content":" played baseball"}}]}'
+            ),
+            "data: [DONE]",
+        ]
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.iter_lines.return_value = iter(lines)
+
+        with patch("requests.post", return_value=mock_resp):
+            tokens = list(make_request_stream("who was Babe Ruth"))
+
+        assert tokens == ["Babe Ruth played baseball"]
 
     def test_stream_with_tuple_prompt(self):
         """make_request_stream also supports (system, user) tuple prompts."""

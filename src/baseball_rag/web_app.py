@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import os
 import re
@@ -29,6 +30,8 @@ from baseball_rag.service import render_text
 if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
 
+
+logger = logging.getLogger(__name__)
 
 _TTL_ENV_VAR = "BASEBALL_RAG_WEB_APP_TTL_SECONDS"
 _DEFAULT_SERVER_NAME = "0.0.0.0"
@@ -164,10 +167,13 @@ def _execute_for_gradio(
         conversation=conversation,
     )
     if diagram is not None:
-        if animate_diagram:
-            _animate_execution(diagram, execution)
-        else:
-            _record_execution_trace(diagram, execution)
+        try:
+            if animate_diagram:
+                _animate_execution(diagram, execution)
+            else:
+                _record_execution_trace(diagram, execution)
+        except Exception:
+            logger.exception("Gradio diagram trace update failed for %r", query)
     return execution
 
 
@@ -218,6 +224,9 @@ def respond_conversation(
         result = execution.answer
     except TimeoutError as exc:
         result = _timeout_answer(exc)
+    except (AttributeError, ConnectionError, IndexError, KeyError, TypeError, ValueError) as exc:
+        logger.exception("Gradio query failed for %r", message)
+        result = _request_failure_answer(exc)
     chat_history.extend(
         [
             {"role": "user", "content": message},
@@ -235,6 +244,19 @@ def respond_conversation(
         sql,
         list(chat_history),
         list(conversation),
+    )
+
+
+def _request_failure_answer(exc: Exception) -> StructuredAnswer:
+    return StructuredAnswer(
+        answer=(
+            "The local request could not return an answer after a service responded. "
+            "Try again, or check the server logs for the response-shape error."
+        ),
+        intent="error",
+        warnings=[str(exc)],
+        unsupported=True,
+        unsupported_reason="llm_unavailable",
     )
 
 
