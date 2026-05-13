@@ -28,7 +28,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal, cast
 
 from baseball_rag.arch.tracing import traced
 from baseball_rag.db.stat_registry import (
@@ -143,6 +143,98 @@ class RouteResult:
         return None
 
 
+@dataclass(frozen=True)
+class StatQueryCase:
+    """Validated route facts for deterministic stat answers."""
+
+    stat: str
+    time_period: TimePeriod | None = None
+    position: str | None = None
+    player_name: str | None = None
+    raw_question: str = ""
+    intent: Literal["stat_query"] = "stat_query"
+
+    @property
+    def year(self) -> int | None:
+        if self.time_period is None:
+            return None
+        if self.time_period.type == TimePeriodType.SINGLE and isinstance(
+            self.time_period.value, int
+        ):
+            return self.time_period.value
+        return None
+
+
+@dataclass(frozen=True)
+class PlayerBiographyCase:
+    """Validated route facts for player biography answers."""
+
+    player_name: str | None = None
+    raw_question: str = ""
+    intent: Literal["player_biography"] = "player_biography"
+
+
+@dataclass(frozen=True)
+class FreeformQueryCase:
+    """Validated route facts for freeform database answers."""
+
+    raw_question: str = ""
+    time_period: TimePeriod | None = None
+    intent: Literal["freeform_query"] = "freeform_query"
+
+    @property
+    def year(self) -> int | None:
+        if self.time_period is None:
+            return None
+        if self.time_period.type == TimePeriodType.SINGLE and isinstance(
+            self.time_period.value, int
+        ):
+            return self.time_period.value
+        return None
+
+
+@dataclass(frozen=True)
+class GeneralExplanationCase:
+    """Validated route facts for grounded general explanations."""
+
+    raw_question: str = ""
+    stat: str | None = None
+    intent: Literal["general_explanation"] = "general_explanation"
+
+
+RoutedCase = StatQueryCase | PlayerBiographyCase | FreeformQueryCase | GeneralExplanationCase
+Intent = Literal["stat_query", "player_biography", "freeform_query", "general_explanation"]
+
+
+def routed_case(
+    *,
+    intent: Intent,
+    raw_question: str,
+    stat: str | None = None,
+    time_period: TimePeriod | None = None,
+    position: str | None = None,
+    player_name: str | None = None,
+) -> RoutedCase:
+    """Build the narrow route case for an intent."""
+    if intent == "stat_query":
+        if stat is None:
+            raise ValueError("stat_query routes require a stat")
+        return StatQueryCase(
+            stat=stat,
+            time_period=time_period,
+            position=position,
+            player_name=player_name,
+            raw_question=raw_question,
+        )
+    if intent == "player_biography":
+        return PlayerBiographyCase(player_name=player_name, raw_question=raw_question)
+    if intent == "freeform_query":
+        return FreeformQueryCase(raw_question=raw_question, time_period=time_period)
+    if intent == "general_explanation":
+        return GeneralExplanationCase(raw_question=raw_question, stat=stat)
+    raise ValueError(f"Unsupported routed intent: {intent}")
+
+
 _ROUTING_PROMPT = (
     "You are a baseball query classifier. Given a user question, "
     "respond with ONLY valid JSON (no markdown, no explanation).\n\n"
@@ -245,39 +337,28 @@ def _parse_llm_json(raw: str) -> dict | None:
 
 
 @traced(component_id="query-router", label="Route Query")
-def route(question: str) -> RouteResult:
+def route(question: str) -> RoutedCase:
     """Classify a natural language question using the LLM.
 
     Falls back to a simple heuristic if LM Studio is unavailable.
     """
     if _looks_like_player_bio_followup(question):
-        return RouteResult(
+        return routed_case(
             intent="player_biography",
-            stat=None,
-            time_period=None,
-            position=None,
-            player_name=None,
             raw_question=question,
         )
 
     player_bio_name = _extract_player_bio_name_heuristic(question)
     if player_bio_name is not None:
-        return RouteResult(
+        return routed_case(
             intent="player_biography",
-            stat=None,
-            time_period=None,
-            position=None,
             player_name=player_bio_name,
             raw_question=question,
         )
 
     if _should_use_deterministic_freeform_route(question):
-        return RouteResult(
+        return routed_case(
             intent="freeform_query",
-            stat=None,
-            time_period=None,
-            position=None,
-            player_name=None,
             raw_question=question,
         )
 
@@ -317,8 +398,8 @@ def route(question: str) -> RouteResult:
             if raw_stat is not None and not isinstance(raw_stat, str):
                 raise LLMRoutingOutputError("LLM router stat must be a string or null.")
 
-            return RouteResult(
-                intent=data["intent"],
+            return routed_case(
+                intent=cast(Intent, data["intent"]),
                 stat=normalize_stat(raw_stat) if raw_stat else None,
                 time_period=time_period,
                 position=data.get("position"),
@@ -371,7 +452,7 @@ def _build_time_period(data: dict | None) -> TimePeriod | None:
     return TimePeriod(type=period_type, value=raw_value)  # type: ignore[arg-type]
 
 
-def _heuristic_route(question: str) -> RouteResult:
+def _heuristic_route(question: str) -> RoutedCase:
     """Fallback routing when the LLM is unavailable.
 
     Only handles explicit leaderboard queries (who had most/least/top N).
@@ -382,7 +463,7 @@ def _heuristic_route(question: str) -> RouteResult:
     # Only classify as stat_query if it's clearly a league-wide leader request
     lower_q = question.lower()
     leader_re = re.compile(
-        r"\b(career|most|least|highest|lowest|lead|leads|leader|leaders|top|bottom|best)\b"
+        r"\b(career|most|least|highest|lowest|lead|leads|led|leader|leaders|top|bottom|best)\b"
     )
     is_leaderboard = bool(leader_re.search(lower_q))
 
@@ -453,8 +534,13 @@ def _heuristic_route(question: str) -> RouteResult:
     else:
         time_period = None
 
-    return RouteResult(
-        intent="stat_query" if is_leaderboard or (stat and player_name) else "general_explanation",
+    intent: Intent = (
+        "stat_query"
+        if stat is not None and (is_leaderboard or player_name)
+        else "general_explanation"
+    )
+    return routed_case(
+        intent=intent,
         stat=stat,
         time_period=time_period,
         position=position,
@@ -563,6 +649,7 @@ def _should_use_deterministic_stat_route(question: str) -> bool:
         "highest",
         "lowest",
         "lead",
+        "led",
         "leader",
         "leaders",
         "top",

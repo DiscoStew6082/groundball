@@ -121,7 +121,12 @@ parallel exploration is encouraged.
   test, and verified adapter/tracing/player-biography compatibility. Code review
   found no blocking issues; trace ownership remains in `request_execution.py` as
   the shared adapter execution spine.
-- [ ] Phase 2: Structured routed intent cases.
+- [x] Phase 2: Structured routed intent cases. Added intent-specific routed
+  cases and a shared validating factory, routed heuristic and LLM outputs
+  through those cases, isolated legacy `RouteResult` normalization at the
+  dispatch boundary, narrowed `answer_stat_query()` to `StatQueryCase`, and
+  added request-path coverage for the new cases. Code review found no blocking
+  issues.
 - [ ] Phase 3: Deterministic `stat_query` module.
 - [ ] Phase 4: `freeform_query` planning seam.
 - [ ] Phase 5: Corpus lifecycle contract.

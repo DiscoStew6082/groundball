@@ -4,11 +4,28 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from baseball_rag.conversation import ConversationResolution
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.retrieval.strategies import RetrievalStrategy
+from baseball_rag.routing import (
+    FreeformQueryCase,
+    GeneralExplanationCase,
+    PlayerBiographyCase,
+    RoutedCase,
+    RouteResult,
+    StatQueryCase,
+    routed_case,
+)
+from baseball_rag.routing.query_router import Intent
+
+_SUPPORTED_INTENTS = {
+    "stat_query",
+    "player_biography",
+    "freeform_query",
+    "general_explanation",
+}
 
 
 @dataclass(frozen=True)
@@ -59,23 +76,52 @@ class RequestAnswerDispatcher:
     def _dispatch(
         self,
         routed_question: str,
-        decision: Any,
+        decision: RoutedCase | RouteResult,
         *,
         retrieval_strategy: str | RetrievalStrategy | None,
     ) -> StructuredAnswer:
-        if decision.intent == "stat_query":
+        if isinstance(decision, StatQueryCase):
             return self.handlers.stat_query(decision)
-        if decision.intent == "player_biography":
+        if isinstance(decision, PlayerBiographyCase):
             return self.handlers.player_biography(
                 routed_question,
                 decision,
                 retrieval_strategy=retrieval_strategy,
             )
-        if decision.intent == "freeform_query":
+        if isinstance(decision, FreeformQueryCase):
             return self.handlers.freeform_query(routed_question, decision)
-        return self.handlers.general_explanation(
+        if isinstance(decision, GeneralExplanationCase):
+            return self.handlers.general_explanation(
+                routed_question,
+                decision,
+                retrieval_strategy=retrieval_strategy,
+            )
+        if not isinstance(decision, RouteResult):
+            raise TypeError(f"Unsupported routed case type: {type(decision).__name__}")
+        return self._dispatch_legacy_route_result(
             routed_question,
             decision,
+            retrieval_strategy=retrieval_strategy,
+        )
+
+    def _dispatch_legacy_route_result(
+        self,
+        routed_question: str,
+        decision: RouteResult,
+        *,
+        retrieval_strategy: str | RetrievalStrategy | None,
+    ) -> StructuredAnswer:
+        normalized = routed_case(
+            intent=_validated_legacy_intent(decision.intent),
+            stat=decision.stat,
+            time_period=decision.time_period,
+            position=decision.position,
+            player_name=decision.player_name,
+            raw_question=decision.raw_question,
+        )
+        return self._dispatch(
+            routed_question,
+            normalized,
             retrieval_strategy=retrieval_strategy,
         )
 
@@ -95,5 +141,13 @@ class RequestAnswerDispatcher:
             return
         if resolution.referenced_player_name is not None:
             result.metadata["context_player_name"] = resolution.referenced_player_name
-        elif decision.intent == "player_biography" and decision.player_name:
+        elif isinstance(decision, (PlayerBiographyCase, RouteResult)) and (
+            decision.intent == "player_biography" and decision.player_name
+        ):
             result.metadata["context_player_name"] = decision.player_name
+
+
+def _validated_legacy_intent(intent: str) -> Intent:
+    if intent not in _SUPPORTED_INTENTS:
+        raise ValueError(f"Unsupported routed intent: {intent}")
+    return cast(Intent, intent)

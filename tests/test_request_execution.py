@@ -5,7 +5,13 @@ from unittest.mock import patch
 from baseball_rag.arch.tracing import finish_trace, get_current_trace, traced
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.request_execution import execute_request
-from baseball_rag.routing import RouteResult
+from baseball_rag.routing import (
+    FreeformQueryCase,
+    GeneralExplanationCase,
+    PlayerBiographyCase,
+    RouteResult,
+    StatQueryCase,
+)
 
 
 def test_execute_request_replaces_stale_empty_trace_with_request_trace():
@@ -167,3 +173,84 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
     }
     assert execution.trace is not None
     assert execution.trace.route_type == "player_biography"
+
+
+def test_execute_request_answers_routed_stat_case_through_service(monkeypatch):
+    """Validated stat cases answer through the normal request path."""
+    seen_cases = []
+
+    def fake_route(question: str) -> StatQueryCase:
+        return StatQueryCase(stat="RBI", raw_question=question)
+
+    def fake_stat_answer(decision: StatQueryCase) -> StructuredAnswer:
+        seen_cases.append(decision)
+        return StructuredAnswer(answer="Top RBI leaders", intent=decision.intent)
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", fake_route)
+    monkeypatch.setattr("baseball_rag.service.answer_stat_query", fake_stat_answer)
+
+    execution = execute_request("career RBI leaders", adapter_component_id="api")
+
+    assert execution.answer.answer == "Top RBI leaders"
+    assert seen_cases == [StatQueryCase(stat="RBI", raw_question="career RBI leaders")]
+
+
+def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
+    """The request path dispatches each validated routed case by type."""
+    cases = [
+        (
+            PlayerBiographyCase(player_name="Hank Aaron", raw_question="who was Hank Aaron"),
+            "_answer_player_biography",
+            "bio",
+        ),
+        (
+            FreeformQueryCase(raw_question="who won the Triple Crown"),
+            "_answer_freeform",
+            "freeform",
+        ),
+        (
+            GeneralExplanationCase(raw_question="what is OPS", stat="OPS"),
+            "_answer_general",
+            "general",
+        ),
+    ]
+
+    for routed, handler_name, expected in cases:
+        monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+        monkeypatch.setattr("baseball_rag.service.route", lambda _question, routed=routed: routed)
+
+        def fake_handler(*args, expected=expected, **kwargs):
+            decision = args[1]
+            assert decision is routed
+            return StructuredAnswer(answer=expected, intent=decision.intent)
+
+        monkeypatch.setattr(f"baseball_rag.service.{handler_name}", fake_handler)
+
+        execution = execute_request(routed.raw_question, adapter_component_id="api")
+
+        assert execution.answer.answer == expected
+
+
+def test_execute_request_normalizes_legacy_stat_route_result(monkeypatch):
+    """Legacy RouteResult compatibility is converted at the dispatch boundary."""
+    seen_cases = []
+    legacy = RouteResult(
+        intent="stat_query",
+        stat="HR",
+        raw_question="career home run leaders",
+    )
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", lambda _question: legacy)
+
+    def fake_stat_answer(decision: StatQueryCase) -> StructuredAnswer:
+        seen_cases.append(decision)
+        return StructuredAnswer(answer="Top HR leaders", intent=decision.intent)
+
+    monkeypatch.setattr("baseball_rag.service.answer_stat_query", fake_stat_answer)
+
+    execution = execute_request("career home run leaders", adapter_component_id="api")
+
+    assert execution.answer.answer == "Top HR leaders"
+    assert seen_cases == [StatQueryCase(stat="HR", raw_question="career home run leaders")]

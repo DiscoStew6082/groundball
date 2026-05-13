@@ -10,12 +10,12 @@ from typing import Any
 from baseball_rag.db import execute_stat_query
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
-from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+from baseball_rag.routing.query_router import StatQueryCase, TimePeriod, TimePeriodType
 
 
-def answer_stat_query(decision: Any) -> StructuredAnswer:
+def answer_stat_query(decision: StatQueryCase) -> StructuredAnswer:
     """Answer a routed deterministic stat query with provenance-ready SQL."""
-    stat = decision.stat or "HR"
+    stat = decision.stat
     if _is_ambiguous_current_century_decade(decision.time_period, decision.raw_question):
         return StructuredAnswer(
             answer=(

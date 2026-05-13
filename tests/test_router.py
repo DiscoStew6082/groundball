@@ -1,7 +1,7 @@
 """Tests for query routing."""
 
 from baseball_rag.generation.llm import LLMResponse, LLMTimeoutError
-from baseball_rag.routing import route
+from baseball_rag.routing import FreeformQueryCase, PlayerBiographyCase, StatQueryCase, route
 
 
 class TestRouter:
@@ -101,6 +101,7 @@ class TestRouter:
     def test_range_1960_to_1980(self):
         """'between 1960-1980' → type=range, value=[1960, 1980]."""
         result = route("who had most RBIs between 1960-1980")
+        assert isinstance(result, StatQueryCase)
         assert result.intent == "stat_query"
         assert result.stat == "RBI"
         assert result.time_period is not None
@@ -124,20 +125,29 @@ class TestRouter:
         """Simple full-name biography questions should not depend on LLM routing."""
         result = route("who was Babe Ruth")
 
+        assert isinstance(result, PlayerBiographyCase)
         assert result.intent == "player_biography"
         assert result.player_name == "Babe Ruth"
 
     def test_tell_me_about_full_name_routes_deterministically(self):
         result = route("tell me about Matt Olson")
 
+        assert isinstance(result, PlayerBiographyCase)
         assert result.intent == "player_biography"
         assert result.player_name == "Matt Olson"
+
+    def test_deterministic_freeform_pattern_returns_freeform_case(self):
+        result = route("who won the Triple Crown and which years")
+
+        assert isinstance(result, FreeformQueryCase)
+        assert result.intent == "freeform_query"
+        assert result.raw_question == "who won the Triple Crown and which years"
 
     def test_generic_lowercase_bio_question_does_not_route_as_named_player(self):
         result = route("who was the best hitter")
 
         assert result.intent != "player_biography"
-        assert result.player_name is None
+        assert not hasattr(result, "player_name")
 
     def test_empty_llm_routing_response_falls_back_to_heuristic(self, monkeypatch):
         """Blank LLM routing output should not abort the whole request."""
