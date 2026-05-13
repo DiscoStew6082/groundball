@@ -10,6 +10,8 @@ instrumentation so the Architecture Explorer shows every query execution.
 
 from unittest.mock import patch
 
+import gradio as gr
+
 from baseball_rag.arch.diagram import ArchitectureDiagram
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 
@@ -215,6 +217,116 @@ class TestDashboardTabs:
         assert all(
             isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
         )
+
+    def test_stale_query_completion_uses_latest_turn_after_state_snapshot(self):
+        """A copied Gradio state snapshot must not let an older answer overwrite newer UI."""
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, old_begun, turn_registry = begin_fn("what is OPS", [], [], turn_registry)
+        old_registry_snapshot = dict(turn_registry)
+        begin_fn("career home run leaders", [], [], turn_registry)
+        calls = []
+
+        def fake_answer(question: str, **_kwargs):
+            calls.append(question)
+            return StructuredAnswer(
+                answer=f"stale answer for {question}",
+                intent="general_explanation",
+            )
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            outputs = query_fn(old_begun, old_registry_snapshot)
+
+        assert all(
+            isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
+        )
+        assert calls == []
+
+    def test_same_session_stale_snapshot_does_not_execute_backend(self):
+        """A stale copied state in one browser session no-ops before backend execution."""
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        session = gr.Request(session_hash="session-a")
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, old_begun, turn_registry = begin_fn(
+            "what is OPS", [], [], turn_registry, session
+        )
+        old_registry_snapshot = dict(turn_registry)
+        begin_fn("career home run leaders", [], [], turn_registry, session)
+        calls = []
+
+        def fake_answer(question: str, **_kwargs):
+            calls.append(question)
+            return StructuredAnswer(
+                answer=f"stale answer for {question}",
+                intent="general_explanation",
+            )
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            outputs = query_fn(old_begun, old_registry_snapshot, session)
+
+        assert all(
+            isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
+        )
+        assert calls == []
+
+    def test_stale_query_guard_is_scoped_to_gradio_session(self):
+        """A newer query in another browser session must not suppress this session."""
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        session_a = gr.Request(session_hash="session-a")
+        session_b = gr.Request(session_hash="session-b")
+        registry_a = {"latest_turn_id": None}
+        registry_b = {"latest_turn_id": None}
+        _, _, _, _, begun_a, registry_a = begin_fn("what is OPS", [], [], registry_a, session_a)
+        begin_fn("career home run leaders", [], [], registry_b, session_b)
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(
+                answer=f"answer for {question}",
+                intent="general_explanation",
+            )
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
+                begun_a,
+                registry_a,
+                session_a,
+            )
+
+        assert textbox == "what is OPS"
+        assert answer == "answer for what is OPS"
+        assert chat[-1]["content"] == "answer for what is OPS"
+        assert chat_state == chat
+        assert conversation[-1]["question"] == "what is OPS"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
 
     def test_query_handler_records_trace_without_animating_architecture_components(self):
         """Ask records Architecture history without side-effecting Architecture UI outputs."""

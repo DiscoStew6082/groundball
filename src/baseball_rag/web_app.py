@@ -19,7 +19,7 @@ import re
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import gradio as gr
 
@@ -40,6 +40,27 @@ _DEFAULT_SERVER_PORT = 7860
 _DEV_SERVER_NAME = "127.0.0.1"
 _DEV_SERVER_PORT = 7861
 _TTL_HARD_EXIT_GRACE_SECONDS = 5.0
+_SESSIONLESS_QUERY_KEY = "__sessionless_query__"
+
+
+class _LatestQueryTurns:
+    """Track the latest submitted query per browser session."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._latest_by_session: dict[str, str | None] = {}
+
+    def mark(self, session_key: str, turn_id: str | None) -> None:
+        with self._lock:
+            self._latest_by_session[session_key] = turn_id
+
+    def has_session(self, session_key: str) -> bool:
+        with self._lock:
+            return session_key in self._latest_by_session
+
+    def is_latest(self, session_key: str, turn_id: str) -> bool:
+        with self._lock:
+            return self._latest_by_session.get(session_key) == turn_id
 
 
 # --------------------------------------------------------------------------
@@ -235,6 +256,7 @@ def build_dashboard() -> gr.Blocks:
     from baseball_rag.arch.diagram import ArchitectureDiagram
 
     arch_diagram = ArchitectureDiagram(registry=get_registry())
+    latest_query_turns = _LatestQueryTurns()
 
     dashboard = gr.Blocks(title="Baseball RAG — Architecture Explorer")
 
@@ -287,19 +309,26 @@ def build_dashboard() -> gr.Blocks:
             def _mark_latest_query(
                 registry: dict[str, str | None] | None,
                 begun: BegunQuery,
+                request: gr.Request | None,
             ) -> dict[str, str | None]:
-                if registry is None:
-                    registry = {}
+                registry = dict(registry or {})
                 turn_id = begun.pending.turn_id if begun.pending is not None else None
+                session_key = _query_session_key(request, registry)
                 registry["latest_turn_id"] = turn_id
+                registry["session_key"] = session_key
+                latest_query_turns.mark(session_key, turn_id)
                 return registry
 
             def _is_latest_query(
                 begun: BegunQuery,
                 registry: dict[str, str | None] | None,
+                request: gr.Request | None,
             ) -> bool:
                 if begun.pending is None:
                     return True
+                session_key = _query_session_key(request, registry)
+                if latest_query_turns.has_session(session_key):
+                    return latest_query_turns.is_latest(session_key, begun.pending.turn_id)
                 if registry is None:
                     return False
                 return registry.get("latest_turn_id") == begun.pending.turn_id
@@ -307,9 +336,25 @@ def build_dashboard() -> gr.Blocks:
             def _no_component_updates():
                 return tuple(gr.update() for _ in range(8))
 
-            def begin_query(msg, chat_history, conversation, turn_registry):
+            def _query_session_key(
+                request: gr.Request | None,
+                registry: dict[str, str | None] | None,
+            ) -> str:
+                if request is not None and request.session_hash:
+                    return request.session_hash
+                if registry is not None and registry.get("session_key"):
+                    return str(registry["session_key"])
+                return _SESSIONLESS_QUERY_KEY
+
+            def begin_query(
+                msg,
+                chat_history,
+                conversation,
+                turn_registry,
+                request: Optional[gr.Request] = None,
+            ):
                 begun = _query_transaction().begin(msg, chat_history, conversation)
-                turn_registry = _mark_latest_query(turn_registry, begun)
+                turn_registry = _mark_latest_query(turn_registry, begun, request)
                 return (
                     begun.update.answer_text,
                     begun.update.rows,
@@ -322,16 +367,17 @@ def build_dashboard() -> gr.Blocks:
             def on_query(
                 begun: BegunQuery | None,
                 turn_registry: dict[str, str | None] | None,
+                request: Optional[gr.Request] = None,
             ):
                 if begun is None:
                     update = _query_transaction().run(None, [], [])
                 elif begun.pending is None:
                     update = begun.update
                 else:
-                    if not _is_latest_query(begun, turn_registry):
+                    if not _is_latest_query(begun, turn_registry, request):
                         return _no_component_updates()
                     update = _query_transaction().complete(begun.pending)
-                    if not _is_latest_query(begun, turn_registry):
+                    if not _is_latest_query(begun, turn_registry, request):
                         return _no_component_updates()
                 return update.as_gradio_values()
 
