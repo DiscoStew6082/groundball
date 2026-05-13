@@ -10,7 +10,14 @@ import numpy as np
 
 from baseball_rag import embedder as _embedder
 from baseball_rag.arch.tracing import traced
-from baseball_rag.corpus.lifecycle import COLLECTION_NAME, resolve_persist_dir
+from baseball_rag.corpus.lifecycle import (
+    COLLECTION_NAME,
+    METADATA_CATEGORY,
+    METADATA_DOC_KIND,
+    METADATA_PLAYER_ID,
+    metadata_text,
+    resolve_persist_dir,
+)
 
 RELEVANCE_THRESHOLD = 0.7
 
@@ -59,16 +66,16 @@ def _retrieved_chunk_from_chroma(
     score: float,
 ) -> RetrievedChunk:
     """Build a RetrievedChunk from Chroma document/id/metadata values."""
-    meta = metadata or {}
+    meta = dict(metadata or {})
     return RetrievedChunk(
         text=str(document or ""),
-        source=str(meta.get("source", "")),
-        title=str(meta.get("title", "")),
+        source=metadata_text(meta, "source") or "",
+        title=metadata_text(meta, "title") or "",
         score=score,
         id=str(doc_id) if doc_id is not None else None,
-        category=str(meta.get("category", "")) or None,
-        player_id=str(meta.get("player_id", "")) or None,
-        doc_kind=str(meta.get("doc_kind", "")) or None,
+        category=metadata_text(meta, METADATA_CATEGORY),
+        player_id=metadata_text(meta, METADATA_PLAYER_ID),
+        doc_kind=metadata_text(meta, METADATA_DOC_KIND),
     )
 
 

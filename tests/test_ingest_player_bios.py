@@ -4,19 +4,12 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from baseball_rag.corpus.lifecycle import generated_player_profile_frontmatter
+
 
 def _generated_bio(player_id: str, title: str = "Test Player") -> str:
-    return f"""---
-title: {title}
-player_id: {player_id}
-category: player_biography
-doc_kind: generated_player_profile
-source_tables:
-  - people
-  - batting
-  - pitching
-  - fielding
----
+    frontmatter = "\n".join(generated_player_profile_frontmatter(player_id, title))
+    return f"""{frontmatter}
 # {title}
 """
 
@@ -154,19 +147,7 @@ class TestIngestPlayerBios:
         """Full player indexing should record a generated corpus manifest."""
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchall.return_value = [("ruthba01",)]
-        bio = """---
-title: Babe Ruth
-player_id: ruthba01
-category: player_biography
-doc_kind: generated_player_profile
-source_tables:
-  - people
-  - batting
-  - pitching
-  - fielding
----
-# Babe Ruth
-"""
+        bio = _generated_bio("ruthba01", "Babe Ruth")
 
         with patch("baseball_rag.corpus.ingest.get_duckdb", return_value=mock_conn):
             with patch("baseball_rag.corpus.ingest.build_player_bio", return_value=bio):
@@ -190,7 +171,7 @@ source_tables:
         assert manifest["generated_player_profiles"]["documents"][0]["player_id"] == "ruthba01"
 
     def test_static_document_record_builds_chroma_and_manifest_data(self, tmp_path):
-        from baseball_rag.corpus.ingest import _static_document_record
+        from baseball_rag.corpus.lifecycle import static_document_record
 
         doc_path = tmp_path / "OPS.md"
         doc_path.write_text(
@@ -203,7 +184,7 @@ On-base plus slugging.
             encoding="utf-8",
         )
 
-        record = _static_document_record(doc_path)
+        record = static_document_record(doc_path)
 
         assert record.id == "OPS"
         assert record.text == "OPS\n\nOn-base plus slugging."
@@ -220,16 +201,18 @@ On-base plus slugging.
         }
 
     def test_player_profile_record_builds_chroma_and_manifest_data(self):
-        from baseball_rag.corpus.lifecycle import player_profile_record
+        from baseball_rag.corpus.lifecycle import (
+            GENERATED_PLAYER_PROFILE,
+            METADATA_DOC_KIND,
+            METADATA_PLAYER_ID,
+            METADATA_SOURCE_TABLES,
+            PLAYER_BIOGRAPHY_CATEGORY,
+            player_profile_record,
+        )
 
-        bio = """---
-title: Babe Ruth
-player_id: ruthba01
-category: player_biography
-doc_kind: generated_player_profile
-source_tables:
-  - people
-  - batting
+        frontmatter = generated_player_profile_frontmatter("ruthba01", "Babe Ruth")
+        bio = f"""{chr(10).join(frontmatter[:-1])}
+  - extra_table
 ---
 # Babe Ruth
 """
@@ -238,9 +221,19 @@ source_tables:
 
         assert record.id == "player:ruthba01"
         assert record.text == bio
-        assert record.metadata["player_id"] == "ruthba01"
-        assert record.metadata["source_tables"] == "people,batting"
-        assert record.manifest_entry["source_tables"] == ["people", "batting"]
+        assert record.metadata[METADATA_PLAYER_ID] == "ruthba01"
+        assert record.metadata[METADATA_SOURCE_TABLES] == (
+            "people,batting,pitching,fielding,extra_table"
+        )
+        assert record.metadata[METADATA_DOC_KIND] == GENERATED_PLAYER_PROFILE
+        assert record.metadata["category"] == PLAYER_BIOGRAPHY_CATEGORY
+        assert record.manifest_entry[METADATA_SOURCE_TABLES] == [
+            "people",
+            "batting",
+            "pitching",
+            "fielding",
+            "extra_table",
+        ]
 
     def test_player_profile_record_requires_generated_profile_frontmatter(self):
         from baseball_rag.corpus.lifecycle import player_profile_record
@@ -308,3 +301,19 @@ On-base plus slugging.
         assert manifest["static_documents"]["count"] == 1
         assert manifest["generated_player_profiles"]["count"] == 0
         assert manifest["generated_player_profiles"]["documents"] == []
+
+    def test_corpus_cli_resolves_default_persist_dir_from_lifecycle(self, tmp_path, monkeypatch):
+        from baseball_rag.corpus import ingest
+
+        calls = []
+
+        monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "env-chroma"))
+        monkeypatch.setattr(
+            ingest,
+            "build_index",
+            lambda persist_dir, *, include_players: calls.append((persist_dir, include_players)),
+        )
+
+        assert ingest.main(["--static-only"]) == 0
+
+        assert calls == [(tmp_path / "env-chroma", False)]

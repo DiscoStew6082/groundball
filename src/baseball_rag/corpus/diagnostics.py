@@ -13,8 +13,13 @@ import chromadb
 from baseball_rag.corpus import get_hof_bios, get_stat_defs
 from baseball_rag.corpus.lifecycle import (
     COLLECTION_NAME,
+    GENERATED_PLAYER_PROFILES_SECTION,
     MANIFEST_NAME,
+    METADATA_CATEGORY,
+    METADATA_DOC_KIND,
+    STATIC_DOCUMENTS_SECTION,
     manifest_section_count,
+    metadata_counts_key_missing,
     resolve_persist_dir,
 )
 from baseball_rag.embedder import DEFAULT_BASE_URL, DEFAULT_EMBEDDING_MODEL
@@ -78,8 +83,8 @@ def _collection_diagnostics(persist_dir: Path) -> dict[str, Any]:
 
     diagnostics["exists"] = True
     diagnostics["indexed_count"] = indexed_count
-    diagnostics["category_counts"] = _metadata_counts(metadatas, "category")
-    diagnostics["doc_kind_counts"] = _metadata_counts(metadatas, "doc_kind")
+    diagnostics["category_counts"] = _metadata_counts(metadatas, METADATA_CATEGORY)
+    diagnostics["doc_kind_counts"] = _metadata_counts(metadatas, METADATA_DOC_KIND)
     return diagnostics
 
 
@@ -94,7 +99,9 @@ def _collection_metadatas(collection: Any, indexed_count: int) -> list[dict[str,
 
 
 def _metadata_counts(metadatas: list[dict[str, Any]], key: str) -> dict[str, int]:
-    counts = Counter(str(metadata.get(key) or "missing") for metadata in metadatas)
+    counts = Counter(
+        str(metadata.get(key) or metadata_counts_key_missing()) for metadata in metadatas
+    )
     return dict(sorted(counts.items()))
 
 
@@ -116,8 +123,8 @@ def _manifest_diagnostics(path: Path) -> dict[str, Any]:
         diagnostics["error"] = f"{type(exc).__name__}: {exc}"
         return diagnostics
 
-    static_count = manifest_section_count(manifest, "static_documents")
-    generated_count = manifest_section_count(manifest, "generated_player_profiles")
+    static_count = manifest_section_count(manifest, STATIC_DOCUMENTS_SECTION)
+    generated_count = manifest_section_count(manifest, GENERATED_PLAYER_PROFILES_SECTION)
     diagnostics["collection_name"] = manifest.get("collection_name")
     diagnostics["generated_at"] = manifest.get("generated_at")
     diagnostics["static_document_count"] = static_count

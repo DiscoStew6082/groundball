@@ -8,9 +8,13 @@ import chromadb
 from baseball_rag.corpus import get_hof_bios, get_stat_defs
 from baseball_rag.corpus.lifecycle import (
     COLLECTION_NAME,
+    GENERATED_PLAYER_PROFILES_SECTION,
+    STATIC_DOCUMENTS_SECTION,
     finalize_manifest_counts,
+    manifest_documents,
     new_manifest,
     player_profile_record,
+    resolve_persist_dir,
     static_document_record,
     write_corpus_manifest,
 )
@@ -62,7 +66,7 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
         static_texts.append(record.text)
         static_ids.append(record.id)
         static_metas.append(record.metadata)
-        manifest["static_documents"]["documents"].append(record.manifest_entry)
+        manifest_documents(manifest, STATIC_DOCUMENTS_SECTION).append(record.manifest_entry)
 
     if static_texts:
         collection.add(documents=static_texts, ids=static_ids, metadatas=static_metas)  # type: ignore[arg-type]
@@ -103,7 +107,9 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
             batch_texts.append(record.text)
             batch_ids.append(record.id)
             batch_metas.append(record.metadata)
-            manifest["generated_player_profiles"]["documents"].append(record.manifest_entry)
+            manifest_documents(manifest, GENERATED_PLAYER_PROFILES_SECTION).append(
+                record.manifest_entry
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to build bio for {player_id}: {e}") from e
 
@@ -129,21 +135,17 @@ def build_index(persist_dir: Path, *, include_players: bool = True) -> None:
     print(f"Indexed {total_docs} documents into {COLLECTION_NAME} at {persist_dir}")
 
 
-_static_document_record = static_document_record
-_player_profile_record = player_profile_record
-
-
 def main(argv: list[str] | None = None) -> int:
     """Build the local Chroma corpus index."""
     parser = argparse.ArgumentParser(description=main.__doc__)
-    parser.add_argument("--persist-dir", type=Path, default=Path("data"))
+    parser.add_argument("--persist-dir", type=Path, default=None)
     parser.add_argument(
         "--static-only",
         action="store_true",
         help="Index only checked-in Markdown corpus docs, not generated player bios.",
     )
     args = parser.parse_args(argv)
-    build_index(args.persist_dir, include_players=not args.static_only)
+    build_index(resolve_persist_dir(args.persist_dir), include_players=not args.static_only)
     return 0
 
 

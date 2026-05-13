@@ -6,6 +6,7 @@ import logging
 from typing import Any, Callable
 
 from baseball_rag.conversation import resolve_followup
+from baseball_rag.corpus.lifecycle import is_generated_player_profile_doc_kind
 from baseball_rag.db import (
     init_db,
 )
@@ -299,7 +300,9 @@ def _duckdb_source(
 
 
 def _chroma_source(chunk: RetrievedChunk) -> SourceRecord:
-    manifest = compact_data_manifest() if chunk.doc_kind == "generated_player_profile" else None
+    manifest = (
+        compact_data_manifest() if is_generated_player_profile_doc_kind(chunk.doc_kind) else None
+    )
     return SourceRecord(
         type="chroma",
         label=chunk.title,

@@ -3,6 +3,15 @@
 import pytest
 
 from baseball_rag.corpus.frontmatter import parse_frontmatter
+from baseball_rag.corpus.lifecycle import (
+    DEFAULT_PLAYER_SOURCE_TABLES,
+    GENERATED_PLAYER_PROFILE,
+    METADATA_CATEGORY,
+    METADATA_DOC_KIND,
+    METADATA_PLAYER_ID,
+    METADATA_SOURCE_TABLES,
+    PLAYER_BIOGRAPHY_CATEGORY,
+)
 from baseball_rag.corpus.player_bios import build_player_bio, resolve_player_by_name
 from baseball_rag.db.duckdb_schema import get_duckdb
 
@@ -74,10 +83,10 @@ class TestBuildPlayerBio:
         result = build_player_bio("littldi01", conn)
         metadata = parse_frontmatter(result)["metadata"]
 
-        assert metadata["category"] == "player_biography"
-        assert metadata["doc_kind"] == "generated_player_profile"
-        assert metadata["player_id"] == "littldi01"
-        assert set(metadata["source_tables"]) == {"people", "batting", "pitching", "fielding"}
+        assert metadata[METADATA_CATEGORY] == PLAYER_BIOGRAPHY_CATEGORY
+        assert metadata[METADATA_DOC_KIND] == GENERATED_PLAYER_PROFILE
+        assert metadata[METADATA_PLAYER_ID] == "littldi01"
+        assert metadata[METADATA_SOURCE_TABLES] == DEFAULT_PLAYER_SOURCE_TABLES
 
     def test_build_player_bio_uses_pitching_when_batting_missing(self):
         """Pitcher-only records should still produce a generated player profile."""

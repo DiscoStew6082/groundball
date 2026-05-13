@@ -5,6 +5,8 @@ from typing import Optional
 
 import duckdb
 
+from baseball_rag.corpus.lifecycle import generated_player_profile_frontmatter
+
 
 @dataclass(frozen=True)
 class PlayerCandidate:
@@ -149,18 +151,7 @@ def build_player_bio(player_id: str, conn: duckdb.DuckDBPyConnection) -> str:
             season_lines[-1] += f", {team_name}"
 
     # 6. Build markdown with YAML frontmatter
-    lines: list[str] = []
-    lines.append("---")
-    lines.append(f"title: {full_name}")
-    lines.append(f"player_id: {player_id}")
-    lines.append("category: player_biography")
-    lines.append("doc_kind: generated_player_profile")
-    lines.append("source_tables:")
-    lines.append("  - people")
-    lines.append("  - batting")
-    lines.append("  - pitching")
-    lines.append("  - fielding")
-    lines.append("---")
+    lines: list[str] = generated_player_profile_frontmatter(player_id, full_name)
     lines.append("")
     lines.append(f"# {full_name}")
     lines.append("")

@@ -139,7 +139,11 @@ parallel exploration is encouraged.
   converge on `PlannedFreeformQuery`. Preserved stat-query precedence for plain
   leaderboards such as career HR and season ERA. Code review found no blocking
   issues after fixes.
-- [ ] Phase 5: Corpus lifecycle contract.
+- [x] Phase 5: Corpus lifecycle contract. Centralized collection, manifest
+  section, metadata key, generated profile, and persist-dir conventions in
+  `corpus.lifecycle`; moved ingest, diagnostics, player-bio frontmatter, Chroma
+  metadata mapping, and generated-profile provenance checks to those helpers.
+  Code review found no blocking issues after fixes.
 - [ ] Phase 6: Retrieval decision module.
 - [ ] Phase 7: Gradio query adapter/session state.
 - [ ] Phase 8: Answer outcome policy.
