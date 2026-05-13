@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from baseball_rag.cli import answer
 from baseball_rag.corpus.player_bios import PlayerCandidate, PlayerResolution
+from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.retrieval.chroma_store import RetrievedChunk
 
 
@@ -894,6 +895,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
+            patch("baseball_rag.service._answer_freeform") as mock_freeform,
             patch("baseball_rag.service.init_db"),
         ):
             from baseball_rag.routing import RouteResult
@@ -905,6 +907,10 @@ class TestPlayerBioQuery:
                 time_period=None,
                 player_name=None,
                 raw_question="who was the second player ever to reach 3000 hits?",
+            )
+            mock_freeform.return_value = StructuredAnswer(
+                answer="freeform answer",
+                intent="freeform_query",
             )
 
             structured_answer(
@@ -938,6 +944,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
+            patch("baseball_rag.service._answer_freeform") as mock_freeform,
             patch("baseball_rag.service.init_db"),
         ):
             from baseball_rag.routing import RouteResult
@@ -949,6 +956,10 @@ class TestPlayerBioQuery:
                 time_period=None,
                 player_name=None,
                 raw_question="who was the second ever to reach 3000 hits?",
+            )
+            mock_freeform.return_value = StructuredAnswer(
+                answer="freeform answer",
+                intent="freeform_query",
             )
 
             structured_answer(
@@ -981,6 +992,7 @@ class TestPlayerBioQuery:
 
         with (
             patch("baseball_rag.service.route") as mock_route,
+            patch("baseball_rag.service._answer_freeform") as mock_freeform,
             patch("baseball_rag.service.init_db"),
         ):
             from baseball_rag.routing import RouteResult
@@ -992,6 +1004,10 @@ class TestPlayerBioQuery:
                 time_period=None,
                 player_name=None,
                 raw_question="who was the second player with 3000 hits?",
+            )
+            mock_freeform.return_value = StructuredAnswer(
+                answer="freeform answer",
+                intent="freeform_query",
             )
 
             structured_answer("who was the second player with 3000 hits?", conversation=prior_turns)
