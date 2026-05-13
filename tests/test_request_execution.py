@@ -196,6 +196,19 @@ def test_execute_request_answers_routed_stat_case_through_service(monkeypatch):
     assert seen_cases == [StatQueryCase(stat="RBI", raw_question="career RBI leaders")]
 
 
+def test_execute_request_answers_fielding_putouts_through_stat_path():
+    """Fielding PO requests answer through the public request execution path."""
+    execution = execute_request("outfield putouts leaders in 1983", adapter_component_id="api")
+
+    assert execution.answer.intent == "stat_query"
+    assert "Top PO leaders (1983-1983):" in execution.answer.answer
+    assert "Manning, Rick: 471 PO" in execution.answer.answer
+    assert execution.answer.sources
+    assert execution.answer.sources[0].type == "duckdb"
+    assert execution.answer.sources[0].sql is not None
+    assert "FROM fielding f" in execution.answer.sources[0].sql
+
+
 def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
     """The request path dispatches each validated routed case by type."""
     cases = [

@@ -50,6 +50,7 @@ class TestLatestYearLogic:
 
         mock_query.assert_called_once_with(
             "HR",
+            table="batting",
             start_year=1999,
             end_year=1999,
             position=None,

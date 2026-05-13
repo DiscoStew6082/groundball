@@ -9,6 +9,9 @@ from baseball_rag.db.queries import (
     get_stat_leaders,
     get_stat_leaders_range,
 )
+from baseball_rag.routing import StatQueryCase
+from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+from baseball_rag.stat_query import answer_stat_query
 
 
 def test_get_stat_leaders_returns_list():
@@ -88,7 +91,7 @@ def test_unknown_stat_is_rejected_before_sql_execution():
 
 def test_execute_stat_query_returns_executed_sql_for_provenance():
     """Stat provenance should be built from the query that actually ran."""
-    result = execute_stat_query("OPS", start_year=1970, end_year=1979)
+    result = execute_stat_query("OPS", table="batting", start_year=1970, end_year=1979)
 
     assert result.rows
     assert result.sql == result.executed_sql
@@ -98,7 +101,7 @@ def test_execute_stat_query_returns_executed_sql_for_provenance():
 
 
 def test_execute_stat_query_career_leaders_do_not_merge_same_name_players():
-    result = execute_stat_query("HR")
+    result = execute_stat_query("HR", table="batting")
 
     assert result.rows[0]["name"] == "Bonds, Barry"
     assert result.rows[0]["stat_value"] == 762
@@ -107,7 +110,13 @@ def test_execute_stat_query_career_leaders_do_not_merge_same_name_players():
 
 
 def test_execute_stat_query_supports_fielding_putouts():
-    result = execute_stat_query("PO", start_year=1983, end_year=1983, position="OF")
+    result = execute_stat_query(
+        "PO",
+        table="fielding",
+        start_year=1983,
+        end_year=1983,
+        position="OF",
+    )
 
     assert result.rows
     assert result.stat == "PO"
@@ -116,7 +125,7 @@ def test_execute_stat_query_supports_fielding_putouts():
 
 
 def test_execute_stat_query_supports_career_fielding_putouts():
-    result = execute_stat_query("PO")
+    result = execute_stat_query("PO", table="fielding")
 
     assert result.rows
     assert result.rows[0]["name"] == "Beckley, Jake"
@@ -125,7 +134,7 @@ def test_execute_stat_query_supports_career_fielding_putouts():
 
 
 def test_execute_stat_query_uses_pitching_table_for_era():
-    result = execute_stat_query("ERA", start_year=1968, end_year=1968)
+    result = execute_stat_query("ERA", table="pitching", start_year=1968, end_year=1968)
 
     assert result.rows
     assert result.stat == "ERA"
@@ -136,7 +145,7 @@ def test_execute_stat_query_uses_pitching_table_for_era():
 
 @pytest.mark.parametrize("stat", ["ERA", "WHIP"])
 def test_execute_stat_query_orders_pitching_rate_stats_lowest_first(stat):
-    result = execute_stat_query(stat, start_year=1968, end_year=1968)
+    result = execute_stat_query(stat, table="pitching", start_year=1968, end_year=1968)
 
     values = [row["stat_value"] for row in result.rows]
     assert values == sorted(values)
@@ -146,7 +155,7 @@ def test_execute_stat_query_orders_pitching_rate_stats_lowest_first(stat):
 
 
 def test_execute_stat_query_avg_range_uses_minimum_at_bats_guard():
-    result = execute_stat_query("AVG", start_year=1894, end_year=1894)
+    result = execute_stat_query("AVG", table="batting", start_year=1894, end_year=1894)
 
     assert result.rows
     assert all(0 < row["stat_value"] < 1 for row in result.rows)
@@ -154,7 +163,7 @@ def test_execute_stat_query_avg_range_uses_minimum_at_bats_guard():
 
 
 def test_execute_stat_query_player_ops_uses_executed_guarded_sql_for_provenance():
-    result = execute_stat_query("OPS", player_name="Ted Williams", year=1941)
+    result = execute_stat_query("OPS", table="batting", player_name="Ted Williams", year=1941)
 
     assert result.rows
     assert result.sql == result.executed_sql
@@ -164,9 +173,127 @@ def test_execute_stat_query_player_ops_uses_executed_guarded_sql_for_provenance(
 
 
 def test_execute_stat_query_supports_player_pitching_stats():
-    result = execute_stat_query("W", player_name="Cy Young", year=1901)
+    result = execute_stat_query("W", table="pitching", player_name="Cy Young", year=1901)
 
     assert result.rows
     assert result.rows[0]["name"] == "Young, Cy"
     assert result.tables == ["pitching", "people"]
     assert "FROM pitching pi" in result.sql
+
+
+def test_answer_stat_query_source_sql_matches_executed_sql(monkeypatch):
+    """Stat answers expose the same parameterized SQL returned by execution."""
+    captured = {}
+
+    def fake_execute(plan):
+        from baseball_rag.db.queries import StatQueryResult
+
+        captured["plan"] = plan
+        return StatQueryResult(
+            stat="OPS",
+            label="OPS leaderboard for 1970-1979",
+            tables=["batting", "people"],
+            rows=[{"name": "Player, One", "team": "Range", "stat_value": 1.234}],
+            sql="SELECT parameterized_ops WHERE b.yearID >= ? AND b.yearID <= ?",
+            executed_sql="SELECT parameterized_ops WHERE b.yearID >= ? AND b.yearID <= ?",
+            params=[1970, 1979],
+        )
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fake_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="OPS",
+            raw_question="OPS leaders between 1970-1979",
+            time_period=TimePeriod(type=TimePeriodType.RANGE, value=[1970, 1979]),
+        )
+    )
+
+    assert "Top OPS leaders (1970-1979):" in answer.answer
+    assert answer.sources[0].sql == "SELECT parameterized_ops WHERE b.yearID >= ? AND b.yearID <= ?"
+    assert captured["plan"].stat == "OPS"
+
+
+def test_answer_stat_query_player_no_data_is_structured_unsupported(monkeypatch):
+    """Player-specific misses stay unsupported without falling back to a leaderboard."""
+
+    def fake_execute(_plan):
+        from baseball_rag.db.queries import StatQueryResult
+
+        return StatQueryResult(
+            stat="HR",
+            label="Player stat lookup",
+            tables=["batting", "people"],
+            rows=[],
+            sql="SELECT player_hr WHERE name = ?",
+            executed_sql="SELECT player_hr WHERE name = ?",
+            params=["missing"],
+        )
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fake_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="HR",
+            player_name="Missing Player",
+            raw_question="how many HR did Missing Player hit",
+        )
+    )
+
+    assert answer.unsupported is True
+    assert answer.unsupported_reason == "no_data"
+    assert "No HR result found for Missing Player" in answer.answer
+    assert answer.sources[0].sql == "SELECT player_hr WHERE name = ?"
+
+
+def test_answer_stat_query_rejects_partial_player_before_coverage_and_execution(monkeypatch):
+    """Ambiguous player names are rejected before coverage checks or DuckDB execution."""
+
+    def fail_execute(_plan):
+        raise AssertionError("partial player names should not execute")
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fail_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="HR",
+            player_name="Ruth",
+            raw_question="Ruth HR in 2026",
+            time_period=TimePeriod(type=TimePeriodType.SINGLE, value=2026),
+        )
+    )
+
+    assert answer.unsupported is True
+    assert answer.unsupported_reason == "ambiguous"
+    assert answer.review_reason == "ambiguous"
+    assert "'Ruth' is ambiguous" in answer.answer
+
+
+def test_answer_stat_query_player_no_data_mentions_stat_table(monkeypatch):
+    """Player misses describe the planned stat table, not always batting."""
+
+    def fake_execute(_plan):
+        from baseball_rag.db.queries import StatQueryResult
+
+        return StatQueryResult(
+            stat="PO",
+            label="Player stat lookup",
+            tables=["fielding", "people"],
+            rows=[],
+            sql="SELECT player_po WHERE name = ?",
+            executed_sql="SELECT player_po WHERE name = ?",
+            params=["missing"],
+        )
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fake_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="PO",
+            player_name="Missing Player",
+            raw_question="Missing Player putouts",
+        )
+    )
+
+    assert answer.unsupported_reason == "no_data"
+    assert "local Lahman-derived fielding data" in answer.answer

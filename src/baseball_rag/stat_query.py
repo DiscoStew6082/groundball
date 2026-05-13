@@ -4,18 +4,48 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from baseball_rag.db import execute_stat_query
 from baseball_rag.db.duckdb_schema import get_duckdb
+from baseball_rag.db.queries import StatQueryResult
+from baseball_rag.db.stat_registry import StatTable, get_stat
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 from baseball_rag.routing.query_router import StatQueryCase, TimePeriod, TimePeriodType
+
+StatQueryKind = Literal["player", "leaderboard", "career"]
+
+
+@dataclass(frozen=True)
+class StatQueryPlan:
+    """Execution plan for a deterministic stat request."""
+
+    stat: str
+    table: StatTable
+    kind: StatQueryKind
+    intent: str
+    position: str | None = None
+    player_name: str | None = None
+    year: int | None = None
+    start_year: int | None = None
+    end_year: int | None = None
 
 
 def answer_stat_query(decision: StatQueryCase) -> StructuredAnswer:
     """Answer a routed deterministic stat query with provenance-ready SQL."""
-    stat = decision.stat
+    planned = plan_stat_query(decision)
+    if isinstance(planned, StructuredAnswer):
+        return planned
+    query_result = execute_stat_query_plan(planned)
+    return answer_stat_query_result(planned, query_result)
+
+
+def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer:
+    """Convert a routed stat case into a validated deterministic query plan."""
+    stat_def = get_stat(decision.stat)
+    stat = stat_def.canonical
     if _is_ambiguous_current_century_decade(decision.time_period, decision.raw_question):
         return StructuredAnswer(
             answer=(
@@ -32,6 +62,18 @@ def answer_stat_query(decision: StatQueryCase) -> StructuredAnswer:
     time_period = _resolve_time_period(decision.time_period, decision.raw_question)
 
     if decision.player_name:
+        if _is_partial_player_name(decision.player_name):
+            return StructuredAnswer(
+                answer=(
+                    f"'{decision.player_name}' is ambiguous for a player-specific {stat} lookup. "
+                    "Ask with a fuller player name."
+                ),
+                intent=decision.intent,
+                sources=[_coverage_source()],
+                unsupported=True,
+                unsupported_reason="ambiguous",
+                review_reason="ambiguous",
+            )
         if time_period is not None and time_period[0] != time_period[1]:
             return StructuredAnswer(
                 answer=(
@@ -44,64 +86,88 @@ def answer_stat_query(decision: StatQueryCase) -> StructuredAnswer:
                 unsupported_reason="ambiguous",
                 review_reason="ambiguous",
             )
-        resolved_year = time_period[0] if time_period is not None else None
-        return _answer_player_stat(stat, decision, resolved_year=resolved_year)
+        year = time_period[0] if time_period is not None else None
+        unsupported = _unsupported_for_single_year(stat, decision.intent, year)
+        if unsupported is not None:
+            return unsupported
+        return StatQueryPlan(
+            stat=stat,
+            table=stat_def.table,
+            kind="player",
+            intent=decision.intent,
+            position=decision.position,
+            player_name=decision.player_name,
+            year=year,
+        )
     if time_period is not None:
         start_year, end_year = time_period
-        return _answer_leaderboard(
-            stat,
-            decision,
+        unsupported = _unsupported_for_year_range(stat, decision.intent, start_year, end_year)
+        if unsupported is not None:
+            return unsupported
+        return StatQueryPlan(
+            stat=stat,
+            table=stat_def.table,
+            kind="leaderboard",
+            intent=decision.intent,
+            position=decision.position,
             start_year=start_year,
             end_year=end_year,
         )
-    return _answer_career_leaderboard(stat, decision)
-
-
-def _answer_player_stat(
-    stat: str,
-    decision: Any,
-    *,
-    resolved_year: int | None = None,
-) -> StructuredAnswer:
-    if _is_partial_player_name(decision.player_name):
-        return StructuredAnswer(
-            answer=(
-                f"'{decision.player_name}' is ambiguous for a player-specific {stat} lookup. "
-                "Ask with a fuller player name."
-            ),
-            intent=decision.intent,
-            sources=[_coverage_source()],
-            unsupported=True,
-            unsupported_reason="ambiguous",
-            review_reason="ambiguous",
-        )
-
-    year = resolved_year if resolved_year is not None else decision.year
-    if year is not None:
-        unsupported = _unsupported_for_year_range(
-            stat,
-            decision.intent,
-            year,
-            year,
-        )
-        if unsupported is not None:
-            return unsupported
-
-    query_result = execute_stat_query(
-        stat,
-        player_name=decision.player_name,
-        year=year,
+    return StatQueryPlan(
+        stat=stat,
+        table=stat_def.table,
+        kind="career",
+        intent=decision.intent,
         position=decision.position,
-        conn=get_duckdb(),
     )
+
+
+def execute_stat_query_plan(plan: StatQueryPlan) -> StatQueryResult:
+    """Run a deterministic stat plan through the DuckDB adapter."""
+    if plan.kind == "player":
+        return execute_stat_query(
+            plan.stat,
+            table=plan.table,
+            player_name=plan.player_name,
+            year=plan.year,
+            position=plan.position,
+            conn=get_duckdb(),
+        )
+    if plan.kind == "leaderboard":
+        return execute_stat_query(
+            plan.stat,
+            table=plan.table,
+            start_year=plan.start_year,
+            end_year=plan.end_year,
+            position=plan.position,
+        )
+    return execute_stat_query(plan.stat, table=plan.table, position=plan.position)
+
+
+def answer_stat_query_result(
+    plan: StatQueryPlan,
+    query_result: StatQueryResult,
+) -> StructuredAnswer:
+    """Build the public answer and provenance from an executed stat result."""
+    if plan.kind == "player":
+        return _answer_player_stat_result(plan, query_result)
+    if plan.kind == "leaderboard":
+        return _answer_leaderboard_result(plan, query_result)
+    return _answer_career_leaderboard_result(plan, query_result)
+
+
+def _answer_player_stat_result(
+    plan: StatQueryPlan,
+    query_result: StatQueryResult,
+) -> StructuredAnswer:
     if not query_result.rows:
-        qualifier = f" in {year}" if year else ""
+        qualifier = f" in {plan.year}" if plan.year else ""
         return StructuredAnswer(
             answer=(
-                f"No {stat} result found for {decision.player_name}{qualifier} "
-                "in the local Lahman-derived batting data."
+                f"No {plan.stat} result found for {plan.player_name}{qualifier} "
+                f"in the local Lahman-derived {plan.table} data."
             ),
-            intent=decision.intent,
+            intent=plan.intent,
             sources=[_source_from_result(query_result)],
             warnings=["No fallback leaderboard was returned because the question named a player."],
             unsupported=True,
@@ -111,37 +177,24 @@ def _answer_player_stat(
     result = query_result.rows[0]
     team_str = f" ({result['team']})" if result["team"] else ""
     return StructuredAnswer(
-        answer=f"{result['name']}{team_str} ({result['year']}): {result['stat_value']} {stat}",
-        intent=decision.intent,
+        answer=f"{result['name']}{team_str} ({result['year']}): {result['stat_value']} {plan.stat}",
+        intent=plan.intent,
         sources=[_source_from_result(query_result)],
     )
 
 
-def _answer_leaderboard(
-    stat: str,
-    decision: Any,
-    *,
-    start_year: int,
-    end_year: int,
+def _answer_leaderboard_result(
+    plan: StatQueryPlan,
+    query_result: StatQueryResult,
 ) -> StructuredAnswer:
-    unsupported = _unsupported_for_year_range(stat, decision.intent, start_year, end_year)
-    if unsupported is not None:
-        return unsupported
-
-    query_result = execute_stat_query(
-        stat,
-        start_year=start_year,
-        end_year=end_year,
-        position=decision.position,
-    )
     rows = query_result.rows
     if not rows:
         return StructuredAnswer(
             answer=(
-                f"No {stat} results found for {start_year}-{end_year} "
+                f"No {plan.stat} results found for {plan.start_year}-{plan.end_year} "
                 "in the local Lahman-derived data."
             ),
-            intent=decision.intent,
+            intent=plan.intent,
             sources=[_source_from_result(query_result)],
             warnings=[
                 "No fallback leaderboard was returned because the question specified a year."
@@ -150,25 +203,27 @@ def _answer_leaderboard(
             unsupported_reason="no_data",
         )
 
-    lines = [f"Top {stat} leaders ({start_year}-{end_year}):"]
+    lines = [f"Top {plan.stat} leaders ({plan.start_year}-{plan.end_year}):"]
     for i, row in enumerate(rows[:10], 1):
-        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {stat}")
+        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {plan.stat}")
     return StructuredAnswer(
         answer="\n".join(lines),
-        intent=decision.intent,
+        intent=plan.intent,
         sources=[_source_from_result(query_result)],
     )
 
 
-def _answer_career_leaderboard(stat: str, decision: Any) -> StructuredAnswer:
-    query_result = execute_stat_query(stat, position=decision.position)
+def _answer_career_leaderboard_result(
+    plan: StatQueryPlan,
+    query_result: StatQueryResult,
+) -> StructuredAnswer:
     rows = query_result.rows
-    lines = [f"All-time career {stat} leaders:"]
+    lines = [f"All-time career {plan.stat} leaders:"]
     for i, row in enumerate(rows[:10], 1):
-        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {stat}")
+        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {plan.stat}")
     return StructuredAnswer(
         answer="\n".join(lines),
-        intent=decision.intent,
+        intent=plan.intent,
         sources=[_source_from_result(query_result)],
     )
 
@@ -266,6 +321,16 @@ def _is_partial_player_name(player_name: str | None) -> bool:
 
 def _is_suffix(value: str) -> bool:
     return value.lower().rstrip(".") in {"jr", "sr", "ii", "iii", "iv"}
+
+
+def _unsupported_for_single_year(
+    stat: str,
+    intent: str,
+    year: int | None,
+) -> StructuredAnswer | None:
+    if year is None:
+        return None
+    return _unsupported_for_year_range(stat, intent, year, year)
 
 
 def _unsupported_for_year_range(

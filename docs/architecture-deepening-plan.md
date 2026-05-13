@@ -127,7 +127,12 @@ parallel exploration is encouraged.
   dispatch boundary, narrowed `answer_stat_query()` to `StatQueryCase`, and
   added request-path coverage for the new cases. Code review found no blocking
   issues.
-- [ ] Phase 3: Deterministic `stat_query` module.
+- [x] Phase 3: Deterministic `stat_query` module. Added a stat query plan/result
+  flow that owns stat table choice, time-period resolution, coverage, player
+  ambiguity, fielding support, answer formatting, and SQL provenance. Kept
+  DuckDB as the adapter with explicit table input and retained legacy query
+  helpers as compatibility adapters. Code review found no blocking issues after
+  fixes.
 - [ ] Phase 4: `freeform_query` planning seam.
 - [ ] Phase 5: Corpus lifecycle contract.
 - [ ] Phase 6: Retrieval decision module.
