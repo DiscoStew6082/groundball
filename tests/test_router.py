@@ -1,5 +1,6 @@
 """Tests for query routing."""
 
+from baseball_rag.generation.llm import LLMResponse, LLMTimeoutError
 from baseball_rag.routing import route
 
 
@@ -145,6 +146,72 @@ class TestRouter:
             raise ValueError("LM Studio returned an empty response.")
 
         monkeypatch.setattr("baseball_rag.generation.llm.make_request", empty_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
+    def test_malformed_llm_routing_json_falls_back_to_heuristic(self, monkeypatch):
+        """Routing JSON with the wrong shape should not abort the whole request."""
+
+        def malformed_llm_response(*_args, **_kwargs):
+            return LLMResponse(content='["not", "a", "route"]', model="test", done=True)
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", malformed_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
+    def test_malformed_llm_routing_time_period_falls_back_to_heuristic(self, monkeypatch):
+        """Malformed nested route fields should not abort the whole request."""
+
+        def malformed_llm_response(*_args, **_kwargs):
+            return LLMResponse(
+                content=(
+                    '{"intent":"stat_query","stat":"RBI","time_period":"career",'
+                    '"position":null,"player_name":null}'
+                ),
+                model="test",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", malformed_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
+    def test_malformed_llm_routing_stat_falls_back_to_heuristic(self, monkeypatch):
+        """Malformed stat fields should not abort the whole request."""
+
+        def malformed_llm_response(*_args, **_kwargs):
+            return LLMResponse(
+                content=(
+                    '{"intent":"stat_query","stat":123,"time_period":null,'
+                    '"position":null,"player_name":null}'
+                ),
+                model="test",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", malformed_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
+    def test_llm_routing_timeout_falls_back_to_heuristic(self, monkeypatch):
+        """Router LM timeouts should not abort the whole request."""
+
+        def timed_out_llm_response(*_args, **_kwargs):
+            raise LLMTimeoutError("slow router")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", timed_out_llm_response)
 
         result = route("tell me something interesting about baseball")
 

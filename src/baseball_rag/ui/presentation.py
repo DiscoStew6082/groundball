@@ -1,0 +1,105 @@
+"""Presentation policy for turning domain answers into adapter payloads."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.service import render_text
+
+RowsPayload = list[Any] | dict[str, list[Any]]
+
+
+@dataclass(frozen=True)
+class PresentedAnswer:
+    """Display-ready answer fields for chat and structured result panels."""
+
+    answer_text: str
+    rows: RowsPayload
+    sources: list[dict[str, Any]]
+    sql: str
+    chat_message: str
+    payload: dict[str, Any]
+
+    def conversation_turn(self, question: str) -> dict[str, Any]:
+        """Store only the answer fields needed to resolve future follow-ups."""
+        metadata = self.payload.get("metadata") or {}
+        answer_payload = {
+            "answer": self.payload.get("answer"),
+            "intent": self.payload.get("intent"),
+            "metadata": {
+                key: metadata[key]
+                for key in (
+                    "original_question",
+                    "context_question",
+                    "context_source",
+                    "context_player_name",
+                )
+                if key in metadata
+            },
+            "sources": [_conversation_source(source) for source in self.sources],
+        }
+        return {"question": question, "answer": answer_payload}
+
+
+class AnswerPresenter:
+    """Build Gradio-compatible displays from structured domain answers."""
+
+    def present(self, result: StructuredAnswer) -> PresentedAnswer:
+        payload = result.to_dict()
+        sources = _json_safe_for_gradio(payload["sources"])
+        primary_source = sources[0] if sources else {}
+        return PresentedAnswer(
+            answer_text=payload["answer"],
+            rows=_rows_for_dataframe(primary_source),
+            sources=sources,
+            sql=primary_source.get("sql") or "",
+            chat_message=render_text(result),
+            payload=payload,
+        )
+
+
+def _json_safe_for_gradio(value: Any) -> Any:
+    """Avoid file-shaped JSON objects that Gradio tries to download."""
+    if isinstance(value, list):
+        return [_json_safe_for_gradio(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            ("file_path" if key == "path" else key): _json_safe_for_gradio(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _rows_for_dataframe(source: dict[str, Any]) -> RowsPayload:
+    """Return source rows in a shape Gradio Dataframe renders as scalar cells."""
+    rows = source.get("rows") or []
+    if not rows or not all(isinstance(row, dict) for row in rows):
+        return rows
+
+    columns = source.get("columns") or list(rows[0])
+    return {
+        "headers": columns,
+        "data": [[row.get(column) for column in columns] for row in rows],
+    }
+
+
+def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
+    rows = source.get("rows") or []
+    compact_rows = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        compact_row = {
+            key: row[key]
+            for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
+            if key in row
+        }
+        if compact_row:
+            compact_rows.append(compact_row)
+    return {
+        "type": source.get("type"),
+        "label": source.get("label"),
+        "rows": compact_rows,
+    }

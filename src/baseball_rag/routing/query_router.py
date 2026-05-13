@@ -296,13 +296,16 @@ def route(question: str) -> RouteResult:
         return deterministic
 
     try:
-        from baseball_rag.generation.llm import make_request
+        from baseball_rag.generation.llm import LLMError, LLMRoutingOutputError, make_request
 
         prompt = _ROUTING_PROMPT.format(question=question)
         response = make_request(prompt, max_tokens=500, temperature=0.1)
         data = _parse_llm_json(response.content)
 
-        if data and data.get("intent") in (
+        if not isinstance(data, dict):
+            raise LLMRoutingOutputError("LLM router output was not a JSON object.")
+
+        if data.get("intent") in (
             "stat_query",
             "player_biography",
             "freeform_query",
@@ -310,16 +313,20 @@ def route(question: str) -> RouteResult:
         ):
             time_period_data = data.get("time_period")
             time_period: TimePeriod | None = _build_time_period(time_period_data)
+            raw_stat = data.get("stat")
+            if raw_stat is not None and not isinstance(raw_stat, str):
+                raise LLMRoutingOutputError("LLM router stat must be a string or null.")
 
             return RouteResult(
                 intent=data["intent"],
-                stat=normalize_stat(data["stat"]) if data.get("stat") else None,
+                stat=normalize_stat(raw_stat) if raw_stat else None,
                 time_period=time_period,
                 position=data.get("position"),
                 player_name=data.get("player_name"),
                 raw_question=question,
             )
-    except (ConnectionError, ValueError):
+        raise LLMRoutingOutputError("LLM router output did not contain a supported intent.")
+    except (ConnectionError, LLMError, ValueError):
         pass  # Fall through to heuristic
 
     # LM Studio unavailable or LLM returned garbled — use safe fallback
@@ -351,6 +358,8 @@ def _build_time_period(data: dict | None) -> TimePeriod | None:
     """
     if data is None:
         return None
+    if not isinstance(data, dict):
+        raise ValueError("time_period must be a JSON object or null")
 
     try:
         period_type = TimePeriodType(data.get("type"))

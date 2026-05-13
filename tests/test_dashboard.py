@@ -115,107 +115,40 @@ class TestDashboardTabs:
             if component["type"] == "textbox"
             and component.get("props", {}).get("label") == "Question"
         )
-        clear_dependency = next(
+        begin_dependency = next(
             dependency
             for dependency in config["dependencies"]
-            if dependency["api_name"] == "_clear_query_outputs"
+            if dependency["api_name"] == "begin_query"
         )
-        query_dependencies = [
-            dependency
-            for dependency in config["dependencies"]
-            if dependency["api_name"] == "on_query"
-        ]
-
-        assert len(query_dependencies) == 1
-        query_fn = next(
-            dependency for dependency in self.dash.fns.values() if dependency.api_name == "on_query"
-        )
-        assert query_fn.concurrency_limit == 1
-        assert query_fn.concurrency_id == "query"
-        for dependency in query_dependencies:
-            assert dependency["trigger_after"] == clear_dependency["id"]
-            assert question_id in dependency["inputs"]
-            assert chatbot_id not in dependency["inputs"]
-            assert chatbot_id in dependency["outputs"]
-            assert dependency["queue"] is True
-            assert dependency["show_progress"] == "minimal"
-            assert dependency["trigger_mode"] == "always_last"
-            state_inputs = [
-                component_id
-                for component_id in dependency["inputs"]
-                if component_types[component_id] == "state"
-            ]
-            assert len(state_inputs) == 2
-
-    def test_query_submit_clears_stale_structured_outputs_immediately(self):
-        """A new Ask should clear stale Answer/Rows/Sources/SQL before queued work runs."""
-        config = self.dash.get_config_file()
-        components = config["components"]
-        question_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "textbox"
-            and component.get("props", {}).get("label") == "Question"
-        )
-        ask_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "button" and component.get("props", {}).get("value") == "Ask"
-        )
-        answer_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "textbox"
-            and component.get("props", {}).get("label") == "Answer"
-        )
-        rows_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "dataframe"
-            and component.get("props", {}).get("label") == "Rows"
-        )
-        sources_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "json" and component.get("props", {}).get("label") == "Sources"
-        )
-        sql_id = next(
-            component["id"]
-            for component in components
-            if component["type"] == "code" and component.get("props", {}).get("label") == "SQL"
-        )
-        triggered_dependencies = [
-            dependency
-            for dependency in config["dependencies"]
-            if dependency["targets"]
-            and dependency["targets"][0][0] in {ask_id, question_id}
-            and dependency["targets"][0][1] in {"click", "submit"}
-        ]
-        clear_dependencies = [
-            dependency
-            for dependency in triggered_dependencies
-            if dependency["outputs"] == [answer_id, rows_id, sources_id, sql_id]
-        ]
-
-        assert len(clear_dependencies) == 1
-        clear_dependency = clear_dependencies[0]
-        assert clear_dependency["queue"] is False
-        assert clear_dependency["show_progress"] == "hidden"
-        assert clear_dependency["trigger_mode"] == "always_last"
-        assert clear_dependency["backend_fn"] is True
         query_dependency = next(
             dependency
             for dependency in config["dependencies"]
             if dependency["api_name"] == "on_query"
         )
-        assert query_dependency["trigger_after"] == clear_dependency["id"]
 
-    def test_query_handler_records_trace_without_animating_architecture_components(self):
-        """Ask records Architecture history without side-effecting Architecture UI outputs."""
-        before_html = self.dash.arch_diagram.diagram_html.value
-        before_footer = self.dash.arch_diagram.footer_html.value
-        self.dash.arch_diagram.trace_history.clear()
+        query_fn = next(
+            dependency for dependency in self.dash.fns.values() if dependency.api_name == "on_query"
+        )
+        assert query_fn.concurrency_limit == 1
+        assert query_fn.concurrency_id == "query"
+        assert question_id in begin_dependency["inputs"]
+        assert chatbot_id not in begin_dependency["inputs"]
+        assert chatbot_id not in query_dependency["inputs"]
+        assert chatbot_id in query_dependency["outputs"]
+        state_inputs = [
+            component_id
+            for component_id in query_dependency["inputs"]
+            if component_types[component_id] == "state"
+        ]
+        assert len(state_inputs) == 2
 
+    def test_query_adapter_clears_then_completes_transaction(self):
+        """The dashboard adapter exposes the query transaction pending/completed contract."""
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
         query_fn = next(
             dependency.fn
             for dependency in self.dash.fns.values()
@@ -225,9 +158,90 @@ class TestDashboardTabs:
         def fake_answer(question: str, **_kwargs):
             return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
 
+        turn_registry = {"latest_turn_id": None}
+        answer, rows, sources, sql, begun, turn_registry = begin_fn(
+            "what is OPS",
+            [],
+            [],
+            turn_registry,
+        )
+
+        assert answer == ""
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+        assert begun.update.status == "pending"
+
         with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
             chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
-                "what is OPS", [], []
+                begun,
+                turn_registry,
+            )
+
+        assert textbox == "what is OPS"
+        assert answer == "answered what is OPS"
+        assert chat[-1]["content"] == "answered what is OPS"
+        assert chat_state == chat
+        assert conversation[-1]["question"] == "what is OPS"
+        assert rows == []
+        assert sources == []
+        assert sql == ""
+
+    def test_stale_query_completion_does_not_overwrite_newer_pending_turn(self):
+        """An older in-flight completion must not replace a newer cleared UI state."""
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, old_begun, turn_registry = begin_fn("what is OPS", [], [], turn_registry)
+
+        def fake_answer(question: str, **_kwargs):
+            begin_fn("career home run leaders", [], [], turn_registry)
+            return StructuredAnswer(
+                answer=f"stale answer for {question}",
+                intent="general_explanation",
+            )
+
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            outputs = query_fn(old_begun, turn_registry)
+
+        assert all(
+            isinstance(value, dict) and value.get("__type__") == "update" for value in outputs
+        )
+
+    def test_query_handler_records_trace_without_animating_architecture_components(self):
+        """Ask records Architecture history without side-effecting Architecture UI outputs."""
+        before_html = self.dash.arch_diagram.diagram_html.value
+        before_footer = self.dash.arch_diagram.footer_html.value
+        self.dash.arch_diagram.trace_history.clear()
+
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+
+        def fake_answer(question: str, **_kwargs):
+            return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
+
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, begun, turn_registry = begin_fn("what is OPS", [], [], turn_registry)
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            chat, textbox, answer, rows, sources, sql, chat_state, conversation = query_fn(
+                begun,
+                turn_registry,
             )
 
         assert textbox == "what is OPS"

@@ -23,9 +23,10 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import gradio as gr
 
-from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
+from baseball_rag.ui.presentation import AnswerPresenter
+from baseball_rag.ui.query_transaction import BegunQuery, QueryTransaction
 
 if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
@@ -196,7 +197,8 @@ def respond(
 def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = None):
     """Return answer text, evidence rows, source metadata, and SQL for Gradio."""
     result = _execute_for_gradio(message, diagram=diagram).answer
-    return _display_payload(result)
+    presentation = AnswerPresenter().present(result)
+    return presentation.answer_text, presentation.rows, presentation.sources, presentation.sql
 
 
 def respond_conversation(
@@ -208,151 +210,16 @@ def respond_conversation(
     animate_diagram: bool = True,
 ):
     """Handle a conversational Gradio turn and retain structured prior context."""
-    chat_history = list(chat_history or [])
-    conversation = list(conversation or [])
-    message = (message or "").strip()
-    if not message:
-        return chat_history, _DEFAULT_QUESTION, "", [], [], "", chat_history, conversation
-
-    try:
-        execution = _execute_for_gradio(
-            message,
+    transaction = QueryTransaction(
+        execute=lambda question, *, conversation: _execute_for_gradio(
+            question,
             diagram=diagram,
             animate_diagram=animate_diagram,
             conversation=conversation,
-        )
-        result = execution.answer
-    except TimeoutError as exc:
-        result = _timeout_answer(exc)
-    except (AttributeError, ConnectionError, IndexError, KeyError, TypeError, ValueError) as exc:
-        logger.exception("Gradio query failed for %r", message)
-        result = _request_failure_answer(exc)
-    chat_history.extend(
-        [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": render_text(result)},
-        ]
-    )
-    conversation.append(_conversation_turn(message, result))
-    answer_text, rows, sources, sql = _display_payload(result)
-    return (
-        chat_history,
-        message,
-        answer_text,
-        rows,
-        sources,
-        sql,
-        list(chat_history),
-        list(conversation),
-    )
-
-
-def _request_failure_answer(exc: Exception) -> StructuredAnswer:
-    return StructuredAnswer(
-        answer=(
-            "The local request could not return an answer after a service responded. "
-            "Try again, or check the server logs for the response-shape error."
         ),
-        intent="error",
-        warnings=[str(exc)],
-        unsupported=True,
-        unsupported_reason="llm_unavailable",
+        default_question=_DEFAULT_QUESTION,
     )
-
-
-def _timeout_answer(exc: TimeoutError) -> StructuredAnswer:
-    return StructuredAnswer(
-        answer=(
-            "The local LM Studio request timed out before it returned an answer. "
-            "Try again, or ask a stat/database-backed question while the model catches up."
-        ),
-        intent="error",
-        warnings=[str(exc)],
-        unsupported=True,
-        unsupported_reason="llm_unavailable",
-    )
-
-
-def _conversation_turn(question: str, result) -> dict[str, Any]:
-    """Store only the answer fields needed to resolve future follow-ups."""
-    payload = result.to_dict()
-    metadata = payload.get("metadata") or {}
-    answer_payload = {
-        "answer": payload.get("answer"),
-        "intent": payload.get("intent"),
-        "metadata": {
-            key: metadata[key]
-            for key in (
-                "original_question",
-                "context_question",
-                "context_source",
-                "context_player_name",
-            )
-            if key in metadata
-        },
-        "sources": [_conversation_source(source) for source in payload.get("sources", [])],
-    }
-    return {"question": question, "answer": answer_payload}
-
-
-def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
-    rows = source.get("rows") or []
-    compact_rows = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        compact_row = {
-            key: row[key]
-            for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
-            if key in row
-        }
-        if compact_row:
-            compact_rows.append(compact_row)
-    return {
-        "type": source.get("type"),
-        "label": source.get("label"),
-        "rows": compact_rows,
-    }
-
-
-def _display_payload(result):
-    """Return answer text, table rows, source metadata, and SQL for Gradio panels."""
-    payload = result.to_dict()
-    sources = _json_safe_for_gradio(payload["sources"])
-    primary_source = sources[0] if sources else {}
-    rows = _rows_for_dataframe(primary_source)
-    sql = primary_source.get("sql") or ""
-    return payload["answer"], rows, sources, sql
-
-
-def _clear_query_outputs():
-    """Clear structured result panels as soon as a new query starts."""
-    return "", [], [], ""
-
-
-def _json_safe_for_gradio(value: Any) -> Any:
-    """Avoid file-shaped JSON objects that Gradio tries to download."""
-    if isinstance(value, list):
-        return [_json_safe_for_gradio(item) for item in value]
-    if isinstance(value, dict):
-        return {
-            ("file_path" if key == "path" else key): _json_safe_for_gradio(item)
-            for key, item in value.items()
-        }
-    return value
-
-
-def _rows_for_dataframe(source: dict[str, Any]) -> list[Any] | dict[str, list[Any]]:
-    """Return source rows in a shape Gradio Dataframe renders as scalar cells."""
-    rows = source.get("rows") or []
-    if not rows or not all(isinstance(row, dict) for row in rows):
-        return rows
-
-    columns = source.get("columns") or list(rows[0])
-    return {
-        "headers": columns,
-        "data": [[row.get(column) for column in columns] for row in rows],
-    }
+    return transaction.run(message, chat_history, conversation).as_gradio_values()
 
 
 # --------------------------------------------------------------------------
@@ -377,6 +244,8 @@ def build_dashboard() -> gr.Blocks:
         with gr.Tab("Query"):
             chat_state = gr.State([])
             conversation_state = gr.State([])
+            query_turn_state = gr.State(None)
+            query_turn_registry = gr.State({"latest_turn_id": None})
             chat = gr.Chatbot(label="Conversation", height=260)
             with gr.Row():
                 question = gr.Textbox(
@@ -404,28 +273,81 @@ def build_dashboard() -> gr.Blocks:
             sources = gr.JSON(label="Sources")
             sql = gr.Code(label="SQL", language="sql")
 
-            def on_query(msg, chat_history, conversation):
-                return respond_conversation(
-                    msg,
-                    chat_history,
-                    conversation,
-                    diagram=arch_diagram,
-                    animate_diagram=False,
+            def _query_transaction() -> QueryTransaction:
+                return QueryTransaction(
+                    execute=lambda query, *, conversation: _execute_for_gradio(
+                        query,
+                        diagram=arch_diagram,
+                        animate_diagram=False,
+                        conversation=conversation,
+                    ),
+                    default_question=_DEFAULT_QUESTION,
                 )
 
-            clear_query_outputs = gr.on(
+            def _mark_latest_query(
+                registry: dict[str, str | None] | None,
+                begun: BegunQuery,
+            ) -> dict[str, str | None]:
+                if registry is None:
+                    registry = {}
+                turn_id = begun.pending.turn_id if begun.pending is not None else None
+                registry["latest_turn_id"] = turn_id
+                return registry
+
+            def _is_latest_query(
+                begun: BegunQuery,
+                registry: dict[str, str | None] | None,
+            ) -> bool:
+                if begun.pending is None:
+                    return True
+                if registry is None:
+                    return False
+                return registry.get("latest_turn_id") == begun.pending.turn_id
+
+            def _no_component_updates():
+                return tuple(gr.update() for _ in range(8))
+
+            def begin_query(msg, chat_history, conversation, turn_registry):
+                begun = _query_transaction().begin(msg, chat_history, conversation)
+                turn_registry = _mark_latest_query(turn_registry, begun)
+                return (
+                    begun.update.answer_text,
+                    begun.update.rows,
+                    begun.update.sources,
+                    begun.update.sql,
+                    begun,
+                    turn_registry,
+                )
+
+            def on_query(
+                begun: BegunQuery | None,
+                turn_registry: dict[str, str | None] | None,
+            ):
+                if begun is None:
+                    update = _query_transaction().run(None, [], [])
+                elif begun.pending is None:
+                    update = begun.update
+                else:
+                    if not _is_latest_query(begun, turn_registry):
+                        return _no_component_updates()
+                    update = _query_transaction().complete(begun.pending)
+                    if not _is_latest_query(begun, turn_registry):
+                        return _no_component_updates()
+                return update.as_gradio_values()
+
+            begin_query_outputs = gr.on(
                 triggers=[submit.click, question.submit],
-                fn=_clear_query_outputs,
-                inputs=[],
-                outputs=[answer_box, table, sources, sql],
+                fn=begin_query,
+                inputs=[question, chat_state, conversation_state, query_turn_registry],
+                outputs=[answer_box, table, sources, sql, query_turn_state, query_turn_registry],
                 trigger_mode="always_last",
                 show_progress="hidden",
                 queue=False,
             )
 
-            clear_query_outputs.then(
+            begin_query_outputs.then(
                 fn=on_query,
-                inputs=[question, chat_state, conversation_state],
+                inputs=[query_turn_state, query_turn_registry],
                 outputs=[
                     chat,
                     question,

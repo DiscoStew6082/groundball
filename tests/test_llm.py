@@ -4,7 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from baseball_rag.generation.llm import make_request, make_request_stream
+from baseball_rag.generation.llm import (
+    LLMEmptyOutputError,
+    LLMMalformedResponseError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+    make_request,
+    make_request_stream,
+)
 
 
 class TestLLMClient:
@@ -57,7 +64,7 @@ class TestLLMClient:
         }
 
         with patch("requests.post", return_value=mock_resp):
-            with pytest.raises(ValueError, match="empty response"):
+            with pytest.raises(LLMEmptyOutputError, match="empty response"):
                 make_request("who was Babe Ruth")
 
     def test_connection_error_raises(self):
@@ -65,7 +72,7 @@ class TestLLMClient:
         import requests
 
         with patch("requests.post", side_effect=requests.ConnectionError("connection refused")):
-            with pytest.raises(ConnectionError, match="Could not connect"):
+            with pytest.raises(LLMUnavailableError, match="Could not connect"):
                 make_request("test query")
 
     def test_timeout_uses_short_default_and_raises_timeout_error(self):
@@ -73,10 +80,33 @@ class TestLLMClient:
         import requests
 
         with patch("requests.post", side_effect=requests.Timeout("read timed out")) as mock_post:
-            with pytest.raises(TimeoutError, match="timed out"):
+            with pytest.raises(LLMTimeoutError, match="timed out"):
                 make_request("test query")
 
         assert mock_post.call_args.kwargs["timeout"] == 20.0
+
+    def test_malformed_chat_completion_response_raises_typed_failure(self):
+        """Invalid OpenAI-compatible response shapes should not surface as KeyError."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"choices": []}
+
+        with patch("requests.post", return_value=mock_resp):
+            with pytest.raises(LLMMalformedResponseError, match="malformed"):
+                make_request("who was Babe Ruth")
+
+    def test_malformed_message_shape_raises_typed_failure(self):
+        """A non-object assistant message should not escape as AttributeError."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "choices": [{"message": "not a chat message object"}],
+            "model": "gemma-4-26b",
+        }
+
+        with patch("requests.post", return_value=mock_resp):
+            with pytest.raises(LLMMalformedResponseError, match="malformed"):
+                make_request("who was Babe Ruth")
 
     def test_timeout_can_be_overridden_by_env(self, monkeypatch):
         """Local deployments can tune the LM Studio timeout."""

@@ -10,6 +10,34 @@ import requests
 from baseball_rag.arch.tracing import traced
 
 
+class LLMError(Exception):
+    """Base class for local LM integration failures."""
+
+
+class LLMUnavailableError(LLMError, ConnectionError):
+    """Raised when the configured LM server cannot be reached."""
+
+
+class LLMTimeoutError(LLMError, TimeoutError):
+    """Raised when the configured LM server does not answer in time."""
+
+
+class LLMOutputError(LLMError, ValueError):
+    """Raised when the LM returns an unusable output payload."""
+
+
+class LLMEmptyOutputError(LLMOutputError):
+    """Raised when the LM succeeds but provides no final answer text."""
+
+
+class LLMMalformedResponseError(LLMOutputError):
+    """Raised when the LM response is not OpenAI-chat-compatible."""
+
+
+class LLMRoutingOutputError(LLMOutputError):
+    """Raised when routing output cannot be parsed into the route schema."""
+
+
 @dataclass
 class LLMResponse:
     content: str
@@ -70,11 +98,11 @@ def _post(base_url: str, payload: dict, timeout: float | None = None) -> request
         resp.raise_for_status()
         return resp
     except requests.Timeout as exc:
-        raise TimeoutError(
+        raise LLMTimeoutError(
             f"LM Studio timed out after {resolved_timeout:g}s at {base_url}."
         ) from exc
     except requests.ConnectionError as exc:
-        raise ConnectionError(
+        raise LLMUnavailableError(
             f"Could not connect to LM Studio at {base_url}. "
             "Is the server running? (Start LM Studio → Server tab → Start server)"
         ) from exc
@@ -185,12 +213,21 @@ def make_request(
     payload = _build_payload(model, messages, max_tokens, temperature)
     resp = _post(base_url, payload)
 
-    data = resp.json()
-    choice = data["choices"][0]["message"]
+    try:
+        data = resp.json()
+        choice = data["choices"][0]["message"]
+        if not isinstance(choice, dict):
+            raise TypeError("message must be an object")
+    except ValueError as exc:
+        raise LLMMalformedResponseError("LM Studio returned malformed response JSON.") from exc
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMMalformedResponseError(
+            "LM Studio returned a malformed chat completion response."
+        ) from exc
     raw = _message_content(choice)
     content = _strip_reasoning_block(raw)
     if not content.strip():
-        raise ValueError("LM Studio returned an empty response.")
+        raise LLMEmptyOutputError("LM Studio returned an empty response.")
 
     return LLMResponse(content=content, model=data.get("model", model), done=True)
 
