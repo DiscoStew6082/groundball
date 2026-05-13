@@ -129,14 +129,19 @@ class TestDashboardTabs:
         ]
 
         assert len(query_dependencies) == 1
+        query_fn = next(
+            dependency for dependency in self.dash.fns.values() if dependency.api_name == "on_query"
+        )
+        assert query_fn.concurrency_limit == 1
+        assert query_fn.concurrency_id == "query"
         for dependency in query_dependencies:
             assert len(dependency["targets"]) == 2
             assert question_id in dependency["inputs"]
             assert chatbot_id not in dependency["inputs"]
             assert chatbot_id in dependency["outputs"]
-            assert dependency["queue"] is False
-            assert dependency["show_progress"] == "hidden"
-            assert dependency["trigger_mode"] == "multiple"
+            assert dependency["queue"] is True
+            assert dependency["show_progress"] == "minimal"
+            assert dependency["trigger_mode"] == "always_last"
             state_inputs = [
                 component_id
                 for component_id in dependency["inputs"]

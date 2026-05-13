@@ -189,6 +189,8 @@ def make_request(
     choice = data["choices"][0]["message"]
     raw = _message_content(choice)
     content = _strip_reasoning_block(raw)
+    if not content.strip():
+        raise ValueError("LM Studio returned an empty response.")
 
     return LLMResponse(content=content, model=data.get("model", model), done=True)
 

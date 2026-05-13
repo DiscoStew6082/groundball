@@ -422,9 +422,11 @@ def build_dashboard() -> gr.Blocks:
                     chat_state,
                     conversation_state,
                 ],
-                trigger_mode="multiple",
-                show_progress="hidden",
-                queue=False,
+                trigger_mode="always_last",
+                show_progress="minimal",
+                queue=True,
+                concurrency_limit=1,
+                concurrency_id="query",
             )
 
         with gr.Tab("Architecture"):

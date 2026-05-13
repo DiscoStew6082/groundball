@@ -138,6 +138,19 @@ class TestRouter:
         assert result.intent != "player_biography"
         assert result.player_name is None
 
+    def test_empty_llm_routing_response_falls_back_to_heuristic(self, monkeypatch):
+        """Blank LLM routing output should not abort the whole request."""
+
+        def empty_llm_response(*_args, **_kwargs):
+            raise ValueError("LM Studio returned an empty response.")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", empty_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
     def test_stat_definition_routes_as_general_explanation(self):
         result = route("what is OPS")
 

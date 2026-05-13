@@ -319,7 +319,7 @@ def route(question: str) -> RouteResult:
                 player_name=data.get("player_name"),
                 raw_question=question,
             )
-    except ConnectionError:
+    except (ConnectionError, ValueError):
         pass  # Fall through to heuristic
 
     # LM Studio unavailable or LLM returned garbled — use safe fallback

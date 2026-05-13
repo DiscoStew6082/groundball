@@ -47,6 +47,19 @@ class TestLLMClient:
 
         assert result.content == "Babe Ruth played for the Yankees."
 
+    def test_generate_raises_when_response_has_no_text(self):
+        """Successful LM responses with no final text should fail visibly upstream."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "", "reasoning_content": ""}}],
+            "model": "gemma-4-26b",
+        }
+
+        with patch("requests.post", return_value=mock_resp):
+            with pytest.raises(ValueError, match="empty response"):
+                make_request("who was Babe Ruth")
+
     def test_connection_error_raises(self):
         """ConnectionError is raised when LM Studio is not running."""
         import requests
