@@ -318,12 +318,11 @@ def run_retrieval_strategy_cases(
                     continue
 
                 chunks = retrieve_grounded_chunks(
-                    RetrievalRequest(
-                        question=getattr(decision, "raw_question", None) or case.question,
-                        intent=getattr(decision, "intent", category),
+                    RetrievalRequest.from_routed_case(
+                        decision,
+                        question=case.question,
                         top_k=top_k,
                         persist_dir=persist_dir,
-                        player_name=player_name,
                         player_id=player_id,
                         retrieval_strategy=strategy,
                     )

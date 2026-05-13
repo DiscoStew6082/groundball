@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
+from baseball_rag.corpus.lifecycle import (
+    PLAYER_BIOGRAPHY_CATEGORY,
+    category_filter,
+    player_id_filter,
+)
 from baseball_rag.retrieval.chroma_store import RetrievedChunk, retrieve
 
 RetrieveFn = Callable[..., list[RetrievedChunk]]
@@ -67,7 +72,7 @@ class SemanticChromaStrategy:
         return StrategyMetadata(
             name=self.name,
             description="Unfiltered semantic Chroma retrieval.",
-            categories=frozenset({"player_biography", "general_explanation"}),
+            categories=frozenset({PLAYER_BIOGRAPHY_CATEGORY, "general_explanation"}),
         )
 
     def is_applicable(
@@ -110,7 +115,7 @@ class ExactPlayerIdStrategy:
         return StrategyMetadata(
             name=self.name,
             description="Chroma retrieval filtered to a resolved player_id.",
-            categories=frozenset({"player_biography"}),
+            categories=frozenset({PLAYER_BIOGRAPHY_CATEGORY}),
             requires_player_id=True,
         )
 
@@ -139,7 +144,7 @@ class ExactPlayerIdStrategy:
             search_query,
             top_k=1,
             persist_dir=persist_dir,
-            where={"player_id": player_id},
+            where=player_id_filter(player_id),
         )
 
 
@@ -155,7 +160,7 @@ class HybridPlayerBioStrategy:
         return StrategyMetadata(
             name=self.name,
             description="Exact player_id lookup with semantic biography fallback.",
-            categories=frozenset({"player_biography"}),
+            categories=frozenset({PLAYER_BIOGRAPHY_CATEGORY}),
         )
 
     def is_applicable(
@@ -190,7 +195,7 @@ class HybridPlayerBioStrategy:
             search_query,
             top_k=top_k,
             persist_dir=persist_dir,
-            where={"category": "player_biography"},
+            where=category_filter(PLAYER_BIOGRAPHY_CATEGORY),
         )
         if player_chunks:
             return player_chunks

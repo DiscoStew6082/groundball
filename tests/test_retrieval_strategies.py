@@ -3,6 +3,13 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from baseball_rag.corpus.lifecycle import (
+    HOF_BIO_CATEGORY,
+    PLAYER_BIOGRAPHY_CATEGORY,
+    STAT_DEFINITION_CATEGORY,
+    category_filter,
+    player_id_filter,
+)
 from baseball_rag.retrieval.chroma_store import RetrievedChunk
 from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
 from baseball_rag.retrieval.strategies import (
@@ -13,6 +20,7 @@ from baseball_rag.retrieval.strategies import (
     available_strategy_names,
     get_strategy,
 )
+from baseball_rag.routing.query_router import GeneralExplanationCase, PlayerBiographyCase
 
 
 def _chunk(title: str = "Babe Ruth") -> RetrievedChunk:
@@ -38,6 +46,20 @@ def test_strategy_metadata_declares_applicability_categories():
     assert metadata["exact_player_id"].categories == frozenset({"player_biography"})
     assert metadata["exact_player_id"].requires_player_id is True
     assert metadata["hybrid_player_bio"].categories == frozenset({"player_biography"})
+
+
+def test_strategy_metadata_descriptions_are_stable_for_eval_reporting():
+    metadata = {item.name: item for item in available_strategy_metadata()}
+
+    assert metadata["semantic_chroma"].description == "Unfiltered semantic Chroma retrieval."
+    assert (
+        metadata["exact_player_id"].description
+        == "Chroma retrieval filtered to a resolved player_id."
+    )
+    assert (
+        metadata["hybrid_player_bio"].description
+        == "Exact player_id lookup with semantic biography fallback."
+    )
 
 
 def test_strategy_applicability_uses_category_and_player_id_requirements():
@@ -96,7 +118,7 @@ def test_exact_player_id_requires_a_resolved_player_id():
             "query": "Babe Ruth",
             "top_k": 1,
             "persist_dir": Path("store"),
-            "where": {"player_id": "ruthba01"},
+            "where": player_id_filter("ruthba01"),
         }
     ]
 
@@ -126,13 +148,13 @@ def test_hybrid_player_bio_falls_back_to_semantic_search_when_exact_misses():
             "query": "Babe Ruth",
             "top_k": 1,
             "persist_dir": Path("store"),
-            "where": {"player_id": "ruthba01"},
+            "where": player_id_filter("ruthba01"),
         },
         {
             "query": "Babe Ruth",
             "top_k": 3,
             "persist_dir": Path("store"),
-            "where": {"category": "player_biography"},
+            "where": category_filter(PLAYER_BIOGRAPHY_CATEGORY),
         },
         {
             "query": "Babe Ruth",
@@ -160,9 +182,34 @@ def test_hybrid_player_bio_with_no_player_id_falls_back_explicitly_to_semantic_s
             "query": "Smith",
             "top_k": 3,
             "persist_dir": None,
-            "where": {"category": "player_biography"},
+            "where": category_filter(PLAYER_BIOGRAPHY_CATEGORY),
         }
     ]
+
+
+def test_retrieval_request_can_be_built_from_routed_case():
+    request = RetrievalRequest.from_routed_case(
+        PlayerBiographyCase(player_name="Babe Ruth", raw_question="who was Babe Ruth"),
+        player_id="ruthba01",
+        retrieval_strategy="exact_player_id",
+    )
+
+    assert request.question == "who was Babe Ruth"
+    assert request.intent == "player_biography"
+    assert request.player_name == "Babe Ruth"
+    assert request.player_id == "ruthba01"
+    assert request.top_k == 3
+    assert request.retrieval_strategy == "exact_player_id"
+
+
+def test_retrieval_request_uses_query_when_routed_case_has_no_raw_question():
+    request = RetrievalRequest.from_routed_case(
+        GeneralExplanationCase(),
+        question="what is OPS",
+    )
+
+    assert request.question == "what is OPS"
+    assert request.intent == "general_explanation"
 
 
 def test_semantic_chroma_does_not_own_filtered_fallback_policy():
@@ -201,7 +248,7 @@ def test_retrieval_decision_uses_player_id_strategy_before_semantic_fallback():
 
     def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
         calls.append({"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where})
-        if where == {"player_id": "ruthba01"}:
+        if where == player_id_filter("ruthba01"):
             return [_chunk("Babe Ruth")]
         return []
 
@@ -221,7 +268,7 @@ def test_retrieval_decision_uses_player_id_strategy_before_semantic_fallback():
             "query": "Babe Ruth",
             "top_k": 1,
             "persist_dir": None,
-            "where": {"player_id": "ruthba01"},
+            "where": player_id_filter("ruthba01"),
         }
     ]
 
@@ -263,7 +310,7 @@ def test_retrieval_decision_owns_filtered_stat_definition_fallback_when_exact_mi
         fallback_calls.append(
             {"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where}
         )
-        if where == {"category": "stat_definition"}:
+        if where == category_filter(STAT_DEFINITION_CATEGORY):
             return [_chunk("OPS")]
         return []
 
@@ -288,6 +335,40 @@ def test_retrieval_decision_owns_filtered_stat_definition_fallback_when_exact_mi
             "query": "what is OPS",
             "top_k": 3,
             "persist_dir": None,
-            "where": {"category": "stat_definition"},
+            "where": category_filter(STAT_DEFINITION_CATEGORY),
+        }
+    ]
+
+
+def test_retrieval_decision_falls_back_to_hof_bio_category_for_general_explanations():
+    fallback_calls: list[dict] = []
+
+    def fake_strategy_search(*_args, **_kwargs):
+        return []
+
+    def fake_retrieve(query, *, top_k=3, persist_dir=None, where=None):
+        fallback_calls.append(
+            {"query": query, "top_k": top_k, "persist_dir": persist_dir, "where": where}
+        )
+        if where == category_filter(HOF_BIO_CATEGORY):
+            return [_chunk("Babe Ruth")]
+        return []
+
+    with patch("baseball_rag.retrieval.decision.retrieve", side_effect=fake_retrieve):
+        chunks = retrieve_grounded_chunks(
+            RetrievalRequest(
+                question="tell me about great early sluggers",
+                intent="general_explanation",
+                retrieval_strategy=SemanticChromaStrategy(retrieve_fn=fake_strategy_search),
+            )
+        )
+
+    assert chunks[0].title == "Babe Ruth"
+    assert fallback_calls == [
+        {
+            "query": "tell me about great early sluggers",
+            "top_k": 3,
+            "persist_dir": None,
+            "where": category_filter(HOF_BIO_CATEGORY),
         }
     ]

@@ -68,7 +68,6 @@ def _answer_player_biography(
     *,
     retrieval_strategy: str | RetrievalStrategy | None = None,
 ) -> StructuredAnswer:
-    player_name = decision.player_name or question
     resolved_player_id: str | None = None
     if decision.player_name:
         from baseball_rag.corpus.player_bios import resolve_player_by_name
@@ -94,12 +93,10 @@ def _answer_player_biography(
 
     try:
         chunks = retrieve_grounded_chunks(
-            RetrievalRequest(
-                question=decision.raw_question,
-                intent=decision.intent,
+            RetrievalRequest.from_routed_case(
+                decision,
                 top_k=3,
                 retrieval_strategy=retrieval_strategy,
-                player_name=player_name,
                 player_id=resolved_player_id,
             )
         )
@@ -175,9 +172,9 @@ def _answer_general(
 ) -> StructuredAnswer:
     try:
         chunks = retrieve_grounded_chunks(
-            RetrievalRequest(
+            RetrievalRequest.from_routed_case(
+                decision,
                 question=question,
-                intent=decision.intent,
                 top_k=3,
                 retrieval_strategy=retrieval_strategy,
             )

@@ -144,7 +144,14 @@ parallel exploration is encouraged.
   `corpus.lifecycle`; moved ingest, diagnostics, player-bio frontmatter, Chroma
   metadata mapping, and generated-profile provenance checks to those helpers.
   Code review found no blocking issues after fixes.
-- [ ] Phase 6: Retrieval decision module.
+- [x] Phase 6: Retrieval decision module. Added routed-case retrieval request
+  construction, lifecycle-owned category/player metadata filters, and tracer
+  coverage for exact player lookup, exact stat definition lookup, general
+  fallback categories, and eval-stable strategy metadata. Service and retrieval
+  evals now ask for grounded chunks by routed case rather than spelling Chroma
+  filters. Planned pytest, ruff, and mypy checks passed; retrieval-only eval was
+  attempted but the local Chroma index was static-only/unavailable for generated
+  player profiles, so the documented deterministic fallback path was used.
 - [ ] Phase 7: Gradio query adapter/session state.
 - [ ] Phase 8: Answer outcome policy.
 

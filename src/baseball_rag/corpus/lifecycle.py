@@ -16,6 +16,8 @@ COLLECTION_NAME = "baseball_corpus"
 MANIFEST_NAME = "corpus_manifest.json"
 GENERATED_PLAYER_PROFILE = "generated_player_profile"
 PLAYER_BIOGRAPHY_CATEGORY = "player_biography"
+STAT_DEFINITION_CATEGORY = "stat_definition"
+HOF_BIO_CATEGORY = "hof_bio"
 STATIC_DOCUMENTS_SECTION = "static_documents"
 GENERATED_PLAYER_PROFILES_SECTION = "generated_player_profiles"
 METADATA_CATEGORY = "category"
@@ -91,6 +93,16 @@ def metadata_text(metadata: dict[str, Any] | Any, key: str) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
     return value.strip()
+
+
+def category_filter(category: str) -> dict[str, str]:
+    """Return a Chroma metadata filter for one corpus category."""
+    return {METADATA_CATEGORY: category}
+
+
+def player_id_filter(player_id: str) -> dict[str, str]:
+    """Return a Chroma metadata filter for one generated player profile."""
+    return {METADATA_PLAYER_ID: player_id}
 
 
 def is_generated_player_profile_doc_kind(doc_kind: str | None) -> bool:

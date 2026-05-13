@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import yaml
 
+from baseball_rag.corpus.lifecycle import player_id_filter
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.retrieval.chroma_store import RetrievedChunk
 from evals.questions import (
@@ -409,7 +410,7 @@ def test_run_retrieval_strategy_cases_uses_route_resolve_and_raw_chunks():
 
     assert results["exact_player_id"].ok
     assert len(results["exact_player_id"].passed) == 1
-    assert calls == [{"query": "Babe Ruth", "top_k": 1, "where": {"player_id": "ruthba01"}}]
+    assert calls == [{"query": "Babe Ruth", "top_k": 1, "where": player_id_filter("ruthba01")}]
 
 
 def test_run_retrieval_strategy_cases_skips_non_applicable_strategy():

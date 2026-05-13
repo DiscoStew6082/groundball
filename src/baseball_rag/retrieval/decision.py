@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+from baseball_rag.corpus.lifecycle import (
+    HOF_BIO_CATEGORY,
+    STAT_DEFINITION_CATEGORY,
+    category_filter,
+)
 from baseball_rag.retrieval.chroma_store import RetrievedChunk, get_chunks_by_ids, retrieve
 from baseball_rag.retrieval.static_vocab import (
     query_asks_for_explanation,
@@ -25,6 +31,29 @@ class RetrievalRequest:
     player_name: str | None = None
     player_id: str | None = None
     retrieval_strategy: str | RetrievalStrategy | None = None
+
+    @classmethod
+    def from_routed_case(
+        cls,
+        routed_case: Any,
+        *,
+        question: str | None = None,
+        top_k: int = 3,
+        persist_dir: Path | None = None,
+        player_id: str | None = None,
+        retrieval_strategy: str | RetrievalStrategy | None = None,
+    ) -> "RetrievalRequest":
+        """Build a retrieval request from a routed case without exposing Chroma filters."""
+        raw_question = getattr(routed_case, "raw_question", "") or question or ""
+        return cls(
+            question=raw_question,
+            intent=str(getattr(routed_case, "intent")),
+            top_k=top_k,
+            persist_dir=persist_dir,
+            player_name=getattr(routed_case, "player_name", None),
+            player_id=player_id,
+            retrieval_strategy=retrieval_strategy,
+        )
 
 
 def retrieve_grounded_chunks(request: RetrievalRequest) -> list[RetrievedChunk]:
@@ -99,6 +128,6 @@ def _fallback_filtered_chunks(request: RetrievalRequest) -> list[RetrievedChunk]
 def _fallback_filters_for_query(query: str) -> list[dict[str, str]]:
     filters: list[dict[str, str]] = []
     if query_mentions_stat_definition(query):
-        filters.append({"category": "stat_definition"})
-    filters.append({"category": "hof_bio"})
+        filters.append(category_filter(STAT_DEFINITION_CATEGORY))
+    filters.append(category_filter(HOF_BIO_CATEGORY))
     return filters
