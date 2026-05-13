@@ -26,6 +26,14 @@ class TestRouter:
         assert result.player_name == "Babe Ruth"
         assert result.year == 1925
 
+    def test_year_variants_spelled_year_with_digit_unit(self):
+        """Spoken years can end with a typed digit."""
+        result = route("who had the most hits in Nineteen fifty 6")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "H"
+        assert result.year == 1956
+
     def test_unknown_year_not_required(self):
         """Stat query without a year still routes correctly."""
         result = route("career home run leaders")

@@ -382,9 +382,7 @@ def build_dashboard() -> gr.Blocks:
                 ],
                 trigger_mode="always_last",
                 show_progress="minimal",
-                queue=True,
-                concurrency_limit=1,
-                concurrency_id="query",
+                queue=False,
             )
 
         with gr.Tab("Architecture"):

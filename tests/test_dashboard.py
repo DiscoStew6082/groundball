@@ -128,11 +128,7 @@ class TestDashboardTabs:
             if dependency["api_name"] == "on_query"
         )
 
-        query_fn = next(
-            dependency for dependency in self.dash.fns.values() if dependency.api_name == "on_query"
-        )
-        assert query_fn.concurrency_limit == 1
-        assert query_fn.concurrency_id == "query"
+        assert query_dependency["queue"] is False
         assert question_id in begin_dependency["inputs"]
         assert chatbot_id not in begin_dependency["inputs"]
         assert chatbot_id not in query_dependency["inputs"]
