@@ -1,9 +1,7 @@
 {
   "baseline_comparison": {
-    "blockers": [
-      "pass rate decreased from 1.000 to 0.765"
-    ],
-    "recommendation": "BLOCK",
+    "blockers": [],
+    "recommendation": "WARN",
     "warnings": [
       "skipped case count changed from 48 to 0"
     ]
@@ -76,6 +74,30 @@
       "status": "passed"
     },
     {
+      "case_id": "stat_unsupported_column",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_sql_injection_stat",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_sql_injection_team",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "freeform_braves_1936",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
       "case_id": "freeform_yankees_1950",
       "failures": [],
       "reason": null,
@@ -143,6 +165,18 @@
     },
     {
       "case_id": "freeform_underqualified_career_era",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "min_sample_avg_2024",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "min_sample_avg_no_qualifier",
       "failures": [],
       "reason": null,
       "status": "passed"
@@ -244,6 +278,12 @@
       "status": "passed"
     },
     {
+      "case_id": "stat_definition_rbi",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
       "case_id": "stat_definition_stolen_base",
       "failures": [],
       "reason": null,
@@ -251,6 +291,30 @@
     },
     {
       "case_id": "unsupported_future_season",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "unsupported_betting",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "unsupported_injury_news",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "unsupported_live_score",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "unsupported_contract",
       "failures": [],
       "reason": null,
       "status": "passed"
@@ -292,6 +356,12 @@
       "status": "passed"
     },
     {
+      "case_id": "team_history_boston_braves",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
       "case_id": "team_history_brooklyn_dodgers",
       "failures": [],
       "reason": null,
@@ -322,138 +392,32 @@
       "status": "passed"
     },
     {
-      "case_id": "stat_unsupported_column",
-      "failures": [
-        "unsupported: expected True, got False",
-        "answer missing substring 'grounded'"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "stat_sql_injection_stat",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "stat_sql_injection_team",
-      "failures": [
-        "intent: expected 'freeform_query', got 'general_explanation'",
-        "expected parameterized SQL with bound placeholders"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "freeform_braves_1936",
-      "failures": [
-        "SQL missing substring 'JOIN teams'"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "min_sample_avg_2024",
-      "failures": [
-        "intent: expected 'freeform_query', got 'stat_query'"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "min_sample_avg_no_qualifier",
-      "failures": [
-        "intent: expected 'freeform_query', got 'stat_query'"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "stat_definition_rbi",
-      "failures": [
-        "answer missing substring 'run batted in'"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "unsupported_betting",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "unsupported_injury_news",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "unsupported_live_score",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "unsupported_contract",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
-      "case_id": "team_history_boston_braves",
-      "failures": [
-        "answer missing substring 'Braves'"
-      ],
-      "reason": null,
-      "status": "failed"
-    },
-    {
       "case_id": "unsupported_opinion",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
+      "failures": [],
       "reason": null,
-      "status": "failed"
+      "status": "passed"
     },
     {
       "case_id": "unsupported_non_baseball",
-      "failures": [
-        "ValueError: Could not determine stat_tables from LLM response: {\n  \"year_value\": 2020\n}"
-      ],
+      "failures": [],
       "reason": null,
-      "status": "failed"
+      "status": "passed"
     },
     {
       "case_id": "unsupported_schema_unknown",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
+      "failures": [],
       "reason": null,
-      "status": "failed"
+      "status": "passed"
     },
     {
       "case_id": "unsupported_minor_leagues",
-      "failures": [
-        "unsupported: expected True, got False"
-      ],
+      "failures": [],
       "reason": null,
-      "status": "failed"
+      "status": "passed"
     }
   ],
   "command": "python -m evals.questions --include-live --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-  "generated_at": "2026-05-14T17:08:07.151847+00:00",
+  "generated_at": "2026-05-14T17:44:58.930309+00:00",
   "include_live": true,
   "minimum_pass_rate": 0.85,
   "mode": "answer",
@@ -461,11 +425,11 @@
   "summary": {
     "attempted": 68,
     "cases_loaded": 68,
-    "failed": 16,
-    "pass_rate": 0.7647058823529411,
-    "passed": 52,
-    "recommendation": "BLOCK",
-    "release_recommendation": "BLOCK - investigate full local/live eval failures before release",
+    "failed": 0,
+    "pass_rate": 1.0,
+    "passed": 68,
+    "recommendation": "WARN",
+    "release_recommendation": "WARN - full local/live eval suite is green with baseline drift",
     "skipped": 0
   },
   "versions": {

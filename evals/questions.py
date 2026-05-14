@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import unicodedata
 from dataclasses import dataclass, field
@@ -449,6 +450,8 @@ def validate_case(case: EvalCase, answer: StructuredAnswer) -> list[str]:
             f"unsupported: expected {bool(spec['expected_unsupported'])!r}, "
             f"got {answer.unsupported!r}"
         )
+    elif not bool(spec.get("expected_unsupported", False)) and answer.unsupported:
+        failures.append(f"unsupported: expected False, got {answer.unsupported!r}")
 
     expected_unsupported_reason = spec.get("expected_unsupported_reason")
     if (
@@ -510,7 +513,45 @@ def validate_case(case: EvalCase, answer: StructuredAnswer) -> list[str]:
         if not _source_rows_contain(answer, expected_row):
             failures.append(f"source rows missing expected row {expected_row!r}")
 
+    minimum_sample_size = spec.get("minimum_sample_size")
+    if minimum_sample_size is not None and not _satisfies_minimum_sample_size(
+        answer,
+        str(minimum_sample_size),
+    ):
+        failures.append(f"minimum_sample_size: expected {minimum_sample_size}")
+
     return failures
+
+
+def _satisfies_minimum_sample_size(answer: StructuredAnswer, expected: str) -> bool:
+    match = re.fullmatch(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*>=\s*(\d+)\s*", expected)
+    if match is None:
+        return True
+
+    field_name, raw_threshold = match.groups()
+    threshold = int(raw_threshold)
+    sql_guard_found = any(
+        source.sql
+        and re.search(
+            rf"\b{re.escape(field_name)}\b\s*>=\s*(?:\?|\b{threshold}\b)",
+            source.sql,
+            re.IGNORECASE,
+        )
+        for source in answer.sources
+    )
+    row_values = [
+        row.get(field_name) for source in answer.sources for row in source.rows if field_name in row
+    ]
+    if row_values:
+        return sql_guard_found and all(_numeric_at_least(value, threshold) for value in row_values)
+    return sql_guard_found
+
+
+def _numeric_at_least(value: Any, threshold: int) -> bool:
+    try:
+        return float(value) >= threshold
+    except (TypeError, ValueError):
+        return False
 
 
 def _source_rows_contain(answer: StructuredAnswer, expected: dict[str, Any]) -> bool:

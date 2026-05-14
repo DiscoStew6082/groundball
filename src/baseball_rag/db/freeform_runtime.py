@@ -78,6 +78,7 @@ def plan_query(
             planning_path="deterministic_template",
             source_label="Deterministic template query",
             source_detail=matched_template.source_detail,
+            query_spec=matched_template.query_spec,
         )
 
     schema = _get_schema_cached(conn)

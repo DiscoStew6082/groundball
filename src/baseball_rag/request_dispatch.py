@@ -18,6 +18,7 @@ from baseball_rag.routing import (
     routed_case,
 )
 from baseball_rag.routing.query_router import Intent
+from baseball_rag.unsupported_policy import unsupported_policy_outcome
 
 _SUPPORTED_INTENTS = {
     "stat_query",
@@ -56,6 +57,9 @@ class RequestAnswerDispatcher:
         self.initialize()
         resolution = self.resolve_followup(question, conversation)
         routed_question = resolution.resolved_question
+        policy_result = unsupported_policy_outcome(routed_question)
+        if policy_result is not None:
+            return policy_result
         decision = self.route_question(routed_question)
 
         result = self._dispatch(routed_question, decision)

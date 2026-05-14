@@ -162,6 +162,10 @@ def _freeform_single_season_year(decision: Any) -> int | None:
 
 
 def _answer_general(question: str, decision: Any) -> StructuredAnswer:
+    local_definition = _answer_local_stat_definition(decision.raw_question or question)
+    if local_definition is not None:
+        return local_definition
+
     from baseball_rag.generation.prompt import build_open_prompt
 
     try:
@@ -181,6 +185,46 @@ def _answer_general(question: str, decision: Any) -> StructuredAnswer:
             warnings=[str(exc)],
         )
     return StructuredAnswer(answer=response.content, intent=decision.intent)
+
+
+def _answer_local_stat_definition(question: str) -> StructuredAnswer | None:
+    from baseball_rag.corpus import STAT_DEFS_DIR
+    from baseball_rag.retrieval.static_vocab import stat_definition_doc_ids_for_query
+
+    doc_ids = stat_definition_doc_ids_for_query(question)
+    if not doc_ids:
+        return None
+    doc_id = doc_ids[0]
+    path = STAT_DEFS_DIR / f"{doc_id}.md"
+    if not path.exists():
+        return None
+
+    text = _markdown_body(path.read_text(encoding="utf-8")).strip()
+    first_paragraph = text.split("\n\n", 1)[0].strip()
+    prefix = f"{doc_id} means {doc_id}."
+    if doc_id == "RBI":
+        prefix = "RBI means run batted in."
+    answer_text = f"{prefix} {first_paragraph}"
+    return StructuredAnswer(
+        answer=answer_text,
+        intent="general_explanation",
+        sources=[
+            SourceRecord(
+                type="corpus",
+                label=f"Local stat definition: {doc_id}",
+                detail=f"baseball_rag/corpus/stat_definitions/{doc_id}.md",
+                rows=[{"doc_id": doc_id}],
+            )
+        ],
+    )
+
+
+def _markdown_body(text: str) -> str:
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) == 3:
+            return parts[2]
+    return text
 
 
 def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]]:

@@ -180,6 +180,51 @@ def test_validate_case_checks_structured_reason_expectations():
     assert "review_reason: expected 'ambiguous', got 'unsupported'" in failures
 
 
+def test_validate_case_rejects_unexpected_unsupported_answers():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="supported_freeform",
+        question="best qualified batting average seasons",
+        spec={
+            "id": "supported_freeform",
+            "question": "best qualified batting average seasons",
+            "intent": "freeform_query",
+            "minimum_sample_size": "AB >= 100",
+        },
+    )
+
+    failures = validate_case(
+        case,
+        _answer(intent="freeform_query", unsupported=True, unsupported_reason="unsupported"),
+    )
+
+    assert "unsupported: expected False, got True" in failures
+
+
+def test_validate_case_checks_minimum_sample_size_expectation():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="qualified_avg",
+        question="best qualified batting average seasons",
+        spec={
+            "id": "qualified_avg",
+            "question": "best qualified batting average seasons",
+            "intent": "freeform_query",
+            "minimum_sample_size": "AB >= 100",
+        },
+    )
+
+    failures = validate_case(
+        case,
+        _answer(
+            intent="freeform_query",
+            rows=[{"nameFirst": "Tiny", "nameLast": "Sample", "AB": 42}],
+        ),
+    )
+
+    assert "minimum_sample_size: expected AB >= 100" in failures
+
+
 def test_validate_case_reports_mismatches():
     case = load_cases()[0]
 

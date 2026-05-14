@@ -488,7 +488,7 @@ def _heuristic_route(question: str) -> RoutedCase:
     # Only classify as stat_query if it's clearly a league-wide leader request
     lower_q = question.lower()
     leader_re = re.compile(
-        r"\b(career|most|least|highest|lowest|lead|leads|led|leader|leaders|top|bottom|best)\b"
+        r"\b(career|most|least|highest|lowest|lead|leads|led|leader|leaders|top|bottom|best|greatest)\b"
     )
     is_leaderboard = bool(leader_re.search(lower_q))
 

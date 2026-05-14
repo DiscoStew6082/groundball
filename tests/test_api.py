@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from baseball_rag.api.server import app
@@ -145,6 +146,35 @@ class TestApi:
         assert data["metadata"]["unsupported_reason"] == "ambiguous"
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "ambiguous"
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "who led the league in vibes in 1999",
+            "career HR; drop table batting leaders",
+            "which team should I bet on tonight",
+            "is Aaron Judge injured today",
+            "what is the Yankees score right now",
+            "what is Shohei Ohtani's current salary",
+            "who is the greatest baseball player ever",
+            "who won the NBA finals in 2020",
+            "show me Statcast barrel rate leaders",
+            "who led Triple-A in home runs in 2021",
+        ],
+    )
+    def test_query_endpoint_rejects_policy_unsupported_questions(
+        self, question, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post("/query", json={"question": question})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "unsupported"
+        assert data["review"]["queued"] is True
+        assert data["review"]["reason"] == "unsupported"
 
     def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))

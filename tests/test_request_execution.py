@@ -14,6 +14,35 @@ from baseball_rag.routing import (
 )
 
 
+def test_execute_request_rejects_policy_unsupported_question_before_routing(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+    execution = execute_request(
+        "who won the NBA finals in 2020",
+        adapter_component_id="api",
+        attach_review=True,
+    )
+
+    assert execution.answer.unsupported is True
+    assert execution.answer.unsupported_reason == "unsupported"
+    assert execution.answer.review["queued"] is True
+    assert execution.answer.review["reason"] == "unsupported"
+
+
+def test_execute_request_allows_grounded_greatest_metric_question(tmp_path, monkeypatch):
+    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+    execution = execute_request("who had the greatest number of home runs in 1998")
+
+    assert execution.answer.unsupported is False
+    assert execution.answer.intent == "stat_query"
+    assert "Mark" in execution.answer.answer
+    assert "McGwire" in execution.answer.answer
+
+
 def test_execute_request_replaces_stale_empty_trace_with_request_trace():
     """A stale internal trace must not contaminate the next adapter request."""
     with traced(component_id="orphan", label="Orphan Stage"):

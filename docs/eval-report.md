@@ -2,13 +2,13 @@
 
 - Command: `python -m evals.questions --include-live --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
 - Mode: answer
-- Release recommendation: **BLOCK - investigate full local/live eval failures before release**
+- Release recommendation: **WARN - full local/live eval suite is green with baseline drift**
 - Cases loaded: 68
 - Attempted: 68
-- Passed: 52
-- Failed: 16
+- Passed: 68
+- Failed: 0
 - Skipped: 0
-- Pass rate: 76.5%
+- Pass rate: 100.0%
 - Required pass rate: 85%
 
 ## Service Requirements
@@ -33,27 +33,9 @@
 
 ## Baseline Comparison
 
-- Recommendation: BLOCK
-- Blocker: pass rate decreased from 1.000 to 0.765
+- Recommendation: WARN
 - Warning: skipped case count changed from 48 to 0
 
 ## Failed Cases
 
-- `stat_unsupported_column`: unsupported: expected True, got False; answer missing substring 'grounded'
-- `stat_sql_injection_stat`: unsupported: expected True, got False
-- `stat_sql_injection_team`: intent: expected 'freeform_query', got 'general_explanation'; expected parameterized SQL with bound placeholders
-- `freeform_braves_1936`: SQL missing substring 'JOIN teams'
-- `min_sample_avg_2024`: intent: expected 'freeform_query', got 'stat_query'
-- `min_sample_avg_no_qualifier`: intent: expected 'freeform_query', got 'stat_query'
-- `stat_definition_rbi`: answer missing substring 'run batted in'
-- `unsupported_betting`: unsupported: expected True, got False
-- `unsupported_injury_news`: unsupported: expected True, got False
-- `unsupported_live_score`: unsupported: expected True, got False
-- `unsupported_contract`: unsupported: expected True, got False
-- `team_history_boston_braves`: answer missing substring 'Braves'
-- `unsupported_opinion`: unsupported: expected True, got False
-- `unsupported_non_baseball`: ValueError: Could not determine stat_tables from LLM response: {
-  "year_value": 2020
-}
-- `unsupported_schema_unknown`: unsupported: expected True, got False
-- `unsupported_minor_leagues`: unsupported: expected True, got False
+- None

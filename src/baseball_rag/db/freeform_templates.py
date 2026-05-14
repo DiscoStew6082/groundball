@@ -3,7 +3,8 @@
 import re
 from dataclasses import dataclass
 
-from baseball_rag.db.freeform_types import AssembledSQL
+from baseball_rag.db.freeform_types import AssembledSQL, QuerySpec, TeamIdentity
+from baseball_rag.db.team_history import resolve_team_identity
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class MatchedTemplate:
     assembled: AssembledSQL
     source_detail: str
     route_owner: bool = True
+    query_spec: QuerySpec | None = None
 
     @property
     def unsupported_reason(self) -> str | None:
@@ -51,6 +53,11 @@ def _extract_min_ipouts(text: str, *, default: int) -> int:
     return int(match.group(1)) * 3 if match else default
 
 
+def _extract_min_ab(text: str, *, default: int) -> int:
+    match = re.search(r"\b(?:at least|minimum|min|with)?\s*(\d{2,4})\s+at bats?\b", text)
+    return int(match.group(1)) if match else default
+
+
 def _unsupported_sql(reason: str, *, code: str = "unsupported") -> AssembledSQL:
     return AssembledSQL(
         "SELECT ? AS unsupported_reason WHERE FALSE",
@@ -77,6 +84,22 @@ def match_template(question: str) -> MatchedTemplate | None:
 
     if re.search(r"\b30\s*30\b", q) or "30 30 club" in q or "thirty thirty" in q:
         return MatchedTemplate(_thirty_thirty_sql(), _template_source_detail(q))
+
+    roster_template = _match_roster_template(q)
+    if roster_template is not None:
+        return roster_template
+
+    if _looks_like_batting_average_leader(q):
+        year = _extract_year(q)
+        if year is None and "qualified" not in q:
+            return MatchedTemplate(
+                _unsupported_sql("Batting average leader questions need a specific year."),
+                _template_source_detail(q),
+            )
+        return MatchedTemplate(
+            _qualified_season_avg_sql(year, _extract_min_ab(q, default=100)),
+            _template_source_detail(q),
+        )
 
     if (
         ("home run" in q or "homer" in q or re.search(r"\bhrs?\b", q))
@@ -113,7 +136,7 @@ def match_template(question: str) -> MatchedTemplate | None:
 
     if "era" in q and ("lowest" in q or "best" in q or "leader" in q or "leaders" in q):
         year = _extract_year(q)
-        if year is None:
+        if year is None and not _has_era_qualification_guard(q):
             return MatchedTemplate(
                 _unsupported_sql(
                     "Season ERA leader questions need a specific year and innings qualification."
@@ -133,6 +156,31 @@ def match_template(question: str) -> MatchedTemplate | None:
         )
 
     return None
+
+
+def _match_roster_template(q: str) -> MatchedTemplate | None:
+    if not _looks_like_roster_question(q):
+        return None
+    year = _extract_year(q)
+    if year is None:
+        return MatchedTemplate(
+            _unsupported_sql("Roster questions need a specific year."),
+            _template_source_detail(q),
+        )
+    nickname = _extract_team_nickname(q)
+    if nickname is None:
+        return None
+    identity = resolve_team_identity(q, team_name_pattern=nickname, year=year)
+    return MatchedTemplate(
+        _roster_sql(nickname, year, q, identity=identity),
+        _template_source_detail(q),
+        query_spec=QuerySpec(
+            stat_tables=["batting"],
+            team_name_pattern=nickname.title(),
+            year_value=year,
+            team_identity=identity,
+        ),
+    )
 
 
 def _detect_template(question: str) -> AssembledSQL | None:
@@ -196,10 +244,14 @@ def _template_source_detail(question: str) -> str:
         )
     if re.search(r"\b30\s*30\b", q) or "30 30 club" in q or "thirty thirty" in q:
         return "Matched local 30-30 club template: player seasons with at least 30 HR and 30 SB."
+    if _looks_like_batting_average_leader(q):
+        return "Matched local qualified season batting average leader template with an AB guard."
     if "era" in q:
         if "career" in q:
             return "Matched local career ERA leaders template with an innings qualification guard."
         return "Matched local qualified season ERA leader template with an innings guard."
+    if _looks_like_roster_question(q):
+        return "Matched local team-season roster template."
     if "home run" in q or "homer" in q or re.search(r"\bhrs?\b", q):
         return "Matched local 500 HR club template: career batting home run totals."
     if "wins" in q or re.search(r"\bw\b", q):
@@ -213,6 +265,52 @@ def _has_era_qualification_guard(q: str) -> bool:
 
 def _looks_like_single_season(q: str) -> bool:
     return _extract_year(q) is not None and "career" not in q and "club" not in q
+
+
+def _looks_like_roster_question(q: str) -> bool:
+    return (
+        ("played for" in q or "roster" in q or "players" in q)
+        and _extract_year(q) is not None
+        and _extract_team_nickname(q) is not None
+    )
+
+
+def _looks_like_batting_average_leader(q: str) -> bool:
+    return (
+        ("batting average" in q or bool(re.search(r"\bavg\b", q)))
+        and ("highest" in q or "best" in q or "leader" in q or "leaders" in q)
+        and "career" not in q
+    )
+
+
+_TEAM_NICKNAMES = (
+    "braves",
+    "yankees",
+    "dodgers",
+    "cubs",
+    "red sox",
+    "white sox",
+    "giants",
+    "athletics",
+    "cardinals",
+    "pirates",
+    "reds",
+    "tigers",
+    "orioles",
+    "twins",
+    "rangers",
+    "angels",
+    "marlins",
+    "mets",
+    "phillies",
+)
+
+
+def _extract_team_nickname(q: str) -> str | None:
+    for nickname in _TEAM_NICKNAMES:
+        if re.search(rf"\b{re.escape(nickname)}\b", q):
+            return nickname
+    return None
 
 
 def _triple_crown_sql() -> AssembledSQL:
@@ -286,6 +384,38 @@ def _thirty_thirty_sql() -> AssembledSQL:
     )
 
 
+def _roster_sql(
+    nickname: str,
+    year: int,
+    question: str,
+    *,
+    identity: TeamIdentity | None = None,
+) -> AssembledSQL:
+    if identity is None:
+        identity = resolve_team_identity(question, team_name_pattern=nickname, year=year)
+    if identity is not None:
+        where = "b.teamID = ? AND b.yearID = ?"
+        params: list[object] = [identity.team_id, year]
+    else:
+        where = "t.name ILIKE ? AND b.yearID = ?"
+        params = [f"%{nickname}%", year]
+    return AssembledSQL(
+        """
+        SELECT DISTINCT
+            p.nameFirst,
+            p.nameLast,
+            t.name AS teamName,
+            b.yearID
+        FROM people p
+        JOIN batting b ON p.playerID = b.playerID
+        LEFT JOIN teams t ON b.teamID = t.teamID
+        WHERE {where}
+        ORDER BY p.nameLast, p.nameFirst
+        """.format(where=where),
+        params,
+    )
+
+
 def _career_home_run_sql(threshold: int) -> AssembledSQL:
     return AssembledSQL(
         """
@@ -342,7 +472,25 @@ def _career_era_sql(min_ipouts: int) -> AssembledSQL:
     )
 
 
-def _qualified_season_era_sql(year: int, min_ipouts: int) -> AssembledSQL:
+def _qualified_season_era_sql(year: int | None, min_ipouts: int) -> AssembledSQL:
+    if year is None:
+        return AssembledSQL(
+            """
+            SELECT
+                p.nameFirst,
+                p.nameLast,
+                pi.yearID,
+                pi.lgID,
+                pi.ERA,
+                pi.IPouts
+            FROM pitching pi
+            JOIN people p ON p.playerID = pi.playerID
+            WHERE pi.IPouts >= ?
+                AND pi.ERA IS NOT NULL
+            ORDER BY pi.ERA ASC, pi.IPouts DESC, pi.yearID, pi.lgID, p.nameLast, p.nameFirst
+            """,
+            [min_ipouts],
+        )
     return AssembledSQL(
         """
         SELECT
@@ -368,4 +516,49 @@ def _qualified_season_era_sql(year: int, min_ipouts: int) -> AssembledSQL:
         ORDER BY pi.yearID, pi.lgID, pi.ERA, p.nameLast, p.nameFirst
         """,
         [year, min_ipouts, min_ipouts],
+    )
+
+
+def _qualified_season_avg_sql(year: int | None, min_ab: int) -> AssembledSQL:
+    if year is None:
+        return AssembledSQL(
+            """
+            SELECT
+                p.nameFirst,
+                p.nameLast,
+                b.yearID,
+                b.lgID,
+                ROUND(CAST(b.H AS DOUBLE) / NULLIF(b.AB, 0), 3) AS AVG,
+                b.AB
+            FROM batting b
+            JOIN people p ON p.playerID = b.playerID
+            WHERE b.AB >= ?
+                AND b.AB > 0
+            ORDER BY AVG DESC, b.AB DESC, b.yearID, b.lgID, p.nameLast, p.nameFirst
+            """,
+            [min_ab],
+        )
+    return AssembledSQL(
+        """
+        SELECT
+            p.nameFirst,
+            p.nameLast,
+            b.yearID,
+            b.lgID,
+            ROUND(CAST(b.H AS DOUBLE) / NULLIF(b.AB, 0), 3) AS AVG,
+            b.AB
+        FROM batting b
+        JOIN people p ON p.playerID = b.playerID
+        WHERE b.yearID = ?
+            AND b.AB >= ?
+            AND CAST(b.H AS DOUBLE) / NULLIF(b.AB, 0) = (
+                SELECT MAX(CAST(b2.H AS DOUBLE) / NULLIF(b2.AB, 0))
+                FROM batting b2
+                WHERE b2.yearID = b.yearID
+                    AND b2.lgID = b.lgID
+                    AND b2.AB >= ?
+            )
+        ORDER BY b.yearID, b.lgID, AVG DESC, p.nameLast, p.nameFirst
+        """,
+        [year, min_ab, min_ab],
     )

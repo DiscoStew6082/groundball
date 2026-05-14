@@ -39,6 +39,20 @@ def _consensus_scorecard(
     )
 
 
+def test_stat_definition_answer_uses_local_definition_text_without_llm(monkeypatch):
+    def fail_llm(*_args, **_kwargs):
+        raise AssertionError("stat definition should be answered from local corpus")
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+    result = answer("what is an RBI")
+
+    assert result.intent == "general_explanation"
+    assert result.unsupported is False
+    assert "run batted in" in result.answer.lower()
+    assert result.sources[0].type == "corpus"
+
+
 class _ConsensusVerification:
     def __init__(
         self,
@@ -887,24 +901,22 @@ def test_llm_unavailable_for_biography_returns_llm_unavailable(monkeypatch):
     assert not result.sources
 
 
-def test_general_stat_explanation_routes_to_open_llm_not_corpus(monkeypatch):
-    captured = {}
-
-    def fake_llm(prompt, **_kwargs):
-        captured["prompt"] = prompt
-        return LLMResponse(content="OPS is on-base plus slugging.", model="test-model", done=True)
-
+def test_general_stat_explanation_uses_local_corpus_before_open_llm(monkeypatch):
     monkeypatch.setattr(
         "baseball_rag.service.route",
         lambda _question: GeneralExplanationCase(raw_question="what is OPS?", stat="OPS"),
     )
-    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("stat definition should not call the LLM")
+        ),
+    )
 
     result = answer("what is OPS?")
 
-    assert result.answer == "OPS is on-base plus slugging."
-    assert result.sources == []
-    assert "Question: what is OPS?" in captured["prompt"][1]
+    assert "on-base plus slugging" in result.answer.lower()
+    assert result.sources[0].type == "corpus"
 
 
 def test_chroma_runtime_module_is_removed():
