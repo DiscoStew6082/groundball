@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from baseball_rag.conversation import ConversationResolution
+from baseball_rag.conversation import ConversationResolution, attach_context_metadata
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.routing import (
     FreeformQueryCase,
@@ -107,18 +107,12 @@ class RequestAnswerDispatcher:
         resolution: ConversationResolution,
         decision: Any,
     ) -> None:
-        if resolution.source_turn is not None:
-            result.metadata["original_question"] = original_question
-            result.metadata["context_question"] = resolution.resolved_question
-            result.metadata["context_source"] = resolution.source_turn
-        if result.unsupported:
-            return
-        if resolution.referenced_player_name is not None:
-            result.metadata["context_player_name"] = resolution.referenced_player_name
-        elif isinstance(decision, (PlayerBiographyCase, RouteResult)) and (
-            decision.intent == "player_biography" and decision.player_name
-        ):
-            result.metadata["context_player_name"] = decision.player_name
+        attach_context_metadata(
+            result,
+            original_question=original_question,
+            resolution=resolution,
+            decision=decision,
+        )
 
 
 def _validated_legacy_intent(intent: str) -> Intent:

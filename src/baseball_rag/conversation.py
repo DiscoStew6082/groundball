@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.routing import PlayerBiographyCase, RouteResult
 
 ReferenceKind = Literal["pronoun", "ordinal_row", "none"]
 ResolutionConfidence = Literal["high", "unsupported"]
@@ -109,6 +110,50 @@ def resolve_followup(
         source_turn=source_turn,
         confidence="high",
     )
+
+
+def conversation_turn(question: str, answer: StructuredAnswer | dict[str, Any]) -> dict[str, Any]:
+    """Build the compact turn shape used for future follow-up resolution."""
+    answer_payload = answer.to_dict() if isinstance(answer, StructuredAnswer) else dict(answer)
+    metadata = answer_payload.get("metadata") or {}
+    compact_payload = {
+        "answer": answer_payload.get("answer"),
+        "intent": answer_payload.get("intent"),
+        "metadata": {
+            key: metadata[key]
+            for key in (
+                "original_question",
+                "context_question",
+                "context_source",
+                "context_player_name",
+            )
+            if key in metadata
+        },
+        "sources": [_conversation_source(source) for source in answer_payload.get("sources", [])],
+    }
+    return {"question": question, "answer": compact_payload}
+
+
+def attach_context_metadata(
+    answer: StructuredAnswer,
+    *,
+    original_question: str,
+    resolution: ConversationResolution,
+    decision: Any,
+) -> None:
+    """Attach follow-up context metadata to an answer."""
+    if resolution.source_turn is not None:
+        answer.metadata["original_question"] = original_question
+        answer.metadata["context_question"] = resolution.resolved_question
+        answer.metadata["context_source"] = resolution.source_turn
+    if answer.unsupported:
+        return
+    if resolution.referenced_player_name is not None:
+        answer.metadata["context_player_name"] = resolution.referenced_player_name
+    elif isinstance(decision, (PlayerBiographyCase, RouteResult)) and (
+        decision.intent == "player_biography" and decision.player_name
+    ):
+        answer.metadata["context_player_name"] = decision.player_name
 
 
 @dataclass(frozen=True)
@@ -224,6 +269,26 @@ def _player_name_from_row(row: dict[str, Any]) -> str | None:
         if first and last:
             return f"{first} {last}"
     return name
+
+
+def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
+    rows = source.get("rows") or []
+    compact_rows = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        compact_row = {
+            key: row[key]
+            for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
+            if key in row
+        }
+        if compact_row:
+            compact_rows.append(compact_row)
+    return {
+        "type": source.get("type"),
+        "label": source.get("label"),
+        "rows": compact_rows,
+    }
 
 
 def _question_for_player_followup(

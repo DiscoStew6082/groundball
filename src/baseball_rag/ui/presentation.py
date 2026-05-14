@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from baseball_rag.conversation import conversation_turn
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.service import render_text
 
@@ -24,23 +25,7 @@ class PresentedAnswer:
 
     def conversation_turn(self, question: str) -> dict[str, Any]:
         """Store only the answer fields needed to resolve future follow-ups."""
-        metadata = self.payload.get("metadata") or {}
-        answer_payload = {
-            "answer": self.payload.get("answer"),
-            "intent": self.payload.get("intent"),
-            "metadata": {
-                key: metadata[key]
-                for key in (
-                    "original_question",
-                    "context_question",
-                    "context_source",
-                    "context_player_name",
-                )
-                if key in metadata
-            },
-            "sources": [_conversation_source(source) for source in self.sources],
-        }
-        return {"question": question, "answer": answer_payload}
+        return conversation_turn(question, {**self.payload, "sources": self.sources})
 
 
 class AnswerPresenter:
@@ -82,24 +67,4 @@ def _rows_for_dataframe(source: dict[str, Any]) -> RowsPayload:
     return {
         "headers": columns,
         "data": [[row.get(column) for column in columns] for row in rows],
-    }
-
-
-def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
-    rows = source.get("rows") or []
-    compact_rows = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        compact_row = {
-            key: row[key]
-            for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
-            if key in row
-        }
-        if compact_row:
-            compact_rows.append(compact_row)
-    return {
-        "type": source.get("type"),
-        "label": source.get("label"),
-        "rows": compact_rows,
     }
