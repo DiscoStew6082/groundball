@@ -159,6 +159,14 @@ class RetrosheetStatVerification:
 
 
 @dataclass(frozen=True)
+class ClaimEvidence:
+    """Evidence collected from one stat-claim source Adapter."""
+
+    source_name: Literal["Lahman", "Retrosheet"]
+    verification: PlayerStatVerification | RetrosheetStatVerification
+
+
+@dataclass(frozen=True)
 class PlayerStatConsensusVerification:
     """Consensus verification result comparing Lahman primary data to Retrosheet."""
 
@@ -544,14 +552,32 @@ def _verify_one_claim_consensus(
     player_id: str,
     claim: PlayerStatClaim,
 ) -> PlayerStatConsensusVerification:
-    primary = _verify_one_claim(conn, player_id, claim)
-    secondary = _verify_one_retrosheet_claim(conn, player_id, claim)
+    primary_evidence = _lahman_evidence(conn, player_id, claim)
+    secondary_evidence = _retrosheet_evidence(conn, player_id, claim)
+    primary = cast(PlayerStatVerification, primary_evidence.verification)
+    secondary = cast(RetrosheetStatVerification, secondary_evidence.verification)
     consensus_status = _consensus_status(primary, secondary)
     return PlayerStatConsensusVerification(
         primary=primary,
         consensus_status=consensus_status,
         secondary=secondary,
     )
+
+
+def _lahman_evidence(
+    conn: duckdb.DuckDBPyConnection,
+    player_id: str,
+    claim: PlayerStatClaim,
+) -> ClaimEvidence:
+    return ClaimEvidence("Lahman", _verify_one_claim(conn, player_id, claim))
+
+
+def _retrosheet_evidence(
+    conn: duckdb.DuckDBPyConnection,
+    player_id: str,
+    claim: PlayerStatClaim,
+) -> ClaimEvidence:
+    return ClaimEvidence("Retrosheet", _verify_one_retrosheet_claim(conn, player_id, claim))
 
 
 def _verify_one_claim(

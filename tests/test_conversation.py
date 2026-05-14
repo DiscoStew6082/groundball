@@ -2,6 +2,7 @@ from baseball_rag.conversation import (
     ConversationResolution,
     attach_context_metadata,
     conversation_turn,
+    resolve_followup,
 )
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.routing import PlayerBiographyCase
@@ -62,6 +63,35 @@ def test_conversation_turn_preserves_only_followup_relevant_answer_fields():
     }
 
 
+def test_conversation_turn_preserves_freeform_name_first_last_for_followups():
+    answer = StructuredAnswer(
+        answer="1936 Braves roster",
+        intent="freeform_query",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="Roster",
+                rows=[
+                    {
+                        "nameFirst": "Wally",
+                        "nameLast": "Berger",
+                        "teamName": "Boston Braves",
+                        "yearID": 1936,
+                        "extra": "drop",
+                    }
+                ],
+            )
+        ],
+    )
+
+    turn = conversation_turn("who played for the Braves in 1936", answer)
+
+    assert turn["answer"]["sources"][0]["rows"] == [{"nameFirst": "Wally", "nameLast": "Berger"}]
+    resolution = resolve_followup("tell me about the first player", [turn])
+    assert resolution.resolved_question == "tell me about Wally Berger"
+    assert resolution.referenced_player_name == "Wally Berger"
+
+
 def test_conversation_turn_accepts_raw_answer_payload_dict():
     payload = {
         "answer": "All-time career HR leaders",
@@ -82,6 +112,108 @@ def test_conversation_turn_accepts_raw_answer_payload_dict():
 
     assert turn["answer"]["metadata"] == {"context_player_name": "Barry Bonds"}
     assert turn["answer"]["sources"][0]["rows"] == [{"name": "Bonds, Barry", "stat_value": 762}]
+
+
+def test_raw_api_transcript_resolves_fifth_player_followup():
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": {
+                "answer": "Career home run leaders",
+                "intent": "stat_query",
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "label": "Career HR leaders",
+                        "rows": [
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                            {"name": "Ruth, Babe", "stat_value": 714},
+                            {"name": "Pujols, Albert", "stat_value": 703},
+                            {"name": "Rodriguez, Alex", "stat_value": 696},
+                        ],
+                    }
+                ],
+            },
+        }
+    ]
+
+    resolution = resolve_followup("tell me about the fifth player", prior_turns)
+
+    assert resolution.resolved_question == "tell me about Alex Rodriguez"
+    assert resolution.referenced_player_name == "Alex Rodriguez"
+    assert resolution.reference_kind == "ordinal_row"
+    assert resolution.confidence == "high"
+
+
+def test_pronoun_resolution_prefers_explicit_active_player_metadata():
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": {
+                "metadata": {"context_player_name": "Hank Aaron"},
+                "sources": [
+                    {
+                        "rows": [
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                        ]
+                    }
+                ],
+            },
+        }
+    ]
+
+    resolution = resolve_followup("what about his RBI?", prior_turns)
+
+    assert resolution.resolved_question == "what about Hank Aaron's RBI?"
+    assert resolution.referenced_player_name == "Hank Aaron"
+    assert resolution.reference_kind == "pronoun"
+
+
+def test_malformed_transcript_entries_are_ignored_without_crashing():
+    prior_turns = [
+        {"question": "bad", "answer": None},
+        {"question": 123, "answer": {"sources": "not rows"}},
+        {
+            "question": "career home run leaders",
+            "answer": {
+                "sources": [
+                    {"rows": [None, {"team": "NYA"}, {"full_name": "Babe Ruth"}]},
+                ],
+            },
+        },
+    ]
+
+    resolution = resolve_followup("tell me about the first player", prior_turns)
+
+    assert resolution.resolved_question == "tell me about Babe Ruth"
+    assert resolution.referenced_player_name == "Babe Ruth"
+
+
+def test_raw_api_transcript_resolves_name_first_name_last_rows():
+    prior_turns = [
+        {
+            "question": "who played for the Braves in 1936",
+            "answer": {
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "rows": [
+                            {
+                                "nameFirst": "Wally",
+                                "nameLast": "Berger",
+                                "teamName": "Boston Braves",
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ]
+
+    resolution = resolve_followup("tell me about the first player", prior_turns)
+
+    assert resolution.resolved_question == "tell me about Wally Berger"
 
 
 def test_attach_context_metadata_preserves_resolved_player_context():

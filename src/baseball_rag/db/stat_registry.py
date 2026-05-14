@@ -56,6 +56,28 @@ class StatDefinition:
             return self.min_sample_clause.format(alias=alias)
         return None
 
+    def sample_clause(
+        self,
+        alias: str,
+        *,
+        aggregate: bool = False,
+        threshold: int | str | None = None,
+        adapter: "StatSqlAdapter | None" = None,
+    ) -> str | None:
+        """Return a qualification guard, optionally replacing the default threshold."""
+        clause = (
+            self.aggregate_sample_clause(alias, adapter=adapter)
+            if aggregate
+            else (
+                _source_sample_clause(self, alias, adapter)
+                if adapter is not None
+                else _local_sample_clause(self, alias)
+            )
+        )
+        if clause is None or threshold is None:
+            return clause
+        return re.sub(r">=\s*\d+(?:\.\d+)?", f">= {threshold}", clause, count=1)
+
 
 @dataclass(frozen=True)
 class StatSqlAdapter:
@@ -169,6 +191,24 @@ def _source_aggregate_sample_clause(
     if definition.canonical in {"ERA", "WHIP"}:
         return f"SUM({adapter.column(alias, 'IPOUTS')}) >= 300"
     return None
+
+
+def _source_sample_clause(
+    definition: StatDefinition,
+    alias: str,
+    adapter: StatSqlAdapter,
+) -> str | None:
+    if definition.canonical in {"AVG", "OPS"}:
+        return f"{adapter.column(alias, 'AB')} >= 100"
+    if definition.canonical in {"ERA", "WHIP"}:
+        return f"{adapter.column(alias, 'IPOUTS')} >= 300"
+    return None
+
+
+def _local_sample_clause(definition: StatDefinition, alias: str) -> str | None:
+    if definition.min_sample_clause is None:
+        return None
+    return definition.min_sample_clause.format(alias=alias)
 
 
 _REGISTRY: dict[str, StatDefinition] = {

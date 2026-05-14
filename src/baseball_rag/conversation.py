@@ -6,6 +6,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from baseball_rag.conversation_transcript import (
+    active_player_from_recent_turn,
+    normalize_transcript,
+    player_name_from_row,
+    row_from_recent_turn,
+)
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.routing import PlayerBiographyCase, RouteResult
 
@@ -61,7 +67,8 @@ def resolve_followup(
     conversation: list[dict[str, Any]] | None,
 ) -> ConversationResolution:
     """Resolve simple follow-up references against prior grounded answer rows."""
-    if not conversation:
+    transcript = normalize_transcript(conversation)
+    if not transcript:
         return _unresolved(question, "no_conversation")
 
     row_reference = _referenced_row_reference(question)
@@ -73,7 +80,7 @@ def resolve_followup(
         and row_reference.row_index == 0
         and _FOLLOWUP_PRONOUN_RE.search(question)
     ):
-        active_player, active_source = _active_player_from_recent_turn(conversation)
+        active_player, active_source = active_player_from_recent_turn(transcript)
         if active_player is not None:
             return ConversationResolution(
                 resolved_question=_question_for_player_followup(
@@ -87,14 +94,14 @@ def resolve_followup(
                 confidence="high",
             )
 
-    row, source_turn = _row_from_recent_turn(conversation, row_reference.row_index)
+    row, source_turn = row_from_recent_turn(transcript, row_reference.row_index)
     if row is None:
         reason: UnsupportedReason = (
             "no_active_player" if row_reference.reference_kind == "pronoun" else "row_not_found"
         )
         return _unresolved(question, reason)
 
-    player_name = _player_name_from_row(row)
+    player_name = player_name_from_row(row)
     if player_name is None:
         return _unresolved(question, "player_name_not_found")
 
@@ -214,37 +221,14 @@ def _row_from_recent_turn(
     conversation: list[dict[str, Any]],
     row_index: int,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    for turn in reversed(conversation):
-        answer_payload = _answer_payload(turn)
-        if answer_payload is None:
-            continue
-        for source in answer_payload.get("sources", []):
-            if not isinstance(source, dict):
-                continue
-            rows = source.get("rows") or []
-            player_rows = [
-                row for row in rows if isinstance(row, dict) and _player_name_from_row(row)
-            ]
-            if player_rows and len(player_rows) <= row_index:
-                return None, None
-            if not player_rows:
-                continue
-            return player_rows[row_index], _turn_question(turn)
-    return None, None
+    row, source_turn = row_from_recent_turn(normalize_transcript(conversation), row_index)
+    return dict(row) if row is not None else None, source_turn
 
 
 def _active_player_from_recent_turn(
     conversation: list[dict[str, Any]],
 ) -> tuple[str | None, str | None]:
-    for turn in reversed(conversation):
-        answer_payload = _answer_payload(turn)
-        if answer_payload is None:
-            continue
-        metadata = answer_payload.get("metadata") or {}
-        player_name = metadata.get("context_player_name")
-        if isinstance(player_name, str) and player_name.strip():
-            return player_name.strip(), _turn_question(turn)
-    return None, None
+    return active_player_from_recent_turn(normalize_transcript(conversation))
 
 
 def _answer_payload(turn: dict[str, Any]) -> dict[str, Any] | None:
@@ -260,15 +244,7 @@ def _turn_question(turn: dict[str, Any]) -> str | None:
 
 
 def _player_name_from_row(row: dict[str, Any]) -> str | None:
-    raw_name = row.get("name") or row.get("player_name") or row.get("full_name")
-    if not isinstance(raw_name, str) or raw_name.strip() == "":
-        return None
-    name = raw_name.strip()
-    if "," in name:
-        last, first = [part.strip() for part in name.split(",", 1)]
-        if first and last:
-            return f"{first} {last}"
-    return name
+    return player_name_from_row(row)
 
 
 def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
@@ -282,6 +258,10 @@ def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
             for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
             if key in row
         }
+        if "nameFirst" in row:
+            compact_row["nameFirst"] = row["nameFirst"]
+        if "nameLast" in row:
+            compact_row["nameLast"] = row["nameLast"]
         if compact_row:
             compact_rows.append(compact_row)
     return {

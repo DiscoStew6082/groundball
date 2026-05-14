@@ -105,6 +105,14 @@ def test_default_selection_rejects_live_llm_cases_even_when_ci_safe_flag_is_set(
     ]
 
 
+def test_local_stat_definition_evals_are_deterministic_general_explanations():
+    cases = load_cases()
+    stat_definition_case = next(case for case in cases if case.id == "stat_definition_ops")
+
+    assert stat_definition_case.requires_live_services() is False
+    assert stat_definition_case in selected_cases(cases)
+
+
 def test_default_selected_cases_do_not_require_live_services():
     selected = selected_cases(load_cases())
 

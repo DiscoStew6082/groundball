@@ -115,6 +115,13 @@ server running.
 
 ## Worker A: General Explanation Policy Module
 
+Status: implemented in this integration branch. Local stat definitions now route
+through `GeneralExplanationPolicy`, broader explanations still use open LLM
+fallback, docs/eval fixtures now describe corpus-backed stat definitions, and
+focused tests cover local definition, open LLM, `llm_unavailable`, service
+wiring, and legacy grounded-generation isolation. Worker review findings were
+fixed, final integration verification passed, and this status is ready to commit.
+
 ### Ownership
 
 Primary files:
@@ -212,6 +219,14 @@ uv run python -m evals.questions --report docs/eval-report.md --guardrail-report
 
 ## Worker B: Query Governance Follow-Up To Support State
 
+Status: implemented in this integration branch. `execute_request()` now keeps
+trace ownership and answer execution local while `QueryGovernance` observes the
+completed request and owns audit metadata attachment, audit logging, review
+queue application, and public review payload attachment. Existing support-state
+behavior is preserved for ambiguous, no-data, unsupported, and
+`llm_unavailable` answers. Worker review passed, final integration verification
+passed, and this status is ready to commit.
+
 ### Ownership
 
 Primary files:
@@ -306,6 +321,14 @@ uv run pytest tests/test_eval_questions.py -q
 
 ## Worker C: Typed Conversation Transcript Follow-Up
 
+Status: implemented in this integration branch. Raw API/UI transcript payloads
+now normalize through `conversation_transcript.py` before follow-up resolution,
+existing `conversation_turn()` shaping remains in `conversation.py`, pronoun
+resolution prefers explicit context metadata, and malformed transcript entries
+are ignored at adapter seams. Integrated review added `nameFirst`/`nameLast`
+follow-up coverage, final verification passed, and this status is ready to
+commit.
+
 ### Ownership
 
 Primary files:
@@ -395,6 +418,14 @@ uv run pytest tests/test_cli_player_query.py tests/test_player_bio_query.py -q
   a test proves the behavior.
 
 ## Worker D: Biography LLM Contract Follow-Up
+
+Status: implemented in this integration branch. Biography JSON parsing, final
+contract extraction from fenced/chattery output, repair retry prompting, claim
+payload validation, and typed contract failure now live in
+`biography_contract.py`; `PlayerBiographyCaseAnswerer` remains the route-case
+orchestrator and service compatibility aliases remain patchable. Worker review
+findings were fixed, final verification passed, and this status is ready to
+commit.
 
 ### Ownership
 
@@ -489,6 +520,14 @@ uv run pytest tests/test_api.py tests/test_cli_player_query.py -q
 
 ## Worker E: Claim Evidence Adapter Module
 
+Status: implemented in this integration branch. Lahman and Retrosheet
+source-specific lookup now sit behind internal `ClaimEvidence` Adapter seams,
+while consensus combination, row keys, source labels, warnings, and biography
+presentation vocabulary remain in `player_stat_claims.py`. Focused tests cover
+adapter combination plus existing primary-only and Retrosheet SQL behavior;
+worker review passed, final verification passed, and this status is ready to
+commit.
+
 ### Ownership
 
 Primary files:
@@ -574,6 +613,15 @@ uv run python -m evals.questions --report docs/eval-report.md --guardrail-report
   changes.
 
 ## Worker F: Freeform Template Stat Semantics Follow-Up
+
+Status: implemented in this integration branch. The audit found remaining AVG
+and ERA formula/qualification duplication in deterministic templates, so those
+templates now render formula and guard fragments through the completed
+`stat_registry` semantics while keeping phrase matching, achievement facts,
+route ownership, and template source detail local. SQL text changed by
+construction but behavior-focused rows/source-detail tests remain green; worker
+review findings were fixed, eval gate passed, and this status is ready to
+commit.
 
 ### Ownership
 

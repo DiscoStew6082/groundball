@@ -169,6 +169,57 @@ def test_consensus_verifies_primary_only_when_retrosheet_table_is_missing():
     assert "retrosheet_biofile is not available" in row["secondary_warning"]
 
 
+def test_consensus_combines_internal_source_evidence_adapters(monkeypatch):
+    from baseball_rag.db import player_stat_claims
+    from baseball_rag.db.player_stat_claims import (
+        PlayerStatVerification,
+        RetrosheetStatVerification,
+    )
+
+    calls = []
+
+    def fake_lahman(conn, player_id, claim):
+        calls.append(("lahman", player_id, claim.stat))
+        return player_stat_claims.ClaimEvidence(
+            "Lahman",
+            PlayerStatVerification(
+                claim=claim,
+                status="verified",
+                actual_value=60,
+                table="batting",
+                sql="select lahman",
+                params=[player_id],
+            ),
+        )
+
+    def fake_retrosheet(conn, player_id, claim):
+        calls.append(("retrosheet", player_id, claim.stat))
+        return player_stat_claims.ClaimEvidence(
+            "Retrosheet",
+            RetrosheetStatVerification(
+                status="contradicted",
+                actual_value=61,
+                table="retrosheet_batting",
+                sql="select retrosheet",
+                params=["retro001", 1927],
+            ),
+        )
+
+    monkeypatch.setattr(player_stat_claims, "_lahman_evidence", fake_lahman)
+    monkeypatch.setattr(player_stat_claims, "_retrosheet_evidence", fake_retrosheet)
+    conn = _conn()
+
+    row = _row(conn, PlayerStatClaim(stat="HR", value=60, year=1927))
+
+    assert calls == [
+        ("lahman", "player01", "HR"),
+        ("retrosheet", "player01", "HR"),
+    ]
+    assert row["consensus_status"] == "conflict"
+    assert row["primary_status"] == "verified"
+    assert row["secondary_status"] == "contradicted"
+
+
 def test_consensus_preserves_primary_contradiction_when_retrosheet_table_is_missing():
     conn = _conn(retrosheet=False)
     conn.execute("INSERT INTO people VALUES ('player01', 'retro001')")

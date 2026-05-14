@@ -53,7 +53,8 @@ answer(question)
           |   +-- verify extracted stat claims in DuckDB
           |
           +-- general_explanation
-              +-- request open explanation from LM Studio
+              +-- local stat definition when supported
+              +-- otherwise request open explanation from LM Studio
 ```
 
 ### Error Handling

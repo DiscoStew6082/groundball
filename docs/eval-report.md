@@ -1,27 +1,35 @@
 # Baseball RAG Eval Report
 
-- Command: `python -m evals.questions --include-live --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
+- Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
 - Mode: answer
-- Release recommendation: **WARN - full local/live eval suite is green with baseline drift**
+- Release recommendation: **PASS - deterministic release gate is green**
 - Cases loaded: 68
-- Attempted: 68
-- Passed: 68
+- Attempted: 25
+- Passed: 25
 - Failed: 0
-- Skipped: 0
+- Skipped: 43
 - Pass rate: 100.0%
 - Required pass rate: 85%
 
 ## Service Requirements
 
-- Live evals were included; `--include-live` may require LM Studio.
+- Deterministic/CI-safe mode was used; non-default cases were skipped. 43 case(s) are available behind `--include-live`; 9 skipped case(s) may require LM Studio.
+
+## Skipped Live Cases
+
+- `player_bio_babe_ruth`: who was Babe Ruth
+- `player_bio_ted_williams`: tell me about Ted Williams
+- `player_bio_willie_mays`: who was Willie Mays
+- `player_bio_hank_aaron`: tell me about Hank Aaron
+- `player_bio_mickey_mantle`: who was Mickey Mantle
 
 ## Risk Categories
 
 - Grounded stats: 13 case(s)
 - SQL safety: 12 case(s)
 - Unsupported guardrails: 18 case(s)
-- Provenance and source visibility: 35 case(s)
-- Live LLM optional: 14 case(s)
+- Provenance and source visibility: 40 case(s)
+- Live LLM optional: 9 case(s)
 
 ## Suite Coverage
 
@@ -33,8 +41,7 @@
 
 ## Baseline Comparison
 
-- Recommendation: WARN
-- Warning: skipped case count changed from 48 to 0
+- Recommendation: PASS
 
 ## Failed Cases
 

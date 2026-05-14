@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from baseball_rag import biography_contract as _biography_contract
+from baseball_rag.biography_contract import BiographyContractError
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
     shape_biography_stat_claim_consensus,
     verify_player_stat_claims,
 )
-from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
 from baseball_rag.outcomes import ambiguous_outcome, llm_unavailable_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 
@@ -24,6 +24,12 @@ try:
     )
 except ImportError:  # pragma: no cover - removed when the DB consensus slice lands
     _db_verify_player_stat_claims_consensus = None
+
+build_biography_json_repair_prompt = _biography_contract.build_biography_json_repair_prompt
+is_biography_json_contract = _biography_contract.is_biography_json_contract
+loads_json_object = _biography_contract.loads_json_object
+parse_biography_json = _biography_contract.parse_biography_json
+request_biography_json = _biography_contract.request_biography_json
 
 
 def verify_player_stat_claims_consensus(
@@ -119,7 +125,7 @@ class PlayerBiographyCaseAnswerer:
                 intent=decision.intent,
                 warnings=[str(exc)],
             )
-        except (LLMError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        except (LLMError, BiographyContractError, ValueError, TypeError) as exc:
             return llm_unavailable_outcome(
                 answer=(
                     "The local LLM did not return the structured biography JSON contract, "
@@ -270,89 +276,6 @@ def extract_supplied_stat_claims(question: str) -> list[PlayerStatClaim]:
         )
 
     return [claim for _, claim in sorted(claims, key=lambda item: item[0])]
-
-
-def parse_biography_json(content: str) -> dict[str, Any]:
-    data = loads_json_object(content)
-    answer_text = data.get("answer")
-    if not isinstance(answer_text, str) or not answer_text.strip():
-        raise ValueError("biography JSON requires a non-empty answer string")
-    raw_claims = data.get("stat_claims", [])
-    if raw_claims is None:
-        raw_claims = []
-    if not isinstance(raw_claims, list):
-        raise ValueError("biography JSON stat_claims must be a list")
-    claims = [PlayerStatClaim.from_payload(claim) for claim in raw_claims]
-    return {"answer": answer_text.strip(), "claims": claims}
-
-
-def request_biography_json(make_request_func: Any, prompt: tuple[str, str]) -> dict[str, Any]:
-    """Call the local LLM for a biography JSON contract, retrying once for shape errors."""
-    response = make_request_func(prompt, max_tokens=1400, temperature=0.0)
-    try:
-        return parse_biography_json(response.content)
-    except (ValueError, TypeError, json.JSONDecodeError) as first_exc:
-        repair_response = make_request_func(
-            build_biography_json_repair_prompt(response.content),
-            max_tokens=1400,
-            temperature=0.0,
-        )
-        try:
-            return parse_biography_json(repair_response.content)
-        except (ValueError, TypeError, json.JSONDecodeError) as second_exc:
-            raise ValueError(
-                f"{first_exc}; retry did not return the biography JSON contract: {second_exc}"
-            ) from second_exc
-
-
-def build_biography_json_repair_prompt(invalid_content: str) -> tuple[str, str]:
-    """Prompt the LLM to repair a malformed biography response into the JSON contract."""
-    return (
-        "You repair malformed baseball biography responses into valid JSON.\n"
-        "Return ONLY compact valid JSON with this exact shape:\n"
-        '{"answer": string, "stat_claims": ['
-        '{"stat": string, "value": number|string, "scope": "career"|"season", '
-        '"year": number|null, "text": string, '
-        '"table": "batting"|"pitching"|"fielding"|null}'
-        "]}\n"
-        "Do not include markdown, bullets, notes, analysis, or examples. "
-        "Only include stat_claims for supported DuckDB-verifiable stats: HR, RBI, H, "
-        "SB, AVG, OPS, W, ERA, WHIP, SO, or PO. "
-        "The first character must be { and the last character must be }.",
-        (
-            "Repair this invalid response into the final JSON contract. "
-            "Preserve only supported, explicit stat claims:\n\n"
-            f"{invalid_content[:4000]}"
-        ),
-    )
-
-
-def loads_json_object(content: str) -> dict[str, Any]:
-    text = strip_markdown_fence(content)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        for start, end in extract_json_blocks(text):
-            try:
-                data = json.loads(text[start:end])
-            except json.JSONDecodeError:
-                continue
-            if isinstance(data, dict) and is_biography_json_contract(data):
-                return data
-        raise
-    if not isinstance(data, dict):
-        raise ValueError("LLM biography output must be a JSON object")
-    return data
-
-
-def is_biography_json_contract(data: dict[str, Any]) -> bool:
-    """Return True when a parsed object has the biography response contract shape."""
-    answer_text = data.get("answer")
-    return (
-        isinstance(answer_text, str)
-        and bool(answer_text.strip())
-        and isinstance(data.get("stat_claims"), list)
-    )
 
 
 def duckdb_source(

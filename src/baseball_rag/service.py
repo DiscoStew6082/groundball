@@ -9,7 +9,8 @@ from baseball_rag import player_biography as _player_biography
 from baseball_rag.conversation import resolve_followup
 from baseball_rag.db import init_db
 from baseball_rag.db.duckdb_schema import get_duckdb
-from baseball_rag.outcomes import llm_unavailable_outcome, unsupported_outcome
+from baseball_rag.general_explanation import GeneralExplanationPolicy
+from baseball_rag.outcomes import unsupported_outcome
 from baseball_rag.player_biography import (
     PlayerBiographyCaseAnswerer,
     duckdb_source,
@@ -162,69 +163,24 @@ def _freeform_single_season_year(decision: Any) -> int | None:
 
 
 def _answer_general(question: str, decision: Any) -> StructuredAnswer:
-    local_definition = _answer_local_stat_definition(decision.raw_question or question)
-    if local_definition is not None:
-        return local_definition
-
-    from baseball_rag.generation.prompt import build_open_prompt
-
     try:
-        from baseball_rag.generation.llm import LLMError, make_request
-
-        response = make_request(
-            build_open_prompt(decision.raw_question or question),
-            max_tokens=700,
-        )
-    except (ConnectionError, TimeoutError, LLMError) as exc:
-        return llm_unavailable_outcome(
-            answer=(
-                "LM Studio was unavailable, so no open explanation was generated. "
-                "General explanation questions require the local LLM."
-            ),
-            intent=decision.intent,
-            warnings=[str(exc)],
-        )
-    return StructuredAnswer(answer=response.content, intent=decision.intent)
-
-
-def _answer_local_stat_definition(question: str) -> StructuredAnswer | None:
-    from baseball_rag.corpus import STAT_DEFS_DIR
-    from baseball_rag.retrieval.static_vocab import stat_definition_doc_ids_for_query
-
-    doc_ids = stat_definition_doc_ids_for_query(question)
-    if not doc_ids:
-        return None
-    doc_id = doc_ids[0]
-    path = STAT_DEFS_DIR / f"{doc_id}.md"
-    if not path.exists():
-        return None
-
-    text = _markdown_body(path.read_text(encoding="utf-8")).strip()
-    first_paragraph = text.split("\n\n", 1)[0].strip()
-    prefix = f"{doc_id} means {doc_id}."
-    if doc_id == "RBI":
-        prefix = "RBI means run batted in."
-    answer_text = f"{prefix} {first_paragraph}"
-    return StructuredAnswer(
-        answer=answer_text,
-        intent="general_explanation",
-        sources=[
-            SourceRecord(
-                type="corpus",
-                label=f"Local stat definition: {doc_id}",
-                detail=f"baseball_rag/corpus/stat_definitions/{doc_id}.md",
-                rows=[{"doc_id": doc_id}],
-            )
-        ],
+        from baseball_rag.generation.llm import make_request
+    except ImportError:  # pragma: no cover
+        make_request = None
+    return GeneralExplanationPolicy(make_request=make_request).answer(
+        decision,
+        fallback_question=question,
     )
 
 
+def _answer_local_stat_definition(question: str) -> StructuredAnswer | None:
+    return GeneralExplanationPolicy()._answer_local_stat_definition(question)
+
+
 def _markdown_body(text: str) -> str:
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) == 3:
-            return parts[2]
-    return text
+    from baseball_rag.general_explanation import _markdown_body as markdown_body
+
+    return markdown_body(text)
 
 
 def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]]:

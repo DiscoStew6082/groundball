@@ -48,6 +48,8 @@ class EvalCase:
 
     def requires_live_services(self) -> bool:
         """Return True when the case is expected to need the local LLM."""
+        if self.intent == "general_explanation" and "corpus" in self.required_sources:
+            return False
         return self.intent in LIVE_INTENTS
 
     def should_run(self, *, include_live: bool = False) -> bool:
@@ -56,6 +58,12 @@ class EvalCase:
             return True
         if self.ci_safe:
             return not self.requires_live_services()
+        if (
+            self.intent == "general_explanation"
+            and self.required_sources
+            and not self.requires_live_services()
+        ):
+            return True
         return (
             self.intent == "stat_query"
             and self.required_sources == {"duckdb"}

@@ -344,7 +344,7 @@ class TestApi:
         data = response.json()
         assert data["ok"] is True
         assert data["include_live"] is False
-        assert data["summary"]["attempted"] == 20
+        assert data["summary"]["attempted"] == 25
         assert data["summary"]["recommendation"] in {"PASS", "WARN"}
         assert data["markdown"].startswith("# Baseball RAG Eval Report")
 
@@ -388,7 +388,7 @@ class TestApi:
         assert response.status_code == 200
         data = response.json()
         assert data["options"]["include_live"] is False
-        assert data["summary"]["attempted"] == 20
+        assert data["summary"]["attempted"] == 25
         assert data["results"]["failed"] == []
 
     def test_guardrails_coverage_endpoint_is_manifest_only(self):

@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from baseball_rag.db.freeform_types import AssembledSQL, QuerySpec, TeamIdentity
+from baseball_rag.db.stat_registry import StatDefinition, get_stat
 from baseball_rag.db.team_history import resolve_team_identity
 
 
@@ -455,17 +456,20 @@ def _career_pitching_wins_sql(threshold: int | None) -> AssembledSQL:
 
 
 def _career_era_sql(min_ipouts: int) -> AssembledSQL:
+    era = get_stat("ERA")
+    era_expr = era.aggregate_expression("pi")
+    ipouts_guard = _sample_clause(era, "pi", aggregate=True, threshold="?")
     return AssembledSQL(
-        """
+        f"""
         SELECT
             p.nameFirst,
             p.nameLast,
-            ROUND(27.0 * SUM(pi.ER) / NULLIF(SUM(pi.IPouts), 0), 2) AS career_ERA,
+            ROUND({era_expr}, 2) AS career_ERA,
             SUM(pi.IPouts) AS IPouts
         FROM pitching pi
         JOIN people p ON p.playerID = pi.playerID
         GROUP BY pi.playerID, p.nameFirst, p.nameLast
-        HAVING SUM(pi.IPouts) >= ?
+        HAVING {ipouts_guard}
         ORDER BY career_ERA ASC, IPouts DESC, p.nameLast, p.nameFirst
         """,
         [min_ipouts],
@@ -473,45 +477,50 @@ def _career_era_sql(min_ipouts: int) -> AssembledSQL:
 
 
 def _qualified_season_era_sql(year: int | None, min_ipouts: int) -> AssembledSQL:
+    era = get_stat("ERA")
+    era_expr = era.expression("pi")
+    era_min_expr = era.expression("p2")
+    ipouts_guard = _sample_clause(era, "pi", threshold="?")
+    subquery_ipouts_guard = _sample_clause(era, "p2", threshold="?")
     if year is None:
         return AssembledSQL(
-            """
+            f"""
             SELECT
                 p.nameFirst,
                 p.nameLast,
                 pi.yearID,
                 pi.lgID,
-                pi.ERA,
+                {era_expr} AS ERA,
                 pi.IPouts
             FROM pitching pi
             JOIN people p ON p.playerID = pi.playerID
-            WHERE pi.IPouts >= ?
-                AND pi.ERA IS NOT NULL
+            WHERE {ipouts_guard}
+                AND {era_expr} IS NOT NULL
             ORDER BY pi.ERA ASC, pi.IPouts DESC, pi.yearID, pi.lgID, p.nameLast, p.nameFirst
             """,
             [min_ipouts],
         )
     return AssembledSQL(
-        """
+        f"""
         SELECT
             p.nameFirst,
             p.nameLast,
             pi.yearID,
             pi.lgID,
-            pi.ERA,
+            {era_expr} AS ERA,
             pi.IPouts
         FROM pitching pi
         JOIN people p ON p.playerID = pi.playerID
         WHERE pi.yearID = ?
-            AND pi.IPouts >= ?
-            AND pi.ERA IS NOT NULL
-            AND pi.ERA = (
-                SELECT MIN(p2.ERA)
+            AND {ipouts_guard}
+            AND {era_expr} IS NOT NULL
+            AND {era_expr} = (
+                SELECT MIN({era_min_expr})
                 FROM pitching p2
                 WHERE p2.yearID = pi.yearID
                     AND p2.lgID = pi.lgID
-                    AND p2.IPouts >= ?
-                    AND p2.ERA IS NOT NULL
+                    AND {subquery_ipouts_guard}
+                    AND {era_min_expr} IS NOT NULL
             )
         ORDER BY pi.yearID, pi.lgID, pi.ERA, p.nameLast, p.nameFirst
         """,
@@ -520,45 +529,63 @@ def _qualified_season_era_sql(year: int | None, min_ipouts: int) -> AssembledSQL
 
 
 def _qualified_season_avg_sql(year: int | None, min_ab: int) -> AssembledSQL:
+    avg = get_stat("AVG")
+    avg_expr = avg.expression("b")
+    avg_max_expr = avg.expression("b2")
+    ab_guard = _sample_clause(avg, "b", threshold="?")
+    subquery_ab_guard = _sample_clause(avg, "b2", threshold="?")
     if year is None:
         return AssembledSQL(
-            """
+            f"""
             SELECT
                 p.nameFirst,
                 p.nameLast,
                 b.yearID,
                 b.lgID,
-                ROUND(CAST(b.H AS DOUBLE) / NULLIF(b.AB, 0), 3) AS AVG,
+                ROUND({avg_expr}, 3) AS AVG,
                 b.AB
             FROM batting b
             JOIN people p ON p.playerID = b.playerID
-            WHERE b.AB >= ?
+            WHERE {ab_guard}
                 AND b.AB > 0
             ORDER BY AVG DESC, b.AB DESC, b.yearID, b.lgID, p.nameLast, p.nameFirst
             """,
             [min_ab],
         )
     return AssembledSQL(
-        """
+        f"""
         SELECT
             p.nameFirst,
             p.nameLast,
             b.yearID,
             b.lgID,
-            ROUND(CAST(b.H AS DOUBLE) / NULLIF(b.AB, 0), 3) AS AVG,
+            ROUND({avg_expr}, 3) AS AVG,
             b.AB
         FROM batting b
         JOIN people p ON p.playerID = b.playerID
         WHERE b.yearID = ?
-            AND b.AB >= ?
-            AND CAST(b.H AS DOUBLE) / NULLIF(b.AB, 0) = (
-                SELECT MAX(CAST(b2.H AS DOUBLE) / NULLIF(b2.AB, 0))
+            AND {ab_guard}
+            AND {avg_expr} = (
+                SELECT MAX({avg_max_expr})
                 FROM batting b2
                 WHERE b2.yearID = b.yearID
                     AND b2.lgID = b.lgID
-                    AND b2.AB >= ?
+                    AND {subquery_ab_guard}
             )
         ORDER BY b.yearID, b.lgID, AVG DESC, p.nameLast, p.nameFirst
         """,
         [year, min_ab, min_ab],
     )
+
+
+def _sample_clause(
+    stat: StatDefinition,
+    alias: str,
+    *,
+    threshold: int | str,
+    aggregate: bool = False,
+) -> str:
+    clause = stat.sample_clause(alias, aggregate=aggregate, threshold=threshold)
+    if clause is None:
+        raise ValueError(f"Stat {stat.canonical} has no sample clause")
+    return clause

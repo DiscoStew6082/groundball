@@ -76,6 +76,8 @@ def test_registry_renders_sample_guards_for_retrosheet_columns():
     batting_adapter = StatSqlAdapter(table="batting", columns={"AB": '"b_ab"'})
     pitching_adapter = StatSqlAdapter(table="pitching", columns={"IPOUTS": '"p_ipouts"'})
 
+    assert get_stat("AVG").sample_clause("rb", adapter=batting_adapter) == 'rb."b_ab" >= 100'
+    assert get_stat("ERA").sample_clause("rp", adapter=pitching_adapter) == 'rp."p_ipouts" >= 300'
     assert (
         get_stat("AVG").aggregate_sample_clause("rb", adapter=batting_adapter)
         == 'SUM(rb."b_ab") >= 100'

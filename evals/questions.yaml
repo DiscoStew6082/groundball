@@ -315,22 +315,32 @@ questions:
     question: "what is OPS"
     intent: general_explanation
     expected_answer_contains: ["on-base", "slugging"]
+    required_sources: ["corpus"]
+    notes: "Supported stat definitions use local Markdown corpus provenance before open LLM fallback."
   - id: stat_definition_whip
     question: "what does WHIP mean"
     intent: general_explanation
     expected_answer_contains: ["walks", "hits", "innings"]
+    required_sources: ["corpus"]
+    notes: "Supported stat definitions use local Markdown corpus provenance before open LLM fallback."
   - id: stat_definition_era
     question: "explain ERA"
     intent: general_explanation
     expected_answer_contains: ["earned run"]
+    required_sources: ["corpus"]
+    notes: "Supported stat definitions use local Markdown corpus provenance before open LLM fallback."
   - id: stat_definition_rbi
     question: "what is an RBI"
     intent: general_explanation
     expected_answer_contains: ["run batted in"]
+    required_sources: ["corpus"]
+    notes: "Supported stat definitions use local Markdown corpus provenance before open LLM fallback."
   - id: stat_definition_stolen_base
     question: "what is a stolen base"
     intent: general_explanation
     expected_answer_contains: ["stolen base"]
+    required_sources: ["corpus"]
+    notes: "Supported stat definitions use local Markdown corpus provenance before open LLM fallback."
   - id: unsupported_future_season
     question: "who will lead MLB in home runs in 2027"
     expected_unsupported: true

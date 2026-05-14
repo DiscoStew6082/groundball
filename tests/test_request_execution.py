@@ -104,6 +104,30 @@ def test_execute_request_attaches_audit_and_review_once():
     enqueue_review_item.assert_called_once_with("who led MLB in vibes", structured)
 
 
+def test_execute_request_uses_governance_observation_after_answer_trace():
+    calls = []
+
+    with patch("baseball_rag.request_execution.answer") as answer:
+        structured = StructuredAnswer(answer="Nope", intent="stat_query", unsupported=True)
+        answer.return_value = structured
+
+        def observe(self, question, observed_answer, *, trace):
+            calls.append((self.mode, question, observed_answer, trace.route_type))
+            observed_answer.metadata["observed"] = True
+            return observed_answer
+
+        with patch("baseball_rag.query_governance.QueryGovernance.observe", observe):
+            execution = execute_request(
+                "who led MLB in vibes",
+                adapter_component_id="api",
+                attach_audit=True,
+                attach_review=True,
+            )
+
+    assert calls == [("audit_review", "who led MLB in vibes", structured, "stat_query")]
+    assert execution.answer.metadata == {"observed": True}
+
+
 def test_execute_request_passes_conversation_to_answer_service():
     """Adapters can pass prior turns without changing trace ownership."""
     prior_turns = [

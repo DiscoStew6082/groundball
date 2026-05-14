@@ -320,6 +320,22 @@ class TestDeterministicTemplates:
         assert "minimum sample: AB >= 100" in text
         assert "lower values rank better" in text
 
+    def test_avg_and_era_templates_use_registry_stat_semantics(self):
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.freeform import query
+        from baseball_rag.db.stat_registry import get_stat
+
+        conn = get_duckdb()
+        avg_result = query("highest batting average in 1894", conn)
+        era_result = query("career ERA leaders qualified by enough innings", conn)
+
+        assert get_stat("AVG").expression("b") in avg_result.sql
+        assert get_stat("AVG").sample_clause("b", threshold="?") in avg_result.sql
+        assert get_stat("ERA").aggregate_expression("pi") in era_result.sql
+        assert get_stat("ERA").sample_clause("pi", aggregate=True, threshold="?") in era_result.sql
+        assert "batting average" in avg_result.source_detail
+        assert "career ERA leaders template" in era_result.source_detail
+
 
 class TestParseIntent:
     """Tests for the intent parser -- LLM output -> Intent dataclass."""
