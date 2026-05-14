@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from baseball_rag.conversation import resolve_followup
@@ -100,6 +101,16 @@ def _answer_player_biography(question: str, decision: Any) -> StructuredAnswer:
         )
 
     player = resolution.candidates[0]
+    supplied_claims = _extract_supplied_stat_claims(decision.raw_question or question)
+    if supplied_claims:
+        return _answer_supplied_biography_claims(
+            player_id=player.player_id,
+            player_name=player.full_name,
+            claims=supplied_claims,
+            intent=decision.intent,
+            conn=conn,
+        )
+
     try:
         from baseball_rag.generation.llm import LLMError, make_request
         from baseball_rag.generation.prompt import build_player_biography_json_prompt
@@ -132,13 +143,10 @@ def _answer_player_biography(question: str, decision: Any) -> StructuredAnswer:
         )
 
     verifications = verify_player_stat_claims(player.player_id, biography["claims"], conn=conn)
-    warning_texts = [verification.warning for verification in verifications if verification.warning]
     answer_text = biography["answer"]
-    if warning_texts:
-        answer_text = (
-            f"{answer_text}\n\n"
-            "Note: Some stat claims in this biography could not be verified against DuckDB."
-        )
+    if verifications:
+        answer_text = f"{answer_text}\n\n{_biography_verification_note(verifications)}"
+    warning_texts = [verification.warning for verification in verifications if verification.warning]
 
     source_rows = (
         [verification.to_row() for verification in verifications]
@@ -173,6 +181,198 @@ def _answer_player_biography(question: str, decision: Any) -> StructuredAnswer:
             "stat_claims": [verification.to_row() for verification in verifications],
         },
     )
+
+
+def _biography_verification_note(verifications: list[PlayerStatVerification]) -> str:
+    contradicted = [
+        verification for verification in verifications if verification.status == "contradicted"
+    ]
+    unresolved = [
+        verification
+        for verification in verifications
+        if verification.warning and verification.status != "contradicted"
+    ]
+    verified_count = sum(1 for verification in verifications if verification.verified)
+    invalid_count = len(verifications) - verified_count
+
+    parts = [_verification_scorecard(len(verifications), verified_count, invalid_count)]
+    if contradicted:
+        prefix = (
+            "Most stat claims were verified. " if verified_count > len(verifications) / 2 else ""
+        )
+        parts.append(f"{prefix}{_contradiction_sentence(contradicted)}")
+    if unresolved:
+        parts.append(_unverifiable_sentence(unresolved))
+    return " ".join(parts)
+
+
+def _answer_supplied_biography_claims(
+    *,
+    player_id: str,
+    player_name: str,
+    claims: list[PlayerStatClaim],
+    intent: str,
+    conn: Any,
+) -> StructuredAnswer:
+    verifications = verify_player_stat_claims(player_id, claims, conn=conn)
+    warning_texts = [verification.warning for verification in verifications if verification.warning]
+    source = _duckdb_source(
+        "DuckDB supplied biography stat verification",
+        tables=_verification_tables(verifications),
+        rows=[verification.to_row() for verification in verifications],
+        sql=_single_verification_sql(verifications),
+    )
+    return StructuredAnswer(
+        answer=(
+            f"I checked the stat claims in the supplied biography for {player_name}.\n\n"
+            f"{_biography_verification_note(verifications)}"
+        ),
+        intent=intent,
+        sources=[source],
+        warnings=warning_texts,
+        metadata={"stat_claims": [verification.to_row() for verification in verifications]},
+    )
+
+
+def _extract_supplied_stat_claims(question: str) -> list[PlayerStatClaim]:
+    if not _looks_like_supplied_claim_verification(question):
+        return []
+
+    claims: list[tuple[int, PlayerStatClaim]] = []
+    stat_pattern = re.compile(
+        r"(?P<value>(?:\d[\d,]*(?:\.\d+)?|\.\d+))\s*"
+        r"(?P<stat>HR|HRS|home runs?|RBI|RBIs|runs batted in|H|hits?|SB|stolen bases?|"
+        r"AVG|batting average|OPS|W|wins?|ERA|WHIP|SO|strikeouts?|PO|putouts?)\b",
+        re.IGNORECASE,
+    )
+    for match in stat_pattern.finditer(question):
+        year = _extract_claim_year(question, match.end())
+        claims.append(
+            (
+                match.start(),
+                PlayerStatClaim(
+                    stat=match.group("stat"),
+                    value=match.group("value").replace(",", ""),
+                    scope="season" if year is not None else "career",
+                    year=year,
+                    text=match.group(0),
+                ),
+            )
+        )
+
+    mvp_pattern = re.compile(
+        r"\b(?P<value>\d+|one|two|three|four|five|six|seven|eight|nine|ten)"
+        r"[-\s]*time\s+(?:[A-Za-z]+\s+League\s+)?MVP\b",
+        re.IGNORECASE,
+    )
+    for match in mvp_pattern.finditer(question):
+        claims.append(
+            (
+                match.start(),
+                PlayerStatClaim(
+                    stat="MVP",
+                    value=_claim_number_value(match.group("value")),
+                    scope="career",
+                    text=match.group(0),
+                ),
+            )
+        )
+
+    return [claim for _, claim in sorted(claims, key=lambda item: item[0])]
+
+
+def _extract_claim_year(question: str, claim_end: int) -> int | None:
+    nearby = question[claim_end : claim_end + 40]
+    match = re.search(r"\b(?:in|during)\s+(18\d{2}|19\d{2}|20\d{2})\b", nearby)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _looks_like_supplied_claim_verification(question: str) -> bool:
+    lower_q = question.lower()
+    return (
+        "duckdb" in lower_q
+        and "claim" in lower_q
+        and any(term in lower_q for term in ("verified", "verify", "verifiable"))
+    )
+
+
+def _claim_number_value(value: str) -> int:
+    word_values = {
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+    }
+    normalized = value.lower()
+    if normalized in word_values:
+        return word_values[normalized]
+    return int(value)
+
+
+def _verification_scorecard(total: int, verified_count: int, invalid_count: int) -> str:
+    status = "passing" if invalid_count == 0 else "failing"
+    return (
+        f"Stat claim verification: total claims {total}, valid claims {verified_count}, "
+        f"invalid claims {invalid_count}. Score: {status} ({verified_count}/{total} verified)."
+    )
+
+
+def _contradiction_sentence(verifications: list[PlayerStatVerification]) -> str:
+    count_label = (
+        "One stat claim was"
+        if len(verifications) == 1
+        else f"{len(verifications)} stat claims were"
+    )
+    details = "; ".join(_contradiction_detail(verification) for verification in verifications)
+    return f"{count_label} contradicted by DuckDB: {details}."
+
+
+def _contradiction_detail(verification: PlayerStatVerification) -> str:
+    claim = verification.claim
+    scope = claim.resolved_scope if claim.year is None else f"{claim.resolved_scope} {claim.year}"
+    return (
+        f"{claim.stat} was claimed as {_format_claim_value(claim.value)}, "
+        f"but DuckDB has {_format_claim_value(verification.actual_value)} for {scope}"
+    )
+
+
+def _unverifiable_sentence(verifications: list[PlayerStatVerification]) -> str:
+    details = "; ".join(_unverifiable_detail(verification) for verification in verifications)
+    if len(verifications) == 1:
+        return f"One stat claim was not verifiable against DuckDB: {details}."
+    return f"{len(verifications)} stat claims were not verifiable against DuckDB: {details}."
+
+
+def _unverifiable_detail(verification: PlayerStatVerification) -> str:
+    claim = verification.claim
+    value = _format_claim_value(claim.value)
+    if verification.status == "unsupported_stat":
+        return (
+            f"{claim.stat} was claimed as {value}, "
+            "but DuckDB verification does not support that stat"
+        )
+    if verification.status == "invalid_value":
+        return f"{claim.stat} value {value} could not be interpreted as a number"
+    if verification.status == "no_data":
+        scope = (
+            claim.resolved_scope if claim.year is None else f"{claim.resolved_scope} {claim.year}"
+        )
+        return f"{claim.stat} was claimed as {value}, but DuckDB had no {scope} row to verify it"
+    return f"{claim.stat} was claimed as {value}, but DuckDB could not verify it"
+
+
+def _format_claim_value(value: object) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:

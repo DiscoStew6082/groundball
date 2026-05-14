@@ -348,6 +348,14 @@ def route(question: str) -> RoutedCase:
             raw_question=question,
         )
 
+    claim_verification_name = _extract_claim_verification_player_name(question)
+    if claim_verification_name is not None:
+        return routed_case(
+            intent="player_biography",
+            player_name=claim_verification_name,
+            raw_question=question,
+        )
+
     player_bio_name = _extract_player_bio_name_heuristic(question)
     if player_bio_name is not None:
         return routed_case(
@@ -745,6 +753,27 @@ def _extract_player_bio_name_heuristic(question: str) -> str | None:
         if match and _looks_like_explicit_player_bio_name(match.group(1)):
             return _normalize_player_name_casing(match.group(1))
     return None
+
+
+def _extract_claim_verification_player_name(question: str) -> str | None:
+    lower_q = question.lower()
+    if "duckdb" not in lower_q or "claim" not in lower_q:
+        return None
+    if not any(term in lower_q for term in ("verified", "verify", "verifiable")):
+        return None
+
+    for pattern in (
+        rf"^\s*({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+?)"
+        r"(?=,|\s+(?:recorded|had|hit|has|was|is)\b)",
+        rf"\bthat\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+?)"
+        r"(?=\s+(?:recorded|had|hit|has|was|is)\b)",
+        rf"\?\s*({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+?)"
+        r"(?=\s+(?:recorded|had|hit|has|was|is)\b)",
+    ):
+        match = re.search(pattern, question)
+        if match and _looks_like_player_name(match.group(1)):
+            return _normalize_player_name_casing(match.group(1))
+    return _extract_player_bio_name_heuristic(question)
 
 
 def _looks_like_explicit_player_bio_name(value: str) -> bool:

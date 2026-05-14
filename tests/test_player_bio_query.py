@@ -60,6 +60,10 @@ def test_llm_biography_with_verified_career_stat_claim_adds_duckdb_provenance(mo
     result = answer("who was Babe Ruth")
 
     assert result.warnings == []
+    assert (
+        "Stat claim verification: total claims 1, valid claims 1, invalid claims 0. "
+        "Score: passing (1/1 verified)."
+    ) in result.answer
     assert result.sources[0].type == "duckdb"
     assert result.sources[0].rows[0]["status"] == "verified"
     assert result.sources[0].rows[0]["actual_value"] == 714
@@ -85,6 +89,10 @@ def test_llm_biography_with_verified_season_stat_claim_passes(monkeypatch):
     result = answer("who was Babe Ruth")
 
     assert result.warnings == []
+    assert (
+        "Stat claim verification: total claims 1, valid claims 1, invalid claims 0. "
+        "Score: passing (1/1 verified)."
+    ) in result.answer
     assert result.sources[0].rows[0]["status"] == "verified"
     assert result.sources[0].rows[0]["year"] == 1927
 
@@ -186,7 +194,11 @@ def test_llm_biography_skips_draft_answer_object_before_final_contract(monkeypat
     result = answer("who was Nolan Ryan")
 
     assert result.unsupported is False
-    assert result.answer == "Nolan Ryan recorded 5,714 career strikeouts."
+    assert result.answer.startswith("Nolan Ryan recorded 5,714 career strikeouts.")
+    assert (
+        "Stat claim verification: total claims 1, valid claims 1, invalid claims 0. "
+        "Score: passing (1/1 verified)."
+    ) in result.answer
     assert result.sources[0].rows[0]["status"] == "verified"
 
 
@@ -251,10 +263,198 @@ def test_llm_biography_with_contradicted_stat_claim_warns_but_returns_prose(monk
     result = answer("who was Babe Ruth")
 
     assert "Babe Ruth hit 999 career home runs." in result.answer
-    assert "Note:" in result.answer
+    assert "Most stat claims were verified." not in result.answer
+    assert (
+        "Stat claim verification: total claims 1, valid claims 0, invalid claims 1. "
+        "Score: failing (0/1 verified)."
+    ) in result.answer
+    assert (
+        "One stat claim was contradicted by DuckDB: HR was claimed as 999, "
+        "but DuckDB has 714 for career."
+    ) in result.answer
+    assert "could not be verified" not in result.answer
     assert result.warnings
     assert result.sources[0].rows[0]["status"] == "contradicted"
     assert result.sources[0].rows[0]["actual_value"] == 714
+
+
+def test_llm_biography_with_mixed_claims_names_only_contradictions(monkeypatch):
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Alex Rodriguez",
+            raw_question="who was Alex Rodriguez",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: _llm_json(
+            "Alex Rodriguez recorded 696 HR, 2,086 RBI, and 301 SB.",
+            [
+                {"stat": "HR", "value": 696, "scope": "career", "text": "696 HR"},
+                {"stat": "RBI", "value": 2086, "scope": "career", "text": "2,086 RBI"},
+                {"stat": "SB", "value": 301, "scope": "career", "text": "301 SB"},
+            ],
+        ),
+    )
+
+    result = answer("who was Alex Rodriguez")
+
+    assert (
+        "Stat claim verification: total claims 3, valid claims 2, invalid claims 1. "
+        "Score: failing (2/3 verified)."
+    ) in result.answer
+    assert "Most stat claims were verified." in result.answer
+    assert (
+        "One stat claim was contradicted by DuckDB: SB was claimed as 301, "
+        "but DuckDB has 329 for career."
+    ) in result.answer
+    assert "could not be verified" not in result.answer
+    assert [row["status"] for row in result.sources[0].rows] == [
+        "verified",
+        "verified",
+        "contradicted",
+    ]
+
+
+def test_supplied_biography_verification_scores_all_claims_without_llm(monkeypatch):
+    def fail_llm(*_args, **_kwargs):
+        raise AssertionError("supplied biography verification should not call the LLM")
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+    question = (
+        "Alex Rodriguez, often referred to as A-Rod, was a premier talent in Major League "
+        "Baseball from 1994 to 2016. Primarily playing shortstop and third base for the "
+        "Seattle Mariners, Texas Rangers, and New York Yankees, he established himself as "
+        "one of the most prolific hitters of his era. Throughout his career, Rodriguez "
+        "recorded 696 HR, 2,086 RBI, and 3,115 H, while also contributing 301 SB. "
+        "A three-time American League MVP, his impact on the game remains significant.\n\n"
+        "Note: Some stat claims in this biography could not be verified against DuckDB. "
+        "Which ones and why?"
+    )
+
+    result = answer(question)
+
+    assert result.intent == "player_biography"
+    assert (
+        "I checked the stat claims in the supplied biography for Alex Rodriguez." in result.answer
+    )
+    assert (
+        "Stat claim verification: total claims 5, valid claims 3, invalid claims 2. "
+        "Score: failing (3/5 verified)."
+    ) in result.answer
+    assert "Most stat claims were verified." in result.answer
+    assert "SB was claimed as 301, but DuckDB has 329 for career." in result.answer
+    assert (
+        "MVP was claimed as 3, but DuckDB verification does not support that stat." in result.answer
+    )
+    assert [row["status"] for row in result.sources[0].rows] == [
+        "verified",
+        "verified",
+        "verified",
+        "contradicted",
+        "unsupported_stat",
+    ]
+
+
+def test_supplied_biography_verifies_season_claim_against_that_year(monkeypatch):
+    def fail_llm(*_args, **_kwargs):
+        raise AssertionError("supplied biography verification should not call the LLM")
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+    result = answer("Babe Ruth hit 60 HR in 1927. Which stat claims can be verified by DuckDB?")
+
+    assert (
+        "Stat claim verification: total claims 1, valid claims 1, invalid claims 0. "
+        "Score: passing (1/1 verified)."
+    ) in result.answer
+    assert result.sources[0].rows[0]["status"] == "verified"
+    assert result.sources[0].rows[0]["scope"] == "season"
+    assert result.sources[0].rows[0]["year"] == 1927
+
+
+def test_supplied_biography_preserves_leading_decimal_rate_claim(monkeypatch):
+    def fail_llm(*_args, **_kwargs):
+        raise AssertionError("supplied biography verification should not call the LLM")
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+    result = answer(
+        "Babe Ruth had a .342 batting average. Which stat claims can be verified against DuckDB?"
+    )
+
+    assert (
+        "Stat claim verification: total claims 1, valid claims 1, invalid claims 0. "
+        "Score: passing (1/1 verified)."
+    ) in result.answer
+    assert result.sources[0].rows[0]["claimed_value"] == ".342"
+    assert result.sources[0].rows[0]["status"] == "verified"
+
+
+def test_llm_biography_does_not_say_most_when_verified_claims_are_not_majority(monkeypatch):
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Alex Rodriguez",
+            raw_question="who was Alex Rodriguez",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: _llm_json(
+            "Alex Rodriguez recorded 696 HR, 1 RBI, and 301 SB.",
+            [
+                {"stat": "HR", "value": 696, "scope": "career", "text": "696 HR"},
+                {"stat": "RBI", "value": 1, "scope": "career", "text": "1 RBI"},
+                {"stat": "SB", "value": 301, "scope": "career", "text": "301 SB"},
+            ],
+        ),
+    )
+
+    result = answer("who was Alex Rodriguez")
+
+    assert (
+        "Stat claim verification: total claims 3, valid claims 1, invalid claims 2. "
+        "Score: failing (1/3 verified)."
+    ) in result.answer
+    assert "Most stat claims were verified." not in result.answer
+    assert "2 stat claims were contradicted by DuckDB:" in result.answer
+    assert "RBI was claimed as 1, but DuckDB has 2086 for career" in result.answer
+    assert "SB was claimed as 301, but DuckDB has 329 for career" in result.answer
+
+
+def test_llm_biography_unverifiable_claim_note_summarizes_without_repeating_warning(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Babe Ruth",
+            raw_question="who was Babe Ruth",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: _llm_json(
+            "Babe Ruth had 5 career vibes.",
+            [{"stat": "VIBES", "value": 5, "scope": "career", "text": "5 career vibes"}],
+        ),
+    )
+
+    result = answer("who was Babe Ruth")
+
+    assert (
+        "Stat claim verification: total claims 1, valid claims 0, invalid claims 1. "
+        "Score: failing (0/1 verified)."
+    ) in result.answer
+    assert (
+        "One stat claim was not verifiable against DuckDB: VIBES was claimed as 5, "
+        "but DuckDB verification does not support that stat."
+    ) in result.answer
+    assert "Unsupported biography stat claim" not in result.answer
+    assert result.warnings == ["Unsupported biography stat claim 'VIBES'."]
+    assert result.sources[0].rows[0]["status"] == "unsupported_stat"
 
 
 def test_unresolved_player_biography_fails_before_llm_generation(monkeypatch):
