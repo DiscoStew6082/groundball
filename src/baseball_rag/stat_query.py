@@ -4,34 +4,14 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
 from datetime import date
-from typing import Any, Literal
+from typing import Any
 
-from baseball_rag.db import execute_stat_query
-from baseball_rag.db.duckdb_schema import get_duckdb
-from baseball_rag.db.queries import StatQueryResult
-from baseball_rag.db.stat_registry import StatTable, get_stat
+from baseball_rag.db.queries import StatQueryPlan, StatQueryResult, execute_stat_query_plan
+from baseball_rag.db.stat_registry import get_stat
 from baseball_rag.outcomes import ambiguous_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 from baseball_rag.routing.query_router import StatQueryCase, TimePeriod, TimePeriodType
-
-StatQueryKind = Literal["player", "leaderboard", "career"]
-
-
-@dataclass(frozen=True)
-class StatQueryPlan:
-    """Execution plan for a deterministic stat request."""
-
-    stat: str
-    table: StatTable
-    kind: StatQueryKind
-    intent: str
-    position: str | None = None
-    player_name: str | None = None
-    year: int | None = None
-    start_year: int | None = None
-    end_year: int | None = None
 
 
 def answer_stat_query(decision: StatQueryCase) -> StructuredAnswer:
@@ -112,28 +92,6 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
         intent=decision.intent,
         position=decision.position,
     )
-
-
-def execute_stat_query_plan(plan: StatQueryPlan) -> StatQueryResult:
-    """Run a deterministic stat plan through the DuckDB adapter."""
-    if plan.kind == "player":
-        return execute_stat_query(
-            plan.stat,
-            table=plan.table,
-            player_name=plan.player_name,
-            year=plan.year,
-            position=plan.position,
-            conn=get_duckdb(),
-        )
-    if plan.kind == "leaderboard":
-        return execute_stat_query(
-            plan.stat,
-            table=plan.table,
-            start_year=plan.start_year,
-            end_year=plan.end_year,
-            position=plan.position,
-        )
-    return execute_stat_query(plan.stat, table=plan.table, position=plan.position)
 
 
 def answer_stat_query_result(

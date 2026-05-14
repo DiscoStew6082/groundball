@@ -98,6 +98,17 @@ class TestComponentRegistrySingleton:
         required = ["cli", "query-router", "claim-verifier", "duckdb", "llm"]
         assert all(r in ids for r in required)
 
+    def test_query_router_description_names_current_four_routes(self):
+        """Registry copy reflects the current four-route request architecture."""
+        reg = get_registry()
+        router = reg.get("query-router")
+
+        assert router is not None
+        assert "stat_query" in router.description
+        assert "player_biography" in router.description
+        assert "freeform_query" in router.description
+        assert "general_explanation" in router.description
+
 
 # ---------------------------------------------------------------------------
 # Phase 1.3 — Registry by layer

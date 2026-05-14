@@ -16,6 +16,7 @@ from baseball_rag.db.stat_registry import (
     normalize_stat,
     quote_identifier,
 )
+from baseball_rag.provenance import compact_data_manifest
 
 ClaimScope = Literal["career", "season"]
 ClaimStatus = Literal["verified", "contradicted", "unsupported_stat", "invalid_value", "no_data"]
@@ -195,6 +196,20 @@ class PlayerStatConsensusVerification:
         return row
 
 
+@dataclass(frozen=True)
+class BiographyStatClaimConsensusPresentation:
+    """Read model for presenting biography claim consensus evidence."""
+
+    note: str
+    warnings: list[str]
+    rows: list[dict[str, Any]]
+    summary: dict[str, Any]
+    tables: list[str]
+    sql: str | None
+    source_detail: str
+    data_manifest: dict[str, Any]
+
+
 def verify_player_stat_claims(
     player_id: str,
     claims: list[PlayerStatClaim],
@@ -215,6 +230,326 @@ def verify_player_stat_claims_consensus(
     """Verify player stat claims against Lahman primary data and Retrosheet consensus."""
     active_conn = conn or get_duckdb()
     return [_verify_one_claim_consensus(active_conn, player_id, claim) for claim in claims]
+
+
+def shape_biography_stat_claim_consensus(
+    verifications: list[Any],
+) -> BiographyStatClaimConsensusPresentation:
+    """Shape claim verification results for biography answer presentation."""
+    rows = [_verification_row(verification) for verification in verifications]
+    summary = biography_claim_summary(verifications)
+    tables = verification_tables(verifications)
+    return BiographyStatClaimConsensusPresentation(
+        note=biography_verification_note(verifications),
+        warnings=verification_warnings(verifications),
+        rows=rows,
+        summary=summary,
+        tables=tables,
+        sql=single_verification_sql(verifications),
+        source_detail=consensus_source_detail(tables),
+        data_manifest=consensus_data_manifest(),
+    )
+
+
+def biography_verification_note(verifications: list[Any]) -> str:
+    contradicted = [
+        verification
+        for verification in verifications
+        if consensus_category(verification) == "contradicted_by_all"
+    ]
+    conflicts = [
+        verification
+        for verification in verifications
+        if consensus_category(verification) == "conflicts"
+    ]
+    unresolved = [
+        verification
+        for verification in verifications
+        if verification_warning(verification)
+        and consensus_category(verification) not in {"contradicted_by_all", "conflicts"}
+    ]
+
+    parts = [_verification_scorecard(biography_claim_summary(verifications))]
+    if contradicted:
+        summary = biography_claim_summary(verifications)
+        verified_count = summary["verified_by_all"]
+        prefix = (
+            "Most stat claims were verified by all sources. "
+            if verified_count > len(verifications) / 2
+            else ""
+        )
+        parts.append(f"{prefix}{_contradiction_sentence(contradicted)}")
+    if conflicts:
+        parts.append(_conflict_sentence(conflicts))
+    if unresolved:
+        parts.append(_unverifiable_sentence(unresolved))
+    return " ".join(parts)
+
+
+def biography_claim_summary(verifications: list[Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "total_claims": len(verifications),
+        "verified_by_all": 0,
+        "primary_only": 0,
+        "secondary_only": 0,
+        "contradicted_by_all": 0,
+        "conflicts": 0,
+        "unsupported": 0,
+    }
+    for verification in verifications:
+        category = consensus_category(verification)
+        summary[category] += 1
+    summary["score"] = (
+        "passing"
+        if summary["total_claims"] > 0 and summary["verified_by_all"] == summary["total_claims"]
+        else "failing"
+    )
+    return summary
+
+
+def verification_warnings(verifications: list[Any]) -> list[str]:
+    return [
+        warning for verification in verifications if (warning := verification_warning(verification))
+    ]
+
+
+def consensus_category(verification: Any) -> str:
+    row = _verification_row(verification)
+    status = str(row.get("consensus_status") or row.get("status") or "").casefold()
+    if status in {"verified_by_all", "verified_all", "verified"}:
+        return "verified_by_all"
+    if status in {"primary_only", "verified_primary_only", "lahman_only"}:
+        return "primary_only"
+    if status in {"secondary_only", "verified_secondary_only", "retrosheet_only"}:
+        return "secondary_only"
+    if status in {"contradicted_by_all", "contradicted_all", "contradicted"}:
+        return "contradicted_by_all"
+    if status in {"conflict", "conflicts", "conflicting", "source_conflict"}:
+        return "conflicts"
+    if status in {"unsupported", "unsupported_stat", "invalid_value", "no_data"}:
+        return "unsupported"
+
+    primary_status = str(row.get("primary_status") or "").casefold()
+    secondary_status = str(row.get("secondary_status") or "").casefold()
+    if primary_status == "verified" and secondary_status == "verified":
+        return "verified_by_all"
+    if primary_status == "verified" and secondary_status in {"", "no_data", "unsupported"}:
+        return "primary_only"
+    if secondary_status == "verified" and primary_status in {"", "no_data", "unsupported"}:
+        return "secondary_only"
+    if primary_status == "contradicted" and secondary_status == "contradicted":
+        return "contradicted_by_all"
+    if primary_status and secondary_status and primary_status != secondary_status:
+        return "conflicts"
+    return "unsupported"
+
+
+def verification_warning(verification: Any) -> str | None:
+    row = _verification_row(verification)
+    category = consensus_category(verification)
+    if category in {"verified_by_all", "primary_only", "secondary_only"}:
+        return None
+    warning = row.get("warning") or row.get("secondary_warning")
+    return str(warning) if warning else None
+
+
+def verification_tables(verifications: list[Any]) -> list[str]:
+    tables = sorted(
+        {
+            str(_verification_row(verification).get("table"))
+            for verification in verifications
+            if _verification_row(verification).get("table")
+        }
+    )
+    return tables or ["people"]
+
+
+def single_verification_sql(verifications: list[Any]) -> str | None:
+    sql_values = {
+        sql for verification in verifications if (sql := _verification_row(verification).get("sql"))
+    }
+    if len(sql_values) == 1:
+        return str(next(iter(sql_values)))
+    return None
+
+
+def consensus_source_detail(tables: list[str]) -> str:
+    return (
+        f"Tables: {', '.join(tables)}. "
+        "Primary source: Lahman-derived local Hugging Face NeuML/baseballdata CSVs. "
+        "Secondary source: Retrosheet consensus evidence exposed by the claim verifier."
+    )
+
+
+def consensus_data_manifest() -> dict[str, Any]:
+    manifest = compact_data_manifest()
+    manifest["consensus_sources"] = [
+        {
+            "name": "Lahman",
+            "role": "primary",
+            "dataset": manifest.get("dataset", {}).get("name"),
+            "upstream": manifest.get("dataset", {}).get("upstream"),
+        },
+        {
+            "name": "Retrosheet",
+            "role": "secondary",
+            "dataset": "Retrosheet event/stat consensus",
+            "upstream": "Retrosheet",
+        },
+    ]
+    return manifest
+
+
+def _verification_scorecard(summary: dict[str, Any]) -> str:
+    return (
+        f"Stat claim consensus: total claims {summary['total_claims']}, "
+        f"verified by all {summary['verified_by_all']}, "
+        f"primary only {summary['primary_only']}, "
+        f"secondary only {summary['secondary_only']}, "
+        f"contradicted by all {summary['contradicted_by_all']}, "
+        f"conflicts {summary['conflicts']}, "
+        f"unsupported {summary['unsupported']}. "
+        f"Score: {summary['score']} "
+        f"({summary['verified_by_all']}/{summary['total_claims']} verified by all)."
+    )
+
+
+def _contradiction_sentence(verifications: list[Any]) -> str:
+    count_label = (
+        "One stat claim was"
+        if len(verifications) == 1
+        else f"{len(verifications)} stat claims were"
+    )
+    details = "; ".join(_contradiction_detail(verification) for verification in verifications)
+    return f"{count_label} contradicted by Lahman and Retrosheet: {details}."
+
+
+def _contradiction_detail(verification: Any) -> str:
+    row = _verification_row(verification)
+    stat = row.get("stat")
+    claimed_value = row.get("claimed_value")
+    actual_value = _consensus_actual_value(row)
+    scope = _verification_scope_label(row)
+    return (
+        f"{stat} was claimed as {_format_claim_value(claimed_value)}, "
+        f"but Lahman/Retrosheet consensus has {_format_claim_value(actual_value)} for {scope}"
+    )
+
+
+def _conflict_sentence(verifications: list[Any]) -> str:
+    details = "; ".join(_conflict_detail(verification) for verification in verifications)
+    if len(verifications) == 1:
+        return f"One stat claim had conflicting Lahman and Retrosheet evidence: {details}."
+    return (
+        f"{len(verifications)} stat claims had conflicting Lahman and Retrosheet evidence: "
+        f"{details}."
+    )
+
+
+def _conflict_detail(verification: Any) -> str:
+    row = _verification_row(verification)
+    stat = row.get("stat")
+    claimed_value = _format_claim_value(row.get("claimed_value"))
+    primary_value = _format_claim_value(row.get("primary_actual_value"))
+    secondary_value = _format_claim_value(row.get("secondary_actual_value"))
+    return (
+        f"{stat} was claimed as {claimed_value}, "
+        f"Lahman has {primary_value}, and Retrosheet has {secondary_value}"
+    )
+
+
+def _unverifiable_sentence(verifications: list[Any]) -> str:
+    details = "; ".join(_unverifiable_detail(verification) for verification in verifications)
+    if len(verifications) == 1:
+        return f"One stat claim was not verifiable against Lahman and Retrosheet: {details}."
+    return (
+        f"{len(verifications)} stat claims were not verifiable against Lahman and Retrosheet: "
+        f"{details}."
+    )
+
+
+def _unverifiable_detail(verification: Any) -> str:
+    row = _verification_row(verification)
+    stat = row.get("stat")
+    value = _format_claim_value(row.get("claimed_value"))
+    status = str(row.get("status") or "").casefold()
+    if status == "unsupported_stat":
+        return (
+            f"{stat} was claimed as {value}, "
+            "but Lahman/Retrosheet consensus verification does not support that stat"
+        )
+    if status == "invalid_value":
+        return f"{stat} value {value} could not be interpreted as a number"
+    if status == "no_data":
+        scope = _verification_scope_label(row)
+        return (
+            f"{stat} was claimed as {value}, but Lahman/Retrosheet had no {scope} row to verify it"
+        )
+    if row.get("primary_status") == "contradicted":
+        actual_value = _format_claim_value(row.get("primary_actual_value"))
+        return (
+            f"{stat} was claimed as {value}, "
+            f"Lahman has {actual_value}, and Retrosheet did not verify it"
+        )
+    if consensus_category(verification) == "primary_only":
+        return f"{stat} was claimed as {value}, and only Lahman verified it"
+    if consensus_category(verification) == "secondary_only":
+        return f"{stat} was claimed as {value}, and only Retrosheet verified it"
+    return f"{stat} was claimed as {value}, but Lahman/Retrosheet could not verify it"
+
+
+def _format_claim_value(value: object) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _verification_row(verification: Any) -> dict[str, Any]:
+    to_row = getattr(verification, "to_row", None)
+    if callable(to_row):
+        row = dict(to_row())
+    elif isinstance(verification, dict):
+        row = dict(verification)
+    else:
+        claim = getattr(verification, "claim", None)
+        row = {
+            "stat": getattr(claim, "stat", getattr(verification, "stat", None)),
+            "claimed_value": getattr(claim, "value", getattr(verification, "claimed_value", None)),
+            "actual_value": getattr(verification, "actual_value", None),
+            "year": getattr(claim, "year", getattr(verification, "year", None)),
+            "scope": getattr(
+                claim,
+                "resolved_scope",
+                getattr(verification, "scope", None),
+            ),
+            "text": getattr(claim, "text", getattr(verification, "text", None)),
+            "status": getattr(verification, "status", None),
+            "table": getattr(verification, "table", None),
+            "warning": getattr(verification, "warning", None),
+        }
+
+    row.setdefault("primary_source", "Lahman")
+    row.setdefault("secondary_source", "Retrosheet")
+    row.setdefault("source_label", "Lahman and Retrosheet consensus")
+    row.setdefault("source_detail", "Lahman primary evidence with Retrosheet consensus evidence")
+    return row
+
+
+def _consensus_actual_value(row: dict[str, Any]) -> Any:
+    actual = row.get("actual_value")
+    if actual is not None:
+        return actual
+    primary = row.get("primary_actual_value")
+    secondary = row.get("secondary_actual_value")
+    if primary == secondary:
+        return primary
+    return primary if primary is not None else secondary
+
+
+def _verification_scope_label(row: dict[str, Any]) -> str:
+    scope = row.get("scope") or "career"
+    year = row.get("year")
+    return str(scope) if year is None else f"{scope} {year}"
 
 
 def _verify_one_claim_consensus(

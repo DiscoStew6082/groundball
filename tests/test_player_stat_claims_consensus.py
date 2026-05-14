@@ -5,6 +5,7 @@ import pytest
 
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
+    shape_biography_stat_claim_consensus,
     verify_player_stat_claims_consensus,
 )
 from baseball_rag.db.stat_registry import supported_stats
@@ -114,6 +115,44 @@ def test_consensus_verifies_claim_when_lahman_and_retrosheet_agree():
     assert row["secondary_actual_value"] == 60
     assert row["secondary_table"] == "retrosheet_batting"
     assert row["secondary_warning"] is None
+
+
+def test_consensus_read_model_shapes_biography_presentation():
+    conn = _conn()
+    _add_player(conn)
+    _add_batting(conn, lahman_hr=61, retro_hr=61)
+    verification = verify_player_stat_claims_consensus(
+        "player01",
+        [PlayerStatClaim(stat="HR", value=60, year=1927, text="60 home runs in 1927")],
+        conn=conn,
+    )[0]
+
+    presentation = shape_biography_stat_claim_consensus([verification])
+
+    assert presentation.summary == {
+        "total_claims": 1,
+        "verified_by_all": 0,
+        "primary_only": 0,
+        "secondary_only": 0,
+        "contradicted_by_all": 1,
+        "conflicts": 0,
+        "unsupported": 0,
+        "score": "failing",
+    }
+    assert "Stat claim consensus: total claims 1" in presentation.note
+    assert (
+        "HR was claimed as 60, but Lahman/Retrosheet consensus has 61 for season 1927"
+        in presentation.note
+    )
+    assert presentation.warnings == [
+        "DuckDB has 61 for HR (season 1927), not 60.",
+    ]
+    assert presentation.tables == ["batting"]
+    assert presentation.sql is not None
+    assert presentation.rows[0]["source_label"] == "Lahman and Retrosheet consensus"
+    assert "Lahman" in presentation.source_detail
+    assert "Retrosheet" in presentation.source_detail
+    assert presentation.data_manifest["consensus_sources"][1]["upstream"] == "Retrosheet"
 
 
 def test_consensus_verifies_primary_only_when_retrosheet_table_is_missing():

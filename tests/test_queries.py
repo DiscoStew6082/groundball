@@ -3,7 +3,9 @@
 import pytest
 
 from baseball_rag.db.queries import (
+    StatQueryPlan,
     execute_stat_query,
+    execute_stat_query_plan,
     get_career_stat_leaders,
     get_fielding_leaders,
     get_stat_leaders,
@@ -98,6 +100,24 @@ def test_execute_stat_query_returns_executed_sql_for_provenance():
     assert "SUM" in result.sql
     assert "SUM(b.AB) >= 100" in result.sql
     assert result.tables == ["batting", "people"]
+
+
+def test_execute_stat_query_plan_runs_leaderboard_plan_directly():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="OPS",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1970,
+            end_year=1979,
+        )
+    )
+
+    assert result.rows
+    assert result.stat == "OPS"
+    assert result.params == [1970, 1979]
+    assert "SUM(b.AB) >= 100" in result.sql
 
 
 def test_execute_stat_query_career_leaders_do_not_merge_same_name_players():

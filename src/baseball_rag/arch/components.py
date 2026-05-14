@@ -214,8 +214,8 @@ class ComponentRegistry:
                 id="query-router",
                 label="Query Router",
                 description=(
-                    "Keyword-based intent classifier that routes to stat_query "
-                    "or general_explanation paths."
+                    "LLM-assisted intent classifier that routes to stat_query, "
+                    "player_biography, freeform_query, or general_explanation paths."
                 ),
                 layer=Layer.ROUTING,
                 file_path="src/baseball_rag/routing/query_router.py",

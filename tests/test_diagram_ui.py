@@ -19,6 +19,80 @@ from baseball_rag.arch.tracing import PipelineStage, PipelineTrace
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.request_execution import RequestExecution
 
+
+class TestArchitectureReadModel:
+    """Pure Architecture read-model behavior used by the Gradio adapter."""
+
+    def test_latest_run_model_collects_active_path_and_diagnostics(self):
+        """A completed execution becomes rendering-neutral Architecture state."""
+        from baseball_rag.arch.read_model import latest_run_from_execution
+
+        now = datetime.now()
+        trace = PipelineTrace(query="who won the 1901 Mars league", route_type="freeform_query")
+        trace.add_stage(
+            PipelineStage(
+                "query-router",
+                "Query Router",
+                started_at=now,
+                elapsed_ms=1.0,
+                output_summary="routed to freeform_query",
+            )
+        )
+        trace.add_stage(
+            PipelineStage(
+                "duckdb",
+                "DuckDB",
+                started_at=now,
+                elapsed_ms=2.0,
+                error="RuntimeError: no rows",
+            )
+        )
+        answer = StructuredAnswer(
+            answer="No matching rows.",
+            intent="freeform_query",
+            warnings=["No matching rows found."],
+            unsupported=True,
+            unsupported_reason="no_data",
+            sources=[
+                SourceRecord(
+                    type="duckdb",
+                    label="freeform",
+                    rows=[{"player": "Nobody"}, {"player": "Still nobody"}],
+                )
+            ],
+        )
+        model = latest_run_from_execution(RequestExecution(answer=answer, trace=trace))
+
+        assert model.question == "who won the 1901 Mars league"
+        assert model.route == "freeform_query"
+        assert model.active_component_ids == ("query-router", "duckdb")
+        assert model.row_count == 2
+        assert model.status_level == "error"
+        assert model.status_text == "Error: RuntimeError: no rows"
+        assert "No matching rows found." in model.diagnostics
+        assert "Unsupported outcome: no_data" in model.diagnostics
+
+    def test_latest_run_store_keeps_sessions_isolated(self):
+        """Latest Architecture runs are scoped by browser session."""
+        from baseball_rag.arch.read_model import LatestRunStore
+
+        first = RequestExecution(
+            answer=StructuredAnswer(answer="first", intent="general_explanation"),
+            trace=PipelineTrace(query="what is OPS", route_type="general_explanation"),
+        )
+        second = RequestExecution(
+            answer=StructuredAnswer(answer="second", intent="stat_query"),
+            trace=PipelineTrace(query="career home run leaders", route_type="stat_query"),
+        )
+        store = LatestRunStore()
+
+        store.record(first, session_key="session-a")
+        store.record(second, session_key="session-b")
+
+        assert store.latest(session_key="session-a").question == "what is OPS"
+        assert store.latest(session_key="session-b").question == "career home run leaders"
+
+
 # --------------------------------------------------------------------------:
 # Phase 3.1 — test_diagram_renders_all_layers
 # --------------------------------------------------------------------------:
@@ -789,6 +863,30 @@ class TestLatestRunExplorer:
         assert "API Server" in html
         assert "highlighted" not in html
         assert self.diagram.latest_runs_by_session
+
+    def test_legacy_latest_run_reset_does_not_resurrect_stale_read_model(self):
+        """Clearing legacy public state clears the sessionless latest-run facade."""
+        now = datetime.now()
+        trace = PipelineTrace(query="what is OPS", route_type="general_explanation")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="OPS answer", intent="general_explanation"),
+                trace=trace,
+            )
+        )
+        self.diagram.show_latest_trace()
+
+        self.diagram.trace_history.clear()
+        self.diagram.latest_run = None
+        self.diagram.latest_runs_by_session.clear()
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "what is OPS" not in html
+        assert "API Server" in html
+        assert self.diagram.highlight_ids == set()
 
     def test_latest_run_click_handlers_escape_component_ids_for_javascript(self):
         """Generated latest-run controls safely quote unusual traced component ids."""

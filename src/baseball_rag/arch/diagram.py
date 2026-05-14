@@ -6,7 +6,6 @@ Phase 3 of the Architecture Explorer plan.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
 from json import dumps as json_dumps
 from typing import Any, Callable
 
@@ -19,6 +18,7 @@ from baseball_rag.arch.components import (
     TestStatus,
     get_registry,
 )
+from baseball_rag.arch.read_model import LatestRunReadModel, LatestRunStore
 from baseball_rag.arch.tracing import PipelineTrace
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,8 @@ _LAYER_LABELS: dict[Layer, str] = {
 
 _ROUTE_BADGE: dict[str, str] = {
     "stat_query": "\u26a1 stat_query",
+    "player_biography": "player_biography",
+    "freeform_query": "freeform_query",
     "general_explanation": "\ud83d\udd0d general_explanation",
 }
 
@@ -224,36 +226,6 @@ _SELECTION_BRIDGE_ONCLICK = (
 _SELECTION_BRIDGE_STYLE = "<style>#arch-select-bridge{display:none!important;}</style>"
 
 
-@dataclass(frozen=True)
-class LatestRunView:
-    """Internal Architecture-tab model for the last completed query."""
-
-    question: str
-    intent: str
-    warnings: list[str] = field(default_factory=list)
-    unsupported: bool = False
-    unsupported_reason: str | None = None
-    sources: list[Any] = field(default_factory=list)
-    trace: PipelineTrace | None = None
-
-    @classmethod
-    def from_execution(cls, execution: Any) -> "LatestRunView":
-        trace = execution.trace
-        answer = execution.answer
-        question = trace.query if trace is not None else str(answer.metadata.get("question", ""))
-        if not question:
-            question = str(answer.metadata.get("original_question", ""))
-        return cls(
-            question=question,
-            intent=answer.intent,
-            warnings=list(answer.warnings),
-            unsupported=answer.unsupported,
-            unsupported_reason=answer.unsupported_reason,
-            sources=list(answer.sources),
-            trace=trace,
-        )
-
-
 # ---------------------------------------------------------------------------
 # HTML builders
 # ---------------------------------------------------------------------------
@@ -332,8 +304,11 @@ class ArchitectureDiagram(gr.Blocks):
         self.highlight_ids: set[str] = set()
         self.selected_id: str | None = None
         self.trace_history: list[PipelineTrace] = []
-        self.latest_run: LatestRunView | None = None
-        self.latest_runs_by_session: dict[str, LatestRunView] = {}
+        self._latest_run_store = LatestRunStore()
+        self.latest_run: LatestRunReadModel | None = None
+        self.latest_runs_by_session: dict[str, LatestRunReadModel] = (
+            self._latest_run_store.latest_by_session
+        )
         self._animating = False
         self._anim_lock = threading.RLock()
 
@@ -468,17 +443,22 @@ class ArchitectureDiagram(gr.Blocks):
             self.trace_history.append(execution.trace)
             if len(self.trace_history) > self.max_history:
                 self.trace_history.pop(0)
-        latest_run = LatestRunView.from_execution(execution)
-        self.latest_run = latest_run
-        self.latest_runs_by_session[_session_latest_key(session_key)] = latest_run
+        self.latest_run = self._latest_run_store.record(execution, session_key=session_key)
         return self
 
     def show_latest_trace(self, *, session_key: str | None = None) -> ArchitectureDiagram:
         """Render the most recently recorded trace as a static highlighted path."""
-        latest_run = self.latest_runs_by_session.get(_session_latest_key(session_key))
-        if latest_run is None and session_key is None:
-            latest_run = self.latest_run
-        elif latest_run is None:
+        latest_run = self._latest_run_store.latest(session_key=session_key)
+        if latest_run is None:
+            if session_key is None and self.trace_history:
+                trace = self.trace_history[-1]
+                self.latest_run = None
+                self.highlight_ids = {stage.component_id for stage in trace.stages}
+                self._update_diagram()
+                self._set_footer_from_trace(trace)
+                if hasattr(self, "skip_btn"):
+                    self.skip_btn.visible = False
+                return self
             self.latest_run = None
             self.highlight_ids.clear()
             self._update_diagram()
@@ -488,27 +468,12 @@ class ArchitectureDiagram(gr.Blocks):
                 self.skip_btn.visible = False
             return self
 
-        if latest_run is not None:
-            self.latest_run = latest_run
-            trace = latest_run.trace
-            self.highlight_ids = {stage.component_id for stage in trace.stages} if trace else set()
-            self._update_diagram()
-            if trace is not None:
-                self._set_footer_from_trace(trace)
-            if hasattr(self, "skip_btn"):
-                self.skip_btn.visible = False
-            return self
-
-        if not self.trace_history:
-            self.clear_highlight()
-            if hasattr(self, "footer_html"):
-                self.footer_html.value = ""
-            return self
-
-        trace = self.trace_history[-1]
-        self.highlight_ids = {stage.component_id for stage in trace.stages}
+        self.latest_run = latest_run
+        run_trace = latest_run.trace
+        self.highlight_ids = set(latest_run.active_component_ids)
         self._update_diagram()
-        self._set_footer_from_trace(trace)
+        if run_trace is not None:
+            self._set_footer_from_trace(run_trace)
         if hasattr(self, "skip_btn"):
             self.skip_btn.visible = False
         return self
@@ -587,53 +552,35 @@ class ArchitectureDiagram(gr.Blocks):
 
         return "<div id='arch-diagram-inner'>" + "".join(rows) + "</div>" + _SELECTION_BRIDGE_STYLE
 
-    def _build_latest_run_html(self, run: LatestRunView) -> str:
+    def _build_latest_run_html(self, run: LatestRunReadModel) -> str:
         trace = run.trace
         stages = trace.stages if trace is not None else []
-        active_ids = [stage.component_id for stage in stages]
-        self.highlight_ids = set(active_ids)
-        route = trace.route_type if trace is not None and trace.route_type else run.intent
-        summary_html = self._build_latest_summary_html(run, route)
+        active_ids = set(run.active_component_ids)
+        self.highlight_ids = active_ids
+        summary_html = self._build_latest_summary_html(run)
         timeline_html = self._build_timeline_html(stages)
         path_html = self._build_active_path_html(stages)
-        quiet_html = self._build_quiet_map_html(set(active_ids))
+        quiet_html = self._build_quiet_map_html(active_ids)
         return (
             "<div id='arch-diagram-inner' class='latest-run'>"
             f"{summary_html}{timeline_html}{path_html}{quiet_html}"
             "</div>" + _SELECTION_BRIDGE_STYLE
         )
 
-    def _build_latest_summary_html(self, run: LatestRunView, route: str) -> str:
+    def _build_latest_summary_html(self, run: LatestRunReadModel) -> str:
         trace = run.trace
         total_ms = trace.total_ms if trace is not None else 0.0
-        row_count = sum(len(source.rows) for source in run.sources)
-        diagnostics = list(run.warnings)
-        if run.unsupported:
-            reason = run.unsupported_reason or "unsupported"
-            diagnostics.append(f"Unsupported outcome: {reason}")
-        stages = trace.stages if trace is not None else []
-        stage_errors = [stage.error for stage in stages if stage.error]
-        diagnostics.extend(f"Runtime error: {error}" for error in stage_errors if error)
-        if stage_errors:
-            status_cls = "error"
-            status = "; ".join(f"Error: {error}" for error in stage_errors if error)
-        elif diagnostics:
-            status_cls = "warning"
-            status = "; ".join(diagnostics)
-        else:
-            status_cls = "ok"
-            status = "No warnings or errors"
         return (
             "<section class='run-summary'>"
             f"<div class='run-question'>{_esc(run.question or 'Latest query')}</div>"
             "<div class='run-meta'>"
-            f"<span class='route-badge'>{_esc(route or 'unknown route')}</span>"
+            f"<span class='route-badge'>{_esc(run.route or 'unknown route')}</span>"
             "<span>&nbsp;|&nbsp;</span>"
             f"<span>{total_ms:.1f}ms total</span>"
             "<span>&nbsp;|&nbsp;</span>"
-            f"<span>{row_count} rows</span>"
+            f"<span>{run.row_count} rows</span>"
             "</div>"
-            f"<div class='run-status {status_cls}'>{_esc(status)}</div>"
+            f"<div class='run-status {run.status_level}'>{_esc(run.status_text)}</div>"
             "</section>"
         )
 
@@ -891,7 +838,3 @@ def _stage_contribution(stage: Any) -> str:
         stage.component_id,
         "Completed this part of the request.",
     )
-
-
-def _session_latest_key(session_key: str | None) -> str:
-    return session_key or "__sessionless_architecture__"

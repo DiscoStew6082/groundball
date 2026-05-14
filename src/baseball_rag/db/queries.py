@@ -1,12 +1,31 @@
 """SQL query helpers for baseball statistics."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 import duckdb
 
 from baseball_rag.arch.tracing import traced
 from baseball_rag.db.duckdb_schema import TEAM_MAP, get_duckdb
 from baseball_rag.db.stat_registry import StatTable, get_stat
+
+StatQueryKind = Literal["player", "leaderboard", "career"]
+
+
+@dataclass(frozen=True)
+class StatQueryPlan:
+    """Execution plan for a deterministic stat request."""
+
+    stat: str
+    table: StatTable
+    kind: StatQueryKind
+    intent: str
+    position: str | None = None
+    player_name: str | None = None
+    year: int | None = None
+    start_year: int | None = None
+    end_year: int | None = None
+    limit: int = 10
 
 
 @dataclass(frozen=True)
@@ -40,49 +59,108 @@ def execute_stat_query(
     limit: int = 10,
     conn: duckdb.DuckDBPyConnection | None = None,
 ) -> StatQueryResult:
-    """Execute a deterministic stat query and return provenance-ready details."""
+    """Compatibility adapter for deterministic stat queries.
+
+    New deterministic callers should pass a StatQueryPlan to execute_stat_query_plan.
+    """
     stat_def = get_stat(stat, table=table)
     if player_name:
-        return _execute_player_stat(
-            stat_def.canonical,
+        kind: StatQueryKind = "player"
+    elif start_year is not None and end_year is not None:
+        kind = "leaderboard"
+    else:
+        kind = "career"
+    return _execute_stat_query_plan(
+        StatQueryPlan(
+            stat=stat_def.canonical,
             table=stat_def.table,
+            kind=kind,
+            intent="stat_query",
+            position=position,
             player_name=player_name,
             year=year,
-            position=position,
+            start_year=start_year,
+            end_year=end_year,
+            limit=limit,
+        ),
+        conn=conn,
+    )
+
+
+@traced(component_id="duckdb", label="DB Query")
+def execute_stat_query_plan(
+    plan: StatQueryPlan,
+    *,
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> StatQueryResult:
+    """Execute a deterministic stat plan and return provenance-ready details."""
+    return _execute_stat_query_plan(plan, conn=conn)
+
+
+def _execute_stat_query_plan(
+    plan: StatQueryPlan,
+    *,
+    conn: duckdb.DuckDBPyConnection | None,
+) -> StatQueryResult:
+    stat_def = get_stat(plan.stat, table=plan.table)
+    stat = stat_def.canonical
+    table = stat_def.table
+    limit = plan.limit
+
+    if plan.kind == "player":
+        if plan.player_name is None:
+            return StatQueryResult(
+                stat=stat,
+                label="Player stat lookup",
+                tables=[table, "people"],
+                rows=[],
+                sql="Player stat lookup skipped because no player name was supplied",
+                executed_sql="Player stat lookup skipped because no player name was supplied",
+                params=[],
+            )
+        return _execute_player_stat(
+            stat,
+            table=table,
+            player_name=plan.player_name,
+            year=plan.year,
+            position=plan.position,
             conn=conn,
         )
-    if stat_def.table == "fielding":
+
+    start_year = plan.start_year
+    end_year = plan.end_year
+    if table == "fielding":
         if start_year is None or end_year is None:
             return _execute_fielding_career(
-                stat_def.canonical,
-                position=position,
+                stat,
+                position=plan.position,
                 limit=limit,
                 conn=conn,
             )
         return _execute_fielding_leaders(
-            stat_def.canonical,
+            stat,
             start_year=start_year,
             end_year=end_year,
-            position=position,
+            position=plan.position,
             conn=conn,
         )
-    if stat_def.table == "pitching":
+    if table == "pitching":
         if start_year is not None and end_year is not None:
             return _execute_pitching_range(
-                stat_def.canonical,
+                stat,
                 start_year=start_year,
                 end_year=end_year,
                 conn=conn,
             )
-        return _execute_pitching_career(stat_def.canonical, limit=limit, conn=conn)
+        return _execute_pitching_career(stat, limit=limit, conn=conn)
     if start_year is not None and end_year is not None:
         return _execute_batting_range(
-            stat_def.canonical,
+            stat,
             start_year=start_year,
             end_year=end_year,
             conn=conn,
         )
-    return _execute_batting_career(stat_def.canonical, limit=limit, conn=conn)
+    return _execute_batting_career(stat, limit=limit, conn=conn)
 
 
 @traced(component_id="duckdb", label="DB Query")
