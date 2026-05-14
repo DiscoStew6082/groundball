@@ -38,6 +38,37 @@ instead of independently creating competing `CONTEXT.md` versions.
   `http://127.0.0.1:7861/` in the Codex in-app Browser, make the Browser
   visible, run the default query smoke test, and keep the dev server running.
 
+## Progress Update - 2026-05-14
+
+Status: complete. All worker areas in the recommended sequence have been
+implemented, reviewed by subagents, verified, and committed on branch
+`codex/remove-chroma`. These local worker/completion commits have not been
+pushed, so GitHub CI has not been triggered for them.
+
+| Area | Status | Commit | Progress notes |
+| --- | --- | --- | --- |
+| Worker A: Stat Semantics Module | Complete | `d3b030c` | Added adapter-aware stat semantics for Lahman/Retrosheet expressions, guards, ranking direction, and contextual SO inference while preserving public payloads. |
+| Worker D: Query Scope Module | Complete | `f204340` | Centralized time-scope resolution, current-year ambiguity, reversed-range handling, and coverage policy for stat-query planning. |
+| Worker C: Deterministic Freeform Template Specs | Complete | `4e80bb6` plus completion update | Carried matched template specs through ownership, planning, unsupported policy, SQL/source detail, and single-season query-scope consumption. |
+| Worker B: Player Biography Answer Module | Complete | `92a1165` plus completion update | Extracted biography route-case orchestration from `service.py`, including player resolution, supplied claims, LLM JSON repair, verification, and source shaping. |
+| Worker F: Support State And Human Review Module | Complete | `8afbb43` | Added support-state policy so audit and review queue paths consume one unsupported/review/audit reason Interface. |
+| Worker E: Conversation Context Module | Complete | `c843be7` | Moved conversation-turn shaping and follow-up metadata policy into the conversation Module while preserving legacy turn tolerance. |
+| Worker G: Gradio Query Adapter Module | Complete | `1c7900c` | Extracted Gradio output mapping into a concrete query Adapter and kept Query/Architecture tab behavior stable. |
+| Cross-task review checklist | Complete | Worker commits above | Each worker patch had a code-review subagent pass; actionable findings were fixed before the relevant worker commit. |
+
+Final verification:
+
+- Focused worker suites passed during each worker slice.
+- The completion pass added direct module coverage for biography JSON repair and
+  service coverage for freeform single-season query-scope consumption.
+- `uv run pytest -q` passed after the completion pass with `532 passed`.
+- Deterministic eval gate passed on 2026-05-14:
+  `uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
+  returned `20 passed, 0 failed, 48 skipped`.
+- Gradio Browser smoke passed with the dev server at `http://127.0.0.1:7861/`:
+  the default query returned Davis/Tommy evidence rows, source JSON, and SQL;
+  the Architecture tab reflected the completed default-query path.
+
 ## Recommended Sequence
 
 1. Worker A: Stat Semantics Module.

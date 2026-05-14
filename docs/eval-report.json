@@ -415,7 +415,7 @@
     }
   ],
   "command": "python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-  "generated_at": "2026-05-14T00:32:48.754364+00:00",
+  "generated_at": "2026-05-14T16:28:30.065823+00:00",
   "include_live": false,
   "minimum_pass_rate": 0.85,
   "mode": "answer",

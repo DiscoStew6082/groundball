@@ -563,6 +563,37 @@ class TestFreeformProvenance:
         assert result.sources[0].label == "LLM-backed typed freeform query"
         assert "typed intent" in (result.sources[0].detail or "")
 
+    def test_freeform_answer_uses_query_scope_for_relative_single_season_year(
+        self,
+        monkeypatch,
+    ):
+        from baseball_rag.db.freeform_types import FreeformResult
+        from baseball_rag.routing import FreeformQueryCase
+        from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+        from baseball_rag.service import _answer_freeform
+
+        monkeypatch.setenv("BASEBALL_RAG_CURRENT_YEAR", "1937")
+        decision = FreeformQueryCase(
+            raw_question="Who played for the Braves last year?",
+            time_period=TimePeriod(
+                type=TimePeriodType.RELATIVE,
+                value={"direction": "past", "unit": "year", "count": 1},
+            ),
+        )
+        result = FreeformResult(
+            sql="SELECT nameFirst FROM batting WHERE yearID = ?",
+            rows=[("Hank",)],
+            columns=["nameFirst"],
+            row_count=1,
+            truncated=False,
+        )
+
+        with patch("baseball_rag.db.freeform.query", return_value=result) as query:
+            _answer_freeform(decision.raw_question, decision)
+
+        assert decision.year is None
+        assert query.call_args.kwargs["year"] == 1936
+
 
 class TestFreeformResultFormatting:
     """Tests for display-quality freeform answer formatting."""

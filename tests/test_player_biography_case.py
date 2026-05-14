@@ -27,6 +27,42 @@ def test_player_biography_case_answerer_preserves_resolved_player_metadata():
     }
 
 
+def test_player_biography_case_answerer_repairs_malformed_llm_json():
+    responses = iter(
+        [
+            LLMResponse(
+                content="Babe Ruth was a two-way star.",
+                model="test-model",
+                done=True,
+            ),
+            LLMResponse(
+                content='{"answer":"Babe Ruth was a two-way star.","stat_claims":[]}',
+                model="test-model",
+                done=True,
+            ),
+        ]
+    )
+    prompts = []
+
+    def make_request(prompt, **_kwargs):
+        prompts.append(prompt)
+        return next(responses)
+
+    answerer = PlayerBiographyCaseAnswerer(
+        make_request=make_request,
+        verify_claims_consensus=lambda *_args, **_kwargs: [],
+    )
+
+    result = answerer.answer(
+        "who was Babe Ruth",
+        PlayerBiographyCase(player_name="Babe Ruth", raw_question="who was Babe Ruth"),
+    )
+
+    assert result.answer == "Babe Ruth was a two-way star."
+    assert len(prompts) == 2
+    assert "Repair this invalid response" in prompts[1][1]
+
+
 def test_player_biography_case_answerer_handles_supplied_claims_without_llm():
     def fail_llm(*_args, **_kwargs):
         raise AssertionError("supplied claim verification should not call the LLM")

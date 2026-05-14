@@ -102,7 +102,11 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     from baseball_rag.db.freeform import format_result, query
 
     conn = get_duckdb()
-    query_result = query(decision.raw_question, conn, year=getattr(decision, "year", None))
+    query_result = query(
+        decision.raw_question,
+        conn,
+        year=_freeform_single_season_year(decision),
+    )
     source = SourceRecord(
         type="duckdb",
         label=query_result.source_label,
@@ -136,6 +140,25 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
         sources=[source],
         warnings=warnings,
     )
+
+
+def _freeform_single_season_year(decision: Any) -> int | None:
+    time_period = getattr(decision, "time_period", None)
+    if time_period is None:
+        return getattr(decision, "year", None)
+
+    from baseball_rag.query_scope import QueryScope, resolve_query_scope
+
+    scope = resolve_query_scope(
+        time_period,
+        raw_question=getattr(decision, "raw_question", ""),
+        stat="freeform",
+        intent=getattr(decision, "intent", "freeform_query"),
+        validate_coverage=False,
+    )
+    if isinstance(scope, QueryScope) and scope.is_single_season:
+        return scope.start_year
+    return None
 
 
 def _answer_general(question: str, decision: Any) -> StructuredAnswer:
