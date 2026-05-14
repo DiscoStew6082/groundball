@@ -41,30 +41,6 @@ class QueryUiUpdate:
     conversation: list[dict[str, Any]]
     execution: RequestExecution | None = None
 
-    def as_gradio_values(
-        self,
-    ) -> tuple[
-        list[dict[str, str]],
-        str,
-        str,
-        RowsPayload,
-        list[dict[str, Any]],
-        str,
-        list[dict[str, str]],
-        list[dict[str, Any]],
-    ]:
-        """Return values in the order expected by the Gradio Query tab."""
-        return (
-            self.visible_chat_history,
-            self.question,
-            self.answer_text,
-            self.rows,
-            self.sources,
-            self.sql,
-            self.chat_history,
-            self.conversation,
-        )
-
 
 @dataclass(frozen=True)
 class PendingQuery:

@@ -17,6 +17,7 @@ import gradio as gr
 
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
+from baseball_rag.ui.gradio_adapter import GradioQueryAdapter
 from baseball_rag.ui.presentation import AnswerPresenter
 from baseball_rag.ui.query_session import QuerySession
 from baseball_rag.ui.query_transaction import BegunQuery
@@ -235,11 +236,12 @@ def respond_conversation(
         default_question=_DEFAULT_QUESTION,
         record_execution=_diagram_execution_recorder(diagram, animate_diagram=animate_diagram),
     )
+    query_adapter = GradioQueryAdapter()
     begun = session.begin(message, chat_history, conversation, {}, session_key=None)
     completed = session.complete(begun.begun, begun.registry, session_key=None)
     if completed is None:
-        return begun.update.as_gradio_values()
-    return completed.update.as_gradio_values()
+        return query_adapter.completed_outputs(begun.update)[:-1]
+    return query_adapter.completed_outputs(completed.update)[:-1]
 
 
 # --------------------------------------------------------------------------
@@ -301,9 +303,7 @@ def build_dashboard() -> gr.Blocks:
                     animate_diagram=False,
                 ),
             )
-
-            def _no_component_updates():
-                return tuple(gr.update() for _ in range(9))
+            query_adapter = GradioQueryAdapter()
 
             def _request_session_key(request: gr.Request | None) -> str | None:
                 if request is not None and request.session_hash:
@@ -324,14 +324,11 @@ def build_dashboard() -> gr.Blocks:
                     turn_registry,
                     session_key=_request_session_key(request),
                 )
-                return (
-                    begun.update.answer_text,
-                    begun.update.rows,
-                    begun.update.sources,
-                    begun.update.sql,
-                    begun.begun,
-                    begun.registry,
-                    gr.update(interactive=begun.ask_interactive),
+                return query_adapter.pending_outputs(
+                    begun.update,
+                    begun=begun.begun,
+                    registry=begun.registry,
+                    ask_interactive=begun.ask_interactive,
                 )
 
             def on_query(
@@ -345,8 +342,8 @@ def build_dashboard() -> gr.Blocks:
                     session_key=_request_session_key(request),
                 )
                 if completed is None:
-                    return _no_component_updates()
-                return (*completed.update.as_gradio_values(), gr.update(interactive=True))
+                    return query_adapter.stale_outputs()
+                return query_adapter.completed_outputs(completed.update)
 
             begin_query_outputs = gr.on(
                 triggers=[submit.click, question.submit],
