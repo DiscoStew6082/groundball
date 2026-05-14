@@ -289,6 +289,29 @@ def test_answer_stat_query_rejects_partial_player_before_coverage_and_execution(
     assert "'Ruth' is ambiguous" in answer.answer
 
 
+def test_answer_stat_query_rejects_player_range_before_coverage(monkeypatch):
+    """Player-specific multi-season lookups stay ambiguous before coverage checks."""
+
+    def fail_execute(_plan):
+        raise AssertionError("player ranges should not execute")
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fail_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="HR",
+            player_name="Aaron Judge",
+            raw_question="Aaron Judge HR from 2026-2027",
+            time_period=TimePeriod(type=TimePeriodType.RANGE, value=[2026, 2027]),
+        )
+    )
+
+    assert answer.unsupported is True
+    assert answer.unsupported_reason == "ambiguous"
+    assert answer.review_reason == "ambiguous"
+    assert "Player-specific HR lookups need one season, not 2026-2027" in answer.answer
+
+
 def test_answer_stat_query_player_no_data_mentions_stat_table(monkeypatch):
     """Player misses describe the planned stat table, not always batting."""
 
