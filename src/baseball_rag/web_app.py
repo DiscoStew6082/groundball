@@ -1,12 +1,4 @@
-"""Gradio dashboard for Baseball RAG — Architecture Explorer + Query Interface.
-
-Phase 4 of the Architecture Explorer plan:
-- Tab "Query": ChatInterface with existing answer() functionality
-- Tab "Architecture": Interactive architecture diagram that visualizes pipeline traces
-
-The two tabs share state: each query in the Query tab produces a PipelineTrace
-that is appended to the ArchitectureDiagram's trace history and animated.
-"""
+"""Gradio dashboard for Baseball RAG query and architecture inspection."""
 
 from __future__ import annotations
 
@@ -191,7 +183,7 @@ def _diagram_execution_recorder(
 
 
 # --------------------------------------------------------------------------
-# Respond wrapper (wired to tracing + animation)
+# Respond wrappers (wired to tracing and Architecture history)
 # --------------------------------------------------------------------------
 
 
@@ -200,8 +192,8 @@ def respond(
 ) -> str:
     """Handle a single user message.
 
-    When *diagram* is provided the query is traced and animated through the
-    Architecture Explorer.  Otherwise falls back to plain answer().
+    When *diagram* is provided the query is traced through the Architecture
+    Explorer.  Otherwise falls back to plain answer().
     """
     execution = _execute_for_gradio(message)
     recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
@@ -388,7 +380,7 @@ def build_dashboard() -> gr.Blocks:
         with gr.Tab("Architecture") as architecture_tab:
             gr.Markdown(
                 "**Pipeline Explorer** — click any component to inspect its source. "
-                "After running a query in the **Query** tab, switch here to see it animate."
+                "After running a query in the **Query** tab, switch here to see the latest path."
             )
             arch_diagram.render()
 
@@ -411,16 +403,28 @@ def build_dashboard() -> gr.Blocks:
                 elem_id="run-all-tests",
                 size="sm",
             )
+            run_all_tests_status = gr.Markdown("", elem_id="run-all-tests-status")
 
             def on_run_all_tests():
-                run_all_tests()
+                result = run_all_tests()
                 arch_diagram._update_diagram()
-                return arch_diagram.diagram_html.value
+                status = (
+                    f"Tests finished: {result.passed} passed, "
+                    f"{result.failed} failed, {result.skipped} skipped."
+                )
+                return arch_diagram.diagram_html.value, status
 
             run_all_tests_btn.click(
+                fn=lambda: "Tests are running...",
+                inputs=[],
+                outputs=[run_all_tests_status],
+                show_progress="hidden",
+                queue=False,
+            ).then(
                 fn=on_run_all_tests,
                 inputs=[],
-                outputs=[arch_diagram.diagram_html],
+                outputs=[arch_diagram.diagram_html, run_all_tests_status],
+                show_progress="minimal",
             )
 
     # Attach for test access

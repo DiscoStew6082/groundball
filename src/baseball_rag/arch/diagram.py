@@ -57,6 +57,7 @@ _DIAGRAM_CSS = """
 }
 .component-grid { display: flex; gap: 8px; flex-wrap: wrap; }
 .arch-card {
+    appearance: none;
     border: 2px solid #374151;
     border-radius: 8px;
     padding: 10px 14px;
@@ -66,8 +67,14 @@ _DIAGRAM_CSS = """
     transition: all 0.2s ease;
     background: #1f2937;
     color: #f9fafb;
+    text-align: left;
 }
-.arch-card:hover { border-color: #60a5fa; }
+.arch-card:hover,
+.arch-card:focus-visible {
+    border-color: #60a5fa;
+    outline: none;
+    box-shadow: 0 0 0 2px #60a5fa55;
+}
 .arch-card .card-id   { font-size: 11px; color: #9ca3af; margin-bottom: 2px; }
 .arch-card .card-body { font-size: 13px; font-weight: 600; }
 .arch-card .status-row { font-size: 12px; margin-top: 4px; }
@@ -81,6 +88,12 @@ _DIAGRAM_CSS = """
 
 /* Dimmed (not in current trace) */
 .arch-card.dimmed { opacity: 0.35; }
+
+/* Selected (currently inspected) */
+.arch-card.selected {
+    border-color: #fbbf24;
+    box-shadow: 0 0 0 2px #fbbf2455;
+}
 
 /* Error state */
 .arch-card.error-state { border-color: #f87171; background: #7f1d1d; }
@@ -157,13 +170,18 @@ def _layer_html(layer: Layer, components: list[DiagramComponent]) -> str:
 def _card_html(comp: DiagramComponent, extra_cls: str = "") -> str:
     """Return the HTML for a single component card."""
     status_emoji = comp.status_indicator()
+    classes = " ".join(cls for cls in ("arch-card", extra_cls) if cls)
     return f"""
-<div class="arch-card {extra_cls}"
+<button type="button"
+     class="{classes}"
      id="card-{comp.id}"
+     data-component-id="{comp.id}"
+     role="button"
+     tabindex="0"
      onclick="{_SELECTION_BRIDGE_ONCLICK}('{comp.id}')">
-  <div class="card-id'>{status_emoji} {comp.id}</div>
+  <div class="card-id">{status_emoji} {comp.id}</div>
   <div class="card-body">{comp.label}</div>
-</div>"""
+</button>"""
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +411,9 @@ class ArchitectureDiagram(gr.Blocks):
             cards_html = ""
             for comp in components:
                 extra_cls = ""
-                if comp.id in ids:
+                if comp.id == self.selected_id:
+                    extra_cls = "selected"
+                elif comp.id in ids:
                     extra_cls = "highlighted"
                 elif ids:  # something is highlighted but not this card
                     extra_cls = "dimmed"
@@ -415,7 +435,7 @@ class ArchitectureDiagram(gr.Blocks):
             return (
                 "<div id='detail-panel-inner'>"
                 "<p style='color:#6b7280;font-size:12px;'>"
-                "Click a component to inspect it."
+                "Select a component to inspect its role and source."
                 "</p></div>"
             )
 
@@ -443,17 +463,19 @@ class ArchitectureDiagram(gr.Blocks):
         if snippet:
             snippet_html = (
                 "<details><summary style='cursor:pointer;font-size:12px;margin-bottom:4px;'>"
-                "Source (first 10 lines)</summary>"
+                "Source excerpt</summary>"
                 f"<pre class='detail-snippet'>{_esc(snippet)}</pre></details>"
             )
         else:
-            snippet_html = "<p style='font-size:11px;color:#6b7280;'>No source file found.</p>"
+            snippet_html = "<p style='font-size:11px;color:#6b7280;'>source unavailable.</p>"
 
         return (
             f"<div id='detail-panel-inner'>"
             f"<div class='detail-title'>{_esc(comp.label)}</div>"
-            f"<div class='detail-meta'>{status_html} &nbsp;|&nbsp; {_esc(comp.file_path)}</div>"
-            f"<div class='detail-desc'>{_esc(comp.description)}</div>"
+            f"<div class='detail-meta'>{status_html}</div>"
+            "<div class='detail-desc'><strong>Runtime role</strong><br>"
+            f"{_esc(comp.description)}</div>"
+            f"<div class='detail-desc'><strong>Source path</strong><br>{_esc(comp.file_path)}</div>"
             f"{snippet_html}"
             f"</div>"
         )
@@ -508,6 +530,8 @@ class ArchitectureDiagram(gr.Blocks):
             fn=handle_js_select,
             inputs=[self._js_bridge],
             outputs=[self.diagram_html, self.detail_panel],
+            show_progress="hidden",
+            queue=False,
         )
 
     def _js_animate(self, stage_ids: list[str], elapsed_list: list[float]) -> None:

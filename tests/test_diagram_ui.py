@@ -78,6 +78,38 @@ class TestDiagramRendersAllLayers:
         assert "display:none!important" in html
         assert "dispatchEvent" in html
 
+    def test_component_cards_are_accessible_click_controls(self):
+        """Visible components render as focusable controls with stable component ids."""
+        html = self.diagram._build_diagram_html()
+
+        assert 'role="button"' in html
+        assert '<button type="button"' in html
+        assert 'tabindex="0"' in html
+        assert 'data-component-id="query-router"' in html
+
+    def test_selected_component_state_is_separate_from_trace_highlight(self):
+        """Selected means inspected, while highlighted still means used by the latest query."""
+        self.diagram.highlight(["duckdb"])
+        self.diagram.select_component("query-router")
+
+        html = self.diagram._build_diagram_html()
+
+        assert 'id="card-duckdb"' in html
+        assert "arch-card highlighted" in html
+        assert 'id="card-query-router"' in html
+        assert "selected" in html
+
+    def test_selected_component_outside_trace_is_not_dimmed(self):
+        """A selected component remains visually inspectable even if the latest trace missed it."""
+        self.diagram.highlight(["duckdb"])
+        self.diagram.select_component("query-router")
+
+        html = self.diagram._build_diagram_html()
+
+        assert 'id="card-query-router"' in html
+        assert 'class="arch-card selected"' in html
+        assert 'class="arch-card dimmed selected"' not in html
+
     def test_routing_layer_shows_query_router(self):
         """Routing layer shows the query-router component."""
         html = self.diagram._build_diagram_html()
@@ -203,6 +235,21 @@ class TestStageDetailPanel:
         assert comp.label in html
         assert comp.description in html
 
+    def test_detail_panel_uses_inspection_placeholder_copy(self):
+        """The empty detail panel invites selection without promising broken click behavior."""
+        html = self.diagram._build_detail_html(None)
+
+        assert "Select a component to inspect its role and source." in html
+
+    def test_detail_panel_shows_runtime_role_source_and_excerpt(self):
+        """Selected details expose the component role, source path, and source availability."""
+        html = self.diagram._build_detail_html("query-router")
+
+        assert "Runtime role" in html
+        assert "Source path" in html
+        assert "src/baseball_rag/routing/query_router.py" in html
+        assert ("Source excerpt" in html) or ("source unavailable" in html)
+
     def test_detail_panel_shows_file_path(self):
         """Detail panel includes the component's file path."""
         html = self.diagram._build_detail_html("claim-verifier")
@@ -235,7 +282,7 @@ class TestStageDetailPanel:
         """Passing None to select_component shows the placeholder message."""
         self.diagram.select_component(None)
         html = self.diagram._build_detail_html(None)
-        assert ("Click a component" in html) or ("inspect" in html)
+        assert "Select a component to inspect its role and source." in html
 
     def test_detail_panel_renders_in_right_sidebar(self):
         """The diagram layout places detail panel HTML in #detail-panel elem."""

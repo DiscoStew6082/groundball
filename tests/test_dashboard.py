@@ -103,6 +103,32 @@ class TestDashboardTabs:
         assert dependency["queue"] is False
         assert dependency["show_progress"] == "hidden"
 
+    def test_architecture_component_selection_is_not_queued(self):
+        """Clicking Architecture components should not start a queued progress timer."""
+        config = self.dash.get_config_file()
+        dependency = next(
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["api_name"] == "handle_js_select"
+        )
+
+        assert dependency["queue"] is False
+        assert dependency["show_progress"] == "hidden"
+
+    def test_architecture_tab_copy_does_not_mention_animation(self):
+        """Architecture copy describes latest traces without stale animation language."""
+        config = self.dash.get_config_file()
+        markdown_values = [
+            component.get("props", {}).get("value", "")
+            for component in config["components"]
+            if component["type"] == "markdown"
+        ]
+        architecture_copy = "\n".join(markdown_values)
+
+        assert "animate" not in architecture_copy.lower()
+        assert "chroma" not in architecture_copy.lower()
+        assert "corpus" not in architecture_copy.lower()
+
     def test_query_textbox_starts_with_clickable_default_question(self):
         """The first Ask click should run the visible default question."""
         config = self.dash.get_config_file()
