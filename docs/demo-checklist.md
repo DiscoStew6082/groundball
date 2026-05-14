@@ -10,10 +10,9 @@ uv run python -m baseball_rag.db.download
 uv run python -m evals.questions
 ```
 
-Optional, only when the corpus is ready:
+Optional UI:
 
 ```bash
-uv run python -m baseball_rag.corpus --static-only
 uv run python -m baseball_rag.web_app
 ```
 
@@ -32,8 +31,8 @@ uv run python -m baseball_rag.web_app
    - Point out that Python still assembles constrained, parameterized SQL.
 
 4. Ask: `who was Babe Ruth`
-   - If Chroma is indexed, show retrieved corpus documents.
-   - If not indexed, show the fail-closed warning instead of an ungrounded answer.
+   - Show that the player identity resolves through DuckDB first.
+   - Point out biography stat-claim verification rows and any warnings.
 
 5. Ask: `how many home runs did Williams have in 1941`
    - Show ambiguity handling.
@@ -41,7 +40,7 @@ uv run python -m baseball_rag.web_app
 
 6. Open `docs/eval-report.md`
    - Show safe deterministic eval counts.
-   - Mention that `--include-live` is intentionally separate because it may require Chroma, corpus, and LLM services.
+   - Mention that `--include-live` is intentionally separate because it may require LM Studio.
 
 ## Close
 

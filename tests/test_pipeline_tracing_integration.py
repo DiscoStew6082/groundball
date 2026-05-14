@@ -12,7 +12,7 @@ from baseball_rag.arch.tracing import finish_trace, start_trace, traced
 
 
 class TestEndToEndTracing:
-    """Full query path: cli → route → duckdb/retrieval → llm."""
+    """Full query path: cli -> route -> DuckDB/LLM."""
 
     def setup_method(self):
         # Ensure clean state before each test
@@ -48,16 +48,8 @@ class TestEndToEndTracing:
         assert trace is not None
         stages = trace.stages
         component_ids = [s.component_id for s in stages]
-        # LLM should be in the trace since corpus-grounding path uses it
+        # LLM should be in the trace for open/player-biography generation.
         assert "llm" in component_ids or len(stages) >= 2
-
-    def test_retrieve_standalone_is_not_traced(self, chroma_db_dir):
-        """Calling retrieve() without start_trace produces no active trace."""
-        from baseball_rag.retrieval.chroma_store import retrieve
-
-        # No start_trace — tracing should be a no-op
-        results = retrieve("babe ruth", top_k=2, persist_dir=chroma_db_dir)
-        assert isinstance(results, list)
 
     def test_finish_without_start_returns_none(self):
         """finish_trace() with no active trace returns None."""
@@ -76,7 +68,7 @@ class TestEndToEndTracing:
         trace = finish_trace(route_type="stat_query")
 
         assert trace is not None
-        # Stages should be ordered: cli first, then routing, then data/retrieval
+        # Stages should be ordered: cli first, then routing, then data/LLM work.
         component_ids = [s.component_id for s in trace.stages]
         if "cli" in component_ids:
             ci_idx = component_ids.index("cli")

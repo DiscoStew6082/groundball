@@ -94,7 +94,7 @@ def run_all_tests() -> _TestResult:
             "tests/test_router_player_detection.py",
             "tests/test_router_this_year.py",
         ],
-        "chroma-store": ["tests/test_chroma_store.py"],
+        "claim-verifier": ["tests/test_player_bio_query.py"],
         "duckdb": ["tests/test_queries.py"],
         "llm": ["tests/test_llm.py", "tests/test_generation.py"],
         "prompt": ["tests/test_prompts.py"],

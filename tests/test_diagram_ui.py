@@ -203,9 +203,9 @@ class TestStageDetailPanel:
 
     def test_detail_panel_shows_file_path(self):
         """Detail panel includes the component's file path."""
-        html = self.diagram._build_detail_html("chroma-store")
+        html = self.diagram._build_detail_html("claim-verifier")
         # File path appears somewhere in the detail HTML
-        comp = self.reg.get("chroma-store")
+        comp = self.reg.get("claim-verifier")
         assert comp is not None
         assert comp.file_path in html
 
@@ -217,11 +217,11 @@ class TestStageDetailPanel:
 
     def test_test_status_badge_shown_per_component(self):
         """Component with a test status shows a coloured badge in the panel."""
-        # Set FAIL on chroma-store via registry
-        self.reg.set_test_status("chroma-store", TestStatus.FAIL)
+        # Set FAIL on claim-verifier via registry
+        self.reg.set_test_status("claim-verifier", TestStatus.FAIL)
         diagram = ArchitectureDiagram(registry=self.reg, _test_mode=True)
 
-        html = diagram._build_detail_html("chroma-store")
+        html = diagram._build_detail_html("claim-verifier")
         assert "badge-fail" in html or "FAIL" in html
 
     def test_unknown_component_shows_error_message(self):
@@ -298,7 +298,7 @@ class TestAnimatePipelineFlow:
     @patch("gradio.Button.click", lambda self, **kwargs: None)
     def test_animate_trace_highlights_stages_sequentially(self):
         """animate_trace stores the trace and sets up stage highlighting state."""
-        trace = self._make_trace("cli", "query-router", "chroma-store")
+        trace = self._make_trace("cli", "query-router", "claim-verifier")
 
         result = self.diagram.animate_trace(trace)
 

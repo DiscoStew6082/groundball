@@ -19,8 +19,7 @@ class TestApi:
 
     def test_query_endpoint_returns_answer(self, caplog):
         """POST /query with JSON body returns {answer: str, sources: list}."""
-        # Note: This will call the real cli.answer(). If ChromaDB isn't indexed,
-        # it returns a fallback message — that's fine.
+        # Note: This calls the real answer path, so we check response structure.
         caplog.set_level("INFO", logger="baseball_rag.api.server")
 
         response = client.post("/query", json={"question": "who had the most RBIs in 1962"})
@@ -319,11 +318,39 @@ class TestApi:
         assert data["summary"]["recommendation"] in {"PASS", "WARN"}
         assert data["markdown"].startswith("# Baseball RAG Eval Report")
 
-    def test_evals_run_rejects_live_options_without_opt_in(self):
+    def test_evals_run_include_live_adds_llm_warning(self, monkeypatch):
+        monkeypatch.setattr(
+            "baseball_rag.api.server._run_eval_payload",
+            lambda *, include_live: {
+                "ok": True,
+                "mode": "answer",
+                "include_live": include_live,
+                "minimum_pass_rate": 0.85,
+                "summary": {"attempted": 0},
+                "results": {"passed": [], "failed": [], "skipped": []},
+                "failed": [],
+                "skipped": [],
+                "markdown": "# Baseball RAG Eval Report\n",
+                "warnings": [],
+            },
+        )
+
+        response = client.post("/evals/run", json={"include_live": True})
+
+        assert response.status_code == 200
+        assert "LM Studio" in response.json()["warnings"][0]
+
+    def test_evals_run_rejects_removed_retrieval_options(self, monkeypatch):
+        monkeypatch.setattr(
+            "baseball_rag.api.server._run_eval_payload",
+            lambda *, include_live: (_ for _ in ()).throw(
+                AssertionError("eval runner should not be called")
+            ),
+        )
+
         response = client.post("/evals/run", json={"retrieval_only": True})
 
-        assert response.status_code == 400
-        assert "include_live=true" in response.json()["detail"]
+        assert response.status_code == 422
 
     def test_evals_run_default_matches_ci_gate(self):
         response = client.post("/evals/run", json={})

@@ -79,7 +79,7 @@ class TestRunAllTestsFunction:
         assert result.failed == 0
 
         # Components mapped to test files should be marked PASS
-        for comp_id in ("cli", "query-router", "chroma-store", "duckdb", "llm"):
+        for comp_id in ("cli", "query-router", "claim-verifier", "duckdb", "llm"):
             comp = registry.get(comp_id)
             if comp is not None:
                 assert comp.test_status == TestStatus.PASS, f"{comp_id} should be PASS"
@@ -104,7 +104,7 @@ class TestRunAllTestsFunction:
         assert result.failed == 3
 
         # Components mapped to test files should be marked FAIL
-        for comp_id in ("cli", "query-router", "chroma-store"):
+        for comp_id in ("cli", "query-router", "claim-verifier"):
             comp = registry.get(comp_id)
             if comp is not None:
                 assert comp.test_status == TestStatus.FAIL, f"{comp_id} should be FAIL"

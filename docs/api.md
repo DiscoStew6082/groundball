@@ -131,7 +131,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 |-------|------|-------------|
 | `answer` | string | Full answer text (formatted list for stat queries, prose for general questions) |
 | `intent` | string | Router intent used to answer the question |
-| `sources` | array | DuckDB/Chroma evidence records used to ground the answer |
+| `sources` | array | DuckDB evidence or verification records used to ground the answer |
 | `warnings` | array | Non-fatal caveats, such as missing indexes or truncated results |
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
 | `review` | object/null | Human review queue hint for unsupported, ambiguous, or low-confidence answers |
@@ -142,13 +142,13 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 
 ### `GET /evals/report`
 
-Run the deterministic eval release gate and return JSON plus Markdown. The endpoint does not write report files and does not require Chroma, LM Studio, external LMs, or live services by default.
+Run the deterministic eval release gate and return JSON plus Markdown. The endpoint does not write report files and does not require LM Studio, external LMs, or live services by default.
 
 **Query parameters**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `include_live` | boolean | `false` | Include live/manual eval cases. This may require local Chroma/corpus/LM Studio services. |
+| `include_live` | boolean | `false` | Include live/manual eval cases. This may require local LM Studio services. |
 
 **Response**
 
@@ -180,16 +180,13 @@ Run the deterministic eval release gate and return JSON plus Markdown. The endpo
 
 Run evals with explicit options. An empty body `{}` runs the same deterministic release gate as `GET /evals/report`.
 
-Live/retrieval strategy options are rejected unless `include_live=true`; strategy-backed live eval execution remains a CLI-only path so CI and the API default are deterministic.
+`include_live=true` opts into cases that may require LM Studio. There are no retrieval strategy options.
 
 **Request**
 
 ```json
 {
-  "include_live": false,
-  "strategy": null,
-  "all_strategies": false,
-  "retrieval_only": false
+  "include_live": false
 }
 ```
 
@@ -198,14 +195,13 @@ Live/retrieval strategy options are rejected unless `include_live=true`; strateg
 | Status | Condition |
 |--------|-----------|
 | 200 OK | Deterministic eval run completed |
-| 400 Bad Request | Live/retrieval options were requested without `include_live=true`, or a CLI-only live strategy was requested |
 | 422 Unprocessable Entity | Invalid request body |
 
 ---
 
 ### `GET /guardrails/coverage`
 
-Return manifest-only guardrail coverage generated from `evals/questions.yaml`. This endpoint does not touch DuckDB, Chroma, LM Studio, or live services.
+Return manifest-only guardrail coverage generated from `evals/questions.yaml`. This endpoint does not touch DuckDB, LM Studio, or live services.
 
 **Response**
 
@@ -314,7 +310,7 @@ Return the complete local dataset provenance manifest.
 | Status | Condition |
 |--------|-----------|
 | 422 Unprocessable Entity | Missing or invalid request body |
-| 500 Internal Server Error | Unexpected DuckDB, ChromaDB, or server error |
+| 500 Internal Server Error | Unexpected DuckDB, LLM, or server error |
 
 ## Architecture Note
 
@@ -323,7 +319,8 @@ structured answer as text, while the API returns the full JSON payload:
 
 1. **Stat query** → DuckDB lookup with registered stat whitelist
 2. **Freeform query** → typed query spec → parameterized SQL → DuckDB
-3. **General question** → ChromaDB retrieval + LLM generation
+3. **Player biography** → DuckDB identity resolution + LLM JSON generation + DuckDB stat-claim verification
+4. **General question** → LLM open explanation
 
 This means API and CLI behave identically for the same input.
 

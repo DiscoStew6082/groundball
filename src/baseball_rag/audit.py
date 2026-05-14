@@ -124,7 +124,7 @@ def eval_category_for_question(question: str) -> dict[str, Any]:
     for case in load_cases():
         if _normalized_text(case.question) != normalized:
             continue
-        category = case.retrieval_category
+        category = case.intent
         if category is None and case.spec.get("expected_unsupported"):
             category = "unsupported"
         return {"matched": True, "case_id": case.id, "category": category}

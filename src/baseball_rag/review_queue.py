@@ -39,7 +39,8 @@ def build_review_item(
     low_confidence_threshold: float = 0.35,
 ) -> ReviewQueueItem | None:
     """Return a review item when an answer should be checked by a person."""
-    reason = _review_reason(answer, low_confidence_threshold=low_confidence_threshold)
+    _ = low_confidence_threshold
+    reason = _review_reason(answer)
     if reason is None:
         return None
 
@@ -168,11 +169,7 @@ def _same_open_snapshot(existing: ReviewQueueItem | None, item: ReviewQueueItem)
     )
 
 
-def _review_reason(
-    answer: StructuredAnswer,
-    *,
-    low_confidence_threshold: float,
-) -> ReviewReason | None:
+def _review_reason(answer: StructuredAnswer) -> ReviewReason | None:
     if answer.review_reason is not None:
         return answer.review_reason
     if answer.unsupported:
@@ -180,13 +177,6 @@ def _review_reason(
             return "ambiguous"
         return "unsupported"
 
-    chroma_scores = [
-        source.score
-        for source in answer.sources
-        if source.type == "chroma" and source.score is not None
-    ]
-    if chroma_scores and max(chroma_scores) < low_confidence_threshold:
-        return "low_confidence"
     return None
 
 

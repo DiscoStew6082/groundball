@@ -31,7 +31,7 @@ class TestRegistryTracksComponents:
             "cli",
             "api-server",
             "query-router",
-            "chroma-store",
+            "claim-verifier",
             "duckdb",
             "corpus-grounding",
             "llm",

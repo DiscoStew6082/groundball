@@ -27,57 +27,33 @@ To regenerate the manifest from already-downloaded CSVs:
 uv run python -m baseball_rag.db.download --manifest-only
 ```
 
-### Corpus / Chroma Index
+### Corpus Material
 
-ChromaDB is only the local vector search index. It should be treated as
-generated state, not source. The source corpus is the Markdown under
-`src/baseball_rag/corpus/`.
+ChromaDB indexing has been removed. Checked-in Markdown under
+`src/baseball_rag/corpus/` remains project material for docs/tests, but it is
+not runtime grounding for stat explanations or player biographies.
 
-Build the current curated index from checked-in Markdown only:
-
-```bash
-uv run python -m baseball_rag.corpus --static-only
-```
-
-Build the larger experimental index with generated player bios from DuckDB:
-
-```bash
-uv run python -m baseball_rag.corpus
-```
-
-For a full local rebuild from scratch:
+For a full local data rebuild from scratch:
 
 ```bash
 uv run python -m baseball_rag.db.download
-uv run python -m baseball_rag.corpus
 uv run python -m baseball_rag.corpus diagnostics --persist-dir data
 ```
 
-The diagnostics command reports the resolved `persist_dir`, whether the
-`baseball_corpus` collection exists, indexed document count, category/doc-kind
-counts, generated corpus manifest status/counts, and embedding environment/model
-hints. It is intentionally tolerant of missing or partial indexes, so it is safe
-to run while debugging an ingest failure:
+The diagnostics command reports checked-in corpus counts, old ignored manifest
+state when present, and runtime flags that no vector index is required:
 
 ```bash
 uv run python -m baseball_rag.corpus diagnostics --persist-dir data
-```
-
-For the retrieval-only benchmark slice, run Chroma-backed eval cases once per
-retrieval strategy:
-
-```bash
-uv run python -m evals.questions --all-strategies --retrieval-only
 ```
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LM_STUDIO_URL` | `http://localhost:1234/v1/chat/completions` | LLM endpoint for generation |
-| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | Embedding endpoint base URL |
-| `LMSTUDIO_EMBEDDING_MODEL` | `text-embedding-kalm-embedding-gemma3-12b-2511-i1` | Embedding model used for Chroma ingest/retrieval |
-| `CHROMA_PERSIST_DIR` | `data/` | Optional override for retrieval and diagnostics persist directory |
+| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | OpenAI-compatible LM Studio base URL |
+| `LMSTUDIO_MODEL` | `google/gemma-4-26b-a4b` | Model name sent to LM Studio |
+| `LMSTUDIO_TIMEOUT_SECONDS` | `20` | Request timeout for LM Studio calls |
 | `BASEBALL_RAG_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue |
 | `BASEBALL_RAG_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `0` disables it |
 
@@ -143,7 +119,8 @@ The CI release gate is deterministic-only:
 python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md --json-report eval-report.json --baseline evals/baseline.json
 ```
 
-This command skips cases that require LM Studio, Chroma, external LMs, or live model services. Live and Chroma-backed evals remain local/manual opt-ins via `--include-live`, `--strategy`, `--all-strategies`, or `--retrieval-only`.
+This command skips cases that require LM Studio or other live model services.
+Live LLM evals remain local/manual opt-ins via `--include-live`.
 
 The JSON report is compared to `evals/baseline.json`. Behavioral regressions block CI; dataset/model/prompt drift is reported as `WARN` so the baseline can be reviewed and refreshed deliberately.
 
@@ -154,7 +131,7 @@ CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporti
 The API exposes release and review surfaces for local demos:
 
 - `GET /evals/report` returns the deterministic eval gate summary and Markdown report without writing files.
-- `POST /evals/run` defaults to deterministic-only evals and rejects live/retrieval options unless `include_live=true`.
+- `POST /evals/run` defaults to deterministic-only evals. `include_live=true` opts into cases that may require LM Studio.
 - `GET /guardrails/coverage` returns manifest-only guardrail coverage from `evals/questions.yaml`.
 - `GET /review-queue` and `PATCH /review-queue/{item_id}` list, resolve, or dismiss API-created review items.
 
@@ -165,10 +142,10 @@ Only `/query` writes review queue items. CLI and Gradio calls do not persist rev
 - Package location: `src/baseball_rag/` (explicit package discovery via `[tool.hatch.build.targets.wheel]` in pyproject.toml)
 - Tests live in `tests/`, mirror source layout
 - DuckDB query tables are initialized lazily from downloaded CSVs.
-- ChromaDB indexes are generated local state and are wiped/rebuilt on every corpus build.
+- ChromaDB indexes are no longer generated or required.
 
 ## Adding a New Stat or Player
 
-1. Create the markdown file in `src/baseball_rag/corpus/stat_definitions/` or `src/baseball_rag/corpus/hof/`
-2. Rebuild: `uv run python -m baseball_rag.corpus --static-only`
-3. No other changes needed — routing, retrieval, and prompts all derive from frontmatter automatically
+1. Add or update registered structured stats in `src/baseball_rag/db/stat_registry.py`.
+2. Add focused tests for the public question-answering behavior.
+3. For biography verification, ensure the stat can be queried from DuckDB before asking the LLM to emit it as a supported claim.

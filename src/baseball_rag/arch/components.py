@@ -214,11 +214,11 @@ class ComponentRegistry:
         )
         self.register(
             DiagramComponent(
-                id="chroma-store",
-                label="Chroma Store",
-                description="Persistent vector store holding embedded baseball corpus chunks.",
+                id="claim-verifier",
+                label="Biography Claim Verifier",
+                description="DuckDB-backed verifier for extracted biography stat claims.",
                 layer=Layer.RETRIEVAL,
-                file_path="src/baseball_rag/retrieval/chroma_store.py",
+                file_path="src/baseball_rag/db/player_stat_claims.py",
             )
         )
         self.register(
@@ -238,8 +238,8 @@ class ComponentRegistry:
                 id="corpus-grounding",
                 label="Corpus Grounding",
                 description=(
-                    "Retrieved document chunks from the baseball markdown corpus "
-                    "used to ground LLM answers."
+                    "Checked-in markdown material retained for project documentation "
+                    "and tests, not runtime answer grounding."
                 ),
                 layer=Layer.DATA,
                 file_path="src/baseball_rag/corpus/__init__.py",

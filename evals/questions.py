@@ -16,19 +16,12 @@ from typing import Any, Callable
 import yaml  # type: ignore[import-untyped]
 
 from baseball_rag.provenance import StructuredAnswer
-from baseball_rag.retrieval.chroma_store import RetrievedChunk, retrieve
-from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
-from baseball_rag.retrieval.strategies import available_strategy_names, get_strategy
 
 AnswerFn = Callable[[str], StructuredAnswer]
-RouteFn = Callable[[str], Any]
-PlayerResolverFn = Callable[[str], Any]
 
 
 DEFAULT_QUESTIONS_PATH = Path(__file__).with_name("questions.yaml")
-LIVE_SOURCE_TYPES = {"chroma"}
 LIVE_INTENTS = {"player_biography", "general_explanation"}
-RETRIEVAL_CATEGORIES = {"player_biography", "general_explanation"}
 
 
 @dataclass(frozen=True)
@@ -52,20 +45,8 @@ class EvalCase:
     def ci_safe(self) -> bool:
         return bool(self.spec.get("ci_safe", False))
 
-    @property
-    def retrieval_category(self) -> str | None:
-        category = self.spec.get("retrieval_category") or self.intent
-        return str(category) if category is not None else None
-
-    @property
-    def player_name(self) -> str | None:
-        player_name = self.spec.get("player_name")
-        return str(player_name) if player_name is not None else None
-
     def requires_live_services(self) -> bool:
-        """Return True when the case is expected to need LLM or live Chroma."""
-        if self.required_sources & LIVE_SOURCE_TYPES:
-            return True
+        """Return True when the case is expected to need the local LLM."""
         return self.intent in LIVE_INTENTS
 
     def should_run(self, *, include_live: bool = False) -> bool:
@@ -80,16 +61,6 @@ class EvalCase:
             and not self.spec.get("expected_unsupported", False)
             and not self.requires_live_services()
         )
-
-    def is_retrieval_strategy_case(self) -> bool:
-        """Return True when retrieval strategy choice can affect this case."""
-        if bool(self.spec.get("expected_unsupported", False)):
-            return False
-        if self.retrieval_category in RETRIEVAL_CATEGORIES:
-            return True
-        if self.required_sources & LIVE_SOURCE_TYPES:
-            return True
-        return self.intent in {"player_biography", "general_explanation"}
 
 
 @dataclass
@@ -119,29 +90,6 @@ class EvalRunResult:
         return len(self.passed) + len(self.failed)
 
 
-@dataclass
-class StrategyRunResult:
-    """Aggregate outcomes keyed by retrieval strategy name."""
-
-    by_strategy: dict[str, EvalRunResult] = field(default_factory=dict)
-
-    @property
-    def ok(self) -> bool:
-        return all(result.ok for result in self.by_strategy.values())
-
-
-@dataclass
-class RetrievalCaseResult(EvalCaseResult):
-    """Outcome for one retrieval-only strategy/case attempt."""
-
-    strategy: str | None = None
-    category: str | None = None
-    route_intent: str | None = None
-    player_name: str | None = None
-    player_id: str | None = None
-    retrieved_count: int = 0
-
-
 @dataclass(frozen=True)
 class EvalReport:
     """Markdown report content for a CLI eval run."""
@@ -151,7 +99,6 @@ class EvalReport:
     include_live: bool
     minimum_pass_rate: float = 0.85
     result: EvalRunResult | None = None
-    strategy_results: dict[str, EvalRunResult] | None = None
     mode: str = "answer"
     baseline_comparison: "BaselineComparison | None" = None
 
@@ -191,11 +138,6 @@ def load_cases(path: Path = DEFAULT_QUESTIONS_PATH) -> list[EvalCase]:
 def selected_cases(cases: list[EvalCase], *, include_live: bool = False) -> list[EvalCase]:
     """Return cases runnable under the selected service constraints."""
     return [case for case in cases if case.should_run(include_live=include_live)]
-
-
-def selected_strategy_cases(cases: list[EvalCase]) -> list[EvalCase]:
-    """Return cases where retrieval strategy choice can affect the outcome."""
-    return [case for case in cases if case.is_retrieval_strategy_case()]
 
 
 def run_cases(
@@ -242,147 +184,6 @@ def run_cases(
     return result
 
 
-def run_strategy_cases(
-    cases: list[EvalCase],
-    *,
-    strategies: list[str] | None = None,
-    answer_factory: Callable[[str], AnswerFn] | None = None,
-    include_live: bool = False,
-) -> dict[str, EvalRunResult]:
-    """Run the same cases once per retrieval strategy."""
-    strategy_names = strategies or available_strategy_names()
-    strategy_cases = selected_strategy_cases(cases)
-    if answer_factory is None:
-
-        def answer_factory(strategy: str) -> AnswerFn:
-            from baseball_rag.service import answer as service_answer
-
-            def answer_with_strategy(question: str) -> StructuredAnswer:
-                return service_answer(question, retrieval_strategy=strategy)
-
-            return answer_with_strategy
-
-    result: dict[str, EvalRunResult] = {}
-    for strategy in strategy_names:
-        result[strategy] = run_cases(
-            strategy_cases,
-            answer_fn=answer_factory(strategy),
-            include_live=include_live,
-        )
-    return result
-
-
-def run_retrieval_strategy_cases(
-    cases: list[EvalCase],
-    *,
-    strategies: list[str] | None = None,
-    route_fn: RouteFn | None = None,
-    player_resolver_fn: PlayerResolverFn | None = None,
-    retrieve_fn: Callable[..., list[RetrievedChunk]] = retrieve,
-    persist_dir: Path | None = None,
-    top_k: int = 3,
-) -> dict[str, EvalRunResult]:
-    """Run retrieval-only evals once per strategy without service.answer or LLM answers."""
-    if route_fn is None:
-        from baseball_rag.routing import route as route_query
-
-        route_fn = route_query
-
-    result: dict[str, EvalRunResult] = {}
-    for strategy_name in strategies or available_strategy_names():
-        strategy = get_strategy(strategy_name, retrieve_fn=retrieve_fn)
-        run_result = EvalRunResult()
-        for case in selected_strategy_cases(cases):
-            try:
-                decision = _retrieval_decision_for_case(case, route_fn=route_fn)
-                category = _retrieval_category_for_case(case, decision)
-                player_name = getattr(decision, "player_name", None)
-                player_id = _resolve_player_id_for_retrieval_eval(
-                    decision,
-                    player_resolver_fn=player_resolver_fn,
-                )
-
-                if not strategy.is_applicable(category=category, player_id=player_id):
-                    run_result.skipped.append(
-                        RetrievalCaseResult(
-                            case_id=case.id,
-                            status="skipped",
-                            reason=_strategy_skip_reason(strategy.metadata, category, player_id),
-                            strategy=strategy.name,
-                            category=category,
-                            route_intent=getattr(decision, "intent", None),
-                            player_name=player_name,
-                            player_id=player_id,
-                        )
-                    )
-                    continue
-
-                chunks = retrieve_grounded_chunks(
-                    RetrievalRequest.from_routed_case(
-                        decision,
-                        question=case.question,
-                        top_k=top_k,
-                        persist_dir=persist_dir,
-                        player_id=player_id,
-                        retrieval_strategy=strategy,
-                    )
-                )
-                failures = validate_retrieved_chunks(case, chunks)
-                case_result = RetrievalCaseResult(
-                    case_id=case.id,
-                    status="failed" if failures else "passed",
-                    failures=failures,
-                    strategy=strategy.name,
-                    category=category,
-                    route_intent=getattr(decision, "intent", None),
-                    player_name=player_name,
-                    player_id=player_id,
-                    retrieved_count=len(chunks),
-                )
-            except Exception as exc:  # noqa: BLE001 - evals should report all case failures
-                case_result = RetrievalCaseResult(
-                    case_id=case.id,
-                    status="failed",
-                    failures=[f"{type(exc).__name__}: {exc}"],
-                    strategy=strategy.name,
-                )
-
-            if case_result.failures:
-                run_result.failed.append(case_result)
-            else:
-                run_result.passed.append(case_result)
-        result[strategy.name] = run_result
-    return result
-
-
-def format_strategy_summary(result: StrategyRunResult | dict[str, EvalRunResult]) -> str:
-    """Render a fixed-width strategy comparison table."""
-    by_strategy = result.by_strategy if isinstance(result, StrategyRunResult) else result
-    rows = [
-        (
-            strategy,
-            len(run_result.passed),
-            len(run_result.failed),
-            len(run_result.skipped),
-            sum(
-                getattr(case_result, "retrieved_count", 0)
-                for case_result in run_result.passed + run_result.failed
-            ),
-        )
-        for strategy, run_result in by_strategy.items()
-    ]
-    strategy_width = max([len("strategy"), *(len(row[0]) for row in rows)])
-    lines = [
-        f"{'strategy':<{strategy_width}}  {'passed':>6}  {'failed':>6}  "
-        f"{'skipped':>7}  {'chunks':>6}"
-    ]
-    for strategy, passed, failed, skipped, chunks in rows:
-        lines.append(
-            f"{strategy:<{strategy_width}}  {passed:>6}  {failed:>6}  {skipped:>7}  {chunks:>6}"
-        )
-    return "\n".join(lines)
-
-
 def format_eval_report(report: EvalReport) -> str:
     """Render a deterministic Markdown report for portfolio/demo use."""
     counts = _report_counts(report)
@@ -412,10 +213,7 @@ def format_eval_report(report: EvalReport) -> str:
         "",
     ]
     if report.include_live:
-        lines.append(
-            "- Live evals were included; `--include-live` may require Chroma, corpus, "
-            "and LLM services."
-        )
+        lines.append("- Live evals were included; `--include-live` may require LM Studio.")
     else:
         non_default_skipped = sum(
             1 for case in report.cases if not case.should_run(include_live=False)
@@ -428,8 +226,7 @@ def format_eval_report(report: EvalReport) -> str:
         lines.append(
             "- Deterministic/CI-safe mode was used; non-default cases were skipped. "
             f"{non_default_skipped} case(s) are available behind `--include-live`; "
-            f"{live_service_cases} skipped case(s) may require Chroma, corpus, "
-            "and LLM services."
+            f"{live_service_cases} skipped case(s) may require LM Studio."
         )
         live_examples = [
             case for case in report.cases if case.requires_live_services() and not case.ci_safe
@@ -457,29 +254,17 @@ def format_eval_report(report: EvalReport) -> str:
         if report.baseline_comparison.warnings:
             lines.extend(f"- Warning: {warning}" for warning in report.baseline_comparison.warnings)
 
-    failed_results: list[tuple[str | None, EvalCaseResult]]
-    if report.strategy_results is not None:
-        lines.extend(["", "## Strategy Summary", "", "```text"])
-        lines.append(format_strategy_summary(report.strategy_results))
-        lines.append("```")
-        failed_results = [
-            (strategy, case_result)
-            for strategy, result in report.strategy_results.items()
-            for case_result in result.failed
-        ]
-    else:
-        result = report.result
-        if result is None:
-            raise ValueError("EvalReport requires result or strategy_results")
-        failed_results = [(None, case_result) for case_result in result.failed]
+    result = report.result
+    if result is None:
+        raise ValueError("EvalReport requires result")
+    failed_results = result.failed
 
     lines.extend(["", "## Failed Cases", ""])
     if not failed_results:
         lines.append("- None")
     else:
-        for strategy, case_result in failed_results:
-            prefix = f"{strategy}/" if strategy is not None else ""
-            lines.append(f"- `{prefix}{case_result.case_id}`: {'; '.join(case_result.failures)}")
+        for case_result in failed_results:
+            lines.append(f"- `{case_result.case_id}`: {'; '.join(case_result.failures)}")
 
     return "\n".join(lines) + "\n"
 
@@ -749,114 +534,6 @@ def _row_value_matches(actual: Any, expected: Any) -> bool:
     return _normalized_text(str(actual)) == _normalized_text(str(expected))
 
 
-def validate_retrieved_chunks(case: EvalCase, chunks: list[RetrievedChunk]) -> list[str]:
-    """Validate YAML retrieval expectations against raw retrieved chunks."""
-    failures: list[str] = []
-    spec = case.spec
-
-    if "chroma" in case.required_sources and not chunks:
-        failures.append("retrieval returned no chunks")
-
-    combined_text = _normalized_text(
-        "\n".join(
-            " ".join(
-                str(value)
-                for value in (
-                    chunk.title,
-                    chunk.text,
-                    chunk.source,
-                    chunk.category,
-                    chunk.player_id,
-                    chunk.doc_kind,
-                )
-                if value
-            )
-            for chunk in chunks
-        )
-    )
-    needles = []
-    seen_needles = set()
-    for needle in list(spec.get("expected_retrieved_contains", []) or []) + list(
-        spec.get("expected_answer_contains", []) or []
-    ):
-        normalized_needle = _normalized_text(str(needle))
-        if normalized_needle in seen_needles:
-            continue
-        seen_needles.add(normalized_needle)
-        needles.append(needle)
-
-    for needle in needles:
-        if _normalized_text(str(needle)) not in combined_text:
-            failures.append(f"retrieved chunks missing substring {needle!r}")
-
-    for needle in spec.get("expected_retrieved_title_contains", []) or []:
-        if not any(
-            _normalized_text(str(needle)) in _normalized_text(chunk.title) for chunk in chunks
-        ):
-            failures.append(f"retrieved chunk titles missing substring {needle!r}")
-
-    expected_player_id = spec.get("expected_player_id")
-    if expected_player_id is not None and not any(
-        chunk.player_id == str(expected_player_id) for chunk in chunks
-    ):
-        failures.append(f"retrieved chunks missing player_id {expected_player_id!r}")
-
-    expected_doc_kind = spec.get("expected_doc_kind")
-    if expected_doc_kind is not None and not any(
-        chunk.doc_kind == str(expected_doc_kind) for chunk in chunks
-    ):
-        failures.append(f"retrieved chunks missing doc_kind {expected_doc_kind!r}")
-
-    return failures
-
-
-def _retrieval_category_for_case(case: EvalCase, decision: Any) -> str:
-    category = case.retrieval_category or getattr(decision, "intent", None)
-    if category is None:
-        return "general_explanation"
-    return str(category)
-
-
-def _retrieval_decision_for_case(case: EvalCase, *, route_fn: RouteFn) -> Any:
-    if case.intent is not None and case.retrieval_category is not None:
-        from types import SimpleNamespace
-
-        return SimpleNamespace(
-            intent=case.intent,
-            player_name=case.player_name,
-            raw_question=case.question,
-        )
-    return route_fn(case.question)
-
-
-def _resolve_player_id_for_retrieval_eval(
-    decision: Any,
-    *,
-    player_resolver_fn: PlayerResolverFn | None,
-) -> str | None:
-    if getattr(decision, "intent", None) != "player_biography":
-        return None
-    player_name = getattr(decision, "player_name", None)
-    if not player_name:
-        return None
-    if player_resolver_fn is None:
-        from baseball_rag.corpus.player_bios import resolve_player_by_name
-        from baseball_rag.db.duckdb_schema import get_duckdb
-
-        resolution = resolve_player_by_name(player_name, get_duckdb())
-    else:
-        resolution = player_resolver_fn(player_name)
-    return getattr(resolution, "player_id", None)
-
-
-def _strategy_skip_reason(metadata: Any, category: str, player_id: str | None) -> str:
-    if category not in metadata.categories:
-        return f"strategy does not apply to {category!r}"
-    if metadata.requires_player_id and not player_id:
-        return "strategy requires a resolved player_id"
-    return "strategy not applicable"
-
-
 def _row_count(answer: StructuredAnswer) -> int:
     return sum(len(source.rows) for source in answer.sources)
 
@@ -873,11 +550,11 @@ def _coverage_examples(cases: list[EvalCase]) -> list[str]:
     labels = {
         "stat_query": "stat query",
         "freeform_query": "freeform SQL query",
-        "player_biography": "player biography retrieval",
-        "general_explanation": "baseball explanation retrieval",
+        "player_biography": "LLM player biography",
+        "general_explanation": "LLM open explanation",
     }
     for case in cases:
-        key = case.retrieval_category or case.intent
+        key = case.intent
         if key is None and case.spec.get("expected_unsupported", False):
             key = "unsupported"
         if key is None or key in seen:
@@ -908,7 +585,7 @@ def _risk_category_lines(cases: list[EvalCase]) -> list[str]:
             or case.spec.get("required_source_manifest_fields")
             or case.spec.get("expected_sql_visible")
         ),
-        "Live retrieval/LLM optional": sum(1 for case in cases if case.requires_live_services()),
+        "Live LLM optional": sum(1 for case in cases if case.requires_live_services()),
     }
     return [f"- {name}: {count} case(s)" for name, count in categories.items()]
 
@@ -987,18 +664,12 @@ def _case_payloads(cases: list[EvalCase]) -> list[dict[str, Any]]:
 
 
 def _report_counts(report: EvalReport) -> dict[str, Any]:
-    if report.strategy_results is None:
-        if report.result is None:
-            raise ValueError("EvalReport requires result or strategy_results")
-        passed = len(report.result.passed)
-        failed = len(report.result.failed)
-        skipped = len(report.result.skipped)
-        attempted = report.result.attempted
-    else:
-        passed = sum(len(result.passed) for result in report.strategy_results.values())
-        failed = sum(len(result.failed) for result in report.strategy_results.values())
-        skipped = sum(len(result.skipped) for result in report.strategy_results.values())
-        attempted = passed + failed
+    if report.result is None:
+        raise ValueError("EvalReport requires result")
+    passed = len(report.result.passed)
+    failed = len(report.result.failed)
+    skipped = len(report.result.skipped)
+    attempted = report.result.attempted
     pass_rate = passed / attempted if attempted else 0.0
     return {
         "attempted": attempted,
@@ -1010,20 +681,12 @@ def _report_counts(report: EvalReport) -> dict[str, Any]:
 
 
 def _artifact_case_results(report: EvalReport) -> list[dict[str, Any]]:
-    if report.strategy_results is None:
-        if report.result is None:
-            raise ValueError("EvalReport requires result or strategy_results")
-        return [
-            _case_result_payload(case_result)
-            for case_result in report.result.passed + report.result.failed + report.result.skipped
-        ]
-    payloads: list[dict[str, Any]] = []
-    for strategy, result in report.strategy_results.items():
-        for case_result in result.passed + result.failed + result.skipped:
-            payload = _case_result_payload(case_result)
-            payload["strategy"] = strategy
-            payloads.append(payload)
-    return payloads
+    if report.result is None:
+        raise ValueError("EvalReport requires result")
+    return [
+        _case_result_payload(case_result)
+        for case_result in report.result.passed + report.result.failed + report.result.skipped
+    ]
 
 
 def _case_result_payload(case_result: EvalCaseResult) -> dict[str, Any]:
@@ -1145,22 +808,6 @@ def _result_release_gate_ok(result: EvalRunResult, *, minimum_pass_rate: float) 
     )
 
 
-def _strategy_release_gate_ok(
-    results: dict[str, EvalRunResult],
-    *,
-    minimum_pass_rate: float,
-) -> bool:
-    passed = sum(len(result.passed) for result in results.values())
-    failed = sum(len(result.failed) for result in results.values())
-    attempted = passed + failed
-    return _release_gate_ok(
-        passed=passed,
-        failed=failed,
-        attempted=attempted,
-        minimum_pass_rate=minimum_pass_rate,
-    )
-
-
 def _command_for_report(argv: list[str] | None) -> str:
     args = sys.argv[1:] if argv is None else argv
     return " ".join(["python", "-m", "evals.questions", *args])
@@ -1190,7 +837,6 @@ def _apply_baseline_and_write_reports(
             include_live=report.include_live,
             minimum_pass_rate=report.minimum_pass_rate,
             result=report.result,
-            strategy_results=report.strategy_results,
             mode=report.mode,
             baseline_comparison=comparison,
         )
@@ -1221,23 +867,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--include-live",
         action="store_true",
-        help="also run cases that may require LLM or Chroma services",
-    )
-    parser.add_argument(
-        "--strategy",
-        choices=available_strategy_names(),
-        default=None,
-        help="run Chroma-backed evals with one retrieval strategy",
-    )
-    parser.add_argument(
-        "--all-strategies",
-        action="store_true",
-        help="run evals once for each retrieval strategy and print a comparison table",
-    )
-    parser.add_argument(
-        "--retrieval-only",
-        action="store_true",
-        help="benchmark retrieval strategies using retrieved chunks only; no answer generation",
+        help="also run cases that may require LM Studio",
     )
     parser.add_argument(
         "--report",
@@ -1270,82 +900,7 @@ def main(argv: list[str] | None = None) -> int:
     command = _command_for_report(argv)
     if args.guardrail_report:
         write_guardrail_report(args.guardrail_report, cases)
-    if args.all_strategies:
-        if args.retrieval_only:
-            strategy_result = StrategyRunResult(run_retrieval_strategy_cases(cases))
-            print(format_strategy_summary(strategy_result))
-            for strategy, result in strategy_result.by_strategy.items():
-                for failed in result.failed:
-                    print(f"- {strategy}/{failed.case_id}: " + "; ".join(failed.failures))
-            report, _artifact = _apply_baseline_and_write_reports(
-                EvalReport(
-                    command=command,
-                    cases=cases,
-                    include_live=args.include_live,
-                    minimum_pass_rate=minimum_pass_rate,
-                    strategy_results=strategy_result.by_strategy,
-                    mode="retrieval-only all-strategies",
-                ),
-                markdown_path=args.report,
-                json_path=args.json_report,
-                baseline_path=args.baseline,
-            )
-            return _report_exit_code(report)
-
-        strategy_result = StrategyRunResult(
-            run_strategy_cases(cases, include_live=args.include_live)
-        )
-        print(format_strategy_summary(strategy_result))
-        for strategy, result in strategy_result.by_strategy.items():
-            for failed in result.failed:
-                print(f"- {strategy}/{failed.case_id}: " + "; ".join(failed.failures))
-        report, _artifact = _apply_baseline_and_write_reports(
-            EvalReport(
-                command=command,
-                cases=cases,
-                include_live=args.include_live,
-                minimum_pass_rate=minimum_pass_rate,
-                strategy_results=strategy_result.by_strategy,
-                mode="answer all-strategies",
-            ),
-            markdown_path=args.report,
-            json_path=args.json_report,
-            baseline_path=args.baseline,
-        )
-        return _report_exit_code(report)
-
-    answer_fn: AnswerFn | None = None
-    if args.strategy:
-        if args.retrieval_only:
-            strategy_result = StrategyRunResult(
-                run_retrieval_strategy_cases(cases, strategies=[args.strategy])
-            )
-            print(format_strategy_summary(strategy_result))
-            for failed in strategy_result.by_strategy[args.strategy].failed:
-                print(f"- {args.strategy}/{failed.case_id}: " + "; ".join(failed.failures))
-            report, _artifact = _apply_baseline_and_write_reports(
-                EvalReport(
-                    command=command,
-                    cases=cases,
-                    include_live=args.include_live,
-                    minimum_pass_rate=minimum_pass_rate,
-                    strategy_results=strategy_result.by_strategy,
-                    mode=f"retrieval-only strategy {args.strategy}",
-                ),
-                markdown_path=args.report,
-                json_path=args.json_report,
-                baseline_path=args.baseline,
-            )
-            return _report_exit_code(report)
-
-        from baseball_rag.service import answer as service_answer
-
-        def answer_with_strategy(question: str) -> StructuredAnswer:
-            return service_answer(question, retrieval_strategy=args.strategy)
-
-        answer_fn = answer_with_strategy
-
-    result = run_cases(cases, answer_fn=answer_fn, include_live=args.include_live)
+    result = run_cases(cases, include_live=args.include_live)
     print(
         f"evals: {len(result.passed)} passed, {len(result.failed)} failed, "
         f"{len(result.skipped)} skipped"

@@ -84,7 +84,7 @@ class TestComponentRegistrySingleton:
             "cli",
             "api-server",
             "query-router",
-            "chroma-store",
+            "claim-verifier",
             "duckdb",
             "corpus-grounding",
             "llm",
@@ -95,7 +95,7 @@ class TestComponentRegistrySingleton:
     def test_components_cover_required_modules(self):
         reg = get_registry()
         ids = {c.id for c in reg.all()}
-        required = ["cli", "query-router", "chroma-store", "duckdb", "llm"]
+        required = ["cli", "query-router", "claim-verifier", "duckdb", "llm"]
         assert all(r in ids for r in required)
 
 
@@ -177,11 +177,11 @@ class TestTestStatusFromLatestRun:
     def test_component_display_includes_status_indicator(self):
         """A component with a FAIL status shows the fail indicator."""
         comp = DiagramComponent(
-            id="chroma-store",
-            label="Chroma Store",
-            description="Vector store.",
+            id="claim-verifier",
+            label="Biography Claim Verifier",
+            description="Verifies extracted stat claims.",
             layer=Layer.RETRIEVAL,
-            file_path="src/baseball_rag/retrieval/chroma_store.py",
+            file_path="src/baseball_rag/db/player_stat_claims.py",
             test_status=TestStatus.FAIL,
         )
         assert "❌" in comp.status_indicator()

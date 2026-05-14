@@ -148,7 +148,7 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
             raw_question=question,
         )
 
-    def fake_player_answer(question, decision, *, retrieval_strategy=None):
+    def fake_player_answer(question, decision):
         assert question == "tell me about Hank Aaron"
         assert decision.raw_question == "tell me about Hank Aaron"
         return StructuredAnswer(answer="Hank Aaron biography", intent="player_biography")

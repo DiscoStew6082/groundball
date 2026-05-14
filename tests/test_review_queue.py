@@ -1,6 +1,6 @@
 """Tests for human-in-the-loop review queue helpers."""
 
-from baseball_rag.provenance import SourceRecord, StructuredAnswer
+from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.review_queue import (
     build_review_item,
     list_review_items,
@@ -72,19 +72,6 @@ def test_build_review_item_uses_structured_reason_without_sniffing_prose():
 
     assert item is not None
     assert item.reason == "ambiguous"
-
-
-def test_build_review_item_detects_low_confidence_chroma_source():
-    answer = StructuredAnswer(
-        answer="Possibly relevant context.",
-        intent="general_explanation",
-        sources=[SourceRecord(type="chroma", label="OPS", score=0.2)],
-    )
-
-    item = build_review_item("what is ops", answer, low_confidence_threshold=0.4)
-
-    assert item is not None
-    assert item.reason == "low_confidence"
 
 
 def test_review_payload_and_jsonl_round_trip(tmp_path):

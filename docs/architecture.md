@@ -2,123 +2,61 @@
 
 ## System Overview
 
-Baseball RAG is organized as a clean architecture with four distinct layers:
+Baseball RAG is organized around a small shared answer service used by the CLI, API, and Gradio UI.
 
+```text
+Question
+  |
+  v
+Request dispatcher
+  |-- stat_query ------> registered stat SQL -> DuckDB
+  |-- freeform_query --> typed query spec -> parameterized SQL -> DuckDB
+  |-- player_bio ------> DuckDB identity -> LLM JSON -> DuckDB claim verification
+  |-- explanation -----> LLM open explanation
+  |
+  v
+StructuredAnswer(answer, intent, sources, warnings, unsupported)
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        API / CLI                            │
-├─────────────────────────────────────────────────────────────┤
-│                      Generation Layer                       │
-│         (LLM prompting, answer synthesis)                   │
-├─────────────────────────────────────────────────────────────┤
-│  Retrieval Layer          │       Routing Layer             │
-│   (ChromaDB vector        │    (Query classification)       │
-│    semantic search)       │                                 │
-├─────────────────────────────────────────────────────────────┤
-│                     Data Layer                              │
-│   ┌──────────────┐    ┌──────────────────────────────────┐  │
-│   │ Corpus Docs  │    │     DuckDB / Lahman SQLite       │  │
-│   │ (Markdown)   │    │     (Structured baseball data)   │  │
-│   └──────────────┘    └──────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## The RAG Pipeline
-
-When a user asks a question, the system:
-
-1. **Classify** — Router determines if this is a `stat_query` or `general_explanation`
-2. **Retrieve** — ChromaDB semantic search finds relevant corpus documents
-3. **Generate** — LLM produces an answer grounded in the retrieved context
-
-## Corpus Integration
-
-The corpus is the knowledge foundation for the RAG system. It lives in `src/baseball_rag/corpus/`.
-
-### Document Format
-
-Each document is a Markdown file with YAML frontmatter:
-
-```markdown
----
-title: Home Runs (HR)
-category: stat_definition
-tags:
-  - hitting
-  - power
----
-
-A home run occurs when a batter hits the ball over the outfield fence...
-```
-
-The `frontmatter.py` parser (`parse_frontmatter()`) extracts metadata and body separately. During ingestion:
-
-1. **`title`** becomes the document's display name (used in citations like `[Source: HR.md]`)
-2. **`category`** is stored as ChromaDB metadata for filtering/query routing
-3. **`body`** is combined with title for embedding: `"{title}\n\n{body}"`
-
-### Ingestion (`corpus/ingest.py`)
-
-```python
-def build_index(persist_dir: Path) -> None:
-    # 1. Wipes existing "baseball_corpus" collection (reproducibility)
-    # 2. Creates new collection with description metadata
-    # 3. Reads all stat_definitions/*.md and hof/*.md files
-    # 4. Parses frontmatter, formats text for embedding
-    # 5. Batch-adds to ChromaDB with id=filename stem (e.g., "Babe_Ruth")
-```
-
-The resulting ChromaDB collection holds **15 documents**:
-- 10 stat definitions: AVG, BB, 2B, ERA, HR, OPS, PO, RBI, SB, WHIP
-- 5 HOF biographies: Babe Ruth, Willie Mays, Hank Aaron, Mickey Mantle, Ted Williams
-
-### Retrieval (`retrieval/chroma_store.py`)
-
-At query time, the user's question is embedded and cosine similarity search finds the top-k most relevant documents. These are passed to the prompt layer.
-
-### Prompt Grounding (`generation/prompt.py`)
-
-Two templates control how context is used:
-
-| Template | Used For | Key Instruction |
-|----------|----------|-----------------|
-| `STAT_QUERY_TEMPLATE` | Stat queries (e.g., "most RBIs in 1962") | State player, team, value; explain the stat; cite sources |
-| `GENERAL_EXPLANATION_TEMPLATE` | Player bios / general questions | Give thorough explanation; ground every claim with a citation |
-
-Both templates instruct the LLM to cite documents explicitly: `[Source: HR.md]`.
 
 ## Data Layer
 
-### DuckDB + Lahman Schema (`db/`)
+Structured MLB statistics live in a DuckDB database built from the Lahman-derived `NeuML/baseballdata` dataset. The main tables are:
 
-Structured MLB statistics live in a DuckDB database built from Sean Lahman's baseball databank. Key tables:
+- `batting` - per-season batting stats
+- `pitching` - per-season pitching stats
+- `fielding` - per-season fielding stats
+- `people` - player identity and career date metadata
 
-- `batting` — per-season player stats (HR, RBI, AVG, OPS, etc.)
-- `people` — player names, birth dates, Hall of Fame status
+`src/baseball_rag/db/stat_registry.py` owns the supported stat whitelist and SQL aggregate expressions. DuckDB sources include compact data-manifest provenance with dataset name, license, row counts, checksums, and structured year coverage.
 
-Queries join these with corpus knowledge to answer questions like "who had the most RBIs in 1962".
+## Routing
 
-### Corpus Documents (`corpus/`)
+`routing/query_router.py` classifies natural language into typed intents:
 
-Pure domain knowledge for RAG grounding. Not used for structured queries.
+- `stat_query` for leaderboard and single-player stat questions
+- `freeform_query` for supported database templates
+- `player_biography` for player biography requests
+- `general_explanation` for open baseball/stat explanation questions
 
-## Routing (`routing/query_router.py`)
+Ambiguous or unsupported requests fail closed instead of falling through to ungrounded prose.
 
-A lightweight classifier (LLM-based or heuristic) splits queries:
+## Player Biographies
 
-- **stat_query** → DuckDB lookup + corpus stat definition context
-- **general_explanation** → ChromaDB retrieval + HOF bio context
+Player biographies are generated by the local LLM, not retrieved from stored corpus chunks.
 
-This determines which prompt template and data sources are used.
+1. The requested player name resolves through DuckDB first.
+2. Ambiguous or unresolved names return the existing unsupported/ambiguous outcome shape before any LLM call.
+3. The LLM receives a JSON contract requiring `answer` and `stat_claims`.
+4. Supported career and season stat claims are verified against DuckDB.
+5. The answer is returned even when verification fails, with structured warnings and a visible note.
+6. If LM Studio is unavailable or returns invalid JSON, the route returns `llm_unavailable`.
 
-## Extending the Corpus
+## General Explanations
 
-To add a new stat definition:
-1. Create `src/baseball_rag/corpus/stat_definitions/{STAT_NAME}.md`
-2. Include frontmatter with `title`, `category: stat_definition`, and `tags`
-3. Rebuild the index: `uv run python -m baseball_rag.corpus.ingest`
+Stat explanation questions such as "what is OPS?" are open LLM answers. They do not read Markdown corpus files or a vector index at runtime.
 
-To add a player bio:
-1. Create `src/baseball_rag/corpus/hof/{Player_Name}.md`
-2. Include frontmatter with `title` and `category: hof_bio`
-3. Rebuild the index as above
+## Corpus Material
+
+Markdown files under `src/baseball_rag/corpus/` remain useful project material for docs and tests. ChromaDB indexing and Chroma-backed retrieval were removed because the index duplicated generated facts and created fragile local state.
+
+The retired ingest command now exits with an explanatory error; diagnostics report checked-in corpus counts and old ignored manifest state only.

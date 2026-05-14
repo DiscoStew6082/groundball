@@ -1,6 +1,6 @@
 # Five-Minute AI Governance Demo
 
-This walkthrough shows Baseball RAG as an eval-gated, audit-ready AI assistant rather than a generic chatbot. It uses deterministic commands by default, so it does not require LM Studio, Chroma, external LMs, or live services.
+This walkthrough shows Baseball RAG as an eval-gated, audit-ready AI assistant rather than a generic chatbot. It uses deterministic commands by default, so it does not require LM Studio, external LMs, or live services.
 
 ## 1. Run The Deterministic Release Gate
 
@@ -24,7 +24,7 @@ Show:
 - [docs/eval-report.json](eval-report.json): machine-readable artifact for CI and baseline review.
 - [docs/guardrail-coverage.md](guardrail-coverage.md): unsupported-case, SQL safety, and provenance coverage.
 
-Talking point: skipped cases are intentional. CI gates only deterministic cases; live Chroma/LLM/retrieval evals stay manual opt-ins.
+Talking point: skipped cases are intentional. CI gates only deterministic cases; live LLM evals stay manual opt-ins.
 
 ## 2. Confirm CI-Safe Quality Checks
 
@@ -48,12 +48,12 @@ curl -s http://127.0.0.1:8000/evals/report | jq '.summary'
 curl -s http://127.0.0.1:8000/guardrails/coverage | jq '.summary'
 ```
 
-Show the default rejection of live/retrieval eval options:
+Show the explicit live eval opt-in:
 
 ```bash
 curl -s http://127.0.0.1:8000/evals/run \
   -H 'content-type: application/json' \
-  -d '{"retrieval_only": true}' | jq
+  -d '{"include_live": true}' | jq '.warnings'
 ```
 
 Talking point: non-deterministic eval modes are explicit opt-ins, not accidental CI dependencies.

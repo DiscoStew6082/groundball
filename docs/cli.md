@@ -2,7 +2,7 @@
 
 ## `baseball-rag`
 
-Single command for ad-hoc queries against the grounded answer pipeline.
+Single command for ad-hoc queries against the shared answer pipeline.
 
 ### Usage
 
@@ -10,50 +10,50 @@ Single command for ad-hoc queries against the grounded answer pipeline.
 uv run python -m baseball_rag.cli "your question here"
 ```
 
-Or via the installed entry point (if configured):
+Or via the installed entry point:
 
 ```bash
 baseball-rag "who was Babe Ruth"
 ```
 
-### Arguments
-
-All positional arguments after the script name are joined into a single question string. There are no flags — everything is expressed as natural language.
-
 ### Examples
 
 ```bash
-# Stat query with year filter → DuckDB lookup
+# Stat query with year filter -> DuckDB lookup
 uv run python -m baseball_rag.cli "who had the most RBIs in 1962"
 
-# Career stat leaders → DuckDB lookup (no year)
+# Career stat leaders -> DuckDB lookup
 uv run python -m baseball_rag.cli "career home run leaders"
 
-# Player bio / general question → ChromaDB retrieval + LLM generation
+# Player biography -> DuckDB identity + LLM JSON + DuckDB claim verification
 uv run python -m baseball_rag.cli "who was Babe Ruth"
+
+# General stat explanation -> direct LLM answer
 uv run python -m baseball_rag.cli "what is OPS"
 ```
 
 ### How It Works
 
-```
+```text
 answer(question)
-  │
-  ├─▶ service.answer(question)        # Shared structured answer service
-  │
-  ├─▶ route(question)                 # Classify query intent
-  │
-  ├─▶ [stat_query]
-  │     init_db()
-  │     get_stat_leaders_range(...)    # DuckDB query -> top 10 leaders
-  │       — or —
-  │     get_career_stat_leaders(...)   # All-time career leaders
-  │
-  └─▶ [general_explanation]
-        retrieve(question, top_k=3)    # ChromaDB semantic search
-        build_explanation_prompt()      # Format with context docs
-        make_request(prompt)            # LLM (Gemma via LM Studio)
-        render_text(...)                # CLI-only text rendering
+  |
+  +-- service.answer(question)
+      |
+      +-- route(question)
+          |
+          +-- stat_query
+          |   +-- registered stat SQL -> DuckDB
+          |
+          +-- freeform_query
+          |   +-- typed query spec -> parameterized SQL -> DuckDB
+          |
+          +-- player_biography
+          |   +-- resolve player in DuckDB
+          |   +-- request structured biography JSON from LM Studio
+          |   +-- verify extracted stat claims in DuckDB
+          |
+          +-- general_explanation
+              +-- request open explanation from LM Studio
 ```
 
 ### Error Handling
@@ -62,27 +62,10 @@ answer(question)
 |-----------|----------|
 | No year in query | Returns career leaders instead of season leaders |
 | Player-specific stat not found | Returns a no-result message instead of switching to league leaders |
-| Corpus not indexed | Returns: `No corpus indexed yet - run: uv run python -m baseball_rag.corpus.ingest` |
-| Corpus index embedding mismatch | Returns a rebuild-index message |
-| LM Studio offline | Falls back to printing retrieved document text (no LLM call) |
+| Ambiguous biography name | Fails closed before calling the LLM |
+| Unresolved biography name | Returns `no_data` before calling the LLM |
+| Contradicted biography stat claim | Returns the biography plus structured warnings and a visible note |
+| LM Studio offline for open prose | Returns `llm_unavailable`; no DuckDB biography fallback is synthesized |
 | DuckDB uninitialized | Auto-initializes on first stat query via `init_db()` |
 
-The CLI intentionally does not ask the model to answer from pretraining when no
-grounding evidence is available.
-
-### Help Text
-
-```bash
-uv run python -m baseball_rag.cli --help
-```
-
-Prints:
-
-```
-Baseball RAG Query Engine
-Usage: baseball-rag 'your question'
-
-Examples:
-  baseball-rag 'who had the most RBIs in 1962'
-  baseball-rag 'career home run leaders'
-```
+The CLI intentionally does not ask the model to invent structured facts when grounded database evidence is required.
