@@ -46,6 +46,36 @@ _BATTING_SO_TERMS = (
     "batting strikeout",
     "batting strikeouts",
 )
+_RETROSHEET_COLUMNS: dict[StatTable, dict[str, tuple[str, ...]]] = {
+    "batting": {
+        "HR": ("b_hr", "HR"),
+        "RBI": ("b_rbi", "RBI"),
+        "H": ("b_h", "H"),
+        "AB": ("b_ab", "AB"),
+        "R": ("b_r", "R"),
+        "2B": ("b_d", "2B"),
+        "3B": ("b_t", "3B"),
+        "SB": ("b_sb", "SB"),
+        "BB": ("b_w", "BB"),
+        "SO": ("b_k", "SO"),
+        "HBP": ("b_hbp", "HBP"),
+        "SF": ("b_sf", "SF"),
+    },
+    "pitching": {
+        "W": ("wp", "W"),
+        "L": ("lp", "L"),
+        "GS": ("gs", "GS"),
+        "SV": ("save", "SV"),
+        "IPOUTS": ("p_ipouts", "IPouts"),
+        "H": ("p_h", "H"),
+        "ER": ("p_er", "ER"),
+        "BB": ("p_w", "BB"),
+        "SO": ("p_k", "SO"),
+    },
+    "fielding": {
+        "PO": ("d_po", "PO"),
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -522,12 +552,22 @@ def _lookup_retrosheet_stat(
     player_column = _first_existing_column(
         conn,
         table,
-        ("retroID", "retro_id", "retrosheet_id", "player_id", "batter", "pitcher", "fielder"),
+        (
+            "retroID",
+            "retro_id",
+            "retrosheet_id",
+            "player_id",
+            "id",
+            "ID",
+            "batter",
+            "pitcher",
+            "fielder",
+        ),
     )
     if player_column is None:
         return None, None, [], table, f"Retrosheet table {table} has no player id column."
 
-    year_column = _first_existing_column(conn, table, ("yearID", "year_id", "season", "year"))
+    year_expr = _retrosheet_year_expression(conn, table, alias)
     expr = _retrosheet_aggregate_expression(conn, table, alias, stat_def)
     if expr is None:
         return (
@@ -543,6 +583,7 @@ def _lookup_retrosheet_stat(
     if sample_clause:
         having_parts.append(sample_clause)
     having_clause = " AND ".join(having_parts)
+    filter_clause = _retrosheet_filter_clause(conn, table, alias)
 
     if claim.resolved_scope == "season":
         if claim.year is None:
@@ -553,14 +594,15 @@ def _lookup_retrosheet_stat(
                 table,
                 None,
             )
-        if year_column is None:
+        if year_expr is None:
             return None, None, [], table, f"Retrosheet table {table} has no season column."
         sql = f"""
         SELECT {expr} AS stat_value
         FROM {table} {alias}
         WHERE {alias}.{player_column} = ?
-          AND {alias}.{year_column} = ?
-        GROUP BY {alias}.{player_column}, {alias}.{year_column}
+          AND {year_expr} = ?
+          {filter_clause}
+        GROUP BY {alias}.{player_column}, {year_expr}
         HAVING {having_clause}
         """
         params: list[object] = [retro_id, claim.year]
@@ -569,6 +611,7 @@ def _lookup_retrosheet_stat(
         SELECT {expr} AS stat_value
         FROM {table} {alias}
         WHERE {alias}.{player_column} = ?
+          {filter_clause}
         HAVING {having_clause}
         """
         params = [retro_id]
@@ -582,44 +625,80 @@ def _retrosheet_aggregate_expression(
     stat_def: StatDefinition,
 ) -> str | None:
     stat = stat_def.canonical
-    columns = _table_columns(conn, table)
 
     if stat == "AVG":
-        if {"h", "ab"}.issubset(columns):
-            return f"CAST(SUM({alias}.H) AS DOUBLE) / NULLIF(SUM({alias}.AB), 0)"
+        hit_column = _retrosheet_stat_column(conn, table, stat_def.table, "H")
+        at_bat_column = _retrosheet_stat_column(conn, table, stat_def.table, "AB")
+        if hit_column and at_bat_column:
+            return (
+                f"CAST(SUM({alias}.{hit_column}) AS DOUBLE) / "
+                f"NULLIF(SUM({alias}.{at_bat_column}), 0)"
+            )
         return None
     if stat == "OPS":
-        required = {"h", "bb", "hbp", "ab", "sf", "2b", "3b", "hr"}
-        if required.issubset(columns):
+        hit_column = _retrosheet_stat_column(conn, table, stat_def.table, "H")
+        walk_column = _retrosheet_stat_column(conn, table, stat_def.table, "BB")
+        hbp_column = _retrosheet_stat_column(conn, table, stat_def.table, "HBP")
+        at_bat_column = _retrosheet_stat_column(conn, table, stat_def.table, "AB")
+        sf_column = _retrosheet_stat_column(conn, table, stat_def.table, "SF")
+        double_column = _retrosheet_stat_column(conn, table, stat_def.table, "2B")
+        triple_column = _retrosheet_stat_column(conn, table, stat_def.table, "3B")
+        hr_column = _retrosheet_stat_column(conn, table, stat_def.table, "HR")
+        if all(
+            (
+                hit_column,
+                walk_column,
+                hbp_column,
+                at_bat_column,
+                sf_column,
+                double_column,
+                triple_column,
+                hr_column,
+            )
+        ):
             return (
-                f"(CAST(SUM(COALESCE({alias}.H, 0) + COALESCE({alias}.BB, 0) + "
-                f"COALESCE({alias}.HBP, 0)) AS DOUBLE) / "
-                f"NULLIF(SUM(COALESCE({alias}.AB, 0) + COALESCE({alias}.BB, 0) + "
-                f"COALESCE({alias}.HBP, 0) + COALESCE({alias}.SF, 0)), 0)) + "
-                f'(CAST(SUM((COALESCE({alias}.H, 0) - COALESCE({alias}."2B", 0) - '
-                f'COALESCE({alias}."3B", 0) - COALESCE({alias}.HR, 0)) + '
-                f'2 * COALESCE({alias}."2B", 0) + 3 * COALESCE({alias}."3B", 0) + '
-                f"4 * COALESCE({alias}.HR, 0)) AS DOUBLE) / "
-                f"NULLIF(SUM({alias}.AB), 0))"
+                f"(CAST(SUM(COALESCE({alias}.{hit_column}, 0) + "
+                f"COALESCE({alias}.{walk_column}, 0) + "
+                f"COALESCE({alias}.{hbp_column}, 0)) AS DOUBLE) / "
+                f"NULLIF(SUM(COALESCE({alias}.{at_bat_column}, 0) + "
+                f"COALESCE({alias}.{walk_column}, 0) + "
+                f"COALESCE({alias}.{hbp_column}, 0) + "
+                f"COALESCE({alias}.{sf_column}, 0)), 0)) + "
+                f"(CAST(SUM((COALESCE({alias}.{hit_column}, 0) - "
+                f"COALESCE({alias}.{double_column}, 0) - "
+                f"COALESCE({alias}.{triple_column}, 0) - "
+                f"COALESCE({alias}.{hr_column}, 0)) + "
+                f"2 * COALESCE({alias}.{double_column}, 0) + "
+                f"3 * COALESCE({alias}.{triple_column}, 0) + "
+                f"4 * COALESCE({alias}.{hr_column}, 0)) AS DOUBLE) / "
+                f"NULLIF(SUM({alias}.{at_bat_column}), 0))"
             )
         return None
     if stat == "ERA":
-        if {"er", "ipouts"}.issubset(columns):
-            return f"27.0 * SUM({alias}.ER) / NULLIF(SUM({alias}.IPouts), 0)"
+        er_column = _retrosheet_stat_column(conn, table, stat_def.table, "ER")
+        ipouts_column = _retrosheet_stat_column(conn, table, stat_def.table, "IPOUTS")
+        if er_column and ipouts_column:
+            return f"27.0 * SUM({alias}.{er_column}) / NULLIF(SUM({alias}.{ipouts_column}), 0)"
         return None
     if stat == "WHIP":
-        if {"bb", "h", "ipouts"}.issubset(columns):
+        walk_column = _retrosheet_stat_column(conn, table, stat_def.table, "BB")
+        hit_column = _retrosheet_stat_column(conn, table, stat_def.table, "H")
+        ipouts_column = _retrosheet_stat_column(conn, table, stat_def.table, "IPOUTS")
+        if walk_column and hit_column and ipouts_column:
             return (
-                f"CAST(SUM({alias}.BB + {alias}.H) AS DOUBLE) / "
-                f"NULLIF(SUM({alias}.IPouts) / 3.0, 0)"
+                f"CAST(SUM({alias}.{walk_column} + {alias}.{hit_column}) AS DOUBLE) / "
+                f"NULLIF(SUM({alias}.{ipouts_column}) / 3.0, 0)"
             )
         return None
-    if stat == "G" and "g" not in columns:
-        game_column = _first_existing_column(conn, table, ("game_id", "gameID", "gameid"))
+    if stat == "G":
+        g_column = _first_existing_column(conn, table, ("G", "g"))
+        if g_column is not None:
+            return f"SUM({alias}.{g_column})"
+        game_column = _first_existing_column(conn, table, ("gid", "game_id", "gameID", "gameid"))
         if game_column is not None:
             return f"COUNT(DISTINCT {alias}.{game_column})"
 
-    column = _first_existing_column(conn, table, (stat_def.column or stat,))
+    column = _retrosheet_stat_column(conn, table, stat_def.table, stat_def.column or stat)
     if column is None:
         return None
     return f"SUM({alias}.{column})"
@@ -631,11 +710,59 @@ def _retrosheet_sample_clause(
     alias: str,
     stat_def: StatDefinition,
 ) -> str | None:
-    if stat_def.canonical in {"AVG", "OPS"} and "ab" in _table_columns(conn, table):
-        return f"SUM({alias}.AB) >= 100"
-    if stat_def.canonical in {"ERA", "WHIP"} and "ipouts" in _table_columns(conn, table):
-        return f"SUM({alias}.IPouts) >= 300"
+    if stat_def.canonical in {"AVG", "OPS"}:
+        at_bat_column = _retrosheet_stat_column(conn, table, stat_def.table, "AB")
+        if at_bat_column is not None:
+            return f"SUM({alias}.{at_bat_column}) >= 100"
+    if stat_def.canonical in {"ERA", "WHIP"}:
+        ipouts_column = _retrosheet_stat_column(conn, table, stat_def.table, "IPOUTS")
+        if ipouts_column is not None:
+            return f"SUM({alias}.{ipouts_column}) >= 300"
     return None
+
+
+def _retrosheet_filter_clause(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    alias: str,
+) -> str:
+    filters = []
+    stattype_column = _first_existing_column(conn, table, ("stattype",))
+    if stattype_column is not None:
+        filters.append(f"LOWER(CAST({alias}.{stattype_column} AS VARCHAR)) = 'value'")
+    gametype_column = _first_existing_column(conn, table, ("gametype",))
+    if gametype_column is not None:
+        filters.append(
+            f"LOWER(CAST({alias}.{gametype_column} AS VARCHAR)) IN ('regular', 'playoff')"
+        )
+    if not filters:
+        return ""
+    return "AND " + "\n          AND ".join(filters)
+
+
+def _retrosheet_year_expression(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    alias: str,
+) -> str | None:
+    year_column = _first_existing_column(conn, table, ("yearID", "year_id", "season", "year"))
+    if year_column is not None:
+        return f"{alias}.{year_column}"
+    date_column = _first_existing_column(conn, table, ("date", "game_date"))
+    if date_column is not None:
+        return f"TRY_CAST(SUBSTR(CAST({alias}.{date_column} AS VARCHAR), 1, 4) AS INTEGER)"
+    return None
+
+
+def _retrosheet_stat_column(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    stat_table: StatTable,
+    stat: str,
+) -> str | None:
+    canonical = stat.upper()
+    candidates = _RETROSHEET_COLUMNS.get(stat_table, {}).get(canonical, (stat,))
+    return _first_existing_column(conn, table, candidates)
 
 
 def _table_exists(conn: duckdb.DuckDBPyConnection, table: str) -> bool:

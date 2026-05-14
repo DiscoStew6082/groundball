@@ -130,6 +130,20 @@ def test_consensus_verifies_primary_only_when_retrosheet_table_is_missing():
     assert "retrosheet_biofile is not available" in row["secondary_warning"]
 
 
+def test_consensus_preserves_primary_contradiction_when_retrosheet_table_is_missing():
+    conn = _conn(retrosheet=False)
+    conn.execute("INSERT INTO people VALUES ('player01', 'retro001')")
+    _add_batting(conn, retro_hr=None)
+
+    row = _row(conn, PlayerStatClaim(stat="HR", value=61, year=1927))
+
+    assert row["consensus_status"] == "unsupported"
+    assert row["status"] == "contradicted"
+    assert row["primary_status"] == "contradicted"
+    assert row["actual_value"] == 60
+    assert row["warning"] is not None
+
+
 def test_consensus_verifies_primary_only_when_retrosheet_stat_row_is_missing():
     conn = _conn()
     _add_player(conn)
@@ -259,6 +273,185 @@ def test_consensus_refutes_a_rod_301_stolen_bases_when_both_sources_have_329():
     assert row["consensus_status"] == "contradicted_by_all"
     assert row["primary_actual_value"] == 329
     assert row["secondary_actual_value"] == 329
+
+
+def test_consensus_verifies_real_retrosheet_daily_log_headers():
+    conn = duckdb.connect(":memory:")
+    conn.execute("CREATE TABLE people (playerID TEXT, retroID TEXT)")
+    conn.execute(
+        """
+        CREATE TABLE batting (
+            playerID TEXT, yearID INTEGER, HR INTEGER, RBI INTEGER, H INTEGER,
+            AB INTEGER, R INTEGER, "2B" INTEGER, "3B" INTEGER, SB INTEGER,
+            BB INTEGER, SO INTEGER, HBP INTEGER, SF INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE pitching (
+            playerID TEXT, yearID INTEGER, W INTEGER, L INTEGER, G INTEGER,
+            GS INTEGER, SV INTEGER, IPouts INTEGER, H INTEGER, ER INTEGER,
+            BB INTEGER, SO INTEGER
+        )
+        """
+    )
+    conn.execute("CREATE TABLE fielding (playerID TEXT, yearID INTEGER, PO INTEGER)")
+    conn.execute("CREATE TABLE retrosheet_biofile (id TEXT)")
+    conn.execute(
+        """
+        CREATE TABLE retrosheet_batting (
+            gid TEXT, id TEXT, stattype TEXT, gametype TEXT, date TEXT,
+            b_hr INTEGER, b_rbi INTEGER, b_h INTEGER, b_ab INTEGER, b_r INTEGER,
+            b_d INTEGER, b_t INTEGER, b_sb INTEGER, b_w INTEGER, b_k INTEGER,
+            b_hbp INTEGER, b_sf INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE retrosheet_pitching (
+            gid TEXT, id TEXT, stattype TEXT, gametype TEXT, date TEXT,
+            wp INTEGER, lp INTEGER, save INTEGER, gs INTEGER, p_ipouts INTEGER,
+            p_h INTEGER, p_er INTEGER, p_w INTEGER, p_k INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE retrosheet_fielding (
+            gid TEXT, id TEXT, stattype TEXT, gametype TEXT, date TEXT, d_po INTEGER
+        )
+        """
+    )
+    conn.execute("INSERT INTO people VALUES ('ruthba01', 'ruthb101')")
+    conn.execute("INSERT INTO retrosheet_biofile VALUES ('ruthb101')")
+    conn.execute(
+        """
+        INSERT INTO batting VALUES
+        ('ruthba01', 1927, 60, 164, 192, 540, 158, 29, 8, 7, 137, 89, 0, 14)
+        """
+    )
+    conn.executemany(
+        "INSERT INTO retrosheet_batting VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                "NYA192704180",
+                "ruthb101",
+                "value",
+                "regular",
+                "19270418",
+                1,
+                4,
+                3,
+                5,
+                2,
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+                1,
+            ),
+            (
+                "NYA192710010",
+                "ruthb101",
+                "value",
+                "playoff",
+                "19271001",
+                59,
+                160,
+                189,
+                535,
+                156,
+                28,
+                8,
+                7,
+                136,
+                89,
+                0,
+                13,
+            ),
+            (
+                "NYA192704200",
+                "ruthb101",
+                "official",
+                "regular",
+                "19270420",
+                99,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ),
+            (
+                "NYA192704210",
+                "ruthb101",
+                "value",
+                "allstar",
+                "19270421",
+                99,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ),
+        ],
+    )
+    conn.execute("INSERT INTO pitching VALUES ('ruthba01', 1927, 1, 0, 2, 1, 1, 54, 10, 4, 3, 12)")
+    conn.execute(
+        """
+        INSERT INTO retrosheet_pitching VALUES
+        ('NYA192704180', 'ruthb101', 'value', 'regular', '19270418', 1, 0, 0, 1, 27, 5, 2, 1, 6),
+        ('NYA192710010', 'ruthb101', 'value', 'playoff', '19271001', 0, 0, 1, 0, 27, 5, 2, 2, 6),
+        ('NYA192704200', 'ruthb101', 'official', 'regular', '19270420', 1, 0, 0, 0, 27, 5, 2, 1, 6),
+        ('NYA192704210', 'ruthb101', 'value', 'allstar', '19270421', 1, 0, 0, 0, 27, 5, 2, 1, 6)
+        """
+    )
+    conn.execute("INSERT INTO fielding VALUES ('ruthba01', 1927, 302)")
+    conn.execute(
+        """
+        INSERT INTO retrosheet_fielding VALUES
+        ('NYA192704180', 'ruthb101', 'value', 'regular', '19270418', 100),
+        ('NYA192710010', 'ruthb101', 'value', 'playoff', '19271001', 202),
+        ('NYA192704200', 'ruthb101', 'official', 'regular', '19270420', 99),
+        ('NYA192704210', 'ruthb101', 'value', 'allstar', '19270421', 99)
+        """
+    )
+
+    rows = {
+        claim.stat: _row(conn, claim, player_id="ruthba01")
+        for claim in [
+            PlayerStatClaim(stat="HR", value=60, year=1927),
+            PlayerStatClaim(stat="AVG", value=0.356, year=1927),
+            PlayerStatClaim(stat="W", value=1, year=1927),
+            PlayerStatClaim(stat="G", value=2, year=1927, table="pitching"),
+            PlayerStatClaim(stat="SO", value=12, year=1927, text="12 strikeouts as a pitcher"),
+            PlayerStatClaim(stat="PO", value=302, year=1927),
+        ]
+    }
+
+    assert rows["HR"]["secondary_status"] == "verified"
+    assert rows["AVG"]["secondary_status"] == "verified"
+    assert rows["W"]["secondary_status"] == "verified"
+    assert rows["G"]["secondary_status"] == "verified"
+    assert rows["SO"]["secondary_status"] == "verified"
+    assert rows["PO"]["secondary_status"] == "verified"
 
 
 @pytest.mark.parametrize("stat", supported_stats())
