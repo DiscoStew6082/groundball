@@ -23,22 +23,33 @@ class StatDefinition:
     aggregate_min_sample_clause: str | None = None
     higher_is_better: bool = True
 
-    def expression(self, alias: str) -> str:
+    def expression(self, alias: str, *, adapter: "StatSqlAdapter | None" = None) -> str:
         """Return a SQL expression for this stat using a trusted table alias."""
+        if adapter is not None:
+            return _source_expression(self, alias, adapter)
         if self.sql_expr is not None:
             return self.sql_expr.format(alias=alias)
         if self.column is None:
             raise ValueError(f"Stat {self.canonical} has no column or expression")
         return f"{alias}.{quote_identifier(self.column)}"
 
-    def aggregate_expression(self, alias: str) -> str:
+    def aggregate_expression(self, alias: str, *, adapter: "StatSqlAdapter | None" = None) -> str:
         """Return a SQL aggregate expression for this stat over grouped rows."""
+        if adapter is not None:
+            return _source_aggregate_expression(self, alias, adapter)
         if self.aggregate_sql_expr is not None:
             return self.aggregate_sql_expr.format(alias=alias)
         return f"SUM({self.expression(alias)})"
 
-    def aggregate_sample_clause(self, alias: str) -> str | None:
+    def aggregate_sample_clause(
+        self,
+        alias: str,
+        *,
+        adapter: "StatSqlAdapter | None" = None,
+    ) -> str | None:
         """Return a HAVING-compatible qualification guard for aggregate queries."""
+        if adapter is not None:
+            return _source_aggregate_sample_clause(self, alias, adapter)
         if self.aggregate_min_sample_clause is not None:
             return self.aggregate_min_sample_clause.format(alias=alias)
         if self.min_sample_clause is not None:
@@ -46,10 +57,118 @@ class StatDefinition:
         return None
 
 
+@dataclass(frozen=True)
+class StatSqlAdapter:
+    """Column vocabulary for rendering stat SQL against a source table."""
+
+    table: StatTable
+    columns: Mapping[str, str]
+
+    def column(self, alias: str, stat: str) -> str:
+        column = self.columns.get(stat.upper())
+        if column is None:
+            raise ValueError(f"{self.table} source cannot render {stat}")
+        return f"{alias}.{column}"
+
+
 def quote_identifier(identifier: str) -> str:
     """Quote a trusted SQL identifier for DuckDB."""
     escaped = identifier.replace('"', '""')
     return f'"{escaped}"'
+
+
+def _source_expression(definition: StatDefinition, alias: str, adapter: StatSqlAdapter) -> str:
+    stat = definition.canonical
+    if stat == "AVG":
+        return (
+            f"CAST({adapter.column(alias, 'H')} AS DOUBLE) / "
+            f"NULLIF({adapter.column(alias, 'AB')}, 0)"
+        )
+    if stat == "OPS":
+        hit = adapter.column(alias, "H")
+        walk = adapter.column(alias, "BB")
+        hbp = adapter.column(alias, "HBP")
+        at_bat = adapter.column(alias, "AB")
+        sacrifice_fly = adapter.column(alias, "SF")
+        double = adapter.column(alias, "2B")
+        triple = adapter.column(alias, "3B")
+        homer = adapter.column(alias, "HR")
+        return (
+            f"(CAST(COALESCE({hit}, 0) + COALESCE({walk}, 0) + "
+            f"COALESCE({hbp}, 0) AS DOUBLE) / "
+            f"NULLIF(COALESCE({at_bat}, 0) + COALESCE({walk}, 0) + "
+            f"COALESCE({hbp}, 0) + COALESCE({sacrifice_fly}, 0), 0)) + "
+            f"(CAST((COALESCE({hit}, 0) - COALESCE({double}, 0) - "
+            f"COALESCE({triple}, 0) - COALESCE({homer}, 0)) + "
+            f"2 * COALESCE({double}, 0) + 3 * COALESCE({triple}, 0) + "
+            f"4 * COALESCE({homer}, 0) AS DOUBLE) / NULLIF({at_bat}, 0))"
+        )
+    if stat == "ERA":
+        return (
+            f"27.0 * {adapter.column(alias, 'ER')} / NULLIF({adapter.column(alias, 'IPOUTS')}, 0)"
+        )
+    if stat == "WHIP":
+        return (
+            f"CAST({adapter.column(alias, 'BB')} + {adapter.column(alias, 'H')} AS DOUBLE) / "
+            f"NULLIF({adapter.column(alias, 'IPOUTS')} / 3.0, 0)"
+        )
+    return adapter.column(alias, definition.column or definition.canonical)
+
+
+def _source_aggregate_expression(
+    definition: StatDefinition,
+    alias: str,
+    adapter: StatSqlAdapter,
+) -> str:
+    stat = definition.canonical
+    if stat == "AVG":
+        return (
+            f"CAST(SUM({adapter.column(alias, 'H')}) AS DOUBLE) / "
+            f"NULLIF(SUM({adapter.column(alias, 'AB')}), 0)"
+        )
+    if stat == "OPS":
+        hit = adapter.column(alias, "H")
+        walk = adapter.column(alias, "BB")
+        hbp = adapter.column(alias, "HBP")
+        at_bat = adapter.column(alias, "AB")
+        sacrifice_fly = adapter.column(alias, "SF")
+        double = adapter.column(alias, "2B")
+        triple = adapter.column(alias, "3B")
+        homer = adapter.column(alias, "HR")
+        return (
+            f"(CAST(SUM(COALESCE({hit}, 0) + COALESCE({walk}, 0) + "
+            f"COALESCE({hbp}, 0)) AS DOUBLE) / "
+            f"NULLIF(SUM(COALESCE({at_bat}, 0) + COALESCE({walk}, 0) + "
+            f"COALESCE({hbp}, 0) + COALESCE({sacrifice_fly}, 0)), 0)) + "
+            f"(CAST(SUM((COALESCE({hit}, 0) - COALESCE({double}, 0) - "
+            f"COALESCE({triple}, 0) - COALESCE({homer}, 0)) + "
+            f"2 * COALESCE({double}, 0) + 3 * COALESCE({triple}, 0) + "
+            f"4 * COALESCE({homer}, 0)) AS DOUBLE) / "
+            f"NULLIF(SUM({at_bat}), 0))"
+        )
+    if stat == "ERA":
+        return (
+            f"27.0 * SUM({adapter.column(alias, 'ER')}) / "
+            f"NULLIF(SUM({adapter.column(alias, 'IPOUTS')}), 0)"
+        )
+    if stat == "WHIP":
+        return (
+            f"CAST(SUM({adapter.column(alias, 'BB')} + {adapter.column(alias, 'H')}) "
+            f"AS DOUBLE) / NULLIF(SUM({adapter.column(alias, 'IPOUTS')}) / 3.0, 0)"
+        )
+    return f"SUM({adapter.column(alias, definition.column or stat)})"
+
+
+def _source_aggregate_sample_clause(
+    definition: StatDefinition,
+    alias: str,
+    adapter: StatSqlAdapter,
+) -> str | None:
+    if definition.canonical in {"AVG", "OPS"}:
+        return f"SUM({adapter.column(alias, 'AB')}) >= 100"
+    if definition.canonical in {"ERA", "WHIP"}:
+        return f"SUM({adapter.column(alias, 'IPOUTS')}) >= 300"
+    return None
 
 
 _REGISTRY: dict[str, StatDefinition] = {
@@ -193,6 +312,22 @@ _TEXT_ALIASES: dict[str, str] = {
     "wins": "W",
 }
 
+_PITCHING_SO_TERMS = (
+    "as a pitcher",
+    "batters",
+    "on the mound",
+    "pitched",
+    "pitcher",
+    "pitching",
+)
+_BATTING_SO_TERMS = (
+    "as a batter",
+    "as a hitter",
+    "at the plate",
+    "batting strikeout",
+    "batting strikeouts",
+)
+
 
 def get_stat(stat: str, *, table: StatTable | None = None) -> StatDefinition:
     """Return a whitelisted stat definition or raise ValueError."""
@@ -226,9 +361,44 @@ def find_stat_in_text(text: str) -> str | None:
     return None
 
 
+def infer_stat_table(stat: str, *, text: str | None = None) -> StatTable | None:
+    """Infer a contextual stat table from surrounding natural-language text."""
+    if normalize_stat(stat) != "SO" or not text:
+        return None
+    normalized_text = text.casefold()
+    if any(term in normalized_text for term in _BATTING_SO_TERMS):
+        return "batting"
+    if any(term in normalized_text for term in _PITCHING_SO_TERMS):
+        return "pitching"
+    return None
+
+
 def supported_stat_prompt_list() -> list[str]:
     """Return canonical stats and aliases useful in LLM routing prompts."""
     return sorted({*supported_stats(), *(_ALIASES.keys())})
+
+
+def stat_formula_notes() -> str:
+    """Return prompt-facing notes for derived stat formulas and ranking semantics."""
+    lines: list[str] = []
+    for definition in sorted(_REGISTRY.values(), key=lambda item: (item.table, item.canonical)):
+        if definition.sql_expr is None and definition.aggregate_sql_expr is None:
+            continue
+        ranking = (
+            "higher values rank better"
+            if definition.higher_is_better
+            else "lower values rank better"
+        )
+        parts = [
+            f"  {definition.table}: {definition.canonical} = "
+            f"{definition.expression(definition.table)}"
+        ]
+        sample_clause = definition.min_sample_clause or definition.aggregate_min_sample_clause
+        if sample_clause is not None:
+            parts.append(f"minimum sample: {sample_clause.format(alias='').lstrip('.')}")
+        parts.append(ranking)
+        lines.append("; ".join(parts))
+    return "\n".join(lines)
 
 
 def supported_stats(table: StatTable | None = None) -> list[str]:

@@ -11,8 +11,10 @@ import duckdb
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.stat_registry import (
     StatDefinition,
+    StatSqlAdapter,
     StatTable,
     get_stat,
+    infer_stat_table,
     normalize_stat,
     quote_identifier,
 )
@@ -32,21 +34,6 @@ _CONTEXTUAL_STATS: dict[tuple[str, StatTable], StatDefinition] = {
     ("SO", "pitching"): StatDefinition("SO", "pitching", "SO"),
 }
 _STAT_TABLES: set[str] = {"batting", "pitching", "fielding"}
-_PITCHING_SO_TERMS = (
-    "as a pitcher",
-    "batters",
-    "on the mound",
-    "pitched",
-    "pitcher",
-    "pitching",
-)
-_BATTING_SO_TERMS = (
-    "as a batter",
-    "as a hitter",
-    "at the plate",
-    "batting strikeout",
-    "batting strikeouts",
-)
 _RETROSHEET_COLUMNS: dict[StatTable, dict[str, tuple[str, ...]]] = {
     "batting": {
         "HR": ("b_hr", "HR"),
@@ -679,14 +666,7 @@ def _stat_definition_for_table(canonical: str, table: StatTable) -> StatDefiniti
 
 
 def _infer_claim_table(claim: PlayerStatClaim) -> StatTable | None:
-    if normalize_stat(claim.stat) != "SO" or not claim.text:
-        return None
-    text = claim.text.casefold()
-    if any(term in text for term in _BATTING_SO_TERMS):
-        return "batting"
-    if any(term in text for term in _PITCHING_SO_TERMS):
-        return "pitching"
-    return None
+    return infer_stat_table(claim.stat, text=claim.text)
 
 
 def _lookup_player_stat(
@@ -960,71 +940,8 @@ def _retrosheet_aggregate_expression(
     stat_def: StatDefinition,
 ) -> str | None:
     stat = stat_def.canonical
+    adapter = _retrosheet_sql_adapter(conn, table, stat_def.table)
 
-    if stat == "AVG":
-        hit_column = _retrosheet_stat_column(conn, table, stat_def.table, "H")
-        at_bat_column = _retrosheet_stat_column(conn, table, stat_def.table, "AB")
-        if hit_column and at_bat_column:
-            return (
-                f"CAST(SUM({alias}.{hit_column}) AS DOUBLE) / "
-                f"NULLIF(SUM({alias}.{at_bat_column}), 0)"
-            )
-        return None
-    if stat == "OPS":
-        hit_column = _retrosheet_stat_column(conn, table, stat_def.table, "H")
-        walk_column = _retrosheet_stat_column(conn, table, stat_def.table, "BB")
-        hbp_column = _retrosheet_stat_column(conn, table, stat_def.table, "HBP")
-        at_bat_column = _retrosheet_stat_column(conn, table, stat_def.table, "AB")
-        sf_column = _retrosheet_stat_column(conn, table, stat_def.table, "SF")
-        double_column = _retrosheet_stat_column(conn, table, stat_def.table, "2B")
-        triple_column = _retrosheet_stat_column(conn, table, stat_def.table, "3B")
-        hr_column = _retrosheet_stat_column(conn, table, stat_def.table, "HR")
-        if all(
-            (
-                hit_column,
-                walk_column,
-                hbp_column,
-                at_bat_column,
-                sf_column,
-                double_column,
-                triple_column,
-                hr_column,
-            )
-        ):
-            return (
-                f"(CAST(SUM(COALESCE({alias}.{hit_column}, 0) + "
-                f"COALESCE({alias}.{walk_column}, 0) + "
-                f"COALESCE({alias}.{hbp_column}, 0)) AS DOUBLE) / "
-                f"NULLIF(SUM(COALESCE({alias}.{at_bat_column}, 0) + "
-                f"COALESCE({alias}.{walk_column}, 0) + "
-                f"COALESCE({alias}.{hbp_column}, 0) + "
-                f"COALESCE({alias}.{sf_column}, 0)), 0)) + "
-                f"(CAST(SUM((COALESCE({alias}.{hit_column}, 0) - "
-                f"COALESCE({alias}.{double_column}, 0) - "
-                f"COALESCE({alias}.{triple_column}, 0) - "
-                f"COALESCE({alias}.{hr_column}, 0)) + "
-                f"2 * COALESCE({alias}.{double_column}, 0) + "
-                f"3 * COALESCE({alias}.{triple_column}, 0) + "
-                f"4 * COALESCE({alias}.{hr_column}, 0)) AS DOUBLE) / "
-                f"NULLIF(SUM({alias}.{at_bat_column}), 0))"
-            )
-        return None
-    if stat == "ERA":
-        er_column = _retrosheet_stat_column(conn, table, stat_def.table, "ER")
-        ipouts_column = _retrosheet_stat_column(conn, table, stat_def.table, "IPOUTS")
-        if er_column and ipouts_column:
-            return f"27.0 * SUM({alias}.{er_column}) / NULLIF(SUM({alias}.{ipouts_column}), 0)"
-        return None
-    if stat == "WHIP":
-        walk_column = _retrosheet_stat_column(conn, table, stat_def.table, "BB")
-        hit_column = _retrosheet_stat_column(conn, table, stat_def.table, "H")
-        ipouts_column = _retrosheet_stat_column(conn, table, stat_def.table, "IPOUTS")
-        if walk_column and hit_column and ipouts_column:
-            return (
-                f"CAST(SUM({alias}.{walk_column} + {alias}.{hit_column}) AS DOUBLE) / "
-                f"NULLIF(SUM({alias}.{ipouts_column}) / 3.0, 0)"
-            )
-        return None
     if stat == "G":
         g_column = _first_existing_column(conn, table, ("G", "g"))
         if g_column is not None:
@@ -1033,10 +950,12 @@ def _retrosheet_aggregate_expression(
         if game_column is not None:
             return f"COUNT(DISTINCT {alias}.{game_column})"
 
-    column = _retrosheet_stat_column(conn, table, stat_def.table, stat_def.column or stat)
-    if column is None:
+    if adapter is None:
         return None
-    return f"SUM({alias}.{column})"
+    try:
+        return stat_def.aggregate_expression(alias, adapter=adapter)
+    except ValueError:
+        return None
 
 
 def _retrosheet_sample_clause(
@@ -1045,15 +964,26 @@ def _retrosheet_sample_clause(
     alias: str,
     stat_def: StatDefinition,
 ) -> str | None:
-    if stat_def.canonical in {"AVG", "OPS"}:
-        at_bat_column = _retrosheet_stat_column(conn, table, stat_def.table, "AB")
-        if at_bat_column is not None:
-            return f"SUM({alias}.{at_bat_column}) >= 100"
-    if stat_def.canonical in {"ERA", "WHIP"}:
-        ipouts_column = _retrosheet_stat_column(conn, table, stat_def.table, "IPOUTS")
-        if ipouts_column is not None:
-            return f"SUM({alias}.{ipouts_column}) >= 300"
-    return None
+    adapter = _retrosheet_sql_adapter(conn, table, stat_def.table)
+    if adapter is None:
+        return None
+    try:
+        return stat_def.aggregate_sample_clause(alias, adapter=adapter)
+    except ValueError:
+        return None
+
+
+def _retrosheet_sql_adapter(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    stat_table: StatTable,
+) -> StatSqlAdapter | None:
+    column_map = {
+        stat: column
+        for stat in _RETROSHEET_COLUMNS.get(stat_table, {})
+        if (column := _retrosheet_stat_column(conn, table, stat_table, stat)) is not None
+    }
+    return StatSqlAdapter(table=stat_table, columns=column_map) if column_map else None
 
 
 def _retrosheet_filter_clause(

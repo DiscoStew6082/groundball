@@ -2,6 +2,8 @@
 
 import duckdb
 
+from baseball_rag.db.stat_registry import stat_formula_notes
+
 _cached_schema: str | None = None
 
 
@@ -24,8 +26,7 @@ def _get_schema_cached(conn: duckdb.DuckDBPyConnection) -> str:
 
     lines.append(
         "\nComputed / derived stats (do NOT assume these exist as columns):\n"
-        "  batting: AVG = CAST(H AS DOUBLE) / NULLIF(AB, 0)\n"
-        "  pitching: ERA is pre-computed and exists as a column\n"
+        f"{stat_formula_notes()}\n"
     )
 
     _cached_schema = "\n".join(lines)

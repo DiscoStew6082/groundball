@@ -243,6 +243,17 @@ class TestDeterministicTemplates:
         assert result.columns == ["unsupported_reason"]
         assert result.unsupported_reason == "unsupported"
 
+    def test_schema_uses_registry_formula_notes(self):
+        import baseball_rag.db.freeform_schema as schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+
+        schema._cached_schema = None
+        text = schema._get_schema_cached(get_duckdb())
+
+        assert "batting: OPS =" in text
+        assert "minimum sample: AB >= 100" in text
+        assert "lower values rank better" in text
+
 
 class TestParseIntent:
     """Tests for the intent parser -- LLM output -> Intent dataclass."""
