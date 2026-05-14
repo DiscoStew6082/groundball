@@ -1,25 +1,42 @@
 # Architecture Deepening Handoff
 
-These plans turn the architecture review suggestions into implementation-ready
-handoffs. Each task should preserve current user-visible behavior unless the
-task explicitly says otherwise.
+This document tracks the architecture review suggestions that were turned into
+implementation work. All four tasks are now complete on this branch. User-visible
+behavior, DuckDB provenance, compatibility adapters, and API/CLI/UI response
+shapes were preserved.
 
-Selected path: implement the plans from `docs/architecture-deepening-handoff.md`.
+Selected path implemented: the plans from
+`docs/architecture-deepening-handoff.md`.
 
-## Shared Implementation Rules
+## Implementation Status
 
-- Use TDD with vertical slices: one behavior test, minimal implementation, then
+- **Complete:** Freeform planning and routing ownership.
+- **Complete:** Biography claim verification presentation.
+- **Complete:** Deterministic stat SQL execution.
+- **Complete:** Architecture Explorer read model versus Gradio rendering.
+- **Committed:** `6ad7e20 Route deterministic freeform via ownership helper`
+  and `58e38a7 Deepen architecture ownership modules`.
+- **Final verification:** `uv run pytest -q` passed with `505 passed`.
+- **UI smoke:** `uv run baseball-rag-ui` was started, the Codex in-app Browser
+  opened `http://127.0.0.1:7861/`, and the default query returned Davis, Tommy
+  with rows, sources, and SQL. The dev server was left running.
+- **GitHub:** The branch was not pushed, so CI was not triggered.
+
+## Rules Used During Implementation
+
+- TDD with vertical slices: one behavior test, minimal implementation, then
   refactor while green.
-- Use worker subagents where possible, with disjoint write scopes.
-- Run a code review subagent after each task.
-- Commit completed changes and explain any unstaged changes.
-- If a branch is pushed to GitHub, verify CI is green before calling the task
-  done.
-- After implementation, run the Gradio UI smoke test: start
+- Worker subagents were used where possible, with disjoint write scopes.
+- A code review subagent reviewed the integrated implementation.
+- Completed changes were committed, and no unstaged changes remained.
+- The branch was not pushed to GitHub, so no CI verification was required.
+- After implementation, the Gradio UI smoke test was run: start
   `uv run baseball-rag-ui`, open `http://127.0.0.1:7861/` in the Codex in-app
   Browser, run the default query, and keep the dev server running.
 
 ## 1. Freeform Planning And Routing Ownership
+
+**Status: complete.**
 
 ### Summary
 
@@ -27,52 +44,48 @@ Deepen the freeform planning/routing Module so `query_router.route()` delegates
 deterministic freeform ownership decisions instead of coordinating template
 detection and precedence inline.
 
-### Key Changes
+### Implemented Changes
 
-- Add an internal routing ownership helper, likely
+- Added internal routing ownership helper
   `baseball_rag.routing.freeform_ownership`.
-- Move "should deterministic freeform own this question?" logic behind that
-  helper.
-- Keep DuckDB/freeform planning and execution in
+- `query_router.route()` now asks the helper whether deterministic freeform owns
+  a question, including optional competing stat precedence.
+- DuckDB/freeform planning and execution remain in
   `baseball_rag.db.freeform_runtime`.
-- Preserve facade exports from `baseball_rag.db.freeform`, including
+- Preserved facade exports from `baseball_rag.db.freeform`, including
   `plan_query`, `query`, `can_plan_deterministically`, and
   `should_route_deterministic_freeform`.
-- Do not remove private helper re-exports in this PR.
+- Private helper re-exports were not removed.
 
-### Worker Split
+### Implementation Notes
 
-- **Worker A: Routing worker**
-  - Write scope: `src/baseball_rag/routing/query_router.py`, the new routing
-    ownership helper, and routing tests.
-  - Refactor route ownership only. Do not edit SQL or freeform execution.
-- **Worker B: Freeform compatibility worker**
-  - Write scope: `src/baseball_rag/db/freeform*.py` and freeform tests.
-  - Preserve facade behavior and shift tests toward public planning behavior.
-- **Review subagent**
-  - Check import cycles, behavior drift, facade compatibility, and test
-    coupling.
+- Routing behavior coverage now includes ambiguous `500 club` ownership.
+- Freeform facade compatibility is covered through public planning/query
+  behavior instead of private helper shape.
+- The review subagent found no issues in this slice.
 
-### Test Plan
+### Verified Behavior
 
 - `career pitching wins leaders` routes to `FreeformQueryCase`.
 - `career home run leaders` stays `StatQueryCase`.
 - `best ERA in 1968` stays `StatQueryCase`.
 - `who is in the 500 club` routes to `FreeformQueryCase` and remains ambiguous
   unsupported.
-- Run:
-  - `uv run pytest tests/test_router.py tests/test_freeform.py -q -m "not llm"`
-  - `uv run pytest tests/test_api.py::TestApi::test_query_endpoint_preserves_ambiguous_freeform_unsupported_reason -q`
-  - `uv run pytest -q`
+- `uv run pytest tests/test_router.py tests/test_freeform.py -q -m "not llm"`
+  passed.
+- `uv run pytest tests/test_api.py::TestApi::test_query_endpoint_preserves_ambiguous_freeform_unsupported_reason -q`
+  passed.
 
 ### Assumptions
 
-- Preserve facade is locked in for this PR.
+- Preserve facade remains locked in for this PR.
 - No external API, CLI, UI, or answer payload changes.
 - The freeform compatibility facade may be revisited in a later cleanup PR only
   after the new routing ownership seam is stable.
 
 ## 2. Biography Claim Verification Presentation
+
+**Status: complete.**
 
 ### Summary
 
@@ -80,41 +93,35 @@ Deepen the biography claim verification Module by moving Lahman/Retrosheet
 consensus presentation, scorecard wording, warning shaping, and evidence-row
 shaping out of `service.py`.
 
-### Key Changes
+### Implemented Changes
 
-- Add a verification presentation/read-model layer inside or beside
+- Added verifier presentation/read-model shaping in
   `baseball_rag.db.player_stat_claims`.
-- Let `service.py` orchestrate player resolution, LLM biography JSON, and claim
-  verification, then ask the verifier Module for answer-ready evidence.
-- Preserve current verification semantics and response shape.
-- Keep `StructuredAnswer` fields unchanged.
+- `service.py` now orchestrates player resolution, LLM biography JSON, and claim
+  verification, then asks the verifier layer for answer-ready evidence.
+- Moved consensus category summary, scorecard text, warning shaping, source
+  detail, SQL/tables, data manifest, and evidence row enrichment out of
+  `service.py`.
+- Preserved verification semantics, `StructuredAnswer` fields, metadata shape,
+  warnings, and source rows.
 
-### Worker Split
+### Implementation Notes
 
-- **Worker A: Verifier read-model worker**
-  - Write scope: `src/baseball_rag/db/player_stat_claims.py` or a new adjacent
-    Module, plus verifier tests.
-  - Move consensus category summary, rows, warnings, and scorecard text behind
-    the verifier Module.
-- **Worker B: Service integration worker**
-  - Write scope: `src/baseball_rag/service.py` and player biography tests.
-  - Replace service-local consensus formatting with calls into the verifier
-    presentation layer.
-- **Review subagent**
-  - Check that `service.py` no longer depends on Lahman/Retrosheet row-key
-    details and that answer payloads remain stable.
+- Public biography answer shape remains stable.
+- The verifier layer now owns Lahman/Retrosheet presentation vocabulary and row
+  keys.
+- The integrated review found no response-shape or import-cycle issues in this
+  slice.
 
-### Test Plan
+### Verified Behavior
 
-- Existing player biography claim tests still pass.
-- Add behavior tests asserting:
-  - Verified claims produce the same visible scorecard.
-  - Contradicted claims produce the same warnings and evidence rows.
-  - Mixed Lahman/Retrosheet statuses keep current metadata shape.
-- Run:
-  - `uv run pytest tests/test_player_bio_query.py tests/test_player_stat_claims_consensus.py -q`
-  - `uv run pytest tests/test_request_execution.py -q`
-  - `uv run pytest -q`
+- Existing player biography claim tests pass.
+- Verified claims preserve the visible scorecard.
+- Contradicted claims preserve warnings and evidence rows.
+- Mixed Lahman/Retrosheet statuses preserve metadata shape.
+- `uv run pytest tests/test_player_bio_query.py tests/test_player_stat_claims_consensus.py -q`
+  passed.
+- `uv run pytest tests/test_request_execution.py -q` passed.
 
 ### Assumptions
 
@@ -124,47 +131,44 @@ shaping out of `service.py`.
 
 ## 3. Deterministic Stat SQL Execution
 
+**Status: complete.**
+
 ### Summary
 
 Deepen deterministic stat execution by carrying `StatQueryPlan` through the
 execution path, reducing the shallow `execute_stat_query(...)` argument surface.
 
-### Key Changes
+### Implemented Changes
 
-- Make `StatQueryPlan` the primary internal execution input for stat queries.
-- Hide table-specific SQL choices behind the deterministic stat Module.
-- Keep existing compatibility adapters such as `get_stat_leaders`,
+- Moved `StatQueryPlan` into `baseball_rag.db.queries` and made it the primary
+  internal execution input for deterministic stat queries.
+- Added `execute_stat_query_plan(...)` for plan-aware execution.
+- Kept `execute_stat_query(...)` as a compatibility adapter that translates the
+  old optional-argument surface into a plan.
+- Hid table-specific SQL choices behind the DB query module.
+- Kept existing compatibility adapters such as `get_stat_leaders`,
   `get_career_stat_leaders`, and `get_player_stat` working.
-- Preserve stat registry ownership of whitelisted stat expressions and sample
+- Preserved stat registry ownership of whitelisted stat expressions and sample
   guards.
 
-### Worker Split
+### Implementation Notes
 
-- **Worker A: Plan execution worker**
-  - Write scope: `src/baseball_rag/stat_query.py` and stat-query tests.
-  - Ensure public answer behavior flows plan to execute to answer without
-    re-deciding route facts.
-- **Worker B: Query internals worker**
-  - Write scope: `src/baseball_rag/db/queries.py` and query tests.
-  - Refactor table-specific SQL execution behind plan-aware internals while
-    keeping compatibility adapters stable.
-- **Review subagent**
-  - Check no SQL behavior drift, especially AVG/OPS/ERA/WHIP sample guards and
-    sort direction.
+- `stat_query.py` now plans once, executes that plan, then formats the answer
+  from the executed result.
+- The CLI test that previously patched the shallow adapter now verifies the plan
+  boundary instead.
+- Review found no SQL guard, sort-direction, or provenance drift.
 
-### Test Plan
+### Verified Behavior
 
-- Existing stat query tests still pass.
-- Add or confirm behavior coverage for:
-  - batting leaderboard
-  - pitching lower-is-better leaderboard
-  - fielding position leaderboard
-  - player-specific lookup
-  - no-data and ambiguous outcomes
-- Run:
-  - `uv run pytest tests/test_queries.py tests/test_stat_leaders_range_db.py tests/test_cli_stat_query_integration.py -q`
-  - `uv run pytest tests/test_api.py::TestApi::test_query_endpoint_preserves_pitching_rate_stat_provenance -q`
-  - `uv run pytest -q`
+- Existing stat query tests pass.
+- Behavior coverage includes batting leaderboard, pitching lower-is-better
+  leaderboard, fielding position leaderboard, player-specific lookup, no-data
+  outcomes, and ambiguous outcomes.
+- `uv run pytest tests/test_queries.py tests/test_stat_leaders_range_db.py tests/test_cli_stat_query_integration.py -q`
+  passed.
+- `uv run pytest tests/test_api.py::TestApi::test_query_endpoint_preserves_pitching_rate_stat_provenance -q`
+  passed.
 
 ### Assumptions
 
@@ -174,55 +178,48 @@ execution path, reducing the shallow `execute_stat_query(...)` argument surface.
 
 ## 4. Architecture Explorer Read Model Versus Gradio Rendering
 
+**Status: complete.**
+
 ### Summary
 
 Separate Architecture Explorer state/read-model behavior from Gradio rendering
 so tests can verify trace and latest-run behavior without inspecting HTML and
 Gradio config as the primary interface.
 
-### Key Changes
+### Implemented Changes
 
-- Add an Architecture Explorer read-model Module that owns:
+- Added `baseball_rag.arch.read_model`, a pure Architecture Explorer read-model
+  module that owns:
   - latest run per session
   - active path/component ids
   - diagnostics/warnings/errors
   - trace summary values
-  - test status mapping
-- Keep `ArchitectureDiagram` as the Gradio Adapter that renders the read model.
-- Update stale component descriptions to match the current four-route
+  - row counts and status text
+- Kept `ArchitectureDiagram` as the Gradio adapter that renders the read model.
+- Updated stale component descriptions to match the current four-route
   architecture.
-- Preserve current UI behavior and visual output unless a test-approved behavior
-  change is explicitly requested.
+- Preserved current UI behavior and visual output.
 
-### Worker Split
+### Implementation Notes
 
-- **Worker A: Read-model worker**
-  - Write scope: a new/read-model Module under `src/baseball_rag/arch/` and
-    focused model tests.
-  - Extract latest-run and active-path state from `ArchitectureDiagram`.
-- **Worker B: Gradio adapter worker**
-  - Write scope: `src/baseball_rag/arch/diagram.py`,
-    `src/baseball_rag/web_app.py`, and dashboard tests.
-  - Wire the read model into existing rendering and event refresh behavior.
-- **Review subagent**
-  - Check session isolation, trace history behavior, UI smoke expectations, and
-    stale route/component language.
+- Read-model tests now cover latest execution, session isolation, active
+  component path extraction, unsupported/warning diagnostics, and legacy reset
+  behavior.
+- The review subagent found one stale sessionless latest-run reset bug; it was
+  fixed and covered with a regression test.
+- `web_app.py` did not need changes.
 
-### Test Plan
+### Verified Behavior
 
-- Add pure read-model tests for:
-  - recording latest execution
-  - session-specific latest run lookup
-  - active component path extraction
-  - unsupported/warning diagnostics
-- Keep a smaller Gradio smoke layer for:
-  - Query and Architecture tabs exist
-  - latest trace refresh updates diagram/footer
-  - developer test button remains wired
-- Run:
-  - `uv run pytest tests/test_diagram_ui.py tests/test_dashboard.py tests/test_arch_components.py -q`
-  - `uv run pytest tests/test_pipeline_tracing.py tests/test_pipeline_tracing_integration.py -q`
-  - `uv run pytest -q`
+- Query and Architecture tabs still exist.
+- Latest trace refresh updates diagram/footer.
+- Developer test button remains wired.
+- Session-specific latest trace lookup remains isolated.
+- Legacy reset paths do not resurrect stale read-model state.
+- `uv run pytest tests/test_diagram_ui.py tests/test_dashboard.py tests/test_arch_components.py -q`
+  passed.
+- `uv run pytest tests/test_pipeline_tracing.py tests/test_pipeline_tracing_integration.py -q`
+  passed.
 
 ### Assumptions
 
