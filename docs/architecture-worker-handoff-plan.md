@@ -65,6 +65,10 @@ Final verification:
 - Deterministic eval gate passed on 2026-05-14:
   `uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
   returned `20 passed, 0 failed, 48 skipped`.
+- Local live eval pass was run on 2026-05-14:
+  `uv run python -m evals.questions --include-live --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
+  returned `52 passed, 16 failed, 0 skipped`. This means the deterministic CI
+  gate is green, but the full local/live acceptance suite is not yet green.
 - Gradio Browser smoke passed with the dev server at `http://127.0.0.1:7861/`:
   the default query returned Davis/Tommy evidence rows, source JSON, and SQL;
   the Architecture tab reflected the completed default-query path.

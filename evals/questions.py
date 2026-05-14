@@ -192,6 +192,7 @@ def format_eval_report(report: EvalReport) -> str:
         failed=counts["failed"],
         attempted=counts["attempted"],
         minimum_pass_rate=report.minimum_pass_rate,
+        include_live=report.include_live,
         baseline_comparison=report.baseline_comparison,
     )
 
@@ -306,6 +307,7 @@ def build_eval_artifact(
                 failed=counts["failed"],
                 attempted=counts["attempted"],
                 minimum_pass_rate=report.minimum_pass_rate,
+                include_live=report.include_live,
                 baseline_comparison=baseline,
             ),
         },
@@ -755,6 +757,7 @@ def _release_recommendation(
     failed: int,
     attempted: int,
     minimum_pass_rate: float,
+    include_live: bool = False,
     baseline_comparison: BaselineComparison | None = None,
 ) -> str:
     label = _recommendation_label(
@@ -765,9 +768,15 @@ def _release_recommendation(
         baseline_comparison=baseline_comparison,
     )
     if label == "PASS":
+        if include_live:
+            return "PASS - full local/live eval suite is green"
         return "PASS - deterministic release gate is green"
     if label == "WARN":
+        if include_live:
+            return "WARN - full local/live eval suite is green with baseline drift"
         return "WARN - deterministic gate is green with baseline drift"
+    if include_live:
+        return "BLOCK - investigate full local/live eval failures before release"
     return "BLOCK - investigate deterministic eval failures before release"
 
 

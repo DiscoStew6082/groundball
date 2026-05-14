@@ -1,8 +1,12 @@
 {
   "baseline_comparison": {
-    "blockers": [],
-    "recommendation": "PASS",
-    "warnings": []
+    "blockers": [
+      "pass rate decreased from 1.000 to 0.765"
+    ],
+    "recommendation": "BLOCK",
+    "warnings": [
+      "skipped case count changed from 48 to 0"
+    ]
   },
   "cases": [
     {
@@ -61,6 +65,24 @@
     },
     {
       "case_id": "stat_single_player_olson_2023_rbi",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_player_missing",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "freeform_yankees_1950",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "freeform_dodgers_1955",
       "failures": [],
       "reason": null,
       "status": "passed"
@@ -126,309 +148,325 @@
       "status": "passed"
     },
     {
-      "case_id": "stat_player_missing",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_unsupported_column",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_sql_injection_stat",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_sql_injection_team",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "freeform_braves_1936",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "freeform_yankees_1950",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "freeform_dodgers_1955",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "min_sample_avg_2024",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "min_sample_avg_no_qualifier",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
       "case_id": "ambiguous_player_williams",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "ambiguous_player_robinson",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "ambiguous_player_johnson",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_babe_ruth",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_ted_williams",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_willie_mays",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_hank_aaron",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_mickey_mantle",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_wally_pipp",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_matt_olson",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "player_bio_partial_name_acuna",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "ambiguous_surname_smith",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "broad_bio_query_yankees_slugger",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "stat_definition_ops",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "stat_definition_whip",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "stat_definition_era",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_definition_rbi",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "stat_definition_stolen_base",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "unsupported_future_season",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "unsupported_betting",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "unsupported_injury_news",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "unsupported_live_score",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "unsupported_contract",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "source_manifest_present_stat",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "source_manifest_present_freeform",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "sql_visible_freeform",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "sql_visible_api",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "row_count_reasonable_1962_rbi",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "row_count_freeform_limit",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "team_history_boston_braves",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "team_history_brooklyn_dodgers",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "fielding_of_1983",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "pitching_wins_career",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "pitching_era_qualified",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
     },
     {
       "case_id": "batting_average_qualified",
       "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_unsupported_column",
+      "failures": [
+        "unsupported: expected True, got False",
+        "answer missing substring 'grounded'"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "stat_sql_injection_stat",
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "stat_sql_injection_team",
+      "failures": [
+        "intent: expected 'freeform_query', got 'general_explanation'",
+        "expected parameterized SQL with bound placeholders"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "freeform_braves_1936",
+      "failures": [
+        "SQL missing substring 'JOIN teams'"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "min_sample_avg_2024",
+      "failures": [
+        "intent: expected 'freeform_query', got 'stat_query'"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "min_sample_avg_no_qualifier",
+      "failures": [
+        "intent: expected 'freeform_query', got 'stat_query'"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "stat_definition_rbi",
+      "failures": [
+        "answer missing substring 'run batted in'"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "unsupported_betting",
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "unsupported_injury_news",
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "unsupported_live_score",
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "unsupported_contract",
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
+    },
+    {
+      "case_id": "team_history_boston_braves",
+      "failures": [
+        "answer missing substring 'Braves'"
+      ],
+      "reason": null,
+      "status": "failed"
     },
     {
       "case_id": "unsupported_opinion",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
     },
     {
       "case_id": "unsupported_non_baseball",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "failures": [
+        "ValueError: Could not determine stat_tables from LLM response: {\n  \"year_value\": 2020\n}"
+      ],
+      "reason": null,
+      "status": "failed"
     },
     {
       "case_id": "unsupported_schema_unknown",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
     },
     {
       "case_id": "unsupported_minor_leagues",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
+      "failures": [
+        "unsupported: expected True, got False"
+      ],
+      "reason": null,
+      "status": "failed"
     }
   ],
-  "command": "python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-  "generated_at": "2026-05-14T16:28:30.065823+00:00",
-  "include_live": false,
+  "command": "python -m evals.questions --include-live --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
+  "generated_at": "2026-05-14T17:08:07.151847+00:00",
+  "include_live": true,
   "minimum_pass_rate": 0.85,
   "mode": "answer",
   "schema_version": 1,
   "summary": {
-    "attempted": 20,
+    "attempted": 68,
     "cases_loaded": 68,
-    "failed": 0,
-    "pass_rate": 1.0,
-    "passed": 20,
-    "recommendation": "PASS",
-    "release_recommendation": "PASS - deterministic release gate is green",
-    "skipped": 48
+    "failed": 16,
+    "pass_rate": 0.7647058823529411,
+    "passed": 52,
+    "recommendation": "BLOCK",
+    "release_recommendation": "BLOCK - investigate full local/live eval failures before release",
+    "skipped": 0
   },
   "versions": {
     "dataset": {

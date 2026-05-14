@@ -1,27 +1,19 @@
 # Baseball RAG Eval Report
 
-- Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
+- Command: `python -m evals.questions --include-live --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
 - Mode: answer
-- Release recommendation: **PASS - deterministic release gate is green**
+- Release recommendation: **BLOCK - investigate full local/live eval failures before release**
 - Cases loaded: 68
-- Attempted: 20
-- Passed: 20
-- Failed: 0
-- Skipped: 48
-- Pass rate: 100.0%
+- Attempted: 68
+- Passed: 52
+- Failed: 16
+- Skipped: 0
+- Pass rate: 76.5%
 - Required pass rate: 85%
 
 ## Service Requirements
 
-- Deterministic/CI-safe mode was used; non-default cases were skipped. 48 case(s) are available behind `--include-live`; 14 skipped case(s) may require LM Studio.
-
-## Skipped Live Cases
-
-- `player_bio_babe_ruth`: who was Babe Ruth
-- `player_bio_ted_williams`: tell me about Ted Williams
-- `player_bio_willie_mays`: who was Willie Mays
-- `player_bio_hank_aaron`: tell me about Hank Aaron
-- `player_bio_mickey_mantle`: who was Mickey Mantle
+- Live evals were included; `--include-live` may require LM Studio.
 
 ## Risk Categories
 
@@ -41,8 +33,27 @@
 
 ## Baseline Comparison
 
-- Recommendation: PASS
+- Recommendation: BLOCK
+- Blocker: pass rate decreased from 1.000 to 0.765
+- Warning: skipped case count changed from 48 to 0
 
 ## Failed Cases
 
-- None
+- `stat_unsupported_column`: unsupported: expected True, got False; answer missing substring 'grounded'
+- `stat_sql_injection_stat`: unsupported: expected True, got False
+- `stat_sql_injection_team`: intent: expected 'freeform_query', got 'general_explanation'; expected parameterized SQL with bound placeholders
+- `freeform_braves_1936`: SQL missing substring 'JOIN teams'
+- `min_sample_avg_2024`: intent: expected 'freeform_query', got 'stat_query'
+- `min_sample_avg_no_qualifier`: intent: expected 'freeform_query', got 'stat_query'
+- `stat_definition_rbi`: answer missing substring 'run batted in'
+- `unsupported_betting`: unsupported: expected True, got False
+- `unsupported_injury_news`: unsupported: expected True, got False
+- `unsupported_live_score`: unsupported: expected True, got False
+- `unsupported_contract`: unsupported: expected True, got False
+- `team_history_boston_braves`: answer missing substring 'Braves'
+- `unsupported_opinion`: unsupported: expected True, got False
+- `unsupported_non_baseball`: ValueError: Could not determine stat_tables from LLM response: {
+  "year_value": 2020
+}
+- `unsupported_schema_unknown`: unsupported: expected True, got False
+- `unsupported_minor_leagues`: unsupported: expected True, got False

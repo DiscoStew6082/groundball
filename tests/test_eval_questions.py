@@ -271,6 +271,66 @@ def test_format_eval_report_includes_counts_coverage_and_live_note():
     assert "- `broken_case`: answer missing substring 'Ruth'" in report
 
 
+def test_format_eval_report_labels_live_failures_as_full_suite_failures():
+    cases = load_cases()
+    result = run_cases(
+        cases[:1],
+        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+    )
+    result.failed.append(
+        result.passed[0].__class__(
+            case_id="live_broken_case",
+            status="failed",
+            failures=["unsupported: expected True, got False"],
+        )
+    )
+
+    report = format_eval_report(
+        EvalReport(
+            command="python -m evals.questions --include-live",
+            cases=cases,
+            include_live=True,
+            result=result,
+        )
+    )
+
+    assert (
+        "- Release recommendation: **BLOCK - investigate full local/live eval "
+        "failures before release**" in report
+    )
+    assert "deterministic eval failures" not in report
+
+
+def test_build_eval_artifact_labels_live_failures_as_full_suite_failures():
+    cases = load_cases()
+    result = run_cases(
+        cases[:1],
+        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+    )
+    result.failed.append(
+        result.passed[0].__class__(
+            case_id="live_broken_case",
+            status="failed",
+            failures=["unsupported: expected True, got False"],
+        )
+    )
+
+    artifact = build_eval_artifact(
+        EvalReport(
+            command="python -m evals.questions --include-live --json-report eval-report.json",
+            cases=cases,
+            include_live=True,
+            result=result,
+        ),
+        generated_at="2026-04-28T00:00:00+00:00",
+    )
+
+    assert (
+        artifact["summary"]["release_recommendation"]
+        == "BLOCK - investigate full local/live eval failures before release"
+    )
+
+
 def test_build_eval_artifact_includes_summary_versions_and_cases():
     cases = load_cases()
     result = run_cases(
