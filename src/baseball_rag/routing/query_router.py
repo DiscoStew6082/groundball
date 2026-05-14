@@ -37,6 +37,7 @@ from baseball_rag.db.stat_registry import (
     supported_stat_prompt_list,
 )
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
+from baseball_rag.routing.freeform_ownership import deterministic_freeform_owns
 
 _NAME_TOKEN_RE = r"[^\W\d_](?:[^\W\d_]|[.'-])*"
 _NAME_RE = rf"{_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})*"
@@ -364,14 +365,13 @@ def route(question: str) -> RoutedCase:
             raw_question=question,
         )
 
-    freeform_can_plan = _can_plan_deterministic_freeform(question)
     deterministic = _heuristic_route(question)
     if (
         deterministic.intent == "stat_query"
         and deterministic.stat is not None
         and (_should_use_deterministic_stat_route(question) or deterministic.player_name)
     ):
-        if freeform_can_plan and _should_use_deterministic_freeform_route(
+        if deterministic_freeform_owns(
             question,
             competing_stat=deterministic.stat,
         ):
@@ -385,7 +385,7 @@ def route(question: str) -> RoutedCase:
         and deterministic.stat is not None
         and not _should_use_deterministic_stat_route(question)
     ):
-        if freeform_can_plan and _should_use_deterministic_freeform_route(
+        if deterministic_freeform_owns(
             question,
             competing_stat=deterministic.stat,
         ):
@@ -395,7 +395,7 @@ def route(question: str) -> RoutedCase:
             )
         return deterministic
 
-    if freeform_can_plan:
+    if deterministic_freeform_owns(question):
         return routed_case(
             intent="freeform_query",
             raw_question=question,
@@ -686,24 +686,6 @@ def _should_use_deterministic_stat_route(question: str) -> bool:
         "best",
     )
     return any(term in lower_q for term in leaderboard_terms)
-
-
-def _can_plan_deterministic_freeform(question: str) -> bool:
-    """Return True when the freeform planner owns a deterministic template."""
-    from baseball_rag.db.freeform_runtime import can_plan_deterministically
-
-    return can_plan_deterministically(question)
-
-
-def _should_use_deterministic_freeform_route(
-    question: str,
-    *,
-    competing_stat: str | None = None,
-) -> bool:
-    """Return True when deterministic freeform should win route precedence."""
-    from baseball_rag.db.freeform_runtime import should_route_deterministic_freeform
-
-    return should_route_deterministic_freeform(question, competing_stat=competing_stat)
 
 
 def _extract_player_name_heuristic(question: str) -> str | None:

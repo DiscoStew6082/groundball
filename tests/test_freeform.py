@@ -172,6 +172,34 @@ class TestDeterministicTemplates:
             ("Pete", "Alexander", 373),
         ]
 
+    def test_public_freeform_facade_preserves_planning_compatibility(self):
+        import baseball_rag.db.freeform as freeform
+        from baseball_rag.db.duckdb_schema import get_duckdb
+
+        conn = get_duckdb()
+
+        with patch("baseball_rag.db.freeform.make_request") as mock_call:
+            planned = freeform.plan_query("career pitching wins leaders", conn)
+            result = freeform.query("career pitching wins leaders", conn)
+
+        assert mock_call.call_count == 0
+        assert freeform.can_plan_deterministically("career pitching wins leaders") is True
+        assert (
+            freeform.should_route_deterministic_freeform(
+                "career pitching wins leaders",
+                competing_stat="W",
+            )
+            is True
+        )
+        assert planned.planning_path == "deterministic_template"
+        assert planned.params == [25]
+        assert result.params == planned.params
+        assert result.rows[:3] == [
+            ("Cy", "Young", 511),
+            ("Walter", "Johnson", 417),
+            ("Pete", "Alexander", 373),
+        ]
+
     def test_qualified_season_era_template_bypasses_llm(self):
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             result = self._run_query("who had the lowest ERA in 1968 with enough innings")
