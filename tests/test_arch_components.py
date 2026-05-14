@@ -86,11 +86,11 @@ class TestComponentRegistrySingleton:
             "query-router",
             "claim-verifier",
             "duckdb",
-            "corpus-grounding",
             "llm",
             "prompt",
         }
         assert expected.issubset(component_ids)
+        assert "corpus-grounding" not in component_ids
 
     def test_components_cover_required_modules(self):
         reg = get_registry()

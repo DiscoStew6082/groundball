@@ -174,7 +174,7 @@ class ComponentRegistry:
             return None
 
     # ------------------------------------------------------------------
-    # Defaults — register the eight known components
+    # Defaults — register the active runtime components
     # ------------------------------------------------------------------
 
     def _register_defaults(self) -> None:
@@ -231,18 +231,6 @@ class ComponentRegistry:
                 ),
                 layer=Layer.DATA,
                 file_path="src/baseball_rag/db/duckdb_schema.py",
-            )
-        )
-        self.register(
-            DiagramComponent(
-                id="corpus-grounding",
-                label="Corpus Grounding",
-                description=(
-                    "Checked-in markdown material retained for project documentation "
-                    "and tests, not runtime answer grounding."
-                ),
-                layer=Layer.DATA,
-                file_path="src/baseball_rag/corpus/__init__.py",
             )
         )
         self.register(

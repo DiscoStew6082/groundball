@@ -124,8 +124,8 @@ class TestRunAllTestsFunction:
         with patch("subprocess.run", return_value=fake_result):
             run_all_tests()
 
-        # api-server and corpus-grounding are not in COMPONENT_TEST_MAP
-        for comp_id in ("api-server", "corpus-grounding"):
+        # api-server is not in COMPONENT_TEST_MAP
+        for comp_id in ("api-server",):
             comp = registry.get(comp_id)
             if comp is not None:
                 assert comp.test_status == TestStatus.UNKNOWN, f"{comp_id} should be UNKNOWN"

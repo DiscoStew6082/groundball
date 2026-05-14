@@ -83,12 +83,14 @@ class TestDiagramRendersAllLayers:
         html = self.diagram._build_diagram_html()
         assert "query-router" in html or "Query Router" in html
 
-    def test_data_layer_shows_duckdb_and_corpus_grounding(self):
-        """Data layer shows both DuckDB and corpus-grounding components."""
+    def test_data_layer_shows_duckdb_without_removed_corpus_grounding(self):
+        """The current runtime data layer shows DuckDB, not removed corpus retrieval."""
         html = self.diagram._build_diagram_html()
 
         assert "duckdb" in html
-        assert "corpus-grounding" in html or "Corpus Grounding" in html
+        assert "corpus-grounding" not in html
+        assert "Corpus Grounding" not in html
+        assert "Chroma" not in html
 
     def test_generation_layer_shows_llm_and_prompt(self):
         """Generation layer shows both LLM and Prompt Templates components."""

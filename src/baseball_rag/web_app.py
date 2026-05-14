@@ -401,6 +401,7 @@ def build_dashboard() -> gr.Blocks:
                 inputs=[],
                 outputs=[arch_diagram.diagram_html, arch_diagram.footer_html],
                 show_progress="hidden",
+                queue=False,
             )
 
             # Run All Tests button (Phase 5) — added directly inside this

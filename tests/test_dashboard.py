@@ -91,6 +91,18 @@ class TestDashboardTabs:
         assert all(dependency["js"] for dependency in example_dependencies)
         assert all(dependency["show_progress"] == "hidden" for dependency in example_dependencies)
 
+    def test_architecture_refresh_is_not_queued(self):
+        """Switching to Architecture should not start a queued progress timer."""
+        config = self.dash.get_config_file()
+        dependency = next(
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["api_name"] == "refresh_architecture_trace"
+        )
+
+        assert dependency["queue"] is False
+        assert dependency["show_progress"] == "hidden"
+
     def test_query_textbox_starts_with_clickable_default_question(self):
         """The first Ask click should run the visible default question."""
         config = self.dash.get_config_file()

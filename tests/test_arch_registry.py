@@ -22,7 +22,7 @@ class TestRegistryTracksComponents:
     def test_all_returns_components(self) -> None:
         reg = get_registry()
         all_comps = reg.all()
-        assert len(all_comps) >= 8
+        assert len(all_comps) >= 7
 
     def test_known_component_ids_present(self) -> None:
         reg = get_registry()
@@ -33,11 +33,11 @@ class TestRegistryTracksComponents:
             "query-router",
             "claim-verifier",
             "duckdb",
-            "corpus-grounding",
             "llm",
             "prompt",
         }
         assert expected.issubset(ids)
+        assert "corpus-grounding" not in ids
 
     def test_get_by_id(self) -> None:
         reg = get_registry()
