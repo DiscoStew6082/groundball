@@ -123,10 +123,12 @@ class TestDeterministicTemplates:
         ]
 
     def test_career_pitching_wins_template_is_planned_before_execution(self):
+        from baseball_rag.db import freeform_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
         from baseball_rag.db.freeform import can_plan_deterministically, plan_query
         from baseball_rag.routing import FreeformQueryCase, route
 
+        assert not hasattr(freeform_runtime, "_template_source_detail")
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             planned = plan_query("career pitching wins leaders", get_duckdb())
 
@@ -233,6 +235,19 @@ class TestDeterministicTemplates:
         assert result.row_count == 0
         assert result.columns == ["unsupported_reason"]
         assert result.unsupported_reason == "ambiguous"
+
+    def test_matched_template_exposes_route_ownership_and_unsupported_policy(self):
+        from baseball_rag.db.freeform_templates import match_template
+
+        matched = match_template("who is in the 500 club")
+
+        assert matched is not None
+        assert matched.route_owner is True
+        assert matched.unsupported_reason == "ambiguous"
+        assert matched.source_detail == "Matched local deterministic freeform SQL template."
+        assert matched.assembled.params == [
+            "The question says 500 club but does not specify home runs or pitching wins."
+        ]
 
     def test_underqualified_era_is_unsupported_without_llm(self):
         with patch("baseball_rag.db.freeform.make_request") as mock_call:

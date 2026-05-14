@@ -1,8 +1,22 @@
 """Deterministic SQL templates for common baseball-history questions."""
 
 import re
+from dataclasses import dataclass
 
 from baseball_rag.db.freeform_types import AssembledSQL
+
+
+@dataclass(frozen=True)
+class MatchedTemplate:
+    """Read model for one deterministic freeform template match."""
+
+    assembled: AssembledSQL
+    source_detail: str
+    route_owner: bool = True
+
+    @property
+    def unsupported_reason(self) -> str | None:
+        return self.assembled.unsupported_reason
 
 
 def _normalize_question(question: str) -> str:
@@ -45,61 +59,91 @@ def _unsupported_sql(reason: str, *, code: str = "unsupported") -> AssembledSQL:
     )
 
 
-def _detect_template(question: str) -> AssembledSQL | None:
-    """Return deterministic SQL for high-value freeform baseball-history patterns."""
+def match_template(question: str) -> MatchedTemplate | None:
+    """Return the matched deterministic template spec for a question."""
     q = _normalize_question(question)
 
     if "500 club" in q and "home run" not in q and "hr" not in q:
-        return _unsupported_sql(
-            "The question says 500 club but does not specify home runs or pitching wins.",
-            code="ambiguous",
+        return MatchedTemplate(
+            assembled=_unsupported_sql(
+                "The question says 500 club but does not specify home runs or pitching wins.",
+                code="ambiguous",
+            ),
+            source_detail=_template_source_detail(q),
         )
 
     if "triple crown" in q:
-        return _triple_crown_sql()
+        return MatchedTemplate(_triple_crown_sql(), _template_source_detail(q))
 
     if re.search(r"\b30\s*30\b", q) or "30 30 club" in q or "thirty thirty" in q:
-        return _thirty_thirty_sql()
+        return MatchedTemplate(_thirty_thirty_sql(), _template_source_detail(q))
 
     if (
         ("home run" in q or "homer" in q or re.search(r"\bhrs?\b", q))
         and ("500" in q or "club" in q or "career" in q)
         and not _looks_like_single_season(q)
     ):
-        return _career_home_run_sql(_extract_threshold(q, default=500))
+        return MatchedTemplate(
+            _career_home_run_sql(_extract_threshold(q, default=500)),
+            _template_source_detail(q),
+        )
 
     if (
         ("wins" in q or re.search(r"\bw\b", q))
         and ("pitcher" in q or "pitching" in q or "career" in q or "500" in q)
         and not _looks_like_single_season(q)
     ):
-        return _career_pitching_wins_sql(_extract_explicit_wins_threshold(q))
+        return MatchedTemplate(
+            _career_pitching_wins_sql(_extract_explicit_wins_threshold(q)),
+            _template_source_detail(q),
+        )
 
     if "era" in q and "career" in q:
         if not _has_era_qualification_guard(q):
-            return _unsupported_sql(
-                "Career ERA leader questions need an explicit qualification guard."
+            return MatchedTemplate(
+                _unsupported_sql(
+                    "Career ERA leader questions need an explicit qualification guard."
+                ),
+                _template_source_detail(q),
             )
-        return _career_era_sql(_extract_min_ipouts(q, default=3000))
+        return MatchedTemplate(
+            _career_era_sql(_extract_min_ipouts(q, default=3000)),
+            _template_source_detail(q),
+        )
 
     if "era" in q and ("lowest" in q or "best" in q or "leader" in q or "leaders" in q):
         year = _extract_year(q)
         if year is None:
-            return _unsupported_sql(
-                "Season ERA leader questions need a specific year and innings qualification."
+            return MatchedTemplate(
+                _unsupported_sql(
+                    "Season ERA leader questions need a specific year and innings qualification."
+                ),
+                _template_source_detail(q),
             )
         if not _has_era_qualification_guard(q):
-            return _unsupported_sql(
-                "Season ERA leader questions need an innings qualification guard."
+            return MatchedTemplate(
+                _unsupported_sql(
+                    "Season ERA leader questions need an innings qualification guard."
+                ),
+                _template_source_detail(q),
             )
-        return _qualified_season_era_sql(year, _extract_min_ipouts(q, default=300))
+        return MatchedTemplate(
+            _qualified_season_era_sql(year, _extract_min_ipouts(q, default=300)),
+            _template_source_detail(q),
+        )
 
     return None
 
 
+def _detect_template(question: str) -> AssembledSQL | None:
+    """Return deterministic SQL for high-value freeform baseball-history patterns."""
+    matched = match_template(question)
+    return matched.assembled if matched is not None else None
+
+
 def can_plan_deterministically(question: str) -> bool:
     """Return whether a question is owned by a deterministic freeform template."""
-    return _detect_template(question) is not None
+    return match_template(question) is not None
 
 
 def should_route_deterministic_freeform(
@@ -108,7 +152,10 @@ def should_route_deterministic_freeform(
     competing_stat: str | None = None,
 ) -> bool:
     """Return whether deterministic freeform should win routing precedence."""
-    if _detect_template(question) is None:
+    matched = match_template(question)
+    if matched is None:
+        return False
+    if not matched.route_owner:
         return False
     if competing_stat is None:
         return True
