@@ -414,6 +414,45 @@ class TestDashboardTabs:
         assert self.dash.arch_diagram.diagram_html.value == before_html
         assert self.dash.arch_diagram.footer_html.value == before_footer
 
+    def test_architecture_refresh_shows_latest_query_trace(self):
+        """Refreshing the Architecture tab renders the last completed Query trace."""
+        self.dash.arch_diagram.trace_history.clear()
+
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        refresh_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "refresh_architecture_trace"
+        )
+
+        def fake_answer(question: str, **_kwargs):
+            from baseball_rag.arch.tracing import traced
+
+            with traced(component_id="query-router", label="Query Router"):
+                pass
+            return StructuredAnswer(answer=f"answered {question}", intent="general_explanation")
+
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, begun, turn_registry, _ = begin_fn("what is OPS", [], [], turn_registry)
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            query_fn(begun, turn_registry)
+
+        html, footer = refresh_fn()
+
+        assert "highlighted" in html
+        assert "card-query-router" in html
+        assert "general_explanation" in footer
+        assert "completed in" in footer
+
     def test_query_handler_keeps_answer_when_diagram_recording_fails(self):
         """A trace-display failure should not replace a successful query answer."""
         from baseball_rag.web_app import respond_conversation

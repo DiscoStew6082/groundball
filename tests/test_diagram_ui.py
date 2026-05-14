@@ -548,3 +548,22 @@ class TestQueryHistory:
         before = len(self.diagram.trace_history)
         self.diagram.animate_trace(empty)
         assert len(self.diagram.trace_history) == before
+
+    def test_show_latest_trace_renders_static_highlighted_path(self):
+        """A recorded trace can be rendered visibly without replaying animation."""
+        now = datetime.now()
+        trace = PipelineTrace(query="stat leaders")
+        trace.add_stage(
+            PipelineStage("query-router", "Query Router", started_at=now, elapsed_ms=1.0)
+        )
+        trace.add_stage(PipelineStage("duckdb", "DuckDB", started_at=now, elapsed_ms=2.0))
+        trace.route_type = "stat_query"
+        self.diagram.trace_history.append(trace)
+
+        result = self.diagram.show_latest_trace()
+
+        assert result is self.diagram
+        assert self.diagram.highlight_ids == {"query-router", "duckdb"}
+        assert "card-query-router" in self.diagram.diagram_html.value
+        assert "highlighted" in self.diagram.diagram_html.value
+        assert "stat_query" in self.diagram.footer_html.value

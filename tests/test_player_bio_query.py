@@ -120,6 +120,118 @@ def test_llm_biography_verifies_pitching_strikeout_claim(monkeypatch):
     assert result.sources[0].rows[0]["table"] == "pitching"
 
 
+def test_llm_biography_uses_final_contract_after_planning_json(monkeypatch):
+    """Biography parsing should ignore planning snippets and use the final contract."""
+    content = "\n".join(
+        [
+            "* Subject: Nolan Ryan.",
+            '* Claim draft: {"stat": "SO", "value": 5714, "scope": "career", "table": "pitching"}',
+            (
+                '{"answer":"Nolan Ryan was a Hall of Fame pitcher who recorded '
+                '5,714 strikeouts.","stat_claims":[{"stat":"SO","value":5714,'
+                '"scope":"career","year":null,"text":"recorded 5,714 strikeouts",'
+                '"table":"pitching"}]}'
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Nolan Ryan",
+            raw_question="who was Nolan Ryan",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: LLMResponse(content=content, model="test-model", done=True),
+    )
+
+    result = answer("who was Nolan Ryan")
+
+    assert result.unsupported is False
+    assert "Nolan Ryan was a Hall of Fame pitcher" in result.answer
+    assert result.sources[0].type == "duckdb"
+    assert result.sources[0].rows[0]["status"] == "verified"
+    assert result.sources[0].rows[0]["actual_value"] == 5714
+    assert result.sources[0].rows[0]["table"] == "pitching"
+
+
+def test_llm_biography_skips_draft_answer_object_before_final_contract(monkeypatch):
+    """A draft answer-shaped JSON object should not preempt the final contract."""
+    content = "\n".join(
+        [
+            '{"answer": ""}',
+            (
+                '{"answer":"Nolan Ryan recorded 5,714 career strikeouts.",'
+                '"stat_claims":[{"stat":"SO","value":5714,"scope":"career",'
+                '"year":null,"text":"recorded 5,714 career strikeouts",'
+                '"table":"pitching"}]}'
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Nolan Ryan",
+            raw_question="who was Nolan Ryan",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: LLMResponse(content=content, model="test-model", done=True),
+    )
+
+    result = answer("who was Nolan Ryan")
+
+    assert result.unsupported is False
+    assert result.answer == "Nolan Ryan recorded 5,714 career strikeouts."
+    assert result.sources[0].rows[0]["status"] == "verified"
+
+
+def test_llm_biography_retries_once_after_malformed_contract(monkeypatch):
+    """A malformed first biography response should get one JSON repair attempt."""
+    calls: list[tuple] = []
+
+    def fake_llm(prompt, **kwargs):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return LLMResponse(
+                content="* Nolan Ryan planning notes without any final JSON contract.",
+                model="test-model",
+                done=True,
+            )
+        return _llm_json(
+            "Nolan Ryan recorded 5,714 career strikeouts.",
+            [
+                {
+                    "stat": "SO",
+                    "value": 5714,
+                    "scope": "career",
+                    "text": "5,714 career strikeouts",
+                    "table": "pitching",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Nolan Ryan",
+            raw_question="who was Nolan Ryan",
+        ),
+    )
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who was Nolan Ryan")
+
+    assert len(calls) == 2
+    assert result.unsupported is False
+    assert "5,714 career strikeouts" in result.answer
+    assert result.sources[0].rows[0]["status"] == "verified"
+
+
 def test_llm_biography_with_contradicted_stat_claim_warns_but_returns_prose(monkeypatch):
     monkeypatch.setattr(
         "baseball_rag.service.route",

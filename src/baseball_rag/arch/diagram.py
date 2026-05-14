@@ -320,13 +320,7 @@ class ArchitectureDiagram(gr.Blocks):
             if len(self.trace_history) > self.max_history:
                 self.trace_history.pop(0)
 
-        # Update footer with route badge + total time (skip in test mode)
-        if hasattr(self, "footer_html"):
-            route_str = _ROUTE_BADGE.get(trace.route_type, trace.route_type or "\u26a1 unknown")
-            self.footer_html.value = (
-                f"<span class='route-badge'>{route_str}</span>"
-                f" &nbsp;|&nbsp; Pipeline completed in {trace.total_ms:.1f}ms"
-            )
+        self._set_footer_from_trace(trace)
 
         # Kick off JS-driven animation
         stage_ids = [s.component_id for s in trace.stages]
@@ -335,6 +329,22 @@ class ArchitectureDiagram(gr.Blocks):
             self.skip_btn.visible = True
 
         self._js_animate(stage_ids, elapsed_list)
+        return self
+
+    def show_latest_trace(self) -> ArchitectureDiagram:
+        """Render the most recently recorded trace as a static highlighted path."""
+        if not self.trace_history:
+            self.clear_highlight()
+            if hasattr(self, "footer_html"):
+                self.footer_html.value = ""
+            return self
+
+        trace = self.trace_history[-1]
+        self.highlight_ids = {stage.component_id for stage in trace.stages}
+        self._update_diagram()
+        self._set_footer_from_trace(trace)
+        if hasattr(self, "skip_btn"):
+            self.skip_btn.visible = False
         return self
 
     def _on_skip_animation(self) -> None:
@@ -460,6 +470,16 @@ class ArchitectureDiagram(gr.Blocks):
         """Re-render the diagram with current highlight / dim state."""
         if hasattr(self, "diagram_html"):
             self.diagram_html.value = self._build_diagram_html()
+
+    def _set_footer_from_trace(self, trace: PipelineTrace) -> None:
+        """Update the footer with the trace route and total runtime."""
+        if not hasattr(self, "footer_html"):
+            return
+        route_str = _ROUTE_BADGE.get(trace.route_type, trace.route_type or "\u26a1 unknown")
+        self.footer_html.value = (
+            f"<span class='route-badge'>{route_str}</span>"
+            f" &nbsp;|&nbsp; Pipeline completed in {trace.total_ms:.1f}ms"
+        )
 
     def _setup_js(self) -> None:
         """Wire up client-side JavaScript for interactive card selection."""

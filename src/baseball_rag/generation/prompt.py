@@ -65,15 +65,19 @@ def build_player_biography_json_prompt(
         "stat names such as HR, RBI, H, SB, AVG, OPS, W, ERA, WHIP, SO, or PO. "
         "For ambiguous stats such as SO, identify whether the claim is batting or "
         "pitching in the table field or in the claim text. "
+        "Only include stat_claims for supported DuckDB-verifiable stats: HR, RBI, H, "
+        "SB, AVG, OPS, W, ERA, WHIP, SO, or PO. "
         "If the biography includes no explicit stat totals, return an empty "
-        "stat_claims array.",
+        "stat_claims array. Do not include markdown, bullets, notes, analysis, or "
+        "examples. The first character must be { and the last character must be }.",
         (
             "Resolved player identity from DuckDB:\n"
             f"- name: {player_name}\n"
             f"- player_id: {player_id}\n"
             f"- debut: {debut or 'unknown'}\n"
             f"- final_game: {final_game or 'unknown'}\n\n"
-            f"Question: {question}"
+            f"Question: {question}\n"
+            "Return the final compact JSON object now."
         ),
     )
 

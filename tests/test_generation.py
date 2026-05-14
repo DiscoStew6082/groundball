@@ -194,6 +194,18 @@ class TestStripReasoningBlock:
         assert not result.startswith("*")
         assert "Rollie Fingers" in result
 
+    def test_strips_leading_blank_lines_before_bullet_planning(self):
+        """Leading blank lines should not let bullet planning leak through."""
+        raw = (
+            "\n\n"
+            "* Subject: Nolan Ryan\n"
+            "* Goal: produce biography JSON\n"
+            '{"answer": "Nolan Ryan was a Hall of Fame pitcher.", "stat_claims": []}'
+        )
+        result = _strip_reasoning_block(raw)
+        assert result.startswith('{"answer"')
+        assert "Subject:" not in result
+
     def test_strips_markdown_fence(self):
         """Content wrapped in ``` fences is extracted."""
         raw = (

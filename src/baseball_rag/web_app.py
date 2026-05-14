@@ -385,12 +385,23 @@ def build_dashboard() -> gr.Blocks:
                 queue=False,
             )
 
-        with gr.Tab("Architecture"):
+        with gr.Tab("Architecture") as architecture_tab:
             gr.Markdown(
                 "**Pipeline Explorer** — click any component to inspect its source. "
                 "After running a query in the **Query** tab, switch here to see it animate."
             )
             arch_diagram.render()
+
+            def refresh_architecture_trace():
+                arch_diagram.show_latest_trace()
+                return arch_diagram.diagram_html.value, arch_diagram.footer_html.value
+
+            architecture_tab.select(
+                fn=refresh_architecture_trace,
+                inputs=[],
+                outputs=[arch_diagram.diagram_html, arch_diagram.footer_html],
+                show_progress="hidden",
+            )
 
             # Run All Tests button (Phase 5) — added directly inside this
             # with-gr.Tab block so btn.click() has an active Blocks context.
