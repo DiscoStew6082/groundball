@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from baseball_rag.provenance import StructuredAnswer, compact_data_manifest
+from baseball_rag.support_state import answer_support_state
 
 
 def build_query_metadata(
@@ -133,18 +134,8 @@ def eval_category_for_question(question: str) -> dict[str, Any]:
 
 def unsupported_reason(answer: StructuredAnswer) -> str | None:
     """Return a structured unsupported reason when available."""
-    if not answer.unsupported:
-        return None
-    if answer.unsupported_reason is not None:
-        return answer.unsupported_reason
-    for source in answer.sources:
-        for row in source.rows:
-            reason = row.get("unsupported_reason")
-            if reason:
-                return str(reason)
-    if answer.warnings:
-        return answer.warnings[0]
-    return "unsupported"
+    reason = answer_support_state(answer).audit_reason
+    return str(reason) if reason is not None else None
 
 
 def _sql_metadata(sources: list[dict[str, Any]]) -> dict[str, Any]:

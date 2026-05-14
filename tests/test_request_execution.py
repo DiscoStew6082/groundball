@@ -55,15 +55,12 @@ def test_execute_request_attaches_audit_and_review_once():
     with (
         patch("baseball_rag.request_execution.answer") as answer,
         patch("baseball_rag.audit.build_query_metadata") as build_metadata,
-        patch("baseball_rag.review_queue.build_review_item") as build_review_item,
-        patch("baseball_rag.review_queue.persist_review_item") as persist_review_item,
-        patch("baseball_rag.review_queue.review_payload") as review_payload,
+        patch("baseball_rag.review_queue.enqueue_review_item") as enqueue_review_item,
     ):
         structured = StructuredAnswer(answer="Nope", intent="stat_query", unsupported=True)
         answer.return_value = structured
         build_metadata.return_value = {"query_id": "q_test", "route": "stat_query"}
-        build_review_item.return_value = object()
-        review_payload.return_value = {"queued": True, "reason": "unsupported"}
+        enqueue_review_item.return_value = {"queued": True, "reason": "unsupported"}
 
         execution = execute_request(
             "who led MLB in vibes",
@@ -75,9 +72,7 @@ def test_execute_request_attaches_audit_and_review_once():
     assert execution.answer.metadata == {"query_id": "q_test", "route": "stat_query"}
     assert execution.answer.review == {"queued": True, "reason": "unsupported"}
     build_metadata.assert_called_once()
-    build_review_item.assert_called_once_with("who led MLB in vibes", structured)
-    persist_review_item.assert_called_once_with(build_review_item.return_value)
-    review_payload.assert_called_once_with(build_review_item.return_value)
+    enqueue_review_item.assert_called_once_with("who led MLB in vibes", structured)
 
 
 def test_execute_request_passes_conversation_to_answer_service():

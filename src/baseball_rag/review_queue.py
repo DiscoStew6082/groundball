@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.support_state import answer_support_state
 
 ReviewReason = Literal["unsupported", "ambiguous", "low_confidence"]
 ReviewStatus = Literal["open", "resolved", "dismissed"]
@@ -40,7 +41,7 @@ def build_review_item(
 ) -> ReviewQueueItem | None:
     """Return a review item when an answer should be checked by a person."""
     _ = low_confidence_threshold
-    reason = _review_reason(answer)
+    reason = answer_support_state(answer).review_reason
     if reason is None:
         return None
 
@@ -68,6 +69,13 @@ def review_payload(item: ReviewQueueItem | None) -> dict[str, Any] | None:
     if item is None:
         return None
     return {"queued": True, "reason": item.reason, "item_id": item.id}
+
+
+def enqueue_review_item(question: str, answer: StructuredAnswer) -> dict[str, Any] | None:
+    """Build, persist, and return the public human-review payload for an answer."""
+    item = build_review_item(question, answer)
+    persist_review_item(item)
+    return review_payload(item)
 
 
 def review_queue_path() -> Path:
@@ -167,17 +175,6 @@ def _same_open_snapshot(existing: ReviewQueueItem | None, item: ReviewQueueItem)
         and existing.reason == item.reason
         and existing.audit == item.audit
     )
-
-
-def _review_reason(answer: StructuredAnswer) -> ReviewReason | None:
-    if answer.review_reason is not None:
-        return answer.review_reason
-    if answer.unsupported:
-        if answer.unsupported_reason == "ambiguous":
-            return "ambiguous"
-        return "unsupported"
-
-    return None
 
 
 def _review_id(*, question: str, reason: ReviewReason, audit: dict[str, Any]) -> str:

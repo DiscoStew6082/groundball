@@ -66,10 +66,8 @@ def execute_request(
         audit_logger.info("query_audit", extra={"audit": result.metadata})
 
     if attach_review:
-        from baseball_rag.review_queue import build_review_item, persist_review_item, review_payload
+        from baseball_rag.review_queue import enqueue_review_item
 
-        item = build_review_item(question, result)
-        persist_review_item(item)
-        result.review = review_payload(item)
+        result.review = enqueue_review_item(question, result)
 
     return RequestExecution(answer=result, trace=trace)
