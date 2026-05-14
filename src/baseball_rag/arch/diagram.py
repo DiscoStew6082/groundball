@@ -6,6 +6,8 @@ Phase 3 of the Architecture Explorer plan.
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass, field
+from json import dumps as json_dumps
 from typing import Any, Callable
 
 import gradio as gr
@@ -37,6 +39,30 @@ _LAYER_LABELS: dict[Layer, str] = {
 _ROUTE_BADGE: dict[str, str] = {
     "stat_query": "\u26a1 stat_query",
     "general_explanation": "\ud83d\udd0d general_explanation",
+}
+
+_STAGE_LABELS: dict[str, str] = {
+    "gradio": "Ask question",
+    "api-server": "Receive API request",
+    "api": "Receive API request",
+    "cli": "Receive CLI request",
+    "query-router": "Understand question",
+    "duckdb": "Look up stats",
+    "claim-verifier": "Check biography claims",
+    "prompt": "Prepare answer prompt",
+    "llm": "Write answer",
+}
+
+_STAGE_CONTRIBUTIONS: dict[str, str] = {
+    "gradio": "Started the query from the visible dashboard.",
+    "api-server": "Accepted a programmatic request before handing it to the query engine.",
+    "api": "Accepted a programmatic request before handing it to the query engine.",
+    "cli": "Accepted a command-line question before handing it to the query engine.",
+    "query-router": "Classified the question so the right answering path could run.",
+    "duckdb": "Queried the baseball statistics tables and returned evidence rows.",
+    "claim-verifier": "Checked generated biography claims against the stats database.",
+    "prompt": "Prepared instructions and evidence for answer generation.",
+    "llm": "Generated the final natural-language answer.",
 }
 
 
@@ -132,6 +158,53 @@ _DIAGRAM_CSS = """
 
 #skip-btn { font-size: 11px; padding: 2px 10px; }
 #arch-select-bridge { display: none !important; }
+.latest-run {
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #111827;
+}
+.run-summary {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #f9fafb;
+}
+.run-question { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.run-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #374151; }
+.run-status { margin-top: 8px; font-size: 13px; font-weight: 600; }
+.run-status.ok { color: #047857; }
+.run-status.warning { color: #a16207; }
+.run-status.error { color: #b91c1c; }
+.trace-timeline { display: grid; gap: 8px; margin-bottom: 12px; }
+.timeline-item {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px;
+    background: #ffffff;
+    cursor: pointer;
+}
+.timeline-item.failed { border-color: #f87171; background: #fef2f2; }
+.timeline-head { font-weight: 700; }
+.timeline-contribution { color: #374151; font-size: 13px; margin-top: 4px; }
+.active-path {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.path-card {
+    border: 2px solid #34d399;
+    border-radius: 8px;
+    padding: 9px 12px;
+    background: #ecfdf5;
+    color: #064e3b;
+    cursor: pointer;
+}
+.path-card.error-state { border-color: #f87171; background: #fef2f2; color: #7f1d1d; }
+.path-arrow { color: #6b7280; }
+.quiet-map summary { cursor: pointer; color: #4b5563; font-size: 13px; }
+.quiet-map .component-grid { margin-top: 8px; }
 """
 
 _SELECTION_BRIDGE_ONCLICK = (
@@ -149,6 +222,36 @@ _SELECTION_BRIDGE_ONCLICK = (
 )
 
 _SELECTION_BRIDGE_STYLE = "<style>#arch-select-bridge{display:none!important;}</style>"
+
+
+@dataclass(frozen=True)
+class LatestRunView:
+    """Internal Architecture-tab model for the last completed query."""
+
+    question: str
+    intent: str
+    warnings: list[str] = field(default_factory=list)
+    unsupported: bool = False
+    unsupported_reason: str | None = None
+    sources: list[Any] = field(default_factory=list)
+    trace: PipelineTrace | None = None
+
+    @classmethod
+    def from_execution(cls, execution: Any) -> "LatestRunView":
+        trace = execution.trace
+        answer = execution.answer
+        question = trace.query if trace is not None else str(answer.metadata.get("question", ""))
+        if not question:
+            question = str(answer.metadata.get("original_question", ""))
+        return cls(
+            question=question,
+            intent=answer.intent,
+            warnings=list(answer.warnings),
+            unsupported=answer.unsupported,
+            unsupported_reason=answer.unsupported_reason,
+            sources=list(answer.sources),
+            trace=trace,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -174,11 +277,11 @@ def _card_html(comp: DiagramComponent, extra_cls: str = "") -> str:
     return f"""
 <button type="button"
      class="{classes}"
-     id="card-{comp.id}"
-     data-component-id="{comp.id}"
+     id="card-{_esc(comp.id)}"
+     data-component-id="{_esc(comp.id)}"
      role="button"
      tabindex="0"
-     onclick="{_SELECTION_BRIDGE_ONCLICK}('{comp.id}')">
+     onclick="{_SELECTION_BRIDGE_ONCLICK}({_js_arg(comp.id)})">
   <div class="card-id">{status_emoji} {comp.id}</div>
   <div class="card-body">{comp.label}</div>
 </button>"""
@@ -229,6 +332,8 @@ class ArchitectureDiagram(gr.Blocks):
         self.highlight_ids: set[str] = set()
         self.selected_id: str | None = None
         self.trace_history: list[PipelineTrace] = []
+        self.latest_run: LatestRunView | None = None
+        self.latest_runs_by_session: dict[str, LatestRunView] = {}
         self._animating = False
         self._anim_lock = threading.RLock()
 
@@ -300,12 +405,14 @@ class ArchitectureDiagram(gr.Blocks):
 
         Calling this also clears any in-progress animation.
         """
+        self.latest_run = None
         self.highlight_ids = set(ids)
         self._update_diagram()
         return self
 
     def clear_highlight(self) -> ArchitectureDiagram:
         """Remove all highlighting and return to idle state."""
+        self.latest_run = None
         self.highlight_ids.clear()
         self.selected_id = None
         self._update_diagram()
@@ -331,6 +438,7 @@ class ArchitectureDiagram(gr.Blocks):
             return self
 
         with self._anim_lock:
+            self.latest_run = None
             if self._animating:
                 self.skip_animation()
             self._animating = True
@@ -349,8 +457,48 @@ class ArchitectureDiagram(gr.Blocks):
         self._js_animate(stage_ids, elapsed_list)
         return self
 
-    def show_latest_trace(self) -> ArchitectureDiagram:
+    def record_execution(
+        self,
+        execution: Any,
+        *,
+        session_key: str | None = None,
+    ) -> ArchitectureDiagram:
+        """Record the latest completed request for the user-facing Architecture view."""
+        if execution.trace is not None:
+            self.trace_history.append(execution.trace)
+            if len(self.trace_history) > self.max_history:
+                self.trace_history.pop(0)
+        latest_run = LatestRunView.from_execution(execution)
+        self.latest_run = latest_run
+        self.latest_runs_by_session[_session_latest_key(session_key)] = latest_run
+        return self
+
+    def show_latest_trace(self, *, session_key: str | None = None) -> ArchitectureDiagram:
         """Render the most recently recorded trace as a static highlighted path."""
+        latest_run = self.latest_runs_by_session.get(_session_latest_key(session_key))
+        if latest_run is None and session_key is None:
+            latest_run = self.latest_run
+        elif latest_run is None:
+            self.latest_run = None
+            self.highlight_ids.clear()
+            self._update_diagram()
+            if hasattr(self, "footer_html"):
+                self.footer_html.value = ""
+            if hasattr(self, "skip_btn"):
+                self.skip_btn.visible = False
+            return self
+
+        if latest_run is not None:
+            self.latest_run = latest_run
+            trace = latest_run.trace
+            self.highlight_ids = {stage.component_id for stage in trace.stages} if trace else set()
+            self._update_diagram()
+            if trace is not None:
+                self._set_footer_from_trace(trace)
+            if hasattr(self, "skip_btn"):
+                self.skip_btn.visible = False
+            return self
+
         if not self.trace_history:
             self.clear_highlight()
             if hasattr(self, "footer_html"):
@@ -364,6 +512,13 @@ class ArchitectureDiagram(gr.Blocks):
         if hasattr(self, "skip_btn"):
             self.skip_btn.visible = False
         return self
+
+    def latest_trace_values(self, *, session_key: str | None = None) -> tuple[str, str]:
+        """Return latest-run diagram/footer HTML for a session in one locked operation."""
+        with self._anim_lock:
+            self.show_latest_trace(session_key=session_key)
+            footer = self.footer_html.value if hasattr(self, "footer_html") else ""
+            return self.diagram_html.value, footer
 
     def _on_skip_animation(self) -> None:
         """Handle the Skip Animation button event registered during UI setup."""
@@ -400,6 +555,9 @@ class ArchitectureDiagram(gr.Blocks):
 
     def _build_diagram_html(self, highlight_ids: set[str] | None = None) -> str:
         """Render the full architecture diagram as an HTML string."""
+        if self.latest_run is not None:
+            return self._build_latest_run_html(self.latest_run)
+
         ids = highlight_ids if highlight_ids is not None else self.highlight_ids
 
         rows = []
@@ -429,6 +587,108 @@ class ArchitectureDiagram(gr.Blocks):
 
         return "<div id='arch-diagram-inner'>" + "".join(rows) + "</div>" + _SELECTION_BRIDGE_STYLE
 
+    def _build_latest_run_html(self, run: LatestRunView) -> str:
+        trace = run.trace
+        stages = trace.stages if trace is not None else []
+        active_ids = [stage.component_id for stage in stages]
+        self.highlight_ids = set(active_ids)
+        route = trace.route_type if trace is not None and trace.route_type else run.intent
+        summary_html = self._build_latest_summary_html(run, route)
+        timeline_html = self._build_timeline_html(stages)
+        path_html = self._build_active_path_html(stages)
+        quiet_html = self._build_quiet_map_html(set(active_ids))
+        return (
+            "<div id='arch-diagram-inner' class='latest-run'>"
+            f"{summary_html}{timeline_html}{path_html}{quiet_html}"
+            "</div>" + _SELECTION_BRIDGE_STYLE
+        )
+
+    def _build_latest_summary_html(self, run: LatestRunView, route: str) -> str:
+        trace = run.trace
+        total_ms = trace.total_ms if trace is not None else 0.0
+        row_count = sum(len(source.rows) for source in run.sources)
+        diagnostics = list(run.warnings)
+        if run.unsupported:
+            reason = run.unsupported_reason or "unsupported"
+            diagnostics.append(f"Unsupported outcome: {reason}")
+        stages = trace.stages if trace is not None else []
+        stage_errors = [stage.error for stage in stages if stage.error]
+        diagnostics.extend(f"Runtime error: {error}" for error in stage_errors if error)
+        if stage_errors:
+            status_cls = "error"
+            status = "; ".join(f"Error: {error}" for error in stage_errors if error)
+        elif diagnostics:
+            status_cls = "warning"
+            status = "; ".join(diagnostics)
+        else:
+            status_cls = "ok"
+            status = "No warnings or errors"
+        return (
+            "<section class='run-summary'>"
+            f"<div class='run-question'>{_esc(run.question or 'Latest query')}</div>"
+            "<div class='run-meta'>"
+            f"<span class='route-badge'>{_esc(route or 'unknown route')}</span>"
+            "<span>&nbsp;|&nbsp;</span>"
+            f"<span>{total_ms:.1f}ms total</span>"
+            "<span>&nbsp;|&nbsp;</span>"
+            f"<span>{row_count} rows</span>"
+            "</div>"
+            f"<div class='run-status {status_cls}'>{_esc(status)}</div>"
+            "</section>"
+        )
+
+    def _build_timeline_html(self, stages: list[Any]) -> str:
+        if not stages:
+            return "<section class='trace-timeline'><p>No trace stages recorded yet.</p></section>"
+        items = []
+        for index, stage in enumerate(stages, start=1):
+            status = "failed" if stage.error else "ok"
+            label = _plain_stage_label(stage)
+            contribution = _stage_contribution(stage)
+            items.append(
+                f"<button type='button' class='timeline-item {status}' "
+                f'data-component-id="{_esc(stage.component_id)}" '
+                f'onclick="{_SELECTION_BRIDGE_ONCLICK}({_js_arg(stage.component_id)})">'
+                "<div class='timeline-head'>"
+                f"<span>{index}. {_esc(label)} &middot; {stage.elapsed_ms:.1f}ms</span>"
+                "</div>"
+                f"<div class='timeline-contribution'>{_esc(contribution)}</div>"
+                "</button>"
+            )
+        return "<section class='trace-timeline'>" + "".join(items) + "</section>"
+
+    def _build_active_path_html(self, stages: list[Any]) -> str:
+        parts = []
+        for index, stage in enumerate(stages):
+            comp = self.registry.get(stage.component_id)
+            label = comp.label if comp is not None else stage.label
+            status_cls = " error-state" if stage.error else ""
+            parts.append(
+                f"<button type='button' class='path-card arch-card highlighted{status_cls}' "
+                f'id="card-{_esc(stage.component_id)}" '
+                f'data-component-id="{_esc(stage.component_id)}" '
+                f'onclick="{_SELECTION_BRIDGE_ONCLICK}({_js_arg(stage.component_id)})">'
+                f"<div class='card-id'>{_esc(stage.component_id)}</div>"
+                f"<div class='card-body'>{_esc(label)}</div>"
+                "</button>"
+            )
+            if index < len(stages) - 1:
+                parts.append("<span class='path-arrow'>-&gt;</span>")
+        return "<section class='active-path'>" + "".join(parts) + "</section>"
+
+    def _build_quiet_map_html(self, active_ids: set[str]) -> str:
+        cards = []
+        for comp in self.registry.all():
+            if comp.id in active_ids:
+                continue
+            cards.append(_card_html(comp, "dimmed"))
+        if not cards:
+            return ""
+        return (
+            "<details class='quiet-map'><summary>Unused components</summary>"
+            "<div class='component-grid'>" + "".join(cards) + "</div></details>"
+        )
+
     def _build_detail_html(self, component_id: str | None = None) -> str:
         """Render the detail panel HTML for *component_id* (or blank placeholder)."""
         if component_id is None:
@@ -442,6 +702,14 @@ class ArchitectureDiagram(gr.Blocks):
         comp = self.registry.get(component_id)
         if comp is None:
             return f"<div id='detail-panel-inner'><i>Unknown component: {component_id}</i></div>"
+
+        latest_stage = self._latest_stage(component_id)
+        latest_html = ""
+        if latest_stage is not None:
+            latest_html = (
+                "<div class='detail-desc'><strong>Why this ran</strong><br>"
+                f"{_esc(_stage_contribution(latest_stage))}</div>"
+            )
 
         # Test status badge
         status_html = ""
@@ -473,12 +741,21 @@ class ArchitectureDiagram(gr.Blocks):
             f"<div id='detail-panel-inner'>"
             f"<div class='detail-title'>{_esc(comp.label)}</div>"
             f"<div class='detail-meta'>{status_html}</div>"
+            f"{latest_html}"
             "<div class='detail-desc'><strong>Runtime role</strong><br>"
             f"{_esc(comp.description)}</div>"
             f"<div class='detail-desc'><strong>Source path</strong><br>{_esc(comp.file_path)}</div>"
             f"{snippet_html}"
             f"</div>"
         )
+
+    def _latest_stage(self, component_id: str) -> Any | None:
+        if self.latest_run is None or self.latest_run.trace is None:
+            return None
+        for stage in self.latest_run.trace.stages:
+            if stage.component_id == component_id:
+                return stage
+        return None
 
     def _set_detail_html(self, html: str) -> None:
         """Safely update the detail panel HTML (thread-safe for animation callbacks)."""
@@ -595,3 +872,26 @@ class ArchitectureDiagram(gr.Blocks):
 def _esc(s: str) -> str:
     """HTML-escape a plain string for safe embedding."""
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _js_arg(s: str) -> str:
+    return _esc(json_dumps(s))
+
+
+def _plain_stage_label(stage: Any) -> str:
+    return _STAGE_LABELS.get(stage.component_id, stage.label or stage.component_id)
+
+
+def _stage_contribution(stage: Any) -> str:
+    if stage.error:
+        return f"Stopped here with {stage.error}"
+    if stage.output_summary:
+        return stage.output_summary
+    return _STAGE_CONTRIBUTIONS.get(
+        stage.component_id,
+        "Completed this part of the request.",
+    )
+
+
+def _session_latest_key(session_key: str | None) -> str:
+    return session_key or "__sessionless_architecture__"

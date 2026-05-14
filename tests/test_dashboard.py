@@ -115,6 +115,27 @@ class TestDashboardTabs:
         assert dependency["queue"] is False
         assert dependency["show_progress"] == "hidden"
 
+    def test_run_all_tests_lives_in_collapsed_developer_drawer(self):
+        """Long-running Architecture tooling is available but not the main experience."""
+        config = self.dash.get_config_file()
+        accordions = [
+            component for component in config["components"] if component["type"] == "accordion"
+        ]
+        developer_drawers = [
+            component
+            for component in accordions
+            if "Developer" in component.get("props", {}).get("label", "")
+        ]
+        run_button = next(
+            component
+            for component in config["components"]
+            if component.get("props", {}).get("elem_id") == "run-all-tests"
+        )
+
+        assert developer_drawers
+        assert developer_drawers[0]["props"]["open"] is False
+        assert run_button["props"]["value"] == "\U0001f3c1 Run All Tests"
+
     def test_architecture_tab_copy_does_not_mention_animation(self):
         """Architecture copy describes latest traces without stale animation language."""
         config = self.dash.get_config_file()
@@ -490,6 +511,113 @@ class TestDashboardTabs:
         assert "card-query-router" in html
         assert "general_explanation" in footer
         assert "completed in" in footer
+
+    def test_architecture_refresh_uses_latest_answer_diagnostics(self):
+        """Architecture combines the completed answer metadata with the latest trace."""
+        self.dash.arch_diagram.trace_history.clear()
+        self.dash.arch_diagram.latest_run = None
+        self.dash.arch_diagram.latest_runs_by_session.clear()
+
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        refresh_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "refresh_architecture_trace"
+        )
+
+        def fake_answer(question: str, **_kwargs):
+            from baseball_rag.arch.tracing import traced
+
+            with traced(component_id="query-router", label="Query Router"):
+                pass
+            return StructuredAnswer(
+                answer=f"warning answer for {question}",
+                intent="stat_query",
+                warnings=["No matching rows found."],
+                unsupported=True,
+                unsupported_reason="no_data",
+            )
+
+        turn_registry = {"latest_turn_id": None}
+        _, _, _, _, begun, turn_registry, _ = begin_fn(
+            "who won the 1901 Mars league", [], [], turn_registry
+        )
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            query_fn(begun, turn_registry)
+
+        html, _footer = refresh_fn()
+
+        assert "who won the 1901 Mars league" in html
+        assert "No matching rows found." in html
+        assert "Unsupported outcome: no_data" in html
+        assert "run-status warning" in html
+
+    def test_architecture_refresh_is_scoped_to_browser_session(self):
+        """A second browser session does not overwrite this session's Architecture view."""
+        self.dash.arch_diagram.trace_history.clear()
+        self.dash.arch_diagram.latest_run = None
+        self.dash.arch_diagram.latest_runs_by_session.clear()
+
+        begin_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "begin_query"
+        )
+        query_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "on_query"
+        )
+        refresh_fn = next(
+            dependency.fn
+            for dependency in self.dash.fns.values()
+            if dependency.api_name == "refresh_architecture_trace"
+        )
+
+        def fake_answer(question: str, **_kwargs):
+            from baseball_rag.arch.tracing import traced
+
+            with traced(component_id="query-router", label="Query Router"):
+                pass
+            return StructuredAnswer(answer=f"answer for {question}", intent="general_explanation")
+
+        session_a = gr.Request(session_hash="session-a")
+        session_b = gr.Request(session_hash="session-b")
+        registry_a = {"latest_turn_id": None}
+        registry_b = {"latest_turn_id": None}
+        _, _, _, _, begun_a, registry_a, _ = begin_fn(
+            "what is OPS",
+            [],
+            [],
+            registry_a,
+            session_a,
+        )
+        _, _, _, _, begun_b, registry_b, _ = begin_fn(
+            "career home run leaders",
+            [],
+            [],
+            registry_b,
+            session_b,
+        )
+        with patch("baseball_rag.request_execution.answer", side_effect=fake_answer):
+            query_fn(begun_a, registry_a, session_a)
+            query_fn(begun_b, registry_b, session_b)
+
+        html_a, _ = refresh_fn(session_a)
+        html_b, _ = refresh_fn(session_b)
+
+        assert "what is OPS" in html_a
+        assert "career home run leaders" not in html_a
+        assert "career home run leaders" in html_b
 
     def test_query_handler_keeps_answer_when_diagram_recording_fails(self):
         """A trace-display failure should not replace a successful query answer."""

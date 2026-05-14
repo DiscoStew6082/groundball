@@ -16,6 +16,8 @@ from baseball_rag.arch.diagram import (
     ArchitectureDiagram,
 )
 from baseball_rag.arch.tracing import PipelineStage, PipelineTrace
+from baseball_rag.provenance import SourceRecord, StructuredAnswer
+from baseball_rag.request_execution import RequestExecution
 
 # --------------------------------------------------------------------------:
 # Phase 3.1 — test_diagram_renders_all_layers
@@ -616,3 +618,192 @@ class TestQueryHistory:
         assert "card-query-router" in self.diagram.diagram_html.value
         assert "highlighted" in self.diagram.diagram_html.value
         assert "stat_query" in self.diagram.footer_html.value
+
+
+class TestLatestRunExplorer:
+    """Architecture renders the latest query as a user-facing execution trace."""
+
+    def setup_method(self):
+        self.reg = ComponentRegistry()
+        self.diagram = ArchitectureDiagram(registry=self.reg, _test_mode=True)
+
+    def teardown_method(self):
+        try:
+            self.diagram.close()
+        except Exception:
+            pass
+
+    def test_successful_stats_query_renders_summary_timeline_and_active_path(self):
+        """A completed DuckDB query is explained as ordered runtime work, not inventory."""
+        now = datetime.now()
+        trace = PipelineTrace(query="who had the most RBIs in 1962", route_type="stat_query")
+        trace.add_stage(PipelineStage("gradio", "Gradio Query", started_at=now, elapsed_ms=1.0))
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=2.0)
+        )
+        trace.add_stage(PipelineStage("duckdb", "DB Query", started_at=now, elapsed_ms=3.0))
+        answer = StructuredAnswer(
+            answer="Tommy Davis had the most RBIs in 1962.",
+            intent="stat_query",
+            sources=[
+                SourceRecord(
+                    type="duckdb",
+                    label="1962 RBI leaders",
+                    sql="select * from batting order by RBI desc limit 1",
+                    rows=[{"name": "Tommy Davis", "RBI": 153}],
+                    columns=["name", "RBI"],
+                )
+            ],
+        )
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "who had the most RBIs in 1962" in html
+        assert "stat_query" in html
+        assert "No warnings or errors" in html
+        assert "Understand question" in html
+        assert "Look up stats" in html
+        assert html.index("Gradio UI") < html.index("Query Router") < html.index("DuckDB")
+        active_path_html = html.split("class='active-path'", 1)[1].split("quiet-map", 1)[0]
+        assert "Biography Claim Verifier" not in active_path_html
+
+    def test_unsupported_outcome_renders_warning_diagnostics(self):
+        """Expected unsupported answers are warnings, not failed runtime errors."""
+        now = datetime.now()
+        trace = PipelineTrace(query="who won the 1901 Mars league", route_type="stat_query")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        answer = StructuredAnswer(
+            answer="I could not find matching data.",
+            intent="stat_query",
+            warnings=["No matching rows found."],
+            unsupported=True,
+            unsupported_reason="no_data",
+        )
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "run-status warning" in html
+        assert "No matching rows found." in html
+        assert "Unsupported outcome: no_data" in html
+        assert "run-status error" not in html
+
+    def test_backend_exception_renders_error_diagnostics_and_failed_stage(self):
+        """Actual pipeline exceptions are red and mark the failed stage."""
+        now = datetime.now()
+        trace = PipelineTrace(query="career home run leaders", route_type="stat_query")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        trace.add_stage(
+            PipelineStage(
+                "duckdb",
+                "DB Query",
+                started_at=now,
+                elapsed_ms=1.0,
+                error="RuntimeError: database unavailable",
+            )
+        )
+        answer = StructuredAnswer(
+            answer="The system could not return an answer.",
+            intent="stat_query",
+        )
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "run-status error" in html
+        assert "RuntimeError: database unavailable" in html
+        assert "timeline-item failed" in html
+        assert "path-card arch-card highlighted error-state" in html
+
+    def test_selected_latest_stage_detail_explains_why_before_source(self):
+        """Selecting a stage prioritizes contribution before source-code details."""
+        now = datetime.now()
+        trace = PipelineTrace(query="career home run leaders", route_type="stat_query")
+        trace.add_stage(PipelineStage("duckdb", "DB Query", started_at=now, elapsed_ms=1.0))
+        answer = StructuredAnswer(answer="Answer", intent="stat_query")
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        self.diagram.select_component("duckdb")
+        detail = self.diagram._build_detail_html("duckdb")
+
+        assert "Why this ran" in detail
+        assert "Queried the baseball statistics tables" in detail
+        assert detail.index("Why this ran") < detail.index("Source path")
+
+    def test_latest_run_is_scoped_by_session_key(self):
+        """One browser session does not render another session's latest query."""
+        now = datetime.now()
+        trace_a = PipelineTrace(query="what is OPS", route_type="general_explanation")
+        trace_a.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        trace_b = PipelineTrace(query="career home run leaders", route_type="stat_query")
+        trace_b.add_stage(PipelineStage("duckdb", "DB Query", started_at=now, elapsed_ms=1.0))
+
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="OPS answer", intent="general_explanation"),
+                trace=trace_a,
+            ),
+            session_key="browser-a",
+        )
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="HR answer", intent="stat_query"),
+                trace=trace_b,
+            ),
+            session_key="browser-b",
+        )
+
+        html_a = self.diagram.show_latest_trace(session_key="browser-a").diagram_html.value
+        html_b = self.diagram.show_latest_trace(session_key="browser-b").diagram_html.value
+
+        assert "what is OPS" in html_a
+        assert "career home run leaders" not in html_a
+        assert "career home run leaders" in html_b
+
+    def test_clear_highlight_returns_to_inventory_after_latest_run(self):
+        """Legacy diagram controls are not stuck on the latest-run rendering."""
+        now = datetime.now()
+        trace = PipelineTrace(query="what is OPS", route_type="general_explanation")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="OPS answer", intent="general_explanation"),
+                trace=trace,
+            )
+        )
+
+        self.diagram.show_latest_trace()
+        self.diagram.clear_highlight()
+        html = self.diagram.diagram_html.value
+
+        assert "what is OPS" not in html
+        assert "API Server" in html
+        assert "highlighted" not in html
+        assert self.diagram.latest_runs_by_session
+
+    def test_latest_run_click_handlers_escape_component_ids_for_javascript(self):
+        """Generated latest-run controls safely quote unusual traced component ids."""
+        now = datetime.now()
+        trace = PipelineTrace(query="odd component", route_type="stat_query")
+        trace.add_stage(PipelineStage("odd'id", "Odd Component", started_at=now, elapsed_ms=1.0))
+
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="Answer", intent="stat_query"),
+                trace=trace,
+            )
+        )
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "(&quot;odd'id&quot;)" in html
+        assert 'data-component-id="odd\'id"' in html
+        assert "('odd'id')" not in html

@@ -191,6 +191,15 @@ class ComponentRegistry:
         )
         self.register(
             DiagramComponent(
+                id="gradio",
+                label="Gradio UI",
+                description="Browser dashboard where a user submits questions and views results.",
+                layer=Layer.API,
+                file_path="src/baseball_rag/web_app.py",
+            )
+        )
+        self.register(
+            DiagramComponent(
                 id="api-server",
                 label="API Server",
                 description=(

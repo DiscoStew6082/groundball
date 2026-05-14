@@ -39,6 +39,7 @@ class QueryUiUpdate:
     sql: str
     visible_chat_history: list[dict[str, str]]
     conversation: list[dict[str, Any]]
+    execution: RequestExecution | None = None
 
     def as_gradio_values(
         self,
@@ -164,6 +165,7 @@ class QueryTransaction:
             status: QueryStatus = "completed"
         except TimeoutError as exc:
             result = timeout_answer(exc)
+            execution = RequestExecution(answer=result, trace=None)
             status = "failed"
         except (
             AttributeError,
@@ -176,6 +178,7 @@ class QueryTransaction:
         ) as exc:
             logger.exception("Query transaction failed for %r", pending.message)
             result = request_failure_answer(exc)
+            execution = RequestExecution(answer=result, trace=None)
             status = "failed"
 
         presentation = self._presenter.present(result)
@@ -198,6 +201,7 @@ class QueryTransaction:
             sql=presentation.sql,
             visible_chat_history=list(chat_history),
             conversation=conversation,
+            execution=execution,
         )
 
     def run(

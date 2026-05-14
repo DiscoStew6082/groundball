@@ -135,9 +135,17 @@ def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecuti
             diagram.animate_trace(trace)
 
 
-def _record_execution_trace(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
+def _record_execution_trace(
+    diagram: "ArchitectureDiagram",
+    execution: RequestExecution,
+    session_key: str | None = None,
+) -> None:
     """Retain the completed trace without mutating Architecture-tab components."""
     trace = execution.trace
+    if hasattr(diagram, "record_execution"):
+        with _anim_lock:
+            diagram.record_execution(execution, session_key=session_key)
+        return
     if trace is None or not hasattr(diagram, "trace_history"):
         return
     with _anim_lock:
@@ -164,17 +172,17 @@ def _diagram_execution_recorder(
     diagram: "ArchitectureDiagram | None",
     *,
     animate_diagram: bool,
-) -> Callable[[RequestExecution], None] | None:
+) -> Callable[[RequestExecution, str | None], None] | None:
     """Return the trace update policy for a UI session."""
     if diagram is None:
         return None
 
-    def record(execution: RequestExecution) -> None:
+    def record(execution: RequestExecution, session_key: str | None = None) -> None:
         try:
             if animate_diagram:
                 _animate_execution(diagram, execution)
             else:
-                _record_execution_trace(diagram, execution)
+                _record_execution_trace(diagram, execution, session_key=session_key)
         except Exception:
             query = execution.trace.query if execution.trace is not None else ""
             logger.exception("Gradio diagram trace update failed for %r", query)
@@ -198,7 +206,7 @@ def respond(
     execution = _execute_for_gradio(message)
     recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
     if recorder is not None:
-        recorder(execution)
+        recorder(execution, None)
     return render_text(execution.answer)
 
 
@@ -207,7 +215,7 @@ def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = 
     execution = _execute_for_gradio(message)
     recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
     if recorder is not None:
-        recorder(execution)
+        recorder(execution, None)
     result = execution.answer
     presentation = AnswerPresenter().present(result)
     return presentation.answer_text, presentation.rows, presentation.sources, presentation.sql
@@ -384,9 +392,8 @@ def build_dashboard() -> gr.Blocks:
             )
             arch_diagram.render()
 
-            def refresh_architecture_trace():
-                arch_diagram.show_latest_trace()
-                return arch_diagram.diagram_html.value, arch_diagram.footer_html.value
+            def refresh_architecture_trace(request: Optional[gr.Request] = None):
+                return arch_diagram.latest_trace_values(session_key=_request_session_key(request))
 
             architecture_tab.select(
                 fn=refresh_architecture_trace,
@@ -396,14 +403,13 @@ def build_dashboard() -> gr.Blocks:
                 queue=False,
             )
 
-            # Run All Tests button (Phase 5) — added directly inside this
-            # with-gr.Tab block so btn.click() has an active Blocks context.
-            run_all_tests_btn = gr.Button(
-                "\U0001f3c1 Run All Tests",
-                elem_id="run-all-tests",
-                size="sm",
-            )
-            run_all_tests_status = gr.Markdown("", elem_id="run-all-tests-status")
+            with gr.Accordion("Developer tools", open=False):
+                run_all_tests_btn = gr.Button(
+                    "\U0001f3c1 Run All Tests",
+                    elem_id="run-all-tests",
+                    size="sm",
+                )
+                run_all_tests_status = gr.Markdown("", elem_id="run-all-tests-status")
 
             def on_run_all_tests():
                 result = run_all_tests()

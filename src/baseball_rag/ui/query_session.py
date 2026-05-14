@@ -15,7 +15,7 @@ from baseball_rag.ui.query_transaction import (
 )
 
 _SESSIONLESS_QUERY_KEY = "__sessionless_query__"
-RecordExecution = Callable[[RequestExecution], None]
+RecordExecution = Callable[[RequestExecution, str | None], None]
 
 
 class LatestQueryTurns:
@@ -104,29 +104,21 @@ class QuerySession:
         elif begun.pending is None:
             update = begun.update
         else:
+            resolved_session_key = self._query_session_key(session_key, registry)
             if not self._is_latest_query(begun, registry, session_key=session_key):
                 return None
             update = self._transaction().complete(begun.pending)
             if not self._is_latest_query(begun, registry, session_key=session_key):
                 return None
+            if self._record_execution is not None and update.execution is not None:
+                self._record_execution(update.execution, resolved_session_key)
         return CompletedQuerySession(update=update)
 
     def _transaction(self) -> QueryTransaction:
         return QueryTransaction(
-            execute=self._execute_and_record,
+            execute=self._execute,
             default_question=self._default_question,
         )
-
-    def _execute_and_record(
-        self,
-        question: str,
-        *,
-        conversation: list[dict[str, Any]],
-    ) -> RequestExecution:
-        execution = self._execute(question, conversation=conversation)
-        if self._record_execution is not None:
-            self._record_execution(execution)
-        return execution
 
     def _mark_latest_query(
         self,
