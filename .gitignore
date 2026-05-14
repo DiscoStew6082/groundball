@@ -23,6 +23,9 @@ data/corpus_manifest.json
 data/c1cd15f1-*/  # Chroma vector data
 data/*-*-*-*-*/
 data/*-*-*-*-*/*
+data/secondary_sources/retrosheet/*
+!data/secondary_sources/retrosheet/
+!data/secondary_sources/retrosheet/manifest.json
 
 # Environments
 .venv/
