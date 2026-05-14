@@ -25,6 +25,20 @@ _ORDINAL_ROW_INDEX = {
     "2nd": 1,
     "third": 2,
     "3rd": 2,
+    "fourth": 3,
+    "4th": 3,
+    "fifth": 4,
+    "5th": 4,
+    "sixth": 5,
+    "6th": 5,
+    "seventh": 6,
+    "7th": 6,
+    "eighth": 7,
+    "8th": 7,
+    "ninth": 8,
+    "9th": 8,
+    "tenth": 9,
+    "10th": 9,
 }
 _FOLLOWUP_PRONOUN_RE = re.compile(r"\b(he|him|his|that player|this player)\b", re.IGNORECASE)
 
@@ -139,9 +153,10 @@ def _referenced_row_reference(question: str) -> _RowReference:
 def _looks_like_ordinal_achievement_question(lowered_question: str) -> bool:
     ordinal_alt = "|".join(re.escape(ordinal) for ordinal in _ORDINAL_ROW_INDEX)
     ordinal_noun = rf"(?:{ordinal_alt})(?:\s+(?:player|row|result))?"
-    achievement_to = rf"\b(?:who|which)\b.*\b{ordinal_noun}\b(?:\s+[\w'-]+){{0,6}}\s+to\b"
+    achievement_intro = r"\b(?:who|which|tell\s+me\s+about)\b"
+    achievement_to = rf"{achievement_intro}.*\b{ordinal_noun}\b(?:\s+[\w'-]+){{0,6}}\s+to\b"
     achievement_with_number = (
-        rf"\b(?:who|which)\b.*\b{ordinal_noun}\b"
+        rf"{achievement_intro}.*\b{ordinal_noun}\b"
         rf"(?:\s+[\w'-]+){{0,6}}\s+with\s+\d"
     )
     return bool(

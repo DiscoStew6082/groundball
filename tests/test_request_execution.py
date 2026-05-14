@@ -175,6 +175,116 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
     assert execution.trace.route_type == "player_biography"
 
 
+def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(monkeypatch):
+    """Ordinal follow-ups can reference the fifth row from a previous leaderboard."""
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": StructuredAnswer(
+                answer="Career home run leaders",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="Career HR leaders",
+                        rows=[
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                            {"name": "Ruth, Babe", "stat_value": 714},
+                            {"name": "Pujols, Albert", "stat_value": 703},
+                            {"name": "Rodriguez, Alex", "stat_value": 696},
+                        ],
+                    )
+                ],
+            ),
+        }
+    ]
+    routed_questions = []
+
+    def fake_route(question: str) -> RouteResult:
+        routed_questions.append(question)
+        return RouteResult(
+            intent="player_biography",
+            stat=None,
+            player_name="Alex Rodriguez",
+            raw_question=question,
+        )
+
+    def fake_player_answer(question, decision):
+        assert question == "Tell me more about Alex Rodriguez in the list"
+        assert decision.raw_question == "Tell me more about Alex Rodriguez in the list"
+        return StructuredAnswer(answer="Alex Rodriguez biography", intent="player_biography")
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", fake_route)
+    monkeypatch.setattr("baseball_rag.service._answer_player_biography", fake_player_answer)
+
+    execution = execute_request(
+        "Tell me more about the fifth player in the list",
+        adapter_component_id="gradio",
+        conversation=prior_turns,
+    )
+
+    assert routed_questions == ["Tell me more about Alex Rodriguez in the list"]
+    assert execution.answer.answer == "Alex Rodriguez biography"
+    assert execution.answer.metadata == {
+        "original_question": "Tell me more about the fifth player in the list",
+        "context_question": "Tell me more about Alex Rodriguez in the list",
+        "context_source": "career home run leaders",
+        "context_player_name": "Alex Rodriguez",
+    }
+
+
+def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monkeypatch):
+    """Ordinal achievement questions are routed as asked, not as row follow-ups."""
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": StructuredAnswer(
+                answer="Career home run leaders",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="Career HR leaders",
+                        rows=[
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                            {"name": "Ruth, Babe", "stat_value": 714},
+                            {"name": "Pujols, Albert", "stat_value": 703},
+                            {"name": "Rodriguez, Alex", "stat_value": 696},
+                        ],
+                    )
+                ],
+            ),
+        }
+    ]
+    routed_questions = []
+
+    def fake_route(question: str) -> RouteResult:
+        routed_questions.append(question)
+        return RouteResult(intent="general_explanation", stat=None, raw_question=question)
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", fake_route)
+    monkeypatch.setattr(
+        "baseball_rag.service._answer_general",
+        lambda question, decision: StructuredAnswer(
+            answer="General answer",
+            intent=decision.intent,
+        ),
+    )
+
+    execution = execute_request(
+        "Tell me about the fifth player to hit 500 home runs",
+        adapter_component_id="gradio",
+        conversation=prior_turns,
+    )
+
+    assert routed_questions == ["Tell me about the fifth player to hit 500 home runs"]
+    assert execution.answer.metadata == {}
+
+
 def test_execute_request_answers_routed_stat_case_through_service(monkeypatch):
     """Validated stat cases answer through the normal request path."""
     seen_cases = []
