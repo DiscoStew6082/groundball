@@ -67,6 +67,6 @@ answer(question)
 | Unresolved biography name | Returns `no_data` before calling the LLM |
 | Contradicted biography stat claim | Returns the biography plus structured warnings and a visible note |
 | LM Studio offline for open prose | Returns `llm_unavailable`; no DuckDB biography fallback is synthesized |
-| DuckDB uninitialized | Auto-initializes on first stat query via `init_db()` |
+| DuckDB uninitialized | Auto-initializes lazily on first DuckDB-backed query |
 
 The CLI intentionally does not ask the model to invent structured facts when grounded database evidence is required.

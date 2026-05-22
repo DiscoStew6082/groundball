@@ -219,7 +219,6 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
         assert decision.raw_question == "tell me about Hank Aaron"
         return StructuredAnswer(answer="Hank Aaron biography", intent="player_biography")
 
-    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
     monkeypatch.setattr("baseball_rag.service.route", fake_route)
     monkeypatch.setattr("baseball_rag.service._answer_player_biography", fake_player_answer)
 
@@ -282,7 +281,6 @@ def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(m
         assert decision.raw_question == "Tell me more about Alex Rodriguez in the list"
         return StructuredAnswer(answer="Alex Rodriguez biography", intent="player_biography")
 
-    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
     monkeypatch.setattr("baseball_rag.service.route", fake_route)
     monkeypatch.setattr("baseball_rag.service._answer_player_biography", fake_player_answer)
 
@@ -333,7 +331,6 @@ def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monk
         routed_questions.append(question)
         return RouteResult(intent="general_explanation", stat=None, raw_question=question)
 
-    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
     monkeypatch.setattr("baseball_rag.service.route", fake_route)
     monkeypatch.setattr(
         "baseball_rag.service._answer_general",
@@ -364,7 +361,6 @@ def test_execute_request_answers_routed_stat_case_through_service(monkeypatch):
         seen_cases.append(decision)
         return StructuredAnswer(answer="Top RBI leaders", intent=decision.intent)
 
-    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
     monkeypatch.setattr("baseball_rag.service.route", fake_route)
     monkeypatch.setattr("baseball_rag.service.answer_stat_query", fake_stat_answer)
 
@@ -423,7 +419,6 @@ def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
     ]
 
     for routed, handler_name, expected in cases:
-        monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
         monkeypatch.setattr("baseball_rag.service.route", lambda _question, routed=routed: routed)
 
         def fake_handler(*args, expected=expected, **kwargs):
@@ -447,7 +442,6 @@ def test_execute_request_normalizes_legacy_stat_route_result(monkeypatch):
         raw_question="career home run leaders",
     )
 
-    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
     monkeypatch.setattr("baseball_rag.service.route", lambda _question: legacy)
 
     def fake_stat_answer(decision: StatQueryCase) -> StructuredAnswer:

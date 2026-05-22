@@ -184,11 +184,6 @@ def get_duckdb() -> duckdb.DuckDBPyConnection:
         return _cached_conn
 
 
-def init_db() -> None:
-    """No-op — kept for backward compatibility with code that calls it."""
-    pass
-
-
 def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: Path) -> None:
     retrosheet_dir = data_dir / RETROSHEET_DATA_SUBDIR
     if not retrosheet_dir.exists():

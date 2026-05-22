@@ -32,10 +32,7 @@ class TestLatestYearLogic:
         from baseball_rag.cli import answer
         from baseball_rag.db.queries import StatQueryResult
 
-        with (
-            patch("baseball_rag.stat_query.execute_stat_query_plan") as mock_query,
-            patch("baseball_rag.service.init_db"),
-        ):
+        with patch("baseball_rag.stat_query.execute_stat_query_plan") as mock_query:
             mock_query.return_value = StatQueryResult(
                 stat="HR",
                 label="HR leaderboard for 1999-1999",

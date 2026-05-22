@@ -40,6 +40,18 @@ def test_ci_runs_all_non_llm_tests_without_chroma_dependency() -> None:
     assert "chroma" not in gitignore.lower()
 
 
+def test_no_noop_duckdb_init_compatibility_shim() -> None:
+    duckdb_schema = (ROOT / "src" / "baseball_rag" / "db" / "duckdb_schema.py").read_text(
+        encoding="utf-8"
+    )
+    db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")
+    package_init = (ROOT / "src" / "baseball_rag" / "__init__.py").read_text(encoding="utf-8")
+
+    assert "def init_db(" not in duckdb_schema
+    assert "init_db" not in db_init
+    assert "init_db" not in package_init
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()
