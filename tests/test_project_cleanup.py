@@ -92,6 +92,19 @@ def test_arch_components_no_longer_exports_component_test_status_alias() -> None
     assert "ComponentTestStatus" not in arch_init
 
 
+def test_retired_corpus_ingest_entrypoint_is_removed() -> None:
+    corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
+        encoding="utf-8"
+    )
+    corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "ingest.py").exists()
+    assert "ingest_main" not in corpus_main
+    assert "Retired Ingest Command" not in corpus_docs
+    assert "retired ingest command" not in architecture_docs.lower()
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()

@@ -11,7 +11,6 @@ corpus/
 ├── __init__.py              # Path constants and helper listings
 ├── diagnostics.py           # Checked-in corpus and old manifest diagnostics
 ├── frontmatter.py           # YAML frontmatter parser
-├── ingest.py                # Retired indexing entry point
 ├── stat_definitions/        # 10 markdown files, one per stat
 └── hof/                     # 5 Hall of Fame player biography examples
 ```
@@ -64,13 +63,3 @@ The report includes:
 - runtime flags showing that no index is required
 
 Diagnostics do not require a vector index. Missing directories, missing manifests, and corrupt manifests are reported in JSON instead of raising.
-
-## Retired Ingest Command
-
-The legacy corpus indexing entry point remains only to give a clear failure:
-
-```bash
-uv run python -m baseball_rag.corpus --static-only
-```
-
-It exits with a message explaining that no local vector index is built or required.

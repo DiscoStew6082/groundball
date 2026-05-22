@@ -59,4 +59,4 @@ Supported stat-definition questions such as "what is OPS?" read the checked-in l
 
 Markdown files under `src/baseball_rag/corpus/` remain useful project material for docs and tests. ChromaDB indexing and Chroma-backed retrieval were removed because the index duplicated generated facts and created fragile local state.
 
-The retired ingest command now exits with an explanatory error; diagnostics report checked-in corpus counts and old ignored manifest state only.
+Corpus diagnostics report checked-in corpus counts and old ignored manifest state only.
