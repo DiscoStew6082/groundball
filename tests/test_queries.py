@@ -8,7 +8,6 @@ from baseball_rag.db.queries import (
     execute_stat_query_plan,
     get_career_stat_leaders,
     get_fielding_leaders,
-    get_stat_leaders,
     get_stat_leaders_range,
 )
 from baseball_rag.routing import StatQueryCase
@@ -16,12 +15,21 @@ from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
 from baseball_rag.stat_query import answer_stat_query
 
 
-def test_get_stat_leaders_returns_list():
-    """Test that get_stat_leaders returns a list of dicts with correct keys."""
-    result = get_stat_leaders("HR", 1965)  # year we have data for
-    assert isinstance(result, list)
-    assert len(result) > 0
-    row = result[0]
+def test_execute_stat_query_plan_season_batting_leaderboard_returns_rows():
+    """Season batting leaderboards should return rows with answer-ready fields."""
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="HR",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1965,
+            end_year=1965,
+        )
+    )
+
+    assert result.rows
+    row = result.rows[0]
     assert "name" in row
     assert "team" in row
     assert "stat_value" in row
@@ -29,12 +37,21 @@ def test_get_stat_leaders_returns_list():
 
 def test_rbi_leaders_1962():
     """Test RBI leaders for 1962 - verify structural correctness."""
-    result = get_stat_leaders("RBI", 1962)
-    assert isinstance(result, list)
-    if len(result) > 0:
-        row = result[0]
-        assert "name" in row
-        assert "stat_value" in row
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="RBI",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1962,
+            end_year=1962,
+        )
+    )
+
+    assert result.rows
+    row = result.rows[0]
+    assert "name" in row
+    assert "stat_value" in row
 
 
 def test_career_hr_leaders():
@@ -88,7 +105,16 @@ def test_get_fielding_leaders_position_parameterization():
 def test_unknown_stat_is_rejected_before_sql_execution():
     """Unsupported stats must not fall through to raw SQL column names."""
     with pytest.raises(ValueError, match="Unsupported stat"):
-        get_stat_leaders("HR); DROP TABLE batting; --", 1965)
+        execute_stat_query_plan(
+            StatQueryPlan(
+                stat="HR); DROP TABLE batting; --",
+                table="batting",
+                kind="leaderboard",
+                intent="stat_query",
+                start_year=1965,
+                end_year=1965,
+            )
+        )
 
 
 def test_execute_stat_query_returns_executed_sql_for_provenance():

@@ -6,9 +6,7 @@ the CLI should return leaders for the MOST RECENT available data, NOT career lea
 
 from unittest.mock import patch
 
-# We'll test at the answer() function level since it contains the bug
-# The bug is: when no year is specified, cli.answer() calls get_career_stat_leaders()
-# instead of looking up the latest available year and calling get_stat_leaders()
+# We'll test at the answer() function level since it contains the latest-year behavior.
 
 
 class TestLatestYearLogic:

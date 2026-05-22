@@ -164,21 +164,6 @@ def _execute_stat_query_plan(
 
 
 @traced(component_id="duckdb", label="DB Query")
-def get_stat_leaders(stat: str, year: int) -> list[dict]:
-    """Compatibility adapter for top 10 batting stat leaders for a given year.
-
-    Args:
-        stat: The statistic to rank by (HR, RBI, H, AB, R, 2B, 3B)
-        year: The season year
-
-    Returns:
-        List of dicts with keys: name, team, stat_value
-    """
-    result = execute_stat_query(stat, table="batting", start_year=year, end_year=year)
-    return result.rows
-
-
-@traced(component_id="duckdb", label="DB Query")
 def get_stat_leaders_range(stat: str, start_year: int, end_year: int) -> list[dict]:
     """Compatibility adapter for top 10 batting stat leaders over a year range.
 
