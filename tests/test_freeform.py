@@ -13,7 +13,8 @@ class TestAssembleSQL:
     """
 
     def test_assembles_batting_only(self):
-        from baseball_rag.db.freeform import QueryIntent, _assemble_sql
+        from baseball_rag.db.freeform_assembler import _assemble_sql
+        from baseball_rag.db.freeform_types import QueryIntent
 
         intent = QueryIntent(
             stat_tables=["batting"],
@@ -29,7 +30,8 @@ class TestAssembleSQL:
         assert sql.params == ["%Braves%", 1936]
 
     def test_assembles_batting_and_pitching_union(self):
-        from baseball_rag.db.freeform import QueryIntent, _assemble_sql
+        from baseball_rag.db.freeform_assembler import _assemble_sql
+        from baseball_rag.db.freeform_types import QueryIntent
 
         intent = QueryIntent(
             stat_tables=["batting", "pitching"],
@@ -43,7 +45,8 @@ class TestAssembleSQL:
         assert "pitching" in sql.sql.lower()
 
     def test_assembles_without_year(self):
-        from baseball_rag.db.freeform import QueryIntent, _assemble_sql
+        from baseball_rag.db.freeform_assembler import _assemble_sql
+        from baseball_rag.db.freeform_types import QueryIntent
 
         intent = QueryIntent(stat_tables=["batting"], team_name_pattern="Cubs")
         sql = _assemble_sql(intent)
@@ -53,7 +56,8 @@ class TestAssembleSQL:
         assert "yearid" not in sql.sql.lower() or "BETWEEN" not in sql.sql.upper()
 
     def test_always_distinct(self):
-        from baseball_rag.db.freeform import QueryIntent, _assemble_sql
+        from baseball_rag.db.freeform_assembler import _assemble_sql
+        from baseball_rag.db.freeform_types import QueryIntent
 
         intent = QueryIntent(
             stat_tables=["batting", "pitching"],

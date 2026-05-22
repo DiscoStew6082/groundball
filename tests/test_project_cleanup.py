@@ -96,6 +96,14 @@ def test_freeform_no_longer_exports_json_block_compatibility_wrapper() -> None:
     assert "Backward-compatible wrapper" not in freeform_intent
 
 
+def test_freeform_no_longer_reexports_assembler_internals() -> None:
+    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+
+    assert "freeform_assembler" not in freeform
+    assert "_assemble_sql" not in freeform
+    assert "_leader_condition" not in freeform
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"

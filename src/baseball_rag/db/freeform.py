@@ -2,7 +2,6 @@
 
 import duckdb
 
-from baseball_rag.db.freeform_assembler import _assemble_sql, _leader_condition
 from baseball_rag.db.freeform_intent import (
     _INTENT_SYSTEM,
     _parse_intent,
@@ -75,7 +74,6 @@ __all__ = [
     "plan_query",
     "query",
     "_INTENT_SYSTEM",
-    "_assemble_sql",
     "_career_era_sql",
     "_career_home_run_sql",
     "_career_pitching_wins_sql",
@@ -89,7 +87,6 @@ __all__ = [
     "_generate_sql",
     "_get_schema_cached",
     "_has_era_qualification_guard",
-    "_leader_condition",
     "_looks_like_single_season",
     "_normalize_question",
     "_parse_intent",
