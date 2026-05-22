@@ -80,6 +80,8 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
 
     assert "RouteResult" not in routing_init
     assert "class RouteResult" not in query_router
+    assert "def _extract_json_blocks(" not in query_router
+    assert "Backward-compatible wrapper" not in query_router
 
 
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:

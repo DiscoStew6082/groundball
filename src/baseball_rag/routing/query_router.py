@@ -285,11 +285,6 @@ _ROUTING_PROMPT = (
 )
 
 
-def _extract_json_blocks(text: str) -> list[tuple[int, int]]:
-    """Backward-compatible wrapper for tests importing the private helper."""
-    return extract_json_blocks(text)
-
-
 def _parse_llm_json(raw: str) -> dict | None:
     """Parse LLM JSON response.
 
@@ -305,7 +300,7 @@ def _parse_llm_json(raw: str) -> dict | None:
         pass
 
     # Find all {...} blocks and try each one
-    for start, end in _extract_json_blocks(text):
+    for start, end in extract_json_blocks(text):
         candidate = text[start:end]
         try:
             data = json.loads(candidate)
