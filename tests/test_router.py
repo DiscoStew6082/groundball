@@ -7,6 +7,13 @@ from baseball_rag.routing import (
     StatQueryCase,
     route,
 )
+from baseball_rag.routing.query_router import TimePeriodType
+
+
+def _assert_single_year(result, year):
+    assert result.time_period is not None
+    assert result.time_period.type == TimePeriodType.SINGLE
+    assert result.time_period.value == year
 
 
 class TestRouter:
@@ -15,12 +22,12 @@ class TestRouter:
         result = route("who had the most RBIs in 1962")
         assert result.intent == "stat_query"
         assert result.stat == "RBI"
-        assert result.year == 1962
+        _assert_single_year(result, 1962)
 
     def test_year_variants_four_digit(self):
         """Four-digit years parse correctly."""
         result = route("most home runs 1977")
-        assert result.year == 1977
+        _assert_single_year(result, 1977)
 
     def test_year_variants_spelled_nineteen_twenty_five(self):
         """Spoken four-digit years parse as single-season filters."""
@@ -29,7 +36,7 @@ class TestRouter:
         assert result.intent == "stat_query"
         assert result.stat == "HR"
         assert result.player_name == "Babe Ruth"
-        assert result.year == 1925
+        _assert_single_year(result, 1925)
 
     def test_year_variants_spelled_year_with_digit_unit(self):
         """Spoken years can end with a typed digit."""
@@ -37,7 +44,7 @@ class TestRouter:
 
         assert result.intent == "stat_query"
         assert result.stat == "H"
-        assert result.year == 1956
+        _assert_single_year(result, 1956)
 
     def test_year_variants_spelled_century_with_digit_pair(self):
         """Spoken years can use typed digits after the century word."""
@@ -45,7 +52,7 @@ class TestRouter:
 
         assert result.intent == "stat_query"
         assert result.stat == "H"
-        assert result.year == 1947
+        _assert_single_year(result, 1947)
 
     def test_year_variants_spelled_century_with_zero_digit_pair(self):
         """Digit-pair spoken years preserve zero as a decade digit."""
@@ -53,7 +60,7 @@ class TestRouter:
 
         assert result.intent == "stat_query"
         assert result.stat == "H"
-        assert result.year == 1907
+        _assert_single_year(result, 1907)
 
     def test_incomplete_digit_pair_is_not_a_spoken_year(self):
         """A lone digit after a century word is too ambiguous to infer a season."""
@@ -61,7 +68,7 @@ class TestRouter:
 
         assert result.intent == "stat_query"
         assert result.stat == "H"
-        assert result.year is None
+        assert result.time_period is None
 
     def test_unknown_year_not_required(self):
         """Stat query without a year still routes correctly."""
@@ -74,7 +81,7 @@ class TestRouter:
         result = route("who had the best ERA in 1968")
         assert result.intent == "stat_query"
         assert result.stat == "ERA"
-        assert result.year == 1968
+        _assert_single_year(result, 1968)
 
     def test_player_stat_subject_without_possessive_routes_to_stat_query(self):
         result = route("What was Ted Williams batting average in 1941")
@@ -83,7 +90,7 @@ class TestRouter:
         assert result.intent == "stat_query"
         assert result.stat == "AVG"
         assert result.player_name == "Ted Williams"
-        assert result.year == 1941
+        _assert_single_year(result, 1941)
 
     def test_player_stat_subject_allows_surnames_that_overlap_league_terms(self):
         result = route("what was Brandon League era in 2011")
@@ -92,7 +99,7 @@ class TestRouter:
         assert result.intent == "stat_query"
         assert result.stat == "ERA"
         assert result.player_name == "Brandon League"
-        assert result.year == 2011
+        _assert_single_year(result, 2011)
 
     def test_player_stat_subject_matches_unaccented_user_input(self):
         result = route("What was Ronald Acuna batting average in 2019")
@@ -101,7 +108,7 @@ class TestRouter:
         assert result.intent == "stat_query"
         assert result.stat == "AVG"
         assert result.player_name == "Ronald Acuna"
-        assert result.year == 2019
+        _assert_single_year(result, 2019)
 
     def test_possessive_league_stat_subject_is_not_player_stat_query(self):
         result = route("what was National League's batting average in 1941")
@@ -193,18 +200,17 @@ class TestRouter:
         assert result.time_period.type.value == "range"
         assert result.time_period.value == [1960, 1980]
 
-    def test_year_backward_compat(self):
-        """Single-year queries still expose .year for backward compat."""
+    def test_single_year_time_period(self):
+        """Single-year queries expose their season through time_period."""
         result = route("who led MLB in RBIs in 2022")
-        assert result.year == 2022
+        _assert_single_year(result, 2022)
         assert result.stat == "RBI"
 
-    def test_time_period_single_no_year_ambiguity(self):
-        """A decade query returns None from the .year property (not ambiguous)."""
+    def test_decade_time_period_is_not_single_year(self):
+        """A decade query keeps its decade scope instead of a single-season shortcut."""
         result = route("most HRs in the seventies")
-        # .year is a backward-compat shim that only works for single-year queries
-        assert result.year is None
         assert result.time_period is not None
+        assert result.time_period.type == TimePeriodType.DECADE
 
     def test_full_name_player_bio_routes_deterministically(self):
         """Simple full-name biography questions should not depend on LLM routing."""

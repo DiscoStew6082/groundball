@@ -82,6 +82,7 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
     assert "class RouteResult" not in query_router
     assert "def _extract_json_blocks(" not in query_router
     assert "Backward-compatible wrapper" not in query_router
+    assert "def year(" not in query_router
 
 
 def test_freeform_no_longer_exports_json_block_compatibility_wrapper() -> None:

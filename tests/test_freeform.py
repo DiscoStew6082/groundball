@@ -703,7 +703,7 @@ class TestFreeformProvenance:
         with patch("baseball_rag.db.freeform.query", return_value=result) as query:
             _answer_grounded_database_question(decision.raw_question, decision)
 
-        assert decision.year is None
+        assert decision.time_period.type == TimePeriodType.RELATIVE
         assert query.call_args.kwargs["year"] == 1936
 
 

@@ -129,16 +129,6 @@ class StatQueryCase:
     raw_question: str = ""
     intent: Literal["stat_query"] = "stat_query"
 
-    @property
-    def year(self) -> int | None:
-        if self.time_period is None:
-            return None
-        if self.time_period.type == TimePeriodType.SINGLE and isinstance(
-            self.time_period.value, int
-        ):
-            return self.time_period.value
-        return None
-
 
 @dataclass(frozen=True)
 class PlayerBiographyCase:
@@ -156,16 +146,6 @@ class GroundedDatabaseQuestionCase:
     raw_question: str = ""
     time_period: TimePeriod | None = None
     intent: Literal["grounded_database_question"] = "grounded_database_question"
-
-    @property
-    def year(self) -> int | None:
-        if self.time_period is None:
-            return None
-        if self.time_period.type == TimePeriodType.SINGLE and isinstance(
-            self.time_period.value, int
-        ):
-            return self.time_period.value
-        return None
 
 
 @dataclass(frozen=True)

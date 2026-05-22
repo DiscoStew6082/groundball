@@ -5,6 +5,13 @@ the router extracts the player name from the query.
 """
 
 from baseball_rag.routing import route
+from baseball_rag.routing.query_router import TimePeriodType
+
+
+def _assert_single_year(result, year):
+    assert result.time_period is not None
+    assert result.time_period.type == TimePeriodType.SINGLE
+    assert result.time_period.value == year
 
 
 class TestPlayerDetection:
@@ -35,7 +42,7 @@ class TestPlayerDetection:
         """'how many RBIs did Barry Bonds have in 2001' should extract player and year."""
         result = route("How many RBIs did Barry Bonds have in 2001")
         assert result.stat == "RBI"
-        assert result.year == 2001
+        _assert_single_year(result, 2001)
         # BUG: player extraction missing
         assert hasattr(result, "player_name"), "Route case has no 'player' attribute"
         assert result.player_name is not None
@@ -52,7 +59,7 @@ class TestPlayerDetection:
 
         assert result.intent == "stat_query"
         assert result.stat == "RBI"
-        assert result.year == 2023
+        _assert_single_year(result, 2023)
         assert result.player_name == "Matt Olson"
 
     def test_detect_player_name_preserves_existing_behavior(self):
@@ -61,4 +68,4 @@ class TestPlayerDetection:
         result = route("who had the most RBIs in 1962")
         assert result.intent == "stat_query"
         assert result.stat == "RBI"
-        assert result.year == 1962
+        _assert_single_year(result, 1962)
