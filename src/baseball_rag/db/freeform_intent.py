@@ -89,7 +89,7 @@ def _parse_intent(raw: str) -> QuerySpec:
         except json.JSONDecodeError:
             pass
 
-    for start, end in _extract_json_blocks(raw):
+    for start, end in extract_json_blocks(raw):
         try:
             data = json.loads(raw[start:end])
             result = _from_data(data)
@@ -178,8 +178,3 @@ def _recover_roster_intent(question: str, raw: str) -> QuerySpec | None:
         )
 
     return None
-
-
-def _extract_json_blocks(text: str) -> list[tuple[int, int]]:
-    """Backward-compatible wrapper for tests importing the private helper."""
-    return extract_json_blocks(text)

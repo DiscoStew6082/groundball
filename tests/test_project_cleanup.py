@@ -84,6 +84,17 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
     assert "Backward-compatible wrapper" not in query_router
 
 
+def test_freeform_no_longer_exports_json_block_compatibility_wrapper() -> None:
+    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+    freeform_intent = (ROOT / "src" / "baseball_rag" / "db" / "freeform_intent.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def _extract_json_blocks(" not in freeform_intent
+    assert "_extract_json_blocks" not in freeform
+    assert "Backward-compatible wrapper" not in freeform_intent
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"

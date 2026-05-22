@@ -5,7 +5,6 @@ import duckdb
 from baseball_rag.db.freeform_assembler import _assemble_sql, _leader_condition
 from baseball_rag.db.freeform_intent import (
     _INTENT_SYSTEM,
-    _extract_json_blocks,
     _parse_intent,
 )
 from baseball_rag.db.freeform_intent import (
@@ -83,7 +82,6 @@ __all__ = [
     "_detect_template",
     "_execute_safe",
     "_extract_explicit_wins_threshold",
-    "_extract_json_blocks",
     "_extract_min_ipouts",
     "_extract_threshold",
     "_extract_year",
