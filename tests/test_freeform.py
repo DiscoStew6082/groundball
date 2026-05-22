@@ -517,15 +517,18 @@ class TestGenerateSQLDeterminism:
 
     def test_roster_intent_is_planned_before_execution_without_llm(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import can_plan_deterministically, plan_query
+        from baseball_rag.db.freeform_runtime import can_plan_deterministically, plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = (
             '{"stat_tables": ["batting"], "team_name_pattern": "Yankees", "year_value": 1950}'
         )
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp) as mock_call:
-            planned = plan_query("Who played for the Yankees in 1950?", get_duckdb())
+        mock_call = MagicMock(return_value=mock_resp)
+
+        planned = plan_query(
+            "Who played for the Yankees in 1950?", get_duckdb(), request_fn=mock_call
+        )
 
         assert can_plan_deterministically("Who played for the Yankees in 1950?") is True
         assert mock_call.call_count == 0
@@ -538,33 +541,46 @@ class TestGenerateSQLDeterminism:
 
     def test_historical_team_identity_is_typed_before_sql_assembly(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import plan_query
+        from baseball_rag.db.freeform_runtime import plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = (
             '{"stat_tables": ["batting"], "team_name_pattern": "Braves", "year_value": 1936}'
         )
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
-            planned = plan_query("Who played for the Braves in 1936?", get_duckdb())
+        mock_call = MagicMock(return_value=mock_resp)
+        planned = plan_query(
+            "Braves batting records in 1936",
+            get_duckdb(),
+            request_fn=mock_call,
+        )
 
+        assert planned.planning_path == "llm_intent"
+        assert mock_call.call_count == 1
         assert planned.query_spec is not None
         assert planned.query_spec.team_identity is not None
         assert planned.query_spec.team_identity.team_id == "BSN"
         assert planned.query_spec.team_identity.year == 1936
         assert planned.params == ["BSN", 1936]
-        assert "b.teamID = ?" in planned.sql
+        assert "batting.teamID = ?" in planned.sql
 
     def test_router_year_can_feed_historical_team_identity_when_llm_omits_year(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import plan_query
+        from baseball_rag.db.freeform_runtime import plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = '{"stat_tables": ["batting"], "team_name_pattern": "Braves"}'
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
-            planned = plan_query("Who played for the Braves?", get_duckdb(), year=1936)
+        mock_call = MagicMock(return_value=mock_resp)
+        planned = plan_query(
+            "Braves batting records",
+            get_duckdb(),
+            year=1936,
+            request_fn=mock_call,
+        )
 
+        assert planned.planning_path == "llm_intent"
+        assert mock_call.call_count == 1
         assert planned.query_spec is not None
         assert planned.query_spec.year_value == 1936
         assert planned.query_spec.team_identity is not None
@@ -574,17 +590,17 @@ class TestGenerateSQLDeterminism:
     @pytest.mark.parametrize(
         ("question", "team_pattern", "year", "team_id"),
         [
-            ("Who played for the Braves in 1953?", "Braves", 1953, "ML1"),
-            ("Who played for the Athletics in 1955?", "Athletics", 1955, "KC1"),
-            ("Who played for the Marlins in 1993?", "Marlins", 1993, "FLO"),
-            ("Who played for the Angels in 2005?", "Angels", 2005, "LAA"),
+            ("Braves batting records in 1953", "Braves", 1953, "ML1"),
+            ("Athletics batting records in 1955", "Athletics", 1955, "KC1"),
+            ("Marlins batting records in 1993", "Marlins", 1993, "FLO"),
+            ("Angels batting records in 2005", "Angels", 2005, "LAA"),
         ],
     )
     def test_historical_team_identity_matches_loaded_stat_team_ids(
         self, question: str, team_pattern: str, year: int, team_id: str
     ):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import execute_plan, plan_query
+        from baseball_rag.db.freeform_runtime import execute_plan, plan_query
 
         conn = get_duckdb()
         mock_resp = MagicMock()
@@ -593,10 +609,12 @@ class TestGenerateSQLDeterminism:
             f'"team_name_pattern": "{team_pattern}", "year_value": {year}}}'
         )
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
-            planned = plan_query(question, conn)
-            result = execute_plan(planned, conn)
+        mock_call = MagicMock(return_value=mock_resp)
+        planned = plan_query(question, conn, request_fn=mock_call)
+        result = execute_plan(planned, conn)
 
+        assert planned.planning_path == "llm_intent"
+        assert mock_call.call_count == 1
         assert planned.query_spec is not None
         assert planned.query_spec.team_identity is not None
         assert planned.query_spec.team_identity.team_id == team_id
