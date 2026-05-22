@@ -646,6 +646,35 @@ class TestFreeformProvenance:
         assert result.sources[0].rows
         assert result.sources[0].sql and "?" in result.sources[0].sql
 
+    def test_llm_flavored_grounded_database_answer_uses_verified_stats(self, monkeypatch):
+        from baseball_rag.generation.llm import LLMResponse
+        from baseball_rag.service import answer
+
+        seen_prompts = []
+
+        def fake_llm(prompt, **_kwargs):
+            seen_prompts.append(prompt)
+            return LLMResponse(
+                content="Rogers Hornsby won the Triple Crown in 1922 with verified stats.",
+                model="test-model",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+        result = answer(
+            "who won the Triple Crown and which years",
+            answer_mode="llm_flavored",
+        )
+
+        assert result.answer == ("Rogers Hornsby won the Triple Crown in 1922 with verified stats.")
+        assert result.metadata["answer_mode"] == "llm_flavored"
+        assert result.sources[0].type == "duckdb"
+        assert result.sources[0].rows
+        assert seen_prompts
+        assert "Hornsby" in str(seen_prompts[0])
+        assert "152" in str(seen_prompts[0])
+
     def test_freeform_answer_uses_query_scope_for_relative_single_season_year(
         self,
         monkeypatch,

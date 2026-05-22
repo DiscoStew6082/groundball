@@ -38,7 +38,7 @@ def test_execute_request_rejects_unknown_answer_mode():
     with pytest.raises(ValueError, match="Unsupported answer_mode"):
         execute_request(
             "who had the most RBIs in 1962",
-            answer_mode="llm_flavored",  # type: ignore[arg-type]
+            answer_mode="box_score_poetry",  # type: ignore[arg-type]
         )
 
 

@@ -126,13 +126,13 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | Field | Type | Description |
 |-------|------|-------------|
 | `question` | string | Natural language baseball question |
-| `answer_mode` | string | Optional answer mode. `stats_only` is currently the only supported value and preserves the existing formatted verified-stat response. |
+| `answer_mode` | string | Optional answer mode. `stats_only` returns the preformatted verified stats. `llm_flavored` gives the LLM the verified DuckDB result and returns prose while preserving source provenance. |
 
 **Response fields**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `answer` | string | Full answer text (formatted list for stat queries, prose for general questions) |
+| `answer` | string | Full answer text (preformatted verified stats or LLM-flavored prose, depending on `answer_mode` and route) |
 | `intent` | string | Router intent used to answer the question |
 | `sources` | array | DuckDB evidence or verification records used to ground the answer |
 | `warnings` | array | Non-fatal caveats, such as missing indexes or truncated results |

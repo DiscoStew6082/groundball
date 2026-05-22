@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from baseball_rag.api.server import app
+from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.provenance import StructuredAnswer
 
 client = TestClient(app)
@@ -81,12 +82,37 @@ class TestApi:
         assert data["metadata"]["answer_mode"] == "stats_only"
         assert "Davis, Tommy: 153 RBI" in data["answer"]
 
-    def test_query_endpoint_rejects_unknown_answer_mode(self):
+    def test_query_endpoint_accepts_llm_flavored_answer_mode(self, monkeypatch):
+        def fake_llm(_prompt, **_kwargs):
+            return LLMResponse(
+                content="Tommy Davis led MLB with 153 RBI in 1962.",
+                model="test-model",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
         response = client.post(
             "/query",
             json={
                 "question": "who had the most RBIs in 1962",
                 "answer_mode": "llm_flavored",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["answer"] == "Tommy Davis led MLB with 153 RBI in 1962."
+        assert data["metadata"]["answer_mode"] == "llm_flavored"
+        assert data["sources"][0]["type"] == "duckdb"
+        assert data["sources"][0]["rows"]
+
+    def test_query_endpoint_rejects_unknown_answer_mode(self):
+        response = client.post(
+            "/query",
+            json={
+                "question": "who had the most RBIs in 1962",
+                "answer_mode": "box_score_poetry",
             },
         )
 

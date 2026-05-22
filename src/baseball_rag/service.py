@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -58,6 +59,8 @@ def answer(
         ),
     )
     result = dispatcher.answer(question, conversation=conversation)
+    if validated_answer_mode == "llm_flavored":
+        _apply_llm_flavor(question, result)
     result.metadata["answer_mode"] = validated_answer_mode
     return result
 
@@ -104,7 +107,10 @@ def _duckdb_source(
     )
 
 
-def _answer_grounded_database_question(question: str, decision: Any) -> StructuredAnswer:
+def _answer_grounded_database_question(
+    _question: str,
+    decision: Any,
+) -> StructuredAnswer:
     from baseball_rag.db.freeform import format_result, query
 
     conn = get_duckdb()
@@ -140,8 +146,9 @@ def _answer_grounded_database_question(question: str, decision: Any) -> Structur
     warnings = []
     if query_result.truncated:
         warnings.append("Results were truncated at the configured row limit.")
+    formatted_answer = format_result(query_result, decision.raw_question)
     return StructuredAnswer(
-        answer=format_result(query_result, decision.raw_question),
+        answer=formatted_answer,
         intent=decision.intent,
         sources=[source],
         warnings=warnings,
@@ -186,6 +193,78 @@ def _markdown_body(text: str) -> str:
     from baseball_rag.general_explanation import _markdown_body as markdown_body
 
     return markdown_body(text)
+
+
+def _apply_llm_flavor(question: str, result: StructuredAnswer) -> None:
+    if result.unsupported:
+        return
+    if result.intent not in {"stat_query", "grounded_database_question"}:
+        return
+    source = _primary_duckdb_source(result)
+    if source is None:
+        return
+    prompt_question = str(result.metadata.get("context_question") or question)
+    result.answer = _llm_flavored_grounded_database_answer(
+        question=prompt_question,
+        formatted_answer=result.answer,
+        source=source,
+    )
+
+
+def _primary_duckdb_source(result: StructuredAnswer) -> SourceRecord | None:
+    for source in result.sources:
+        if source.type == "duckdb":
+            return source
+    return None
+
+
+def _llm_flavored_grounded_database_answer(
+    *,
+    question: str,
+    formatted_answer: str,
+    source: SourceRecord,
+) -> str:
+    from baseball_rag.generation.llm import make_request
+
+    response = make_request(
+        _grounded_database_flavor_prompt(
+            question=question,
+            formatted_answer=formatted_answer,
+            source=source,
+        ),
+        max_tokens=700,
+        temperature=0.2,
+    )
+    return response.content.strip()
+
+
+def _grounded_database_flavor_prompt(
+    *,
+    question: str,
+    formatted_answer: str,
+    source: SourceRecord,
+) -> tuple[str, str]:
+    system_prompt = (
+        "Answer the baseball question using only the verified DuckDB stats provided. "
+        "Do not add outside numbers. If you mention a number, it must come from the "
+        "verified stats."
+    )
+    context = {
+        "question": question,
+        "formatted_stats": formatted_answer,
+        "duckdb_source": {
+            "label": source.label,
+            "detail": source.detail,
+            "sql": source.sql,
+            "columns": source.columns,
+            "rows": source.rows,
+        },
+    }
+    user_prompt = (
+        "Use this grounded database result to answer in natural language:\n"
+        f"{json.dumps(context, indent=2, default=str)}"
+    )
+    return system_prompt, user_prompt
 
 
 def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]]:
