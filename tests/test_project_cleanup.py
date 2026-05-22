@@ -133,6 +133,17 @@ def test_freeform_no_longer_reexports_runtime_private_helpers() -> None:
     assert "freeform_schema" not in freeform
 
 
+def test_freeform_no_longer_reexports_shared_types() -> None:
+    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+
+    assert "freeform_types" not in freeform
+    assert "MAX_ROWS" not in freeform
+    assert "SCHEMA_TIMEOUT_MS" not in freeform
+    assert "QuerySpec" not in freeform
+    assert "FreeformResult" not in freeform
+    assert "PlannedFreeformQuery" not in freeform
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"
