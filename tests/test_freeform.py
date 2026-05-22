@@ -616,7 +616,7 @@ class TestFreeformProvenance:
         )
 
         with patch(
-            "baseball_rag.db.freeform.make_request",
+            "baseball_rag.generation.llm.make_request",
             side_effect=AssertionError("deterministic template should not call the LLM"),
         ):
             result = _answer_grounded_database_question(decision.raw_question, decision)
@@ -638,7 +638,7 @@ class TestFreeformProvenance:
             '{"stat_tables": ["batting"], "team_name_pattern": "Mariners", "year_value": 1977}'
         )
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
+        with patch("baseball_rag.generation.llm.make_request", return_value=mock_resp):
             result = _answer_grounded_database_question(decision.raw_question, decision)
 
         assert result.sources[0].label == "LLM-backed typed grounded database query"
@@ -648,7 +648,7 @@ class TestFreeformProvenance:
         from baseball_rag.service import answer
 
         with patch(
-            "baseball_rag.db.freeform.make_request",
+            "baseball_rag.generation.llm.make_request",
             side_effect=AssertionError("roster template should not call the LLM"),
         ):
             result = answer("who played for the Braves in 1936")
@@ -712,7 +712,7 @@ class TestFreeformProvenance:
             truncated=False,
         )
 
-        with patch("baseball_rag.db.freeform.query", return_value=result) as query:
+        with patch("baseball_rag.db.freeform_runtime.query", return_value=result) as query:
             _answer_grounded_database_question(decision.raw_question, decision)
 
         assert decision.time_period.type == TimePeriodType.RELATIVE

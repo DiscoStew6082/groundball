@@ -103,13 +103,15 @@ def _answer_grounded_database_question(
     _question: str,
     decision: Any,
 ) -> StructuredAnswer:
-    from baseball_rag.db.freeform import format_result, query
+    from baseball_rag.db.freeform_runtime import format_result, query
+    from baseball_rag.generation.llm import make_request
 
     conn = get_duckdb()
     query_result = query(
         decision.raw_question,
         conn,
         year=_grounded_database_single_season_year(decision),
+        request_fn=make_request,
     )
     source = SourceRecord(
         type="duckdb",

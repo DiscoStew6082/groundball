@@ -144,6 +144,13 @@ def test_freeform_no_longer_reexports_shared_types() -> None:
     assert "PlannedFreeformQuery" not in freeform
 
 
+def test_service_uses_freeform_runtime_directly() -> None:
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+
+    assert "baseball_rag.db.freeform import" not in service
+    assert "baseball_rag.db.freeform_runtime import" in service
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"
