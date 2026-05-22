@@ -7,6 +7,8 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from baseball_rag.answer_mode import AnswerMode
+
 app = FastAPI(title="Baseball RAG API")
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 class QueryRequest(BaseModel):
     question: str
     conversation: list[dict[str, Any]] | None = None
+    answer_mode: AnswerMode = "stats_only"
 
 
 class QueryResponse(BaseModel):
@@ -50,6 +53,7 @@ def query(req: QueryRequest):
 
     result = execute_request(
         req.question,
+        answer_mode=req.answer_mode,
         adapter_component_id="api",
         adapter_label="FastAPI Query",
         conversation=req.conversation,

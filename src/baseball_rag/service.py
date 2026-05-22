@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from baseball_rag import player_biography as _player_biography
+from baseball_rag.answer_mode import AnswerMode, validate_answer_mode
 from baseball_rag.conversation import resolve_followup
 from baseball_rag.db import init_db
 from baseball_rag.db.duckdb_schema import get_duckdb
@@ -41,8 +42,10 @@ def answer(
     question: str,
     *,
     conversation: list[dict[str, Any]] | None = None,
+    answer_mode: str = "stats_only",
 ) -> StructuredAnswer:
     """Answer a question with explicit provenance metadata."""
+    validated_answer_mode: AnswerMode = validate_answer_mode(answer_mode)
     dispatcher = RequestAnswerDispatcher(
         initialize=init_db,
         resolve_followup=resolve_followup,
@@ -54,7 +57,9 @@ def answer(
             general_explanation=_answer_general,
         ),
     )
-    return dispatcher.answer(question, conversation=conversation)
+    result = dispatcher.answer(question, conversation=conversation)
+    result.metadata["answer_mode"] = validated_answer_mode
+    return result
 
 
 def render_text(result: StructuredAnswer) -> str:

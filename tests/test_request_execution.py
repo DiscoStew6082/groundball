@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from baseball_rag.arch.tracing import finish_trace, get_current_trace, traced
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.request_execution import execute_request
@@ -30,6 +32,14 @@ def test_execute_request_rejects_policy_unsupported_question_before_routing(
     assert execution.answer.unsupported_reason == "unsupported"
     assert execution.answer.review["queued"] is True
     assert execution.answer.review["reason"] == "unsupported"
+
+
+def test_execute_request_rejects_unknown_answer_mode():
+    with pytest.raises(ValueError, match="Unsupported answer_mode"):
+        execute_request(
+            "who had the most RBIs in 1962",
+            answer_mode="llm_flavored",  # type: ignore[arg-type]
+        )
 
 
 def test_execute_request_allows_grounded_greatest_metric_question(tmp_path, monkeypatch):
@@ -98,7 +108,11 @@ def test_execute_request_attaches_audit_and_review_once():
             attach_review=True,
         )
 
-    assert execution.answer.metadata == {"query_id": "q_test", "route": "stat_query"}
+    assert execution.answer.metadata == {
+        "answer_mode": "stats_only",
+        "query_id": "q_test",
+        "route": "stat_query",
+    }
     assert execution.answer.review == {"queued": True, "reason": "unsupported"}
     build_metadata.assert_called_once()
     enqueue_review_item.assert_called_once_with("who led MLB in vibes", structured)
@@ -125,7 +139,7 @@ def test_execute_request_uses_governance_observation_after_answer_trace():
             )
 
     assert calls == [("audit_review", "who led MLB in vibes", structured, "stat_query")]
-    assert execution.answer.metadata == {"observed": True}
+    assert execution.answer.metadata == {"answer_mode": "stats_only", "observed": True}
 
 
 def test_execute_request_passes_conversation_to_answer_service():
@@ -161,7 +175,11 @@ def test_execute_request_passes_conversation_to_answer_service():
 
     assert execution.trace is not None
     assert execution.trace.query == "tell me about the second player"
-    answer.assert_called_once_with("tell me about the second player", conversation=prior_turns)
+    answer.assert_called_once_with(
+        "tell me about the second player",
+        conversation=prior_turns,
+        answer_mode="stats_only",
+    )
 
 
 def test_execute_request_resolves_followup_dispatches_and_attaches_context(monkeypatch):
@@ -215,6 +233,7 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
     assert execution.answer.answer == "Hank Aaron biography"
     assert execution.answer.metadata == {
         "original_question": "tell me about the second player",
+        "answer_mode": "stats_only",
         "context_question": "tell me about Hank Aaron",
         "context_source": "career home run leaders",
         "context_player_name": "Hank Aaron",
@@ -277,6 +296,7 @@ def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(m
     assert execution.answer.answer == "Alex Rodriguez biography"
     assert execution.answer.metadata == {
         "original_question": "Tell me more about the fifth player in the list",
+        "answer_mode": "stats_only",
         "context_question": "Tell me more about Alex Rodriguez in the list",
         "context_source": "career home run leaders",
         "context_player_name": "Alex Rodriguez",
@@ -330,7 +350,7 @@ def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monk
     )
 
     assert routed_questions == ["Tell me about the fifth player to hit 500 home runs"]
-    assert execution.answer.metadata == {}
+    assert execution.answer.metadata == {"answer_mode": "stats_only"}
 
 
 def test_execute_request_answers_routed_stat_case_through_service(monkeypatch):

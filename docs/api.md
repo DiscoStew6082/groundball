@@ -31,7 +31,8 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 
 ```json
 {
-  "question": "who had the most RBIs in 1962"
+  "question": "who had the most RBIs in 1962",
+  "answer_mode": "stats_only"
 }
 ```
 
@@ -75,6 +76,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
   "unsupported": false,
   "review": null,
   "metadata": {
+    "answer_mode": "stats_only",
     "query_id": "q_0c9ab4d71dfcb6ec",
     "timestamp": "2026-04-28T12:00:00+00:00",
     "route": "stat_query",
@@ -124,6 +126,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | Field | Type | Description |
 |-------|------|-------------|
 | `question` | string | Natural language baseball question |
+| `answer_mode` | string | Optional answer mode. `stats_only` is currently the only supported value and preserves the existing formatted verified-stat response. |
 
 **Response fields**
 

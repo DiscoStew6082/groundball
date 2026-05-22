@@ -67,6 +67,31 @@ class TestApi:
         assert audit["latency_ms"] >= 0
         assert audit["query_id"] == data["metadata"]["query_id"]
 
+    def test_query_endpoint_accepts_stats_only_answer_mode(self):
+        response = client.post(
+            "/query",
+            json={
+                "question": "who had the most RBIs in 1962",
+                "answer_mode": "stats_only",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["metadata"]["answer_mode"] == "stats_only"
+        assert "Davis, Tommy: 153 RBI" in data["answer"]
+
+    def test_query_endpoint_rejects_unknown_answer_mode(self):
+        response = client.post(
+            "/query",
+            json={
+                "question": "who had the most RBIs in 1962",
+                "answer_mode": "llm_flavored",
+            },
+        )
+
+        assert response.status_code == 422
+
     def test_query_endpoint_accepts_conversation_context(self):
         """API callers can continue a grounded conversation across turns."""
         prior_turns = [
