@@ -109,6 +109,8 @@ def test_freeform_no_longer_reexports_intent_parser_internals() -> None:
 
     assert "_parse_intent" not in freeform
     assert "_INTENT_SYSTEM" not in freeform
+    assert "_generate_sql" not in freeform
+    assert "_generate_query_spec" not in freeform
 
 
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:

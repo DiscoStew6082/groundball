@@ -2,12 +2,6 @@
 
 import duckdb
 
-from baseball_rag.db.freeform_intent import (
-    _generate_query_spec as _generate_query_spec_impl,
-)
-from baseball_rag.db.freeform_intent import (
-    _generate_sql as _generate_sql_impl,
-)
 from baseball_rag.db.freeform_runtime import (
     _execute_safe,
     _validate_sql,
@@ -78,8 +72,6 @@ __all__ = [
     "_extract_min_ipouts",
     "_extract_threshold",
     "_extract_year",
-    "_generate_query_spec",
-    "_generate_sql",
     "_get_schema_cached",
     "_has_era_qualification_guard",
     "_looks_like_single_season",
@@ -111,13 +103,3 @@ def plan_query(
 ) -> PlannedFreeformQuery:
     """Compatibility wrapper that honors patches to freeform.make_request."""
     return _plan_query_impl(question, conn, year=year, request_fn=make_request)
-
-
-def _generate_sql(question: str, schema: str) -> str:
-    """Compatibility wrapper that honors patches to freeform.make_request."""
-    return _generate_sql_impl(question, schema, request_fn=make_request)
-
-
-def _generate_query_spec(question: str, schema: str) -> QuerySpec:
-    """Compatibility wrapper that honors patches to freeform.make_request."""
-    return _generate_query_spec_impl(question, schema, request_fn=make_request)

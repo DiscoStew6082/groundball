@@ -463,7 +463,7 @@ class TestGenerateSQLDeterminism:
         """Identical calls with same intent should produce byte-for-byte identical SQL."""
         import json
 
-        from baseball_rag.db.freeform import _generate_sql
+        from baseball_rag.db.freeform_intent import _generate_sql
 
         # Mock the LLM to return a known intent JSON
         raw_response = json.dumps(
@@ -477,24 +477,32 @@ class TestGenerateSQLDeterminism:
         mock_resp = MagicMock()
         mock_resp.content = raw_response
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
-            sql1 = _generate_sql("Who played for the Braves in 1936?", "schema")
-            sql2 = _generate_sql("Who played for the Braves in 1936?", "schema")
+        def fake_request(*_args, **_kwargs):
+            return mock_resp
+
+        sql1 = _generate_sql(
+            "Who played for the Braves in 1936?", "schema", request_fn=fake_request
+        )
+        sql2 = _generate_sql(
+            "Who played for the Braves in 1936?", "schema", request_fn=fake_request
+        )
 
         assert sql1 == sql2, f"Non-deterministic SQL: {sql1!r} != {sql2!r}"
 
     def test_generate_sql_calls_llm_once(self):
         """_generate_sql should make exactly one LLM call per invocation."""
-        from baseball_rag.db.freeform import _generate_sql
+        from baseball_rag.db.freeform_intent import _generate_sql
 
         mock_resp = MagicMock()
         mock_resp.content = (
             '{"stat_tables": ["batting"], "team_name_pattern": "Braves", "year_value": 1936}'
         )
 
-        with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp) as mock_call:
-            _generate_sql("Who played for the Braves in 1936?", "schema")
-            assert mock_call.call_count == 1
+        mock_call = MagicMock(return_value=mock_resp)
+
+        _generate_sql("Who played for the Braves in 1936?", "schema", request_fn=mock_call)
+
+        assert mock_call.call_count == 1
 
     def test_roster_intent_is_planned_before_execution_without_llm(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
