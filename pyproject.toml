@@ -9,11 +9,7 @@ dependencies = [
     "typer",
     "fastapi",
     "gradio",
-    # MLB Stats API MCP
-    "fastmcp>=2.10.6",
-    "python-mlb-statsapi>=0.5.26",
     "uvicorn[standard]>=0.24.0",
-    "pybaseball>=2.2.7",
     "unidecode>=1.4.0",
 ]
 
@@ -37,7 +33,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/baseball_rag", "src/mlb_api_mcp"]
+packages = ["src/baseball_rag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

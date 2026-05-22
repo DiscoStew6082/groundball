@@ -15,7 +15,7 @@ uv run python -m evals.questions \
 Expected headline:
 
 ```text
-evals: 20 passed, 0 failed, 48 skipped
+evals: 25 passed, 0 failed, 43 skipped
 ```
 
 Show:
@@ -30,7 +30,7 @@ Talking point: skipped cases are intentional. CI gates only deterministic cases;
 
 ```bash
 uv run ruff check
-uv run pytest tests/ --ignore=tests/test_db_download.py -m "unit and not llm" -q
+uv run pytest tests/ -m "not llm" -q
 ```
 
 Talking point: the release gate and core tests do not depend on LM Studio or external model services.

@@ -32,7 +32,7 @@ def corpus_diagnostics(corpus_dir: Path | None = None) -> dict[str, Any]:
         "manifest": manifest,
         "runtime": {
             "index_required": False,
-            "stat_explanations": "llm_open_answer",
+            "stat_explanations": "local_markdown_then_llm_fallback",
             "player_biographies": "llm_generated_duckdb_verified",
         },
     }

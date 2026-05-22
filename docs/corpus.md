@@ -1,6 +1,6 @@
 # Corpus Material
 
-The Markdown under `src/baseball_rag/corpus/` is checked-in project material. It is useful for examples, docs, and tests, but it is no longer runtime grounding for stat explanations or player biographies.
+The Markdown under `src/baseball_rag/corpus/` is checked-in project material. It is useful for examples, docs, and tests. The stat-definition Markdown remains runtime grounding for supported stat-definition explanations; Hall of Fame biography Markdown is not runtime grounding for player biographies.
 
 ChromaDB indexing was removed because it duplicated generated baseball facts and introduced fragile local state. The runtime now uses DuckDB for structured facts, local LLM generation for open prose, and DuckDB verification for extractable biography stat claims.
 
@@ -22,7 +22,7 @@ corpus/
 - Freeform database answers use typed query specs and parameterized DuckDB SQL.
 - Player biographies resolve the player identity through DuckDB, then ask the LLM for JSON containing `answer` and `stat_claims`.
 - Supported career and season stat claims extracted from biographies are verified against DuckDB.
-- General explanations such as "what is OPS?" are answered by the LLM directly.
+- Supported stat-definition explanations such as "what is OPS?" use local stat-definition Markdown before the open LLM fallback.
 - If LM Studio is unavailable for open prose, the system returns `llm_unavailable`; it does not synthesize a DuckDB biography fallback.
 
 ## Document Format

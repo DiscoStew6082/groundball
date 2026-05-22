@@ -15,7 +15,7 @@ def test_corpus_diagnostics_tolerates_missing_manifest(tmp_path):
     assert diagnostics["corpus_files"]["stat_definition_count"] == 10
     assert diagnostics["corpus_files"]["hof_bio_count"] == 5
     assert diagnostics["runtime"]["index_required"] is False
-    assert diagnostics["runtime"]["stat_explanations"] == "llm_open_answer"
+    assert diagnostics["runtime"]["stat_explanations"] == "local_markdown_then_llm_fallback"
 
 
 def test_corpus_diagnostics_reads_legacy_manifest_counts(tmp_path):

@@ -29,9 +29,10 @@ uv run python -m baseball_rag.db.download --manifest-only
 
 ### Corpus Material
 
-ChromaDB indexing has been removed. Checked-in Markdown under
-`src/baseball_rag/corpus/` remains project material for docs/tests, but it is
-not runtime grounding for stat explanations or player biographies.
+ChromaDB indexing has been removed. Checked-in stat-definition Markdown remains
+runtime grounding for supported stat-definition explanations. Hall of Fame
+biography Markdown remains project material for docs/tests, but it is not
+runtime grounding for player biographies.
 
 For a full local data rebuild from scratch:
 
@@ -68,6 +69,9 @@ uv run uvicorn baseball_rag.api.server:app --reload
 
 # Web UI (port 7860)
 uv run python -m baseball_rag.web_app
+
+# Short local UI entrypoint used by the Codex workflow (port 7861)
+uv run baseball-rag-ui
 
 # Web UI with a one-hour process TTL
 uv run python -m baseball_rag.web_app --ttl-seconds 3600
