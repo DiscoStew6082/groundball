@@ -11,7 +11,6 @@ from baseball_rag.routing import (
     GeneralExplanationCase,
     GroundedDatabaseQuestionCase,
     PlayerBiographyCase,
-    RouteResult,
     StatQueryCase,
 )
 
@@ -205,11 +204,9 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
     ]
     routed_questions = []
 
-    def fake_route(question: str) -> RouteResult:
+    def fake_route(question: str) -> PlayerBiographyCase:
         routed_questions.append(question)
-        return RouteResult(
-            intent="player_biography",
-            stat=None,
+        return PlayerBiographyCase(
             player_name="Hank Aaron",
             raw_question=question,
         )
@@ -267,11 +264,9 @@ def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(m
     ]
     routed_questions = []
 
-    def fake_route(question: str) -> RouteResult:
+    def fake_route(question: str) -> PlayerBiographyCase:
         routed_questions.append(question)
-        return RouteResult(
-            intent="player_biography",
-            stat=None,
+        return PlayerBiographyCase(
             player_name="Alex Rodriguez",
             raw_question=question,
         )
@@ -327,9 +322,9 @@ def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monk
     ]
     routed_questions = []
 
-    def fake_route(question: str) -> RouteResult:
+    def fake_route(question: str) -> GeneralExplanationCase:
         routed_questions.append(question)
-        return RouteResult(intent="general_explanation", stat=None, raw_question=question)
+        return GeneralExplanationCase(raw_question=question)
 
     monkeypatch.setattr("baseball_rag.service.route", fake_route)
     monkeypatch.setattr(
@@ -433,24 +428,9 @@ def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
         assert execution.answer.answer == expected
 
 
-def test_execute_request_normalizes_legacy_stat_route_result(monkeypatch):
-    """Legacy RouteResult compatibility is converted at the dispatch boundary."""
-    seen_cases = []
-    legacy = RouteResult(
-        intent="stat_query",
-        stat="HR",
-        raw_question="career home run leaders",
-    )
+def test_execute_request_rejects_unsupported_routed_case_type(monkeypatch):
+    """The request path requires typed route cases."""
+    monkeypatch.setattr("baseball_rag.service.route", lambda _question: object())
 
-    monkeypatch.setattr("baseball_rag.service.route", lambda _question: legacy)
-
-    def fake_stat_answer(decision: StatQueryCase) -> StructuredAnswer:
-        seen_cases.append(decision)
-        return StructuredAnswer(answer="Top HR leaders", intent=decision.intent)
-
-    monkeypatch.setattr("baseball_rag.service.answer_stat_query", fake_stat_answer)
-
-    execution = execute_request("career home run leaders", adapter_component_id="api")
-
-    assert execution.answer.answer == "Top HR leaders"
-    assert seen_cases == [StatQueryCase(stat="HR", raw_question="career home run leaders")]
+    with pytest.raises(TypeError, match="Unsupported routed case type"):
+        execute_request("career home run leaders", adapter_component_id="api")

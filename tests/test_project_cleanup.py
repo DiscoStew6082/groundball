@@ -60,6 +60,16 @@ def test_service_no_longer_exposes_biography_contract_patch_aliases() -> None:
     assert "_extract_supplied_stat_claims" not in service
 
 
+def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
+    request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "RouteResult" not in request_dispatch
+    assert "_dispatch_legacy_route_result" not in request_dispatch
+    assert "_validated_legacy_intent" not in request_dispatch
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()

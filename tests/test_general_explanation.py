@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from baseball_rag.general_explanation import GeneralExplanationPolicy
 from baseball_rag.generation.llm import LLMResponse
-from baseball_rag.routing import GeneralExplanationCase, RouteResult
+from baseball_rag.routing import GeneralExplanationCase
 
 
 def test_general_explanation_policy_answers_local_stat_definition_without_llm():
@@ -55,7 +55,7 @@ def test_service_general_explanation_uses_policy_module(monkeypatch):
     assert result.answer == "policy answer"
 
 
-def test_service_general_explanation_preserves_legacy_question_fallback(monkeypatch):
+def test_service_general_explanation_uses_fallback_question_for_local_definition(monkeypatch):
     from baseball_rag.service import _answer_general
 
     def fail_llm(*_args, **_kwargs):
@@ -65,7 +65,7 @@ def test_service_general_explanation_preserves_legacy_question_fallback(monkeypa
 
     result = _answer_general(
         "what is OPS",
-        RouteResult(intent="general_explanation", stat="OPS"),
+        GeneralExplanationCase(raw_question="", stat="OPS"),
     )
 
     assert result.sources[0].label == "Local stat definition: OPS"

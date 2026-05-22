@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from baseball_rag.conversation import ConversationResolution, attach_context_metadata
 from baseball_rag.provenance import StructuredAnswer
@@ -13,19 +13,9 @@ from baseball_rag.routing import (
     GroundedDatabaseQuestionCase,
     PlayerBiographyCase,
     RoutedCase,
-    RouteResult,
     StatQueryCase,
-    routed_case,
 )
-from baseball_rag.routing.query_router import Intent
 from baseball_rag.unsupported_policy import unsupported_policy_outcome
-
-_SUPPORTED_INTENTS = {
-    "stat_query",
-    "player_biography",
-    "grounded_database_question",
-    "general_explanation",
-}
 
 
 @dataclass(frozen=True)
@@ -74,7 +64,7 @@ class RequestAnswerDispatcher:
     def _dispatch(
         self,
         routed_question: str,
-        decision: RoutedCase | RouteResult,
+        decision: RoutedCase,
     ) -> StructuredAnswer:
         if isinstance(decision, StatQueryCase):
             return self.handlers.stat_query(decision)
@@ -84,24 +74,7 @@ class RequestAnswerDispatcher:
             return self.handlers.grounded_database_question(routed_question, decision)
         if isinstance(decision, GeneralExplanationCase):
             return self.handlers.general_explanation(routed_question, decision)
-        if not isinstance(decision, RouteResult):
-            raise TypeError(f"Unsupported routed case type: {type(decision).__name__}")
-        return self._dispatch_legacy_route_result(routed_question, decision)
-
-    def _dispatch_legacy_route_result(
-        self,
-        routed_question: str,
-        decision: RouteResult,
-    ) -> StructuredAnswer:
-        normalized = routed_case(
-            intent=_validated_legacy_intent(decision.intent),
-            stat=decision.stat,
-            time_period=decision.time_period,
-            position=decision.position,
-            player_name=decision.player_name,
-            raw_question=decision.raw_question,
-        )
-        return self._dispatch(routed_question, normalized)
+        raise TypeError(f"Unsupported routed case type: {type(decision).__name__}")
 
     def _attach_context_metadata(
         self,
@@ -117,9 +90,3 @@ class RequestAnswerDispatcher:
             resolution=resolution,
             decision=decision,
         )
-
-
-def _validated_legacy_intent(intent: str) -> Intent:
-    if intent not in _SUPPORTED_INTENTS:
-        raise ValueError(f"Unsupported routed intent: {intent}")
-    return cast(Intent, intent)
