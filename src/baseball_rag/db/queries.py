@@ -6,7 +6,7 @@ from typing import Literal
 import duckdb
 
 from baseball_rag.arch.tracing import traced
-from baseball_rag.db.duckdb_schema import TEAM_MAP, get_duckdb
+from baseball_rag.db.duckdb_schema import get_duckdb, get_team_name
 from baseball_rag.db.stat_registry import StatTable, get_stat
 
 StatQueryKind = Literal["player", "leaderboard", "career"]
@@ -42,8 +42,8 @@ class StatQueryResult:
 
 
 def _team_name(team_id: str) -> str:
-    """Map a team ID to its full name via TEAM_MAP."""
-    return TEAM_MAP.get(team_id, "Unknown")
+    """Map a team ID to its full name."""
+    return get_team_name(team_id)
 
 
 @traced(component_id="duckdb", label="DB Query")

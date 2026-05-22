@@ -61,7 +61,7 @@ def build_player_bio(player_id: str, conn: duckdb.DuckDBPyConnection) -> str:
     - YEAR: Team
     - YEAR: Team
     """
-    from baseball_rag.db.duckdb_schema import TEAM_MAP
+    from baseball_rag.db.duckdb_schema import get_team_name
 
     # 1. Get player info from people table
     person = conn.execute(
@@ -130,7 +130,7 @@ def build_player_bio(player_id: str, conn: duckdb.DuckDBPyConnection) -> str:
     # 4. Build career summary (team + year ranges)
     team_summary_parts: list[str] = []
     for team_id, (first_year, last_year) in sorted(seen_teams.items(), key=lambda x: x[1][0]):
-        team_name = TEAM_MAP.get(team_id, team_id)
+        team_name = get_team_name(team_id, default=team_id)
         if first_year == last_year:
             team_summary_parts.append(f"{team_name} ({first_year})")
         else:
@@ -142,7 +142,7 @@ def build_player_bio(player_id: str, conn: duckdb.DuckDBPyConnection) -> str:
     season_lines: list[str] = []
     current_year: Optional[int] = None
     for year_id, team_id in seasons:
-        team_name = TEAM_MAP.get(team_id, team_id)
+        team_name = get_team_name(team_id, default=team_id)
         if year_id != current_year:
             season_lines.append(f"- {year_id}: {team_name}")
             current_year = year_id

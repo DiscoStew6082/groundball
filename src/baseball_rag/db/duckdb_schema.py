@@ -135,8 +135,10 @@ if not _TEAM_MAP:
         "WS3": "Washington Senators (1900s)",
     }
 
-# Alias the map for backward compat
-TEAM_MAP = _TEAM_MAP
+
+def get_team_name(team_id: str, *, default: str = "Unknown") -> str:
+    """Return a display name for a Lahman team ID."""
+    return _TEAM_MAP.get(team_id, default)
 
 
 def get_duckdb() -> duckdb.DuckDBPyConnection:

@@ -121,6 +121,20 @@ def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     assert "get_player_stat" not in package_init
 
 
+def test_duckdb_schema_no_longer_exports_team_map_alias() -> None:
+    duckdb_schema = (ROOT / "src" / "baseball_rag" / "db" / "duckdb_schema.py").read_text(
+        encoding="utf-8"
+    )
+    queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
+    player_bios = (ROOT / "src" / "baseball_rag" / "corpus" / "player_bios.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert not re.search(r"^TEAM_MAP\s*=", duckdb_schema, re.M)
+    assert "import TEAM_MAP" not in queries
+    assert "import TEAM_MAP" not in player_bios
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"
