@@ -119,6 +119,32 @@ def test_retired_corpus_ingest_entrypoint_is_removed() -> None:
     assert "retired ingest command" not in architecture_docs.lower()
 
 
+def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
+    corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
+        encoding="utf-8"
+    )
+    diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
+        encoding="utf-8"
+    )
+    lifecycle = (ROOT / "src" / "baseball_rag" / "corpus" / "lifecycle.py").read_text(
+        encoding="utf-8"
+    )
+    corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+    architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+
+    assert "corpus_manifest.json" not in diagnostics
+    assert "persist-dir" not in corpus_main
+    assert "manifest_section_count" not in lifecycle
+    assert "write_corpus_manifest" not in lifecycle
+    assert "new_manifest" not in lifecycle
+    assert "finalize_manifest_counts" not in lifecycle
+    assert "manifest_documents" not in lifecycle
+    assert "old ignored manifest" not in corpus_docs
+    assert "old ignored manifest" not in development_docs
+    assert "old ignored manifest" not in architecture_docs
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()

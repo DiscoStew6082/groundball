@@ -9,7 +9,7 @@ ChromaDB indexing was removed because it duplicated generated baseball facts and
 ```text
 corpus/
 ├── __init__.py              # Path constants and helper listings
-├── diagnostics.py           # Checked-in corpus and old manifest diagnostics
+├── diagnostics.py           # Checked-in corpus diagnostics
 ├── frontmatter.py           # YAML frontmatter parser
 ├── stat_definitions/        # 10 markdown files, one per stat
 └── hof/                     # 5 Hall of Fame player biography examples
@@ -52,14 +52,13 @@ parse_frontmatter(content)
 Print corpus diagnostics as JSON:
 
 ```bash
-uv run python -m baseball_rag.corpus diagnostics --persist-dir data
+uv run python -m baseball_rag.corpus diagnostics
 ```
 
 The report includes:
 
-- resolved corpus/manifest directory
+- resolved corpus directory
 - checked-in stat definition and Hall of Fame Markdown counts
-- old ignored `corpus_manifest.json` presence/counts when present
 - runtime flags showing that no index is required
 
-Diagnostics do not require a vector index. Missing directories, missing manifests, and corrupt manifests are reported in JSON instead of raising.
+Diagnostics do not require a vector index.

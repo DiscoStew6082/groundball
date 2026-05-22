@@ -38,14 +38,14 @@ For a full local data rebuild from scratch:
 
 ```bash
 uv run python -m baseball_rag.db.download
-uv run python -m baseball_rag.corpus diagnostics --persist-dir data
+uv run python -m baseball_rag.corpus diagnostics
 ```
 
-The diagnostics command reports checked-in corpus counts, old ignored manifest
-state when present, and runtime flags that no vector index is required:
+The diagnostics command reports checked-in corpus counts and runtime flags that
+no vector index is required:
 
 ```bash
-uv run python -m baseball_rag.corpus diagnostics --persist-dir data
+uv run python -m baseball_rag.corpus diagnostics
 ```
 
 ### Environment Variables
