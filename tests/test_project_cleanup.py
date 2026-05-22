@@ -86,63 +86,14 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
     assert "def year(" not in query_router
 
 
-def test_freeform_no_longer_exports_json_block_compatibility_wrapper() -> None:
-    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+def test_freeform_compatibility_facade_is_removed() -> None:
     freeform_intent = (ROOT / "src" / "baseball_rag" / "db" / "freeform_intent.py").read_text(
         encoding="utf-8"
     )
 
+    assert not (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").exists()
     assert "def _extract_json_blocks(" not in freeform_intent
-    assert "_extract_json_blocks" not in freeform
     assert "Backward-compatible wrapper" not in freeform_intent
-
-
-def test_freeform_no_longer_reexports_assembler_internals() -> None:
-    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
-
-    assert "freeform_assembler" not in freeform
-    assert "_assemble_sql" not in freeform
-    assert "_leader_condition" not in freeform
-
-
-def test_freeform_no_longer_reexports_intent_parser_internals() -> None:
-    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
-
-    assert "_parse_intent" not in freeform
-    assert "_INTENT_SYSTEM" not in freeform
-    assert "_generate_sql" not in freeform
-    assert "_generate_query_spec" not in freeform
-
-
-def test_freeform_no_longer_reexports_template_internals() -> None:
-    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
-
-    assert "freeform_templates" not in freeform
-    assert "_detect_template" not in freeform
-    assert "_template_source_detail" not in freeform
-    assert "_triple_crown_sql" not in freeform
-    assert "_career_home_run_sql" not in freeform
-    assert "_qualified_season_era_sql" not in freeform
-
-
-def test_freeform_no_longer_reexports_runtime_private_helpers() -> None:
-    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
-
-    assert "_execute_safe" not in freeform
-    assert "_validate_sql" not in freeform
-    assert "_get_schema_cached" not in freeform
-    assert "freeform_schema" not in freeform
-
-
-def test_freeform_no_longer_reexports_shared_types() -> None:
-    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
-
-    assert "freeform_types" not in freeform
-    assert "MAX_ROWS" not in freeform
-    assert "SCHEMA_TIMEOUT_MS" not in freeform
-    assert "QuerySpec" not in freeform
-    assert "FreeformResult" not in freeform
-    assert "PlannedFreeformQuery" not in freeform
 
 
 def test_service_uses_freeform_runtime_directly() -> None:
