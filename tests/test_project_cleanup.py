@@ -70,6 +70,18 @@ def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     assert "_validated_legacy_intent" not in request_dispatch
 
 
+def test_routing_no_longer_exports_legacy_route_result() -> None:
+    routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    query_router = (ROOT / "src" / "baseball_rag" / "routing" / "query_router.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "RouteResult" not in routing_init
+    assert "class RouteResult" not in query_router
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()

@@ -20,14 +20,14 @@ class TestPlayerDetection:
         assert result.intent == "stat_query"
         assert result.stat == "HR"
         # BUG: player should be extracted but isn't
-        assert hasattr(result, "player_name"), "RouteResult has no 'player_name' attribute"
+        assert hasattr(result, "player_name"), "Route case has no 'player_name' attribute"
         assert result.player_name is not None, "Player name was not extracted from query"
 
     def test_detect_player_name_mike_trout(self):
         """'what are Mike Trout's career home runs' should extract player='Mike Trout'."""
         result = route("What are Mike Trout's career home runs")
         # BUG: player extraction missing
-        assert hasattr(result, "player_name"), "RouteResult has no 'player' attribute"
+        assert hasattr(result, "player_name"), "Route case has no 'player' attribute"
         assert result.player_name is not None
         assert "trout" in result.player_name.lower()
 
@@ -37,7 +37,7 @@ class TestPlayerDetection:
         assert result.stat == "RBI"
         assert result.year == 2001
         # BUG: player extraction missing
-        assert hasattr(result, "player_name"), "RouteResult has no 'player' attribute"
+        assert hasattr(result, "player_name"), "Route case has no 'player' attribute"
         assert result.player_name is not None
 
     def test_compact_player_stat_query_routes_without_llm(self, monkeypatch):

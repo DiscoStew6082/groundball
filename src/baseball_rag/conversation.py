@@ -13,7 +13,7 @@ from baseball_rag.conversation_transcript import (
     row_from_recent_turn,
 )
 from baseball_rag.provenance import StructuredAnswer
-from baseball_rag.routing import PlayerBiographyCase, RouteResult
+from baseball_rag.routing import PlayerBiographyCase
 
 ReferenceKind = Literal["pronoun", "ordinal_row", "none"]
 ResolutionConfidence = Literal["high", "unsupported"]
@@ -157,7 +157,7 @@ def attach_context_metadata(
         return
     if resolution.referenced_player_name is not None:
         answer.metadata["context_player_name"] = resolution.referenced_player_name
-    elif isinstance(decision, (PlayerBiographyCase, RouteResult)) and (
+    elif isinstance(decision, PlayerBiographyCase) and (
         decision.intent == "player_biography" and decision.player_name
     ):
         answer.metadata["context_player_name"] = decision.player_name

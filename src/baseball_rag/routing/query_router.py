@@ -118,39 +118,6 @@ class TimePeriod:
     resolved_end: int | None = None
 
 
-@dataclass
-class RouteResult:
-    """Parsed result from classifying a user query."""
-
-    # "stat_query" | "player_biography" | "grounded_database_question" | "general_explanation"
-    intent: str
-    stat: str | None  # e.g., "RBI", "HR"
-    time_period: TimePeriod | None = None  # extracted time filter (replaces old year field)
-    position: str | None = None  # e.g., "OF", "CF"
-    player_name: str | None = None  # e.g., "Mike Trout"
-    raw_question: str = ""  # original question text
-
-    @property
-    def year(self) -> int | None:
-        """Backward-compatibility shim.
-
-        Legacy code and tests pass ``year=int`` directly. This property extracts
-        the year from a SINGLE time_period so existing call sites don't break::
-
-            decision.year   ← still works on RouteResult even though the field
-                              is now time_period: TimePeriod | None
-
-        Returns None if the query used a range, decade, or relative period.
-        """
-        if self.time_period is None:
-            return None
-        if self.time_period.type == TimePeriodType.SINGLE and isinstance(
-            self.time_period.value, int
-        ):
-            return self.time_period.value
-        return None
-
-
 @dataclass(frozen=True)
 class StatQueryCase:
     """Validated route facts for deterministic stat answers."""
@@ -328,7 +295,7 @@ def _parse_llm_json(raw: str) -> dict | None:
 
     Gemma 4 often wraps its output in a reasoning/thinking block even when
     instructed to return only JSON. We find the {...} block that actually
-    parses as valid RouteResult-shaped JSON.
+    parses as valid route JSON.
     """
     text = strip_markdown_fence(raw)
 

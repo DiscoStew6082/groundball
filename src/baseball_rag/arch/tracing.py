@@ -112,7 +112,7 @@ class traced:
 
     Usage as decorator::
         @traced(component_id="query-router", label="Query Router")
-        def route(question: str) -> RouteResult:
+        def route(question: str) -> RoutedCase:
             ...
 
     Usage as context manager::
