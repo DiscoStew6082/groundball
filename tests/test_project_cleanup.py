@@ -104,6 +104,13 @@ def test_freeform_no_longer_reexports_assembler_internals() -> None:
     assert "_leader_condition" not in freeform
 
 
+def test_freeform_no_longer_reexports_intent_parser_internals() -> None:
+    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+
+    assert "_parse_intent" not in freeform
+    assert "_INTENT_SYSTEM" not in freeform
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"

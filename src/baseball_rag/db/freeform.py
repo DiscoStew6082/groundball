@@ -3,10 +3,6 @@
 import duckdb
 
 from baseball_rag.db.freeform_intent import (
-    _INTENT_SYSTEM,
-    _parse_intent,
-)
-from baseball_rag.db.freeform_intent import (
     _generate_query_spec as _generate_query_spec_impl,
 )
 from baseball_rag.db.freeform_intent import (
@@ -73,7 +69,6 @@ __all__ = [
     "make_request",
     "plan_query",
     "query",
-    "_INTENT_SYSTEM",
     "_career_era_sql",
     "_career_home_run_sql",
     "_career_pitching_wins_sql",
@@ -89,7 +84,6 @@ __all__ = [
     "_has_era_qualification_guard",
     "_looks_like_single_season",
     "_normalize_question",
-    "_parse_intent",
     "_qualified_season_era_sql",
     "_template_source_detail",
     "_thirty_thirty_sql",
