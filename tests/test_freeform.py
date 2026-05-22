@@ -126,14 +126,14 @@ class TestDeterministicTemplates:
         from baseball_rag.db import freeform_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
         from baseball_rag.db.freeform import can_plan_deterministically, plan_query
-        from baseball_rag.routing import FreeformQueryCase, route
+        from baseball_rag.routing import GroundedDatabaseQuestionCase, route
 
         assert not hasattr(freeform_runtime, "_template_source_detail")
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             planned = plan_query("career pitching wins leaders", get_duckdb())
 
         assert can_plan_deterministically("career pitching wins leaders") is True
-        assert isinstance(route("career pitching wins leaders"), FreeformQueryCase)
+        assert isinstance(route("career pitching wins leaders"), GroundedDatabaseQuestionCase)
         assert mock_call.call_count == 0
         assert planned.planning_path == "deterministic_template"
         assert planned.params == [25]
@@ -244,7 +244,9 @@ class TestDeterministicTemplates:
         assert matched is not None
         assert matched.route_owner is True
         assert matched.unsupported_reason == "ambiguous"
-        assert matched.source_detail == "Matched local deterministic freeform SQL template."
+        assert matched.source_detail == (
+            "Matched local deterministic grounded database SQL template."
+        )
         assert matched.assembled.params == [
             "The question says 500 club but does not specify home runs or pitching wins."
         ]
@@ -594,10 +596,10 @@ class TestFreeformProvenance:
     def test_deterministic_template_source_label(self, question: str, detail: str):
         from types import SimpleNamespace
 
-        from baseball_rag.service import _answer_freeform
+        from baseball_rag.service import _answer_grounded_database_question
 
         decision = SimpleNamespace(
-            intent="freeform_query",
+            intent="grounded_database_question",
             raw_question=question,
         )
 
@@ -605,7 +607,7 @@ class TestFreeformProvenance:
             "baseball_rag.db.freeform.make_request",
             side_effect=AssertionError("deterministic template should not call the LLM"),
         ):
-            result = _answer_freeform(decision.raw_question, decision)
+            result = _answer_grounded_database_question(decision.raw_question, decision)
 
         assert result.sources[0].label == "Deterministic template query"
         assert detail in (result.sources[0].detail or "")
@@ -613,10 +615,10 @@ class TestFreeformProvenance:
     def test_llm_backed_freeform_source_label(self):
         from types import SimpleNamespace
 
-        from baseball_rag.service import _answer_freeform
+        from baseball_rag.service import _answer_grounded_database_question
 
         decision = SimpleNamespace(
-            intent="freeform_query",
+            intent="grounded_database_question",
             raw_question="Who played for the Mariners in 1977?",
         )
         mock_resp = MagicMock()
@@ -625,9 +627,9 @@ class TestFreeformProvenance:
         )
 
         with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
-            result = _answer_freeform(decision.raw_question, decision)
+            result = _answer_grounded_database_question(decision.raw_question, decision)
 
-        assert result.sources[0].label == "LLM-backed typed freeform query"
+        assert result.sources[0].label == "LLM-backed typed grounded database query"
         assert "typed intent" in (result.sources[0].detail or "")
 
     def test_roster_answer_includes_historical_team_name_without_llm(self):
@@ -639,7 +641,7 @@ class TestFreeformProvenance:
         ):
             result = answer("who played for the Braves in 1936")
 
-        assert result.intent == "freeform_query"
+        assert result.intent == "grounded_database_question"
         assert "Braves" in result.answer
         assert result.sources[0].rows
         assert result.sources[0].sql and "?" in result.sources[0].sql
@@ -649,12 +651,12 @@ class TestFreeformProvenance:
         monkeypatch,
     ):
         from baseball_rag.db.freeform_types import FreeformResult
-        from baseball_rag.routing import FreeformQueryCase
+        from baseball_rag.routing import GroundedDatabaseQuestionCase
         from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
-        from baseball_rag.service import _answer_freeform
+        from baseball_rag.service import _answer_grounded_database_question
 
         monkeypatch.setenv("BASEBALL_RAG_CURRENT_YEAR", "1937")
-        decision = FreeformQueryCase(
+        decision = GroundedDatabaseQuestionCase(
             raw_question="Who played for the Braves last year?",
             time_period=TimePeriod(
                 type=TimePeriodType.RELATIVE,
@@ -670,7 +672,7 @@ class TestFreeformProvenance:
         )
 
         with patch("baseball_rag.db.freeform.query", return_value=result) as query:
-            _answer_freeform(decision.raw_question, decision)
+            _answer_grounded_database_question(decision.raw_question, decision)
 
         assert decision.year is None
         assert query.call_args.kwargs["year"] == 1936

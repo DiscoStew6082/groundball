@@ -28,14 +28,17 @@ class TestArchitectureReadModel:
         from baseball_rag.arch.read_model import latest_run_from_execution
 
         now = datetime.now()
-        trace = PipelineTrace(query="who won the 1901 Mars league", route_type="freeform_query")
+        trace = PipelineTrace(
+            query="who won the 1901 Mars league",
+            route_type="grounded_database_question",
+        )
         trace.add_stage(
             PipelineStage(
                 "query-router",
                 "Query Router",
                 started_at=now,
                 elapsed_ms=1.0,
-                output_summary="routed to freeform_query",
+                output_summary="routed to grounded_database_question",
             )
         )
         trace.add_stage(
@@ -49,7 +52,7 @@ class TestArchitectureReadModel:
         )
         answer = StructuredAnswer(
             answer="No matching rows.",
-            intent="freeform_query",
+            intent="grounded_database_question",
             warnings=["No matching rows found."],
             unsupported=True,
             unsupported_reason="no_data",
@@ -64,7 +67,7 @@ class TestArchitectureReadModel:
         model = latest_run_from_execution(RequestExecution(answer=answer, trace=trace))
 
         assert model.question == "who won the 1901 Mars league"
-        assert model.route == "freeform_query"
+        assert model.route == "grounded_database_question"
         assert model.active_component_ids == ("query-router", "duckdb")
         assert model.row_count == 2
         assert model.status_level == "error"

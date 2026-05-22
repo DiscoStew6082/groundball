@@ -139,7 +139,7 @@ class TestApi:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["intent"] == "freeform_query"
+        assert data["intent"] == "grounded_database_question"
         assert data["unsupported"] is True
         assert data["unsupported_reason"] == "ambiguous"
         assert data["review_reason"] == "ambiguous"

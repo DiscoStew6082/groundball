@@ -82,28 +82,28 @@ questions:
     notes: "Must not execute model/user-controlled stat text as SQL."
   - id: stat_sql_injection_team
     question: "who played for the Braves%' OR 1=1 -- in 1936"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_sql_parameterized: true
     notes: "Team names must be bound parameters."
   - id: freeform_braves_1936
     question: "who played for the Braves in 1936"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_min_rows: 10
     required_sources: ["duckdb"]
     expected_sql_contains: ["JOIN batting", "JOIN teams", "?"]
   - id: freeform_yankees_1950
     question: "who played for the Yankees in 1950"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_min_rows: 10
     required_sources: ["duckdb"]
   - id: freeform_dodgers_1955
     question: "who played for the Dodgers in 1955"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_min_rows: 10
     required_sources: ["duckdb"]
   - id: freeform_triple_crown
     question: "who won the Triple Crown and which years"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 1
@@ -119,7 +119,7 @@ questions:
     notes: "Requires typed leader_stats HR, RBI, AVG with AVG minimum sample size."
   - id: freeform_30_30_club
     question: "show me 30-30 club seasons"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 1
@@ -133,7 +133,7 @@ questions:
         SB: 31
   - id: freeform_500_home_run_club
     question: "who is in the 500 home run club"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 1
@@ -148,7 +148,7 @@ questions:
         career_HR: 714
   - id: freeform_pitchers_300_wins
     question: "list all pitchers with over 300 wins"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 1
@@ -160,7 +160,7 @@ questions:
         career_W: 511
   - id: freeform_pitching_wins_leaders
     question: "career pitching wins leaders"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 10
@@ -175,7 +175,7 @@ questions:
         career_W: 417
   - id: freeform_pitchers_500_wins
     question: "career pitching wins leaders with at least 500 wins"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 1
@@ -187,7 +187,7 @@ questions:
         career_W: 511
   - id: freeform_lowest_era_qualified_1968
     question: "who had the lowest ERA in 1968 with enough innings"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 2
@@ -207,7 +207,7 @@ questions:
     minimum_sample_size: "IPouts >= 300"
   - id: freeform_career_era_qualified
     question: "career ERA leaders qualified by enough innings"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_sql_parameterized: true
     expected_min_rows: 1
@@ -220,7 +220,7 @@ questions:
         IPouts: 8893
   - id: freeform_ambiguous_500_club
     question: "who is in the 500 club"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_unsupported: true
     expected_unsupported_reason: ambiguous
@@ -229,7 +229,7 @@ questions:
     required_sources: ["duckdb"]
   - id: freeform_underqualified_career_era
     question: "career ERA leaders"
-    intent: freeform_query
+    intent: grounded_database_question
     ci_safe: true
     expected_unsupported: true
     expected_unsupported_reason: unsupported
@@ -238,12 +238,12 @@ questions:
     required_sources: ["duckdb"]
   - id: min_sample_avg_2024
     question: "who had the highest batting average in 2024 with at least 100 at bats"
-    intent: freeform_query
+    intent: grounded_database_question
     minimum_sample_size: "AB >= 100"
     expected_sql_parameterized: true
   - id: min_sample_avg_no_qualifier
     question: "highest batting average in 1894"
-    intent: freeform_query
+    intent: grounded_database_question
     minimum_sample_size: "AB >= 100"
     notes: "Default AVG leader specs should use a minimum AB guard."
   - id: ambiguous_player_williams
@@ -383,12 +383,12 @@ questions:
     notes: "Freeform results must respect MAX_ROWS."
   - id: team_history_boston_braves
     question: "who played for the Braves in 1936"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_answer_contains: ["Braves"]
     notes: "Historical team hint should keep 1936 Braves grounded."
   - id: team_history_brooklyn_dodgers
     question: "who played for the Dodgers in 1947"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_min_rows: 10
   - id: fielding_of_1983
     question: "outfield putouts leaders in 1983"
@@ -397,15 +397,15 @@ questions:
     expected_min_rows: 1
   - id: pitching_wins_career
     question: "career pitching wins leaders"
-    intent: freeform_query
+    intent: grounded_database_question
     expected_min_rows: 10
   - id: pitching_era_qualified
     question: "best qualified ERA seasons"
-    intent: freeform_query
+    intent: grounded_database_question
     minimum_sample_size: "IPouts >= 300"
   - id: batting_average_qualified
     question: "best qualified batting average seasons"
-    intent: freeform_query
+    intent: grounded_database_question
     minimum_sample_size: "AB >= 100"
   - id: unsupported_opinion
     question: "who is the greatest baseball player ever"

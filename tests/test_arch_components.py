@@ -106,7 +106,7 @@ class TestComponentRegistrySingleton:
         assert router is not None
         assert "stat_query" in router.description
         assert "player_biography" in router.description
-        assert "freeform_query" in router.description
+        assert "grounded_database_question" in router.description
         assert "general_explanation" in router.description
 
 

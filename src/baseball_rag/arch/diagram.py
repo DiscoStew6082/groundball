@@ -39,7 +39,7 @@ _LAYER_LABELS: dict[Layer, str] = {
 _ROUTE_BADGE: dict[str, str] = {
     "stat_query": "\u26a1 stat_query",
     "player_biography": "player_biography",
-    "freeform_query": "freeform_query",
+    "grounded_database_question": "grounded_database_question",
     "general_explanation": "\ud83d\udd0d general_explanation",
 }
 

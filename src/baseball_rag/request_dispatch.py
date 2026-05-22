@@ -9,8 +9,8 @@ from typing import Any, cast
 from baseball_rag.conversation import ConversationResolution, attach_context_metadata
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.routing import (
-    FreeformQueryCase,
     GeneralExplanationCase,
+    GroundedDatabaseQuestionCase,
     PlayerBiographyCase,
     RoutedCase,
     RouteResult,
@@ -23,7 +23,7 @@ from baseball_rag.unsupported_policy import unsupported_policy_outcome
 _SUPPORTED_INTENTS = {
     "stat_query",
     "player_biography",
-    "freeform_query",
+    "grounded_database_question",
     "general_explanation",
 }
 
@@ -34,7 +34,7 @@ class AnswerHandlers:
 
     stat_query: Callable[[Any], StructuredAnswer]
     player_biography: Callable[..., StructuredAnswer]
-    freeform_query: Callable[[str, Any], StructuredAnswer]
+    grounded_database_question: Callable[[str, Any], StructuredAnswer]
     general_explanation: Callable[..., StructuredAnswer]
 
 
@@ -80,8 +80,8 @@ class RequestAnswerDispatcher:
             return self.handlers.stat_query(decision)
         if isinstance(decision, PlayerBiographyCase):
             return self.handlers.player_biography(routed_question, decision)
-        if isinstance(decision, FreeformQueryCase):
-            return self.handlers.freeform_query(routed_question, decision)
+        if isinstance(decision, GroundedDatabaseQuestionCase):
+            return self.handlers.grounded_database_question(routed_question, decision)
         if isinstance(decision, GeneralExplanationCase):
             return self.handlers.general_explanation(routed_question, decision)
         if not isinstance(decision, RouteResult):

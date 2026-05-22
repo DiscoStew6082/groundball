@@ -6,8 +6,8 @@ from baseball_rag.arch.tracing import finish_trace, get_current_trace, traced
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.request_execution import execute_request
 from baseball_rag.routing import (
-    FreeformQueryCase,
     GeneralExplanationCase,
+    GroundedDatabaseQuestionCase,
     PlayerBiographyCase,
     RouteResult,
     StatQueryCase,
@@ -376,9 +376,9 @@ def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
             "bio",
         ),
         (
-            FreeformQueryCase(raw_question="who won the Triple Crown"),
-            "_answer_freeform",
-            "freeform",
+            GroundedDatabaseQuestionCase(raw_question="who won the Triple Crown"),
+            "_answer_grounded_database_question",
+            "grounded database",
         ),
         (
             GeneralExplanationCase(raw_question="what is OPS", stat="OPS"),

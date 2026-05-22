@@ -78,7 +78,7 @@ def test_build_review_item_uses_structured_reason_without_sniffing_prose():
 def test_build_review_item_does_not_use_source_row_reason_for_review_policy():
     answer = StructuredAnswer(
         answer="No results found.",
-        intent="freeform_query",
+        intent="grounded_database_question",
         sources=[
             SourceRecord(
                 type="duckdb",

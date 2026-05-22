@@ -1,7 +1,12 @@
 """Tests for query routing."""
 
 from baseball_rag.generation.llm import LLMResponse, LLMTimeoutError
-from baseball_rag.routing import FreeformQueryCase, PlayerBiographyCase, StatQueryCase, route
+from baseball_rag.routing import (
+    GroundedDatabaseQuestionCase,
+    PlayerBiographyCase,
+    StatQueryCase,
+    route,
+)
 
 
 class TestRouter:
@@ -182,18 +187,18 @@ class TestRouter:
         assert result.intent == "player_biography"
         assert result.player_name == "Matt Olson"
 
-    def test_deterministic_freeform_pattern_returns_freeform_case(self):
+    def test_deterministic_database_pattern_returns_grounded_database_question_case(self):
         result = route("who won the Triple Crown and which years")
 
-        assert isinstance(result, FreeformQueryCase)
-        assert result.intent == "freeform_query"
+        assert isinstance(result, GroundedDatabaseQuestionCase)
+        assert result.intent == "grounded_database_question"
         assert result.raw_question == "who won the Triple Crown and which years"
 
-    def test_ambiguous_500_club_routes_to_freeform_case(self):
+    def test_ambiguous_500_club_routes_to_grounded_database_question_case(self):
         result = route("who is in the 500 club")
 
-        assert isinstance(result, FreeformQueryCase)
-        assert result.intent == "freeform_query"
+        assert isinstance(result, GroundedDatabaseQuestionCase)
+        assert result.intent == "grounded_database_question"
         assert result.raw_question == "who is in the 500 club"
 
     def test_generic_lowercase_bio_question_does_not_route_as_named_player(self):

@@ -116,7 +116,8 @@ class TimePeriod:
 class RouteResult:
     """Parsed result from classifying a user query."""
 
-    intent: str  # "stat_query" | "player_biography" | "freeform_query" | "general_explanation"
+    # "stat_query" | "player_biography" | "grounded_database_question" | "general_explanation"
+    intent: str
     stat: str | None  # e.g., "RBI", "HR"
     time_period: TimePeriod | None = None  # extracted time filter (replaces old year field)
     position: str | None = None  # e.g., "OF", "CF"
@@ -176,12 +177,12 @@ class PlayerBiographyCase:
 
 
 @dataclass(frozen=True)
-class FreeformQueryCase:
-    """Validated route facts for freeform database answers."""
+class GroundedDatabaseQuestionCase:
+    """Validated route facts for grounded database answers."""
 
     raw_question: str = ""
     time_period: TimePeriod | None = None
-    intent: Literal["freeform_query"] = "freeform_query"
+    intent: Literal["grounded_database_question"] = "grounded_database_question"
 
     @property
     def year(self) -> int | None:
@@ -203,8 +204,15 @@ class GeneralExplanationCase:
     intent: Literal["general_explanation"] = "general_explanation"
 
 
-RoutedCase = StatQueryCase | PlayerBiographyCase | FreeformQueryCase | GeneralExplanationCase
-Intent = Literal["stat_query", "player_biography", "freeform_query", "general_explanation"]
+RoutedCase = (
+    StatQueryCase | PlayerBiographyCase | GroundedDatabaseQuestionCase | GeneralExplanationCase
+)
+Intent = Literal[
+    "stat_query",
+    "player_biography",
+    "grounded_database_question",
+    "general_explanation",
+]
 
 
 def routed_case(
@@ -229,8 +237,8 @@ def routed_case(
         )
     if intent == "player_biography":
         return PlayerBiographyCase(player_name=player_name, raw_question=raw_question)
-    if intent == "freeform_query":
-        return FreeformQueryCase(raw_question=raw_question, time_period=time_period)
+    if intent == "grounded_database_question":
+        return GroundedDatabaseQuestionCase(raw_question=raw_question, time_period=time_period)
     if intent == "general_explanation":
         return GeneralExplanationCase(raw_question=raw_question, stat=stat)
     raise ValueError(f"Unsupported routed intent: {intent}")
@@ -244,7 +252,7 @@ _ROUTING_PROMPT = (
     "league-wide leaders; 'player_biography' if asking about a player's "
     "career history, teams, biographical info (e.g., 'who was Wally Pipp', "
     "'what teams did he play for', 'tell me about this player'); "
-    "'freeform_query' if the question requires data from the database — "
+    "'grounded_database_question' if the question requires data from the database — "
     "including award winners, historical achievements, records, career "
     "leaders across multiple stats or seasons (e.g., 'who won the Triple Crown', "
     "'list all MVP winners in the 1970s', 'who has the most HRs ever'); "
@@ -292,13 +300,13 @@ _ROUTING_PROMPT = (
     '{{"intent":"general_explanation","stat":null,"time_period":null,'
     '"position":null,"player_name":null}}\n'
     '- "who played for the Braves in 1936" → '
-    '{{"intent":"freeform_query","stat":null,"time_period":{{"type":"single","value":1936}},'
+    '{{"intent":"grounded_database_question","stat":null,"time_period":{{"type":"single","value":1936}},'
     '"position":null,"player_name":null}}\n'
     '- "list all pitchers with over 300 wins" → '
-    '{{"intent":"freeform_query","stat":null,"time_period":null,'
+    '{{"intent":"grounded_database_question","stat":null,"time_period":null,'
     '"position":null,"player_name":null}}\n'
     '- "who won the Triple Crown and which years" → '
-    '{{"intent":"freeform_query","stat":null,"time_period":null,'
+    '{{"intent":"grounded_database_question","stat":null,"time_period":null,'
     '"position":null,"player_name":null}}\n'
     "\nQuestion: {question}"
 )
@@ -376,7 +384,7 @@ def route(question: str) -> RoutedCase:
             competing_stat=deterministic.stat,
         ):
             return routed_case(
-                intent="freeform_query",
+                intent="grounded_database_question",
                 raw_question=question,
             )
         return deterministic
@@ -390,14 +398,14 @@ def route(question: str) -> RoutedCase:
             competing_stat=deterministic.stat,
         ):
             return routed_case(
-                intent="freeform_query",
+                intent="grounded_database_question",
                 raw_question=question,
             )
         return deterministic
 
     if deterministic_freeform_owns(question):
         return routed_case(
-            intent="freeform_query",
+            intent="grounded_database_question",
             raw_question=question,
         )
 
@@ -414,7 +422,7 @@ def route(question: str) -> RoutedCase:
         if data.get("intent") in (
             "stat_query",
             "player_biography",
-            "freeform_query",
+            "grounded_database_question",
             "general_explanation",
         ):
             time_period_data = data.get("time_period")

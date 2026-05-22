@@ -35,7 +35,7 @@
 
 - stat query: `stat_rbi_1962` - who had the most RBIs in 1962
 - unsupported/guardrail: `stat_unsupported_column` - who led the league in vibes in 1999
-- freeform SQL query: `stat_sql_injection_team` - who played for the Braves%' OR 1=1 -- in 1936
+- grounded database question: `stat_sql_injection_team` - who played for the Braves%' OR 1=1 -- in 1936
 - LLM player biography: `player_bio_babe_ruth` - who was Babe Ruth
 - LLM open explanation: `broad_bio_query_yankees_slugger` - which indexed player biography talks about a Yankees switch-hitting slugger
 

@@ -257,7 +257,7 @@ def _template_source_detail(question: str) -> str:
         return "Matched local 500 HR club template: career batting home run totals."
     if "wins" in q or re.search(r"\bw\b", q):
         return "Matched local career pitching wins leaders template: career pitching W totals."
-    return "Matched local deterministic freeform SQL template."
+    return "Matched local deterministic grounded database SQL template."
 
 
 def _has_era_qualification_guard(q: str) -> bool:

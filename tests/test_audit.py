@@ -57,7 +57,7 @@ def test_build_query_metadata_is_deterministic_except_timestamp_and_latency():
 def test_unsupported_reason_prefers_structured_answer_reason():
     answer = StructuredAnswer(
         answer="No result.",
-        intent="freeform_query",
+        intent="grounded_database_question",
         sources=[
             SourceRecord(
                 type="duckdb",

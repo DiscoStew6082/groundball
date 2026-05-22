@@ -44,7 +44,7 @@ answer(question)
           +-- stat_query
           |   +-- registered stat SQL -> DuckDB
           |
-          +-- freeform_query
+          +-- grounded_database_question
           |   +-- typed query spec -> parameterized SQL -> DuckDB
           |
           +-- player_biography

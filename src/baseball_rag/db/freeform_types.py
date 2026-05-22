@@ -18,7 +18,7 @@ class FreeformResult:
     row_count: int
     truncated: bool
     params: list[object] = field(default_factory=list)
-    source_label: str = "LLM-backed typed freeform query"
+    source_label: str = "LLM-backed typed grounded database query"
     source_detail: str = (
         "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
     )
@@ -57,7 +57,7 @@ class AssembledSQL:
 
 @dataclass(frozen=True)
 class PlannedFreeformQuery:
-    """Executable freeform query plan with provenance."""
+    """Executable grounded database query plan with provenance."""
 
     assembled: AssembledSQL
     planning_path: str

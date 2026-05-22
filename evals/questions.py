@@ -600,7 +600,7 @@ def _coverage_examples(cases: list[EvalCase]) -> list[str]:
     seen: set[str] = set()
     labels = {
         "stat_query": "stat query",
-        "freeform_query": "freeform SQL query",
+        "grounded_database_question": "grounded database question",
         "player_biography": "LLM player biography",
         "general_explanation": "LLM open explanation",
     }

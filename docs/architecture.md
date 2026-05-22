@@ -10,7 +10,7 @@ Question
   v
 Request dispatcher
   |-- stat_query ------> registered stat SQL -> DuckDB
-  |-- freeform_query --> typed query spec -> parameterized SQL -> DuckDB
+  |-- grounded_database_question --> typed query spec -> parameterized SQL -> DuckDB
   |-- player_bio ------> DuckDB identity -> LLM JSON -> DuckDB claim verification
   |-- explanation -----> local stat definitions, then LLM open explanation
   |
@@ -34,7 +34,7 @@ Structured MLB statistics live in a DuckDB database built from the Lahman-derive
 `routing/query_router.py` classifies natural language into typed intents:
 
 - `stat_query` for leaderboard and single-player stat questions
-- `freeform_query` for supported database templates
+- `grounded_database_question` for supported database templates
 - `player_biography` for player biography requests
 - `general_explanation` for open baseball/stat explanation questions
 

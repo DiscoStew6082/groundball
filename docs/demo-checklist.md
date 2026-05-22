@@ -27,7 +27,7 @@ uv run python -m baseball_rag.web_app
    - Point out SQL visibility and template-owned factual execution.
 
 3. Ask: `who played for the Braves in 1936`
-   - Show the LLM-backed typed freeform path.
+   - Show the LLM-backed typed grounded database path.
    - Point out that Python still assembles constrained, parameterized SQL.
 
 4. Ask: `who was Babe Ruth`

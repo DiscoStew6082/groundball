@@ -136,7 +136,7 @@ def test_validate_case_checks_expected_rows_and_parameterized_sql():
         spec={
             "id": "row_match",
             "question": "500 home run club",
-            "intent": "freeform_query",
+            "intent": "grounded_database_question",
             "expected_sql_parameterized": True,
             "expected_rows": [{"nameFirst": "Babe", "nameLast": "Ruth", "career_HR": 714}],
         },
@@ -146,7 +146,7 @@ def test_validate_case_checks_expected_rows_and_parameterized_sql():
         case,
         _answer(
             answer="Babe Ruth had 714 career HR",
-            intent="freeform_query",
+            intent="grounded_database_question",
             rows=[{"nameFirst": "Babe", "nameLast": "Ruth", "career_HR": 714}],
         ),
     )
@@ -196,14 +196,18 @@ def test_validate_case_rejects_unexpected_unsupported_answers():
         spec={
             "id": "supported_freeform",
             "question": "best qualified batting average seasons",
-            "intent": "freeform_query",
+            "intent": "grounded_database_question",
             "minimum_sample_size": "AB >= 100",
         },
     )
 
     failures = validate_case(
         case,
-        _answer(intent="freeform_query", unsupported=True, unsupported_reason="unsupported"),
+        _answer(
+            intent="grounded_database_question",
+            unsupported=True,
+            unsupported_reason="unsupported",
+        ),
     )
 
     assert "unsupported: expected False, got True" in failures
@@ -217,7 +221,7 @@ def test_validate_case_checks_minimum_sample_size_expectation():
         spec={
             "id": "qualified_avg",
             "question": "best qualified batting average seasons",
-            "intent": "freeform_query",
+            "intent": "grounded_database_question",
             "minimum_sample_size": "AB >= 100",
         },
     )
@@ -225,7 +229,7 @@ def test_validate_case_checks_minimum_sample_size_expectation():
     failures = validate_case(
         case,
         _answer(
-            intent="freeform_query",
+            intent="grounded_database_question",
             rows=[{"nameFirst": "Tiny", "nameLast": "Sample", "AB": 42}],
         ),
     )

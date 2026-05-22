@@ -96,7 +96,7 @@ def plan_query(
     return PlannedFreeformQuery(
         assembled=assembled,
         planning_path="llm_intent",
-        source_label="LLM-backed typed freeform query",
+        source_label="LLM-backed typed grounded database query",
         source_detail=(
             "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
         ),
@@ -169,7 +169,7 @@ def _execute_safe(
     conn: duckdb.DuckDBPyConnection,
     params: list[object] | None = None,
     *,
-    source_label: str = "LLM-backed typed freeform query",
+    source_label: str = "LLM-backed typed grounded database query",
     source_detail: str = (
         "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
     ),

@@ -50,7 +50,7 @@ def answer(
         handlers=AnswerHandlers(
             stat_query=answer_stat_query,
             player_biography=_answer_player_biography,
-            freeform_query=_answer_freeform,
+            grounded_database_question=_answer_grounded_database_question,
             general_explanation=_answer_general,
         ),
     )
@@ -99,14 +99,14 @@ def _duckdb_source(
     )
 
 
-def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
+def _answer_grounded_database_question(question: str, decision: Any) -> StructuredAnswer:
     from baseball_rag.db.freeform import format_result, query
 
     conn = get_duckdb()
     query_result = query(
         decision.raw_question,
         conn,
-        year=_freeform_single_season_year(decision),
+        year=_grounded_database_single_season_year(decision),
     )
     source = SourceRecord(
         type="duckdb",
@@ -119,7 +119,7 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     )
 
     if query_result.row_count == 0:
-        reason = _freeform_unsupported_reason(query_result)
+        reason = _grounded_database_unsupported_reason(query_result)
         review_reason: ReviewReason = "ambiguous" if reason == "ambiguous" else "unsupported"
         return unsupported_outcome(
             answer=(
@@ -143,7 +143,7 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     )
 
 
-def _freeform_single_season_year(decision: Any) -> int | None:
+def _grounded_database_single_season_year(decision: Any) -> int | None:
     time_period = getattr(decision, "time_period", None)
     if time_period is None:
         return getattr(decision, "year", None)
@@ -153,8 +153,8 @@ def _freeform_single_season_year(decision: Any) -> int | None:
     scope = resolve_query_scope(
         time_period,
         raw_question=getattr(decision, "raw_question", ""),
-        stat="freeform",
-        intent=getattr(decision, "intent", "freeform_query"),
+        stat="grounded database question",
+        intent=getattr(decision, "intent", "grounded_database_question"),
         validate_coverage=False,
     )
     if isinstance(scope, QueryScope) and scope.is_single_season:
@@ -187,7 +187,7 @@ def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]
     return [dict(zip(columns, row)) for row in rows]
 
 
-def _freeform_unsupported_reason(query_result: Any) -> UnsupportedReason:
+def _grounded_database_unsupported_reason(query_result: Any) -> UnsupportedReason:
     reason = query_result.unsupported_reason
     if reason == "ambiguous":
         return "ambiguous"

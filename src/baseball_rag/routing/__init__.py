@@ -1,8 +1,8 @@
 """Query routing layer."""
 
 from baseball_rag.routing.query_router import (
-    FreeformQueryCase,
     GeneralExplanationCase,
+    GroundedDatabaseQuestionCase,
     PlayerBiographyCase,
     RoutedCase,
     RouteResult,
@@ -12,8 +12,8 @@ from baseball_rag.routing.query_router import (
 )
 
 __all__ = [
-    "FreeformQueryCase",
     "GeneralExplanationCase",
+    "GroundedDatabaseQuestionCase",
     "PlayerBiographyCase",
     "RouteResult",
     "RoutedCase",
