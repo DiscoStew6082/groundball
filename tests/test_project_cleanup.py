@@ -113,6 +113,17 @@ def test_freeform_no_longer_reexports_intent_parser_internals() -> None:
     assert "_generate_query_spec" not in freeform
 
 
+def test_freeform_no_longer_reexports_template_internals() -> None:
+    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+
+    assert "freeform_templates" not in freeform
+    assert "_detect_template" not in freeform
+    assert "_template_source_detail" not in freeform
+    assert "_triple_crown_sql" not in freeform
+    assert "_career_home_run_sql" not in freeform
+    assert "_qualified_season_era_sql" not in freeform
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"
