@@ -1,6 +1,6 @@
 import pytest
 
-from baseball_rag.generation.llm import LLMResponse
+from baseball_rag.generation.llm import LLMResponse, LLMUnavailableError
 from baseball_rag.service import answer
 
 
@@ -54,3 +54,17 @@ def test_llm_flavored_unsupported_answer_skips_final_narration(monkeypatch):
     assert result.unsupported is True
     assert result.unsupported_reason == "ambiguous"
     assert result.metadata["answer_mode"] == "llm_flavored"
+
+
+def test_llm_flavored_falls_back_to_stats_when_llm_unavailable(monkeypatch):
+    def unavailable_llm(_prompt, **_kwargs):
+        raise LLMUnavailableError("local LLM unavailable")
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", unavailable_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "LLM unavailable" in result.answer
+    assert result.metadata["answer_mode"] == "llm_flavored"
+    assert result.sources[0].type == "duckdb"

@@ -224,17 +224,23 @@ def _llm_flavored_grounded_database_answer(
     formatted_answer: str,
     source: SourceRecord,
 ) -> str:
-    from baseball_rag.generation.llm import make_request
+    from baseball_rag.generation.llm import LLMError, make_request
 
-    response = make_request(
-        _grounded_database_flavor_prompt(
-            question=question,
-            formatted_answer=formatted_answer,
-            source=source,
-        ),
-        max_tokens=700,
-        temperature=0.2,
-    )
+    try:
+        response = make_request(
+            _grounded_database_flavor_prompt(
+                question=question,
+                formatted_answer=formatted_answer,
+                source=source,
+            ),
+            max_tokens=700,
+            temperature=0.2,
+        )
+    except LLMError:
+        return (
+            f"{formatted_answer}\n\n"
+            "Note: LLM unavailable, so this response is the verified DuckDB stats only."
+        )
     return response.content.strip()
 
 
