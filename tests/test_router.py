@@ -76,6 +76,54 @@ class TestRouter:
         assert result.stat == "ERA"
         assert result.year == 1968
 
+    def test_player_stat_subject_without_possessive_routes_to_stat_query(self):
+        result = route("What was Ted Williams batting average in 1941")
+
+        assert isinstance(result, StatQueryCase)
+        assert result.intent == "stat_query"
+        assert result.stat == "AVG"
+        assert result.player_name == "Ted Williams"
+        assert result.year == 1941
+
+    def test_player_stat_subject_allows_surnames_that_overlap_league_terms(self):
+        result = route("what was Brandon League era in 2011")
+
+        assert isinstance(result, StatQueryCase)
+        assert result.intent == "stat_query"
+        assert result.stat == "ERA"
+        assert result.player_name == "Brandon League"
+        assert result.year == 2011
+
+    def test_player_stat_subject_matches_unaccented_user_input(self):
+        result = route("What was Ronald Acuna batting average in 2019")
+
+        assert isinstance(result, StatQueryCase)
+        assert result.intent == "stat_query"
+        assert result.stat == "AVG"
+        assert result.player_name == "Ronald Acuna"
+        assert result.year == 2019
+
+    def test_possessive_league_stat_subject_is_not_player_stat_query(self):
+        result = route("what was National League's batting average in 1941")
+
+        assert not (isinstance(result, StatQueryCase) and result.player_name == "National League")
+
+    def test_team_stat_subject_without_possessive_is_not_player_stat_query(self):
+        team_questions = [
+            ("what was New York Yankees batting average in 1998", "New York Yankees"),
+            ("what was Houston Astros batting average in 2017", "Houston Astros"),
+            ("what was Cleveland Indians batting average in 1995", "Cleveland Indians"),
+            ("what was Seattle Pilots batting average in 1969", "Seattle Pilots"),
+            ("what was Boston Bees batting average in 1936", "Boston Bees"),
+            ("what was Brooklyn Robins batting average in 1920", "Brooklyn Robins"),
+            ("what was National League batting average in 1941", "National League"),
+            ("what was Players League batting average in 1890", "Players League"),
+        ]
+
+        for question, subject in team_questions:
+            result = route(question)
+            assert not (isinstance(result, StatQueryCase) and result.player_name == subject)
+
     def test_fielding_position_detection_maps_specific_outfield_to_dataset_granularity(self):
         """Specific outfield phrases map to the Lahman fielding POS value."""
         result = route("center field putouts leaders in 1983")

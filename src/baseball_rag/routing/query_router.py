@@ -24,11 +24,17 @@ doesn't match any type the LLM is unsure, it returns null for time_period,
 and the CLI falls back to career-level results (no time filter).
 """
 
+import csv
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal, cast
+
+from unidecode import unidecode
 
 from baseball_rag.arch.tracing import traced
 from baseball_rag.db.stat_registry import (
@@ -700,10 +706,15 @@ def _extract_player_name_heuristic(question: str) -> str | None:
     """Extract common two-word player-name patterns for stat questions."""
     import re
 
+    stat_phrase = (
+        r"rbi|rbis|runs\s+batted\s+in|hr|hrs|home\s+runs?|homers?|"
+        r"sb|stolen\s+bases?|avg|batting\s+average|era|whip|"
+        r"strikeouts?|so|hits?"
+    )
     possessive = re.search(rf"\b({_NAME_RE})'s\b", question)
     if possessive:
         candidate = _rightmost_name_phrase(possessive.group(1))
-        if candidate is not None:
+        if candidate is not None and _looks_like_known_player_name(candidate):
             return candidate
 
     did_pattern = re.search(
@@ -716,17 +727,25 @@ def _extract_player_name_heuristic(question: str) -> str | None:
         if _looks_like_player_name(candidate):
             return candidate
 
+    stat_subject_pattern = re.search(
+        rf"\b(?:what\s+was|what\s+were)\s+({_NAME_RE})\s+"
+        rf"(?i:{stat_phrase})\b",
+        question,
+        flags=re.IGNORECASE,
+    )
+    if stat_subject_pattern:
+        candidate = _rightmost_name_phrase(stat_subject_pattern.group(1))
+        if candidate is not None and _looks_like_known_player_name(candidate):
+            return candidate
+
     compact_stat_pattern = re.search(
         rf"^\s*({_NAME_RE})\s+"
-        r"(?i:"
-        r"rbi|rbis|runs\s+batted\s+in|hr|hrs|home\s+runs?|homers?|"
-        r"sb|stolen\s+bases?|avg|batting\s+average|era|whip"
-        r")\b",
+        rf"(?i:{stat_phrase})\b",
         question,
     )
     if compact_stat_pattern:
         candidate = compact_stat_pattern.group(1)
-        if _looks_like_player_name(candidate):
+        if _looks_like_player_name(candidate) and _looks_like_known_player_name(candidate):
             return candidate
 
     return None
@@ -805,6 +824,45 @@ def _rightmost_name_phrase(text: str) -> str | None:
 def _looks_like_player_name(value: str) -> bool:
     tokens = value.split()
     return bool(tokens) and all(_looks_like_name_token(token) for token in tokens)
+
+
+def _looks_like_known_player_name(value: str) -> bool:
+    normalized = _normalize_player_name_for_lookup(value)
+    if normalized in _known_full_player_names():
+        return True
+    return " " not in normalized and normalized in _known_player_last_names()
+
+
+def _normalize_player_name_for_lookup(value: str) -> str:
+    folded = unidecode(unicodedata.normalize("NFD", value)).lower()
+    return re.sub(r"[^a-z0-9]+", " ", folded).strip()
+
+
+@lru_cache(maxsize=1)
+def _known_full_player_names() -> frozenset[str]:
+    return frozenset(full_name for full_name, _last_name in _load_player_name_aliases())
+
+
+@lru_cache(maxsize=1)
+def _known_player_last_names() -> frozenset[str]:
+    return frozenset(last_name for _full_name, last_name in _load_player_name_aliases())
+
+
+@lru_cache(maxsize=1)
+def _load_player_name_aliases() -> frozenset[tuple[str, str]]:
+    people_path = Path(__file__).resolve().parents[3] / "data" / "People.csv"
+    if not people_path.exists():
+        return frozenset()
+    aliases: set[tuple[str, str]] = set()
+    with people_path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            first = row.get("nameFirst") or ""
+            last = row.get("nameLast") or ""
+            full_name = _normalize_player_name_for_lookup(f"{first} {last}")
+            last_name = _normalize_player_name_for_lookup(last)
+            if full_name and last_name:
+                aliases.add((full_name, last_name))
+    return frozenset(aliases)
 
 
 def _looks_like_name_token(value: str) -> bool:

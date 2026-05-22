@@ -387,6 +387,21 @@ def test_execute_request_answers_fielding_putouts_through_stat_path():
     assert "FROM fielding f" in execution.answer.sources[0].sql
 
 
+def test_execute_request_grounds_player_stat_question_without_possessive():
+    """Player stat questions without possessive wording still use DuckDB."""
+    execution = execute_request(
+        "What was Ted Williams batting average in 1941",
+        adapter_component_id="api",
+    )
+
+    assert execution.answer.intent == "stat_query"
+    assert "Williams, Ted" in execution.answer.answer
+    assert "0.4057017543859649 AVG" in execution.answer.answer
+    assert execution.answer.sources
+    assert execution.answer.sources[0].type == "duckdb"
+    assert execution.answer.sources[0].rows[0]["name"] == "Williams, Ted"
+
+
 def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
     """The request path dispatches each validated routed case by type."""
     cases = [
