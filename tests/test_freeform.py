@@ -73,15 +73,15 @@ class TestAssembleSQL:
 class TestDeterministicTemplates:
     """Tests for common freeform patterns that should bypass the LLM."""
 
-    def _run_query(self, question: str):
+    def _run_query(self, question: str, *, request_fn=None):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import query
+        from baseball_rag.db.freeform_runtime import query
 
-        return query(question, get_duckdb())
+        return query(question, get_duckdb(), request_fn=request_fn or MagicMock())
 
     def test_triple_crown_template_bypasses_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("who won the Triple Crown and which years")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("who won the Triple Crown and which years", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.params == [300]
@@ -90,16 +90,16 @@ class TestDeterministicTemplates:
         assert all(row[3] in ("AL", "NL") for row in result.rows)
 
     def test_thirty_thirty_template_bypasses_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("show me 30-30 club seasons")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("show me 30-30 club seasons", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.params == [30, 30]
         assert ("Hank", "Aaron", 1963, 44, 31) in result.rows
 
     def test_500_home_run_club_template_bypasses_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("500 home run club")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("500 home run club", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.params == [500]
@@ -107,16 +107,18 @@ class TestDeterministicTemplates:
         assert ("Babe", "Ruth", 714) in result.rows
 
     def test_career_pitching_wins_template_bypasses_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("career pitching wins leaders with at least 500 wins")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query(
+            "career pitching wins leaders with at least 500 wins", request_fn=mock_call
+        )
 
         assert mock_call.call_count == 0
         assert result.params == [500]
         assert result.rows == [("Cy", "Young", 511)]
 
     def test_career_pitching_wins_leaders_without_threshold(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("career pitching wins leaders")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("career pitching wins leaders", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.params == [25]
@@ -129,14 +131,15 @@ class TestDeterministicTemplates:
     def test_career_pitching_wins_template_is_planned_before_execution(self):
         from baseball_rag.db import freeform_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import can_plan_deterministically, plan_query
         from baseball_rag.routing import GroundedDatabaseQuestionCase, route
 
         assert not hasattr(freeform_runtime, "_template_source_detail")
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            planned = plan_query("career pitching wins leaders", get_duckdb())
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        planned = freeform_runtime.plan_query(
+            "career pitching wins leaders", get_duckdb(), request_fn=mock_call
+        )
 
-        assert can_plan_deterministically("career pitching wins leaders") is True
+        assert freeform_runtime.can_plan_deterministically("career pitching wins leaders") is True
         assert isinstance(route("career pitching wins leaders"), GroundedDatabaseQuestionCase)
         assert mock_call.call_count == 0
         assert planned.planning_path == "deterministic_template"
@@ -146,14 +149,14 @@ class TestDeterministicTemplates:
         assert "SUM(pi.W) AS career_W" in planned.sql
 
     def test_plain_batting_leaderboard_stays_on_stat_route(self):
-        from baseball_rag.db.freeform import can_plan_deterministically
+        from baseball_rag.db.freeform_runtime import can_plan_deterministically
         from baseball_rag.routing import StatQueryCase, route
 
         assert can_plan_deterministically("career home run leaders") is True
         assert isinstance(route("career home run leaders"), StatQueryCase)
 
     def test_plain_season_era_leaderboard_stays_on_stat_route(self):
-        from baseball_rag.db.freeform import can_plan_deterministically
+        from baseball_rag.db.freeform_runtime import can_plan_deterministically
         from baseball_rag.routing import StatQueryCase, route
 
         assert can_plan_deterministically("who had the best ERA in 1968") is True
@@ -162,7 +165,7 @@ class TestDeterministicTemplates:
 
     def test_runtime_executes_planned_query_without_result_shape_changes(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import execute_plan, plan_query, query
+        from baseball_rag.db.freeform_runtime import execute_plan, plan_query, query
 
         conn = get_duckdb()
         planned = plan_query("career pitching wins leaders", conn)
@@ -178,20 +181,22 @@ class TestDeterministicTemplates:
             ("Pete", "Alexander", 373),
         ]
 
-    def test_public_freeform_facade_preserves_planning_compatibility(self):
-        import baseball_rag.db.freeform as freeform
+    def test_freeform_runtime_planning_surface_exposes_deterministic_queries(self):
+        import baseball_rag.db.freeform_runtime as freeform_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
 
         conn = get_duckdb()
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
 
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            planned = freeform.plan_query("career pitching wins leaders", conn)
-            result = freeform.query("career pitching wins leaders", conn)
+        planned = freeform_runtime.plan_query(
+            "career pitching wins leaders", conn, request_fn=mock_call
+        )
+        result = freeform_runtime.query("career pitching wins leaders", conn, request_fn=mock_call)
 
         assert mock_call.call_count == 0
-        assert freeform.can_plan_deterministically("career pitching wins leaders") is True
+        assert freeform_runtime.can_plan_deterministically("career pitching wins leaders") is True
         assert (
-            freeform.should_route_deterministic_freeform(
+            freeform_runtime.should_route_deterministic_freeform(
                 "career pitching wins leaders",
                 competing_stat="W",
             )
@@ -207,8 +212,10 @@ class TestDeterministicTemplates:
         ]
 
     def test_qualified_season_era_template_bypasses_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("who had the lowest ERA in 1968 with enough innings")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query(
+            "who had the lowest ERA in 1968 with enough innings", request_fn=mock_call
+        )
 
         assert mock_call.call_count == 0
         assert result.params == [1968, 300, 300]
@@ -216,24 +223,28 @@ class TestDeterministicTemplates:
         assert ("Bob", "Gibson", 1968, "NL", 1.12, 914) in result.rows
 
     def test_qualified_career_era_template_bypasses_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("career ERA leaders qualified by enough innings")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query(
+            "career ERA leaders qualified by enough innings", request_fn=mock_call
+        )
 
         assert mock_call.call_count == 0
         assert result.params == [3000]
         assert result.rows[0] == ("Ed", "Walsh", 1.82, 8893)
 
     def test_career_era_accepts_explicit_innings_guard(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("career ERA leaders with at least 1000 innings")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query(
+            "career ERA leaders with at least 1000 innings", request_fn=mock_call
+        )
 
         assert mock_call.call_count == 0
         assert result.params == [3000]
         assert result.rows[0] == ("Ed", "Walsh", 1.82, 8893)
 
     def test_ambiguous_500_club_is_unsupported_without_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("who is in the 500 club")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("who is in the 500 club", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.row_count == 0
@@ -266,8 +277,8 @@ class TestDeterministicTemplates:
     def test_roster_template_bypasses_llm_with_parameterized_team_year(
         self, question: str, expected_team: str
     ):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query(question)
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query(question, request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.row_count >= 10
@@ -276,8 +287,8 @@ class TestDeterministicTemplates:
         assert expected_team in {row[2] for row in result.rows}
 
     def test_qualified_batting_average_template_bypasses_llm_with_ab_guard(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("highest batting average in 1894")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("highest batting average in 1894", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.params == [1894, 100, 100]
@@ -287,8 +298,8 @@ class TestDeterministicTemplates:
         assert "ERA" not in result.source_detail
 
     def test_qualified_batting_average_seasons_template_does_not_require_year(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("best qualified batting average seasons")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("best qualified batting average seasons", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.unsupported_reason is None
@@ -297,8 +308,8 @@ class TestDeterministicTemplates:
         assert result.rows[0] == ("Levi", "Meyerle", 1871, "NA", 0.492, 130)
 
     def test_qualified_era_seasons_template_does_not_require_year(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("best qualified ERA seasons")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("best qualified ERA seasons", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.unsupported_reason is None
@@ -307,8 +318,8 @@ class TestDeterministicTemplates:
         assert result.rows[0] == ("Dick", "Redding", 1917, "WES", 0.82, 461)
 
     def test_underqualified_era_is_unsupported_without_llm(self):
-        with patch("baseball_rag.db.freeform.make_request") as mock_call:
-            result = self._run_query("career ERA leaders")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query("career ERA leaders", request_fn=mock_call)
 
         assert mock_call.call_count == 0
         assert result.row_count == 0
@@ -328,7 +339,7 @@ class TestDeterministicTemplates:
 
     def test_avg_and_era_templates_use_registry_stat_semantics(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform import query
+        from baseball_rag.db.freeform_runtime import query
         from baseball_rag.db.stat_registry import get_stat
 
         conn = get_duckdb()
