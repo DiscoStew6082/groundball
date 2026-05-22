@@ -124,6 +124,15 @@ def test_freeform_no_longer_reexports_template_internals() -> None:
     assert "_qualified_season_era_sql" not in freeform
 
 
+def test_freeform_no_longer_reexports_runtime_private_helpers() -> None:
+    freeform = (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").read_text(encoding="utf-8")
+
+    assert "_execute_safe" not in freeform
+    assert "_validate_sql" not in freeform
+    assert "_get_schema_cached" not in freeform
+    assert "freeform_schema" not in freeform
+
+
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"

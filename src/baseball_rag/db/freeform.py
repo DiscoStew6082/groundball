@@ -3,8 +3,6 @@
 import duckdb
 
 from baseball_rag.db.freeform_runtime import (
-    _execute_safe,
-    _validate_sql,
     can_plan_deterministically,
     execute_plan,
     format_result,
@@ -16,7 +14,6 @@ from baseball_rag.db.freeform_runtime import (
 from baseball_rag.db.freeform_runtime import (
     query as _query_impl,
 )
-from baseball_rag.db.freeform_schema import _get_schema_cached
 from baseball_rag.db.freeform_types import (
     MAX_ROWS,
     SCHEMA_TIMEOUT_MS,
@@ -45,9 +42,6 @@ __all__ = [
     "make_request",
     "plan_query",
     "query",
-    "_execute_safe",
-    "_get_schema_cached",
-    "_validate_sql",
 ]
 
 
