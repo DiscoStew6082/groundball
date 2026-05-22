@@ -82,6 +82,16 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
     assert "class RouteResult" not in query_router
 
 
+def test_arch_components_no_longer_exports_component_test_status_alias() -> None:
+    components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
+        encoding="utf-8"
+    )
+    arch_init = (ROOT / "src" / "baseball_rag" / "arch" / "__init__.py").read_text(encoding="utf-8")
+
+    assert "ComponentTestStatus" not in components
+    assert "ComponentTestStatus" not in arch_init
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()

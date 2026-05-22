@@ -52,10 +52,6 @@ class TestStatus(Enum):
         }[self]
 
 
-# Alias for backwards compatibility
-ComponentTestStatus = TestStatus
-
-
 # ---------------------------------------------------------------------------
 # DiagramComponent
 # ---------------------------------------------------------------------------
