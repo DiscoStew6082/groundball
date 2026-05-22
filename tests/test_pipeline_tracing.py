@@ -33,13 +33,13 @@ class TestPipelineStage:
     def test_stage_output_summary(self):
         """Stage has an output_summary field."""
         stage = PipelineStage(
-            component_id="chroma-store",
-            label="ChromaDB Query",
+            component_id="claim-verifier",
+            label="Verify Biography Claims",
             started_at=datetime.now(),
             elapsed_ms=8.0,
-            output_summary="retrieved 3 chunks about Babe Ruth",
+            output_summary="verified 3 claims about Babe Ruth",
         )
-        assert stage.output_summary == "retrieved 3 chunks about Babe Ruth"
+        assert stage.output_summary == "verified 3 claims about Babe Ruth"
 
     def test_stage_error_state(self):
         """Stage can represent error state."""
@@ -109,12 +109,12 @@ class TestTracedContextManager:
     def test_traced_records_stage(self):
         """@traced context manager records a stage on the current trace."""
         start_trace("test query")
-        with traced(component_id="chroma-store", label="ChromaDB Query"):
+        with traced(component_id="claim-verifier", label="Verify Biography Claims"):
             pass
         trace = finish_trace()
         assert len(trace.stages) == 1
-        assert trace.stages[0].component_id == "chroma-store"
-        assert trace.stages[0].label == "ChromaDB Query"
+        assert trace.stages[0].component_id == "claim-verifier"
+        assert trace.stages[0].label == "Verify Biography Claims"
 
     def test_traced_records_elapsed_ms(self):
         """Elapsed time is recorded accurately."""

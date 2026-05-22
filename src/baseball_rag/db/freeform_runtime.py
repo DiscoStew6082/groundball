@@ -11,11 +11,10 @@ from baseball_rag.db.freeform_assembler import _assemble_sql
 from baseball_rag.db.freeform_intent import _generate_query_spec
 from baseball_rag.db.freeform_schema import _get_schema_cached
 from baseball_rag.db.freeform_templates import (
-    _detect_template,
-    _template_source_detail,
+    can_plan_deterministically as _templates_can_plan_deterministically,
 )
 from baseball_rag.db.freeform_templates import (
-    can_plan_deterministically as _templates_can_plan_deterministically,
+    match_template,
 )
 from baseball_rag.db.freeform_templates import (
     should_route_deterministic_freeform as _templates_should_route_deterministic_freeform,
@@ -72,13 +71,14 @@ def plan_query(
     hint = get_contextual_hint(question, year)
     enriched_question = f"{question} {hint}".strip() if hint else question
 
-    assembled = _detect_template(enriched_question)
-    if assembled is not None:
+    matched_template = match_template(enriched_question)
+    if matched_template is not None:
         return PlannedFreeformQuery(
-            assembled=assembled,
+            assembled=matched_template.assembled,
             planning_path="deterministic_template",
             source_label="Deterministic template query",
-            source_detail=_template_source_detail(enriched_question),
+            source_detail=matched_template.source_detail,
+            query_spec=matched_template.query_spec,
         )
 
     schema = _get_schema_cached(conn)

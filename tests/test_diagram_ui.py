@@ -16,6 +16,82 @@ from baseball_rag.arch.diagram import (
     ArchitectureDiagram,
 )
 from baseball_rag.arch.tracing import PipelineStage, PipelineTrace
+from baseball_rag.provenance import SourceRecord, StructuredAnswer
+from baseball_rag.request_execution import RequestExecution
+
+
+class TestArchitectureReadModel:
+    """Pure Architecture read-model behavior used by the Gradio adapter."""
+
+    def test_latest_run_model_collects_active_path_and_diagnostics(self):
+        """A completed execution becomes rendering-neutral Architecture state."""
+        from baseball_rag.arch.read_model import latest_run_from_execution
+
+        now = datetime.now()
+        trace = PipelineTrace(query="who won the 1901 Mars league", route_type="freeform_query")
+        trace.add_stage(
+            PipelineStage(
+                "query-router",
+                "Query Router",
+                started_at=now,
+                elapsed_ms=1.0,
+                output_summary="routed to freeform_query",
+            )
+        )
+        trace.add_stage(
+            PipelineStage(
+                "duckdb",
+                "DuckDB",
+                started_at=now,
+                elapsed_ms=2.0,
+                error="RuntimeError: no rows",
+            )
+        )
+        answer = StructuredAnswer(
+            answer="No matching rows.",
+            intent="freeform_query",
+            warnings=["No matching rows found."],
+            unsupported=True,
+            unsupported_reason="no_data",
+            sources=[
+                SourceRecord(
+                    type="duckdb",
+                    label="freeform",
+                    rows=[{"player": "Nobody"}, {"player": "Still nobody"}],
+                )
+            ],
+        )
+        model = latest_run_from_execution(RequestExecution(answer=answer, trace=trace))
+
+        assert model.question == "who won the 1901 Mars league"
+        assert model.route == "freeform_query"
+        assert model.active_component_ids == ("query-router", "duckdb")
+        assert model.row_count == 2
+        assert model.status_level == "error"
+        assert model.status_text == "Error: RuntimeError: no rows"
+        assert "No matching rows found." in model.diagnostics
+        assert "Unsupported outcome: no_data" in model.diagnostics
+
+    def test_latest_run_store_keeps_sessions_isolated(self):
+        """Latest Architecture runs are scoped by browser session."""
+        from baseball_rag.arch.read_model import LatestRunStore
+
+        first = RequestExecution(
+            answer=StructuredAnswer(answer="first", intent="general_explanation"),
+            trace=PipelineTrace(query="what is OPS", route_type="general_explanation"),
+        )
+        second = RequestExecution(
+            answer=StructuredAnswer(answer="second", intent="stat_query"),
+            trace=PipelineTrace(query="career home run leaders", route_type="stat_query"),
+        )
+        store = LatestRunStore()
+
+        store.record(first, session_key="session-a")
+        store.record(second, session_key="session-b")
+
+        assert store.latest(session_key="session-a").question == "what is OPS"
+        assert store.latest(session_key="session-b").question == "career home run leaders"
+
 
 # --------------------------------------------------------------------------:
 # Phase 3.1 — test_diagram_renders_all_layers
@@ -78,17 +154,51 @@ class TestDiagramRendersAllLayers:
         assert "display:none!important" in html
         assert "dispatchEvent" in html
 
+    def test_component_cards_are_accessible_click_controls(self):
+        """Visible components render as focusable controls with stable component ids."""
+        html = self.diagram._build_diagram_html()
+
+        assert 'role="button"' in html
+        assert '<button type="button"' in html
+        assert 'tabindex="0"' in html
+        assert 'data-component-id="query-router"' in html
+
+    def test_selected_component_state_is_separate_from_trace_highlight(self):
+        """Selected means inspected, while highlighted still means used by the latest query."""
+        self.diagram.highlight(["duckdb"])
+        self.diagram.select_component("query-router")
+
+        html = self.diagram._build_diagram_html()
+
+        assert 'id="card-duckdb"' in html
+        assert "arch-card highlighted" in html
+        assert 'id="card-query-router"' in html
+        assert "selected" in html
+
+    def test_selected_component_outside_trace_is_not_dimmed(self):
+        """A selected component remains visually inspectable even if the latest trace missed it."""
+        self.diagram.highlight(["duckdb"])
+        self.diagram.select_component("query-router")
+
+        html = self.diagram._build_diagram_html()
+
+        assert 'id="card-query-router"' in html
+        assert 'class="arch-card selected"' in html
+        assert 'class="arch-card dimmed selected"' not in html
+
     def test_routing_layer_shows_query_router(self):
         """Routing layer shows the query-router component."""
         html = self.diagram._build_diagram_html()
         assert "query-router" in html or "Query Router" in html
 
-    def test_data_layer_shows_duckdb_and_corpus_grounding(self):
-        """Data layer shows both DuckDB and corpus-grounding components."""
+    def test_data_layer_shows_duckdb_without_removed_corpus_grounding(self):
+        """The current runtime data layer shows DuckDB, not removed corpus retrieval."""
         html = self.diagram._build_diagram_html()
 
         assert "duckdb" in html
-        assert "corpus-grounding" in html or "Corpus Grounding" in html
+        assert "corpus-grounding" not in html
+        assert "Corpus Grounding" not in html
+        assert "Chroma" not in html
 
     def test_generation_layer_shows_llm_and_prompt(self):
         """Generation layer shows both LLM and Prompt Templates components."""
@@ -201,11 +311,26 @@ class TestStageDetailPanel:
         assert comp.label in html
         assert comp.description in html
 
+    def test_detail_panel_uses_inspection_placeholder_copy(self):
+        """The empty detail panel invites selection without promising broken click behavior."""
+        html = self.diagram._build_detail_html(None)
+
+        assert "Select a component to inspect its role and source." in html
+
+    def test_detail_panel_shows_runtime_role_source_and_excerpt(self):
+        """Selected details expose the component role, source path, and source availability."""
+        html = self.diagram._build_detail_html("query-router")
+
+        assert "Runtime role" in html
+        assert "Source path" in html
+        assert "src/baseball_rag/routing/query_router.py" in html
+        assert ("Source excerpt" in html) or ("source unavailable" in html)
+
     def test_detail_panel_shows_file_path(self):
         """Detail panel includes the component's file path."""
-        html = self.diagram._build_detail_html("chroma-store")
+        html = self.diagram._build_detail_html("claim-verifier")
         # File path appears somewhere in the detail HTML
-        comp = self.reg.get("chroma-store")
+        comp = self.reg.get("claim-verifier")
         assert comp is not None
         assert comp.file_path in html
 
@@ -217,11 +342,11 @@ class TestStageDetailPanel:
 
     def test_test_status_badge_shown_per_component(self):
         """Component with a test status shows a coloured badge in the panel."""
-        # Set FAIL on chroma-store via registry
-        self.reg.set_test_status("chroma-store", TestStatus.FAIL)
+        # Set FAIL on claim-verifier via registry
+        self.reg.set_test_status("claim-verifier", TestStatus.FAIL)
         diagram = ArchitectureDiagram(registry=self.reg, _test_mode=True)
 
-        html = diagram._build_detail_html("chroma-store")
+        html = diagram._build_detail_html("claim-verifier")
         assert "badge-fail" in html or "FAIL" in html
 
     def test_unknown_component_shows_error_message(self):
@@ -233,7 +358,7 @@ class TestStageDetailPanel:
         """Passing None to select_component shows the placeholder message."""
         self.diagram.select_component(None)
         html = self.diagram._build_detail_html(None)
-        assert ("Click a component" in html) or ("inspect" in html)
+        assert "Select a component to inspect its role and source." in html
 
     def test_detail_panel_renders_in_right_sidebar(self):
         """The diagram layout places detail panel HTML in #detail-panel elem."""
@@ -298,7 +423,7 @@ class TestAnimatePipelineFlow:
     @patch("gradio.Button.click", lambda self, **kwargs: None)
     def test_animate_trace_highlights_stages_sequentially(self):
         """animate_trace stores the trace and sets up stage highlighting state."""
-        trace = self._make_trace("cli", "query-router", "chroma-store")
+        trace = self._make_trace("cli", "query-router", "claim-verifier")
 
         result = self.diagram.animate_trace(trace)
 
@@ -548,3 +673,235 @@ class TestQueryHistory:
         before = len(self.diagram.trace_history)
         self.diagram.animate_trace(empty)
         assert len(self.diagram.trace_history) == before
+
+    def test_show_latest_trace_renders_static_highlighted_path(self):
+        """A recorded trace can be rendered visibly without replaying animation."""
+        now = datetime.now()
+        trace = PipelineTrace(query="stat leaders")
+        trace.add_stage(
+            PipelineStage("query-router", "Query Router", started_at=now, elapsed_ms=1.0)
+        )
+        trace.add_stage(PipelineStage("duckdb", "DuckDB", started_at=now, elapsed_ms=2.0))
+        trace.route_type = "stat_query"
+        self.diagram.trace_history.append(trace)
+
+        result = self.diagram.show_latest_trace()
+
+        assert result is self.diagram
+        assert self.diagram.highlight_ids == {"query-router", "duckdb"}
+        assert "card-query-router" in self.diagram.diagram_html.value
+        assert "highlighted" in self.diagram.diagram_html.value
+        assert "stat_query" in self.diagram.footer_html.value
+
+
+class TestLatestRunExplorer:
+    """Architecture renders the latest query as a user-facing execution trace."""
+
+    def setup_method(self):
+        self.reg = ComponentRegistry()
+        self.diagram = ArchitectureDiagram(registry=self.reg, _test_mode=True)
+
+    def teardown_method(self):
+        try:
+            self.diagram.close()
+        except Exception:
+            pass
+
+    def test_successful_stats_query_renders_summary_timeline_and_active_path(self):
+        """A completed DuckDB query is explained as ordered runtime work, not inventory."""
+        now = datetime.now()
+        trace = PipelineTrace(query="who had the most RBIs in 1962", route_type="stat_query")
+        trace.add_stage(PipelineStage("gradio", "Gradio Query", started_at=now, elapsed_ms=1.0))
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=2.0)
+        )
+        trace.add_stage(PipelineStage("duckdb", "DB Query", started_at=now, elapsed_ms=3.0))
+        answer = StructuredAnswer(
+            answer="Tommy Davis had the most RBIs in 1962.",
+            intent="stat_query",
+            sources=[
+                SourceRecord(
+                    type="duckdb",
+                    label="1962 RBI leaders",
+                    sql="select * from batting order by RBI desc limit 1",
+                    rows=[{"name": "Tommy Davis", "RBI": 153}],
+                    columns=["name", "RBI"],
+                )
+            ],
+        )
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "who had the most RBIs in 1962" in html
+        assert "stat_query" in html
+        assert "No warnings or errors" in html
+        assert "Understand question" in html
+        assert "Look up stats" in html
+        assert html.index("Gradio UI") < html.index("Query Router") < html.index("DuckDB")
+        active_path_html = html.split("class='active-path'", 1)[1].split("quiet-map", 1)[0]
+        assert "Biography Claim Verifier" not in active_path_html
+
+    def test_unsupported_outcome_renders_warning_diagnostics(self):
+        """Expected unsupported answers are warnings, not failed runtime errors."""
+        now = datetime.now()
+        trace = PipelineTrace(query="who won the 1901 Mars league", route_type="stat_query")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        answer = StructuredAnswer(
+            answer="I could not find matching data.",
+            intent="stat_query",
+            warnings=["No matching rows found."],
+            unsupported=True,
+            unsupported_reason="no_data",
+        )
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "run-status warning" in html
+        assert "No matching rows found." in html
+        assert "Unsupported outcome: no_data" in html
+        assert "run-status error" not in html
+
+    def test_backend_exception_renders_error_diagnostics_and_failed_stage(self):
+        """Actual pipeline exceptions are red and mark the failed stage."""
+        now = datetime.now()
+        trace = PipelineTrace(query="career home run leaders", route_type="stat_query")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        trace.add_stage(
+            PipelineStage(
+                "duckdb",
+                "DB Query",
+                started_at=now,
+                elapsed_ms=1.0,
+                error="RuntimeError: database unavailable",
+            )
+        )
+        answer = StructuredAnswer(
+            answer="The system could not return an answer.",
+            intent="stat_query",
+        )
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "run-status error" in html
+        assert "RuntimeError: database unavailable" in html
+        assert "timeline-item failed" in html
+        assert "path-card arch-card highlighted error-state" in html
+
+    def test_selected_latest_stage_detail_explains_why_before_source(self):
+        """Selecting a stage prioritizes contribution before source-code details."""
+        now = datetime.now()
+        trace = PipelineTrace(query="career home run leaders", route_type="stat_query")
+        trace.add_stage(PipelineStage("duckdb", "DB Query", started_at=now, elapsed_ms=1.0))
+        answer = StructuredAnswer(answer="Answer", intent="stat_query")
+
+        self.diagram.record_execution(RequestExecution(answer=answer, trace=trace))
+        self.diagram.select_component("duckdb")
+        detail = self.diagram._build_detail_html("duckdb")
+
+        assert "Why this ran" in detail
+        assert "Queried the baseball statistics tables" in detail
+        assert detail.index("Why this ran") < detail.index("Source path")
+
+    def test_latest_run_is_scoped_by_session_key(self):
+        """One browser session does not render another session's latest query."""
+        now = datetime.now()
+        trace_a = PipelineTrace(query="what is OPS", route_type="general_explanation")
+        trace_a.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        trace_b = PipelineTrace(query="career home run leaders", route_type="stat_query")
+        trace_b.add_stage(PipelineStage("duckdb", "DB Query", started_at=now, elapsed_ms=1.0))
+
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="OPS answer", intent="general_explanation"),
+                trace=trace_a,
+            ),
+            session_key="browser-a",
+        )
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="HR answer", intent="stat_query"),
+                trace=trace_b,
+            ),
+            session_key="browser-b",
+        )
+
+        html_a = self.diagram.show_latest_trace(session_key="browser-a").diagram_html.value
+        html_b = self.diagram.show_latest_trace(session_key="browser-b").diagram_html.value
+
+        assert "what is OPS" in html_a
+        assert "career home run leaders" not in html_a
+        assert "career home run leaders" in html_b
+
+    def test_clear_highlight_returns_to_inventory_after_latest_run(self):
+        """Legacy diagram controls are not stuck on the latest-run rendering."""
+        now = datetime.now()
+        trace = PipelineTrace(query="what is OPS", route_type="general_explanation")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="OPS answer", intent="general_explanation"),
+                trace=trace,
+            )
+        )
+
+        self.diagram.show_latest_trace()
+        self.diagram.clear_highlight()
+        html = self.diagram.diagram_html.value
+
+        assert "what is OPS" not in html
+        assert "API Server" in html
+        assert "highlighted" not in html
+        assert self.diagram.latest_runs_by_session
+
+    def test_legacy_latest_run_reset_does_not_resurrect_stale_read_model(self):
+        """Clearing legacy public state clears the sessionless latest-run facade."""
+        now = datetime.now()
+        trace = PipelineTrace(query="what is OPS", route_type="general_explanation")
+        trace.add_stage(
+            PipelineStage("query-router", "Route Query", started_at=now, elapsed_ms=1.0)
+        )
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="OPS answer", intent="general_explanation"),
+                trace=trace,
+            )
+        )
+        self.diagram.show_latest_trace()
+
+        self.diagram.trace_history.clear()
+        self.diagram.latest_run = None
+        self.diagram.latest_runs_by_session.clear()
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "what is OPS" not in html
+        assert "API Server" in html
+        assert self.diagram.highlight_ids == set()
+
+    def test_latest_run_click_handlers_escape_component_ids_for_javascript(self):
+        """Generated latest-run controls safely quote unusual traced component ids."""
+        now = datetime.now()
+        trace = PipelineTrace(query="odd component", route_type="stat_query")
+        trace.add_stage(PipelineStage("odd'id", "Odd Component", started_at=now, elapsed_ms=1.0))
+
+        self.diagram.record_execution(
+            RequestExecution(
+                answer=StructuredAnswer(answer="Answer", intent="stat_query"),
+                trace=trace,
+            )
+        )
+        html = self.diagram.show_latest_trace().diagram_html.value
+
+        assert "(&quot;odd'id&quot;)" in html
+        assert 'data-component-id="odd\'id"' in html
+        assert "('odd'id')" not in html

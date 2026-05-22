@@ -14,6 +14,7 @@ from baseball_rag.arch.tracing import (
     traced,
 )
 from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.query_governance import QueryGovernance
 from baseball_rag.service import answer
 
 logger = logging.getLogger(__name__)
@@ -59,17 +60,10 @@ def execute_request(
 
     trace = finish_trace(route_type=result.intent) if owns_trace else get_current_trace()
 
-    if attach_audit:
-        from baseball_rag.audit import build_query_metadata
-
-        result.metadata.update(build_query_metadata(question, result, trace=trace))
-        audit_logger.info("query_audit", extra={"audit": result.metadata})
-
-    if attach_review:
-        from baseball_rag.review_queue import build_review_item, persist_review_item, review_payload
-
-        item = build_review_item(question, result)
-        persist_review_item(item)
-        result.review = review_payload(item)
+    QueryGovernance.from_flags(
+        attach_audit=attach_audit,
+        attach_review=attach_review,
+        audit_logger=audit_logger,
+    ).observe(question, result, trace=trace)
 
     return RequestExecution(answer=result, trace=trace)

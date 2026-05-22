@@ -1,12 +1,4 @@
-"""Gradio dashboard for Baseball RAG — Architecture Explorer + Query Interface.
-
-Phase 4 of the Architecture Explorer plan:
-- Tab "Query": ChatInterface with existing answer() functionality
-- Tab "Architecture": Interactive architecture diagram that visualizes pipeline traces
-
-The two tabs share state: each query in the Query tab produces a PipelineTrace
-that is appended to the ArchitectureDiagram's trace history and animated.
-"""
+"""Gradio dashboard for Baseball RAG query and architecture inspection."""
 
 from __future__ import annotations
 
@@ -25,6 +17,7 @@ import gradio as gr
 
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
+from baseball_rag.ui.gradio_adapter import GradioQueryAdapter
 from baseball_rag.ui.presentation import AnswerPresenter
 from baseball_rag.ui.query_session import QuerySession
 from baseball_rag.ui.query_transaction import BegunQuery
@@ -94,7 +87,7 @@ def run_all_tests() -> _TestResult:
             "tests/test_router_player_detection.py",
             "tests/test_router_this_year.py",
         ],
-        "chroma-store": ["tests/test_chroma_store.py"],
+        "claim-verifier": ["tests/test_player_bio_query.py"],
         "duckdb": ["tests/test_queries.py"],
         "llm": ["tests/test_llm.py", "tests/test_generation.py"],
         "prompt": ["tests/test_prompts.py"],
@@ -143,9 +136,17 @@ def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecuti
             diagram.animate_trace(trace)
 
 
-def _record_execution_trace(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
+def _record_execution_trace(
+    diagram: "ArchitectureDiagram",
+    execution: RequestExecution,
+    session_key: str | None = None,
+) -> None:
     """Retain the completed trace without mutating Architecture-tab components."""
     trace = execution.trace
+    if hasattr(diagram, "record_execution"):
+        with _anim_lock:
+            diagram.record_execution(execution, session_key=session_key)
+        return
     if trace is None or not hasattr(diagram, "trace_history"):
         return
     with _anim_lock:
@@ -172,17 +173,17 @@ def _diagram_execution_recorder(
     diagram: "ArchitectureDiagram | None",
     *,
     animate_diagram: bool,
-) -> Callable[[RequestExecution], None] | None:
+) -> Callable[[RequestExecution, str | None], None] | None:
     """Return the trace update policy for a UI session."""
     if diagram is None:
         return None
 
-    def record(execution: RequestExecution) -> None:
+    def record(execution: RequestExecution, session_key: str | None = None) -> None:
         try:
             if animate_diagram:
                 _animate_execution(diagram, execution)
             else:
-                _record_execution_trace(diagram, execution)
+                _record_execution_trace(diagram, execution, session_key=session_key)
         except Exception:
             query = execution.trace.query if execution.trace is not None else ""
             logger.exception("Gradio diagram trace update failed for %r", query)
@@ -191,7 +192,7 @@ def _diagram_execution_recorder(
 
 
 # --------------------------------------------------------------------------
-# Respond wrapper (wired to tracing + animation)
+# Respond wrappers (wired to tracing and Architecture history)
 # --------------------------------------------------------------------------
 
 
@@ -200,13 +201,13 @@ def respond(
 ) -> str:
     """Handle a single user message.
 
-    When *diagram* is provided the query is traced and animated through the
-    Architecture Explorer.  Otherwise falls back to plain answer().
+    When *diagram* is provided the query is traced through the Architecture
+    Explorer.  Otherwise falls back to plain answer().
     """
     execution = _execute_for_gradio(message)
     recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
     if recorder is not None:
-        recorder(execution)
+        recorder(execution, None)
     return render_text(execution.answer)
 
 
@@ -215,7 +216,7 @@ def respond_structured(message: str, *, diagram: "ArchitectureDiagram | None" = 
     execution = _execute_for_gradio(message)
     recorder = _diagram_execution_recorder(diagram, animate_diagram=True)
     if recorder is not None:
-        recorder(execution)
+        recorder(execution, None)
     result = execution.answer
     presentation = AnswerPresenter().present(result)
     return presentation.answer_text, presentation.rows, presentation.sources, presentation.sql
@@ -235,11 +236,12 @@ def respond_conversation(
         default_question=_DEFAULT_QUESTION,
         record_execution=_diagram_execution_recorder(diagram, animate_diagram=animate_diagram),
     )
+    query_adapter = GradioQueryAdapter()
     begun = session.begin(message, chat_history, conversation, {}, session_key=None)
     completed = session.complete(begun.begun, begun.registry, session_key=None)
     if completed is None:
-        return begun.update.as_gradio_values()
-    return completed.update.as_gradio_values()
+        return query_adapter.completed_outputs(begun.update)[:-1]
+    return query_adapter.completed_outputs(completed.update)[:-1]
 
 
 # --------------------------------------------------------------------------
@@ -301,9 +303,7 @@ def build_dashboard() -> gr.Blocks:
                     animate_diagram=False,
                 ),
             )
-
-            def _no_component_updates():
-                return tuple(gr.update() for _ in range(9))
+            query_adapter = GradioQueryAdapter()
 
             def _request_session_key(request: gr.Request | None) -> str | None:
                 if request is not None and request.session_hash:
@@ -324,14 +324,11 @@ def build_dashboard() -> gr.Blocks:
                     turn_registry,
                     session_key=_request_session_key(request),
                 )
-                return (
-                    begun.update.answer_text,
-                    begun.update.rows,
-                    begun.update.sources,
-                    begun.update.sql,
-                    begun.begun,
-                    begun.registry,
-                    gr.update(interactive=begun.ask_interactive),
+                return query_adapter.pending_outputs(
+                    begun.update,
+                    begun=begun.begun,
+                    registry=begun.registry,
+                    ask_interactive=begun.ask_interactive,
                 )
 
             def on_query(
@@ -345,8 +342,8 @@ def build_dashboard() -> gr.Blocks:
                     session_key=_request_session_key(request),
                 )
                 if completed is None:
-                    return _no_component_updates()
-                return (*completed.update.as_gradio_values(), gr.update(interactive=True))
+                    return query_adapter.stale_outputs()
+                return query_adapter.completed_outputs(completed.update)
 
             begin_query_outputs = gr.on(
                 triggers=[submit.click, question.submit],
@@ -385,30 +382,52 @@ def build_dashboard() -> gr.Blocks:
                 queue=False,
             )
 
-        with gr.Tab("Architecture"):
+        with gr.Tab("Architecture") as architecture_tab:
             gr.Markdown(
                 "**Pipeline Explorer** — click any component to inspect its source. "
-                "After running a query in the **Query** tab, switch here to see it animate."
+                "After running a query in the **Query** tab, switch here to see the latest path."
             )
             arch_diagram.render()
 
-            # Run All Tests button (Phase 5) — added directly inside this
-            # with-gr.Tab block so btn.click() has an active Blocks context.
-            run_all_tests_btn = gr.Button(
-                "\U0001f3c1 Run All Tests",
-                elem_id="run-all-tests",
-                size="sm",
+            def refresh_architecture_trace(request: Optional[gr.Request] = None):
+                return arch_diagram.latest_trace_values(session_key=_request_session_key(request))
+
+            architecture_tab.select(
+                fn=refresh_architecture_trace,
+                inputs=[],
+                outputs=[arch_diagram.diagram_html, arch_diagram.footer_html],
+                show_progress="hidden",
+                queue=False,
             )
 
+            with gr.Accordion("Developer tools", open=False):
+                run_all_tests_btn = gr.Button(
+                    "\U0001f3c1 Run All Tests",
+                    elem_id="run-all-tests",
+                    size="sm",
+                )
+                run_all_tests_status = gr.Markdown("", elem_id="run-all-tests-status")
+
             def on_run_all_tests():
-                run_all_tests()
+                result = run_all_tests()
                 arch_diagram._update_diagram()
-                return arch_diagram.diagram_html.value
+                status = (
+                    f"Tests finished: {result.passed} passed, "
+                    f"{result.failed} failed, {result.skipped} skipped."
+                )
+                return arch_diagram.diagram_html.value, status
 
             run_all_tests_btn.click(
+                fn=lambda: "Tests are running...",
+                inputs=[],
+                outputs=[run_all_tests_status],
+                show_progress="hidden",
+                queue=False,
+            ).then(
                 fn=on_run_all_tests,
                 inputs=[],
-                outputs=[arch_diagram.diagram_html],
+                outputs=[arch_diagram.diagram_html, run_all_tests_status],
+                show_progress="minimal",
             )
 
     # Attach for test access

@@ -2,36 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import re
-from dataclasses import dataclass
-from datetime import date
-from typing import Any, Literal
+from typing import Any
 
-from baseball_rag.db import execute_stat_query
-from baseball_rag.db.duckdb_schema import get_duckdb
-from baseball_rag.db.queries import StatQueryResult
-from baseball_rag.db.stat_registry import StatTable, get_stat
+from baseball_rag.db.queries import StatQueryPlan, StatQueryResult, execute_stat_query_plan
+from baseball_rag.db.stat_registry import get_stat
 from baseball_rag.outcomes import ambiguous_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
-from baseball_rag.routing.query_router import StatQueryCase, TimePeriod, TimePeriodType
-
-StatQueryKind = Literal["player", "leaderboard", "career"]
-
-
-@dataclass(frozen=True)
-class StatQueryPlan:
-    """Execution plan for a deterministic stat request."""
-
-    stat: str
-    table: StatTable
-    kind: StatQueryKind
-    intent: str
-    position: str | None = None
-    player_name: str | None = None
-    year: int | None = None
-    start_year: int | None = None
-    end_year: int | None = None
+from baseball_rag.query_scope import QueryScope, coverage_source, resolve_query_scope
+from baseball_rag.routing.query_router import StatQueryCase
 
 
 def answer_stat_query(decision: StatQueryCase) -> StructuredAnswer:
@@ -47,17 +25,6 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
     """Convert a routed stat case into a validated deterministic query plan."""
     stat_def = get_stat(decision.stat)
     stat = stat_def.canonical
-    if _is_ambiguous_current_century_decade(decision.time_period, decision.raw_question):
-        return ambiguous_outcome(
-            answer=(
-                f"The decade in '{decision.raw_question}' is ambiguous. "
-                "Use a full decade like 1920s or 2020s."
-            ),
-            intent=decision.intent,
-            sources=[_coverage_source()],
-        )
-
-    time_period = _resolve_time_period(decision.time_period, decision.raw_question)
 
     if decision.player_name:
         if _is_partial_player_name(decision.player_name):
@@ -67,21 +34,35 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
                     "Ask with a fuller player name."
                 ),
                 intent=decision.intent,
-                sources=[_coverage_source()],
+                sources=[coverage_source()],
             )
-        if time_period is not None and time_period[0] != time_period[1]:
+        scope = resolve_query_scope(
+            decision.time_period,
+            raw_question=decision.raw_question,
+            stat=stat,
+            intent=decision.intent,
+            validate_coverage=False,
+        )
+        if isinstance(scope, StructuredAnswer):
+            return scope
+        if isinstance(scope, QueryScope) and not scope.is_single_season:
             return ambiguous_outcome(
                 answer=(
                     f"Player-specific {stat} lookups need one season, not "
-                    f"{time_period[0]}-{time_period[1]}."
+                    f"{scope.start_year}-{scope.end_year}."
                 ),
                 intent=decision.intent,
-                sources=[_coverage_source()],
+                sources=[coverage_source()],
             )
-        year = time_period[0] if time_period is not None else None
-        unsupported = _unsupported_for_single_year(stat, decision.intent, year)
-        if unsupported is not None:
-            return unsupported
+        scope = resolve_query_scope(
+            decision.time_period,
+            raw_question=decision.raw_question,
+            stat=stat,
+            intent=decision.intent,
+        )
+        if isinstance(scope, StructuredAnswer):
+            return scope
+        year = scope.start_year if isinstance(scope, QueryScope) else None
         return StatQueryPlan(
             stat=stat,
             table=stat_def.table,
@@ -91,19 +72,23 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
             player_name=decision.player_name,
             year=year,
         )
-    if time_period is not None:
-        start_year, end_year = time_period
-        unsupported = _unsupported_for_year_range(stat, decision.intent, start_year, end_year)
-        if unsupported is not None:
-            return unsupported
+    scope = resolve_query_scope(
+        decision.time_period,
+        raw_question=decision.raw_question,
+        stat=stat,
+        intent=decision.intent,
+    )
+    if isinstance(scope, StructuredAnswer):
+        return scope
+    if isinstance(scope, QueryScope):
         return StatQueryPlan(
             stat=stat,
             table=stat_def.table,
             kind="leaderboard",
             intent=decision.intent,
             position=decision.position,
-            start_year=start_year,
-            end_year=end_year,
+            start_year=scope.start_year,
+            end_year=scope.end_year,
         )
     return StatQueryPlan(
         stat=stat,
@@ -112,28 +97,6 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
         intent=decision.intent,
         position=decision.position,
     )
-
-
-def execute_stat_query_plan(plan: StatQueryPlan) -> StatQueryResult:
-    """Run a deterministic stat plan through the DuckDB adapter."""
-    if plan.kind == "player":
-        return execute_stat_query(
-            plan.stat,
-            table=plan.table,
-            player_name=plan.player_name,
-            year=plan.year,
-            position=plan.position,
-            conn=get_duckdb(),
-        )
-    if plan.kind == "leaderboard":
-        return execute_stat_query(
-            plan.stat,
-            table=plan.table,
-            start_year=plan.start_year,
-            end_year=plan.end_year,
-            position=plan.position,
-        )
-    return execute_stat_query(plan.stat, table=plan.table, position=plan.position)
 
 
 def answer_stat_query_result(
@@ -230,76 +193,6 @@ def _source_from_result(query_result: Any) -> SourceRecord:
     )
 
 
-def _resolve_time_period(
-    tp: TimePeriod | None,
-    raw_question: str = "",
-) -> tuple[int, int] | None:
-    if tp is None:
-        return None
-    if tp.type == TimePeriodType.DECADE and isinstance(tp.value, int):
-        if tp.value >= 1000:
-            start_year = tp.value
-        else:
-            start_year = _explicit_decade_start(raw_question, tp.value) or (1900 + tp.value)
-        return start_year, start_year + 9
-    if tp.type == TimePeriodType.RANGE and isinstance(tp.value, list) and len(tp.value) >= 2:
-        return int(tp.value[0]), int(tp.value[-1])
-    if tp.type == TimePeriodType.SINGLE and isinstance(tp.value, int):
-        return tp.value, tp.value
-    if tp.type == TimePeriodType.RELATIVE and isinstance(tp.value, dict):
-        return _resolve_relative_time_period(tp.value)
-    return None
-
-
-def _resolve_relative_time_period(value: dict[str, Any]) -> tuple[int, int] | None:
-    direction = value.get("direction")
-    unit = value.get("unit")
-    try:
-        count = int(value.get("count", 1))
-    except (TypeError, ValueError):
-        return None
-    if count < 1:
-        return None
-
-    current_year = _current_year()
-    if direction == "past" and unit in {"year", "season"}:
-        end_year = current_year - 1
-        start_year = end_year if count == 1 else current_year - count
-        return start_year, end_year
-    if direction == "future" and unit in {"year", "season"}:
-        start_year = current_year + 1
-        end_year = start_year if count == 1 else current_year + count
-        return start_year, end_year
-    return None
-
-
-def _is_ambiguous_current_century_decade(tp: TimePeriod | None, raw_question: str) -> bool:
-    if tp is None or tp.type != TimePeriodType.DECADE or not isinstance(tp.value, int):
-        return False
-    if tp.value >= 1000 or _explicit_decade_start(raw_question, tp.value) is not None:
-        return False
-    current_decade = (_current_year() % 100) // 10 * 10
-    return 0 <= tp.value <= current_decade
-
-
-def _explicit_decade_start(raw_question: str, value: int) -> int | None:
-    match = re.search(r"\b((?:18|19|20)\d0)s\b", raw_question, re.IGNORECASE)
-    if match is None:
-        return None
-    start_year = int(match.group(1))
-    return start_year if start_year % 100 == value else None
-
-
-def _current_year() -> int:
-    configured = os.environ.get("BASEBALL_RAG_CURRENT_YEAR")
-    if configured is not None:
-        try:
-            return int(configured)
-        except ValueError:
-            pass
-    return date.today().year
-
-
 def _is_partial_player_name(player_name: str | None) -> bool:
     if player_name is None:
         return False
@@ -309,63 +202,3 @@ def _is_partial_player_name(player_name: str | None) -> bool:
 
 def _is_suffix(value: str) -> bool:
     return value.lower().rstrip(".") in {"jr", "sr", "ii", "iii", "iv"}
-
-
-def _unsupported_for_single_year(
-    stat: str,
-    intent: str,
-    year: int | None,
-) -> StructuredAnswer | None:
-    if year is None:
-        return None
-    return _unsupported_for_year_range(stat, intent, year, year)
-
-
-def _unsupported_for_year_range(
-    stat: str,
-    intent: str,
-    start_year: int,
-    end_year: int,
-) -> StructuredAnswer | None:
-    coverage = _structured_stat_year_coverage()
-    min_year = coverage.get("min")
-    max_year = coverage.get("max")
-
-    if start_year > end_year:
-        return ambiguous_outcome(
-            answer=(
-                f"The requested {stat} range {start_year}-{end_year} is reversed. "
-                "Ask with the earlier year first."
-            ),
-            intent=intent,
-            sources=[_coverage_source()],
-        )
-
-    if (
-        isinstance(min_year, int)
-        and isinstance(max_year, int)
-        and (start_year < min_year or end_year > max_year)
-    ):
-        return no_data_outcome(
-            answer=(
-                f"The local structured stat data covers {min_year}-{max_year}; "
-                f"the requested {stat} range was {start_year}-{end_year}."
-            ),
-            intent=intent,
-            sources=[_coverage_source()],
-        )
-
-    return None
-
-
-def _structured_stat_year_coverage() -> dict[str, Any]:
-    return compact_data_manifest().get("coverage", {}).get("structured_stat_years", {})
-
-
-def _coverage_source() -> SourceRecord:
-    return SourceRecord(
-        type="system",
-        label="Structured stat year coverage",
-        detail="Coverage comes from data/manifest.json for local DuckDB-backed stats.",
-        data_manifest=compact_data_manifest(),
-    )

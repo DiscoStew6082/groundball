@@ -70,8 +70,9 @@ def test_query_session_records_completed_traces_once():
     def execute(question, *, conversation):
         return _execution(f"answered {question}", query=question)
 
-    def record(execution):
+    def record(execution, session_key):
         assert execution.trace is not None
+        assert session_key == "browser-a"
         recorded.append(execution.trace)
 
     session = QuerySession(
@@ -86,6 +87,52 @@ def test_query_session_records_completed_traces_once():
     assert completed is not None
     assert completed.update.answer_text == "answered what is OPS"
     assert [trace.query for trace in recorded] == ["what is OPS"]
+
+
+def test_query_session_does_not_record_stale_completion_after_execution():
+    recorded: list[str] = []
+
+    def execute(question, *, conversation):
+        session.begin("career home run leaders", [], [], {}, session_key="browser-a")
+        return _execution(f"answered {question}", query=question)
+
+    session = QuerySession(
+        execute=execute,
+        default_question="who had the most RBIs in 1962",
+        record_execution=lambda execution, session_key: recorded.append(execution.trace.query),
+    )
+    first = session.begin("what is OPS", [], [], {}, session_key="browser-a")
+
+    completed = session.complete(
+        first.begun,
+        first.registry,
+        session_key="browser-a",
+    )
+
+    assert completed is None
+    assert recorded == []
+
+
+def test_query_session_records_latest_handled_failure():
+    recorded: list[str] = []
+
+    def execute(_question, *, conversation):
+        raise RuntimeError("backend failed")
+
+    def record(execution, session_key):
+        recorded.append(execution.answer.intent)
+
+    session = QuerySession(
+        execute=execute,
+        default_question="who had the most RBIs in 1962",
+        record_execution=record,
+    )
+    begun = session.begin("what is OPS", [], [], {}, session_key="browser-a")
+    completed = session.complete(begun.begun, begun.registry, session_key="browser-a")
+
+    assert completed is not None
+    assert completed.update.status == "failed"
+    assert recorded == ["error"]
 
 
 def test_query_session_empty_input_restores_default_without_executing():

@@ -2,30 +2,21 @@
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import yaml
 
-from baseball_rag.corpus.lifecycle import player_id_filter
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
-from baseball_rag.retrieval.chroma_store import RetrievedChunk
 from evals.questions import (
     EvalReport,
-    StrategyRunResult,
     build_eval_artifact,
     compare_to_baseline,
     format_eval_report,
     format_guardrail_report,
-    format_strategy_summary,
     load_cases,
     main,
     run_cases,
-    run_retrieval_strategy_cases,
-    run_strategy_cases,
     selected_cases,
-    selected_strategy_cases,
     validate_case,
-    validate_retrieved_chunks,
 )
 
 
@@ -91,7 +82,7 @@ def test_selected_cases_defaults_to_ci_safe_stat_queries():
     assert "freeform_braves_1936" not in selected_ids
 
 
-def test_default_selection_rejects_live_cases_even_when_ci_safe_flag_is_set():
+def test_default_selection_rejects_live_llm_cases_even_when_ci_safe_flag_is_set():
     cases = [
         load_cases()[0],
         load_cases()[0].__class__(
@@ -101,7 +92,7 @@ def test_default_selection_rejects_live_cases_even_when_ci_safe_flag_is_set():
                 "id": "bio",
                 "question": "who was Babe Ruth",
                 "intent": "player_biography",
-                "required_sources": ["chroma"],
+                "required_sources": ["duckdb"],
                 "ci_safe": True,
             },
         ),
@@ -114,69 +105,19 @@ def test_default_selection_rejects_live_cases_even_when_ci_safe_flag_is_set():
     ]
 
 
+def test_local_stat_definition_evals_are_deterministic_general_explanations():
+    cases = load_cases()
+    stat_definition_case = next(case for case in cases if case.id == "stat_definition_ops")
+
+    assert stat_definition_case.requires_live_services() is False
+    assert stat_definition_case in selected_cases(cases)
+
+
 def test_default_selected_cases_do_not_require_live_services():
     selected = selected_cases(load_cases())
 
     assert selected
     assert all(not case.requires_live_services() for case in selected)
-
-
-def test_selected_strategy_cases_filters_to_retrieval_relevant_cases():
-    stat_case = load_cases()[0]
-    bio_case = stat_case.__class__(
-        id="bio",
-        question="who was Babe Ruth",
-        spec={
-            "id": "bio",
-            "question": "who was Babe Ruth",
-            "intent": "player_biography",
-            "required_sources": ["chroma"],
-        },
-    )
-    unsupported_case = stat_case.__class__(
-        id="ambiguous",
-        question="who was Smith",
-        spec={
-            "id": "ambiguous",
-            "question": "who was Smith",
-            "expected_unsupported": True,
-        },
-    )
-
-    assert selected_strategy_cases([stat_case, bio_case, unsupported_case]) == [bio_case]
-
-
-def test_retrieval_category_comes_from_yaml_or_intent():
-    case = load_cases()[0].__class__(
-        id="bio",
-        question="who was Babe Ruth",
-        spec={
-            "id": "bio",
-            "question": "who was Babe Ruth",
-            "intent": "player_biography",
-            "retrieval_category": "player_biography",
-            "required_sources": ["chroma"],
-        },
-    )
-
-    assert case.retrieval_category == "player_biography"
-
-
-def test_retrieval_player_name_comes_from_yaml():
-    case = load_cases()[0].__class__(
-        id="bio",
-        question="who was Babe Ruth",
-        spec={
-            "id": "bio",
-            "question": "who was Babe Ruth",
-            "intent": "player_biography",
-            "retrieval_category": "player_biography",
-            "player_name": "Babe Ruth",
-            "required_sources": ["chroma"],
-        },
-    )
-
-    assert case.player_name == "Babe Ruth"
 
 
 def test_validate_case_checks_core_expectations():
@@ -247,48 +188,63 @@ def test_validate_case_checks_structured_reason_expectations():
     assert "review_reason: expected 'ambiguous', got 'unsupported'" in failures
 
 
+def test_validate_case_rejects_unexpected_unsupported_answers():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="supported_freeform",
+        question="best qualified batting average seasons",
+        spec={
+            "id": "supported_freeform",
+            "question": "best qualified batting average seasons",
+            "intent": "freeform_query",
+            "minimum_sample_size": "AB >= 100",
+        },
+    )
+
+    failures = validate_case(
+        case,
+        _answer(intent="freeform_query", unsupported=True, unsupported_reason="unsupported"),
+    )
+
+    assert "unsupported: expected False, got True" in failures
+
+
+def test_validate_case_checks_minimum_sample_size_expectation():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="qualified_avg",
+        question="best qualified batting average seasons",
+        spec={
+            "id": "qualified_avg",
+            "question": "best qualified batting average seasons",
+            "intent": "freeform_query",
+            "minimum_sample_size": "AB >= 100",
+        },
+    )
+
+    failures = validate_case(
+        case,
+        _answer(
+            intent="freeform_query",
+            rows=[{"nameFirst": "Tiny", "nameLast": "Sample", "AB": 42}],
+        ),
+    )
+
+    assert "minimum_sample_size: expected AB >= 100" in failures
+
+
 def test_validate_case_reports_mismatches():
     case = load_cases()[0]
 
     failures = validate_case(
         case,
-        _answer(answer="not enough", intent="general_explanation", source_type="chroma", rows=[]),
+        _answer(answer="not enough", intent="general_explanation", source_type="system", rows=[]),
     )
 
     assert "intent: expected 'stat_query', got 'general_explanation'" in failures
     assert "answer missing substring 'Davis'" in failures
     assert "sources missing required type 'duckdb'" in failures
     assert "row count: expected >= 1, got 0" in failures
-
-
-def test_validate_retrieved_chunks_checks_yaml_expectations():
-    case = load_cases()[0].__class__(
-        id="bio",
-        question="who was Babe Ruth",
-        spec={
-            "id": "bio",
-            "question": "who was Babe Ruth",
-            "intent": "player_biography",
-            "required_sources": ["chroma"],
-            "expected_answer_contains": ["Babe Ruth"],
-            "expected_retrieved_title_contains": ["Babe Ruth"],
-            "expected_player_id": "ruthba01",
-            "expected_doc_kind": "generated_player_profile",
-        },
-    )
-    chunks = [
-        RetrievedChunk(
-            text="Babe Ruth profile",
-            source="ruthba01.md",
-            title="Babe Ruth",
-            score=0.99,
-            player_id="ruthba01",
-            doc_kind="generated_player_profile",
-        )
-    ]
-
-    assert validate_retrieved_chunks(case, chunks) == []
-    assert "retrieval returned no chunks" in validate_retrieved_chunks(case, [])
 
 
 def test_run_cases_uses_mocked_answer_for_selected_cases_only():
@@ -301,7 +257,7 @@ def test_run_cases_uses_mocked_answer_for_selected_cases_only():
                 "id": "bio",
                 "question": "who was Babe Ruth",
                 "intent": "player_biography",
-                "required_sources": ["chroma"],
+                "required_sources": ["duckdb"],
             },
         ),
     ]
@@ -317,164 +273,6 @@ def test_run_cases_uses_mocked_answer_for_selected_cases_only():
     assert result.attempted == 1
     assert len(result.skipped) == 1
     assert asked == ["who had the most RBIs in 1962"]
-
-
-def test_run_strategy_cases_runs_each_strategy_with_answer_factory():
-    base_case = load_cases()[0]
-    cases = [
-        base_case,
-        base_case.__class__(
-            id="bio",
-            question="who was Babe Ruth",
-            spec={
-                "id": "bio",
-                "question": "who was Babe Ruth",
-                "intent": "player_biography",
-                "required_sources": ["chroma"],
-                "expected_answer_contains": ["Babe Ruth"],
-            },
-        ),
-    ]
-    calls: list[tuple[str, str]] = []
-
-    def answer_factory(strategy: str):
-        def answer_fn(question: str) -> StructuredAnswer:
-            calls.append((strategy, question))
-            return _answer(
-                answer="Babe Ruth biography",
-                intent="player_biography",
-                source_type="chroma",
-            )
-
-        return answer_fn
-
-    results = run_strategy_cases(
-        cases,
-        strategies=["semantic_chroma", "hybrid_player_bio"],
-        answer_factory=answer_factory,
-        include_live=True,
-    )
-
-    assert list(results) == ["semantic_chroma", "hybrid_player_bio"]
-    assert all(result.ok for result in results.values())
-    assert calls == [
-        ("semantic_chroma", "who was Babe Ruth"),
-        ("hybrid_player_bio", "who was Babe Ruth"),
-    ]
-
-
-def test_run_retrieval_strategy_cases_uses_route_resolve_and_raw_chunks():
-    base_case = load_cases()[0]
-    case = base_case.__class__(
-        id="bio",
-        question="who was Babe Ruth",
-        spec={
-            "id": "bio",
-            "question": "who was Babe Ruth",
-            "intent": "player_biography",
-            "retrieval_category": "player_biography",
-            "player_name": "Babe Ruth",
-            "required_sources": ["chroma"],
-            "expected_answer_contains": ["Babe Ruth"],
-            "expected_player_id": "ruthba01",
-        },
-    )
-    calls: list[dict] = []
-
-    def route_fn(question: str):
-        raise AssertionError(f"route should not be called for metadata-complete case: {question}")
-
-    def resolve_player(name: str):
-        assert name == "Babe Ruth"
-        return SimpleNamespace(player_id="ruthba01")
-
-    def retrieve_fn(query, *, top_k=3, persist_dir=None, where=None):
-        calls.append({"query": query, "top_k": top_k, "where": where})
-        return [
-            RetrievedChunk(
-                text="Babe Ruth profile",
-                source="ruthba01.md",
-                title="Babe Ruth",
-                score=0.98,
-                player_id="ruthba01",
-            )
-        ]
-
-    results = run_retrieval_strategy_cases(
-        [case],
-        strategies=["exact_player_id"],
-        route_fn=route_fn,
-        player_resolver_fn=resolve_player,
-        retrieve_fn=retrieve_fn,
-    )
-
-    assert results["exact_player_id"].ok
-    assert len(results["exact_player_id"].passed) == 1
-    assert calls == [{"query": "Babe Ruth", "top_k": 1, "where": player_id_filter("ruthba01")}]
-
-
-def test_run_retrieval_strategy_cases_skips_non_applicable_strategy():
-    base_case = load_cases()[0]
-    case = base_case.__class__(
-        id="broad",
-        question="what is OPS",
-        spec={
-            "id": "broad",
-            "question": "what is OPS",
-            "intent": "general_explanation",
-            "retrieval_category": "general_explanation",
-            "required_sources": ["chroma"],
-        },
-    )
-
-    def route_fn(question: str):
-        return SimpleNamespace(
-            intent="general_explanation",
-            player_name=None,
-            raw_question=question,
-        )
-
-    results = run_retrieval_strategy_cases(
-        [case],
-        strategies=["exact_player_id", "semantic_chroma"],
-        route_fn=route_fn,
-        retrieve_fn=lambda *_args, **_kwargs: [
-            RetrievedChunk(
-                text="OPS is on-base plus slugging",
-                source="ops.md",
-                title="OPS",
-                score=1,
-            )
-        ],
-    )
-
-    assert len(results["exact_player_id"].skipped) == 1
-    assert results["exact_player_id"].skipped[0].reason == (
-        "strategy does not apply to 'general_explanation'"
-    )
-    assert len(results["semantic_chroma"].passed) == 1
-
-
-def test_format_strategy_summary_renders_table():
-    result = StrategyRunResult()
-    result.by_strategy["exact_player_id"] = run_cases(
-        [load_cases()[0]],
-        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
-    )
-    result.by_strategy["semantic_chroma"] = run_cases(
-        [load_cases()[0]],
-        answer_fn=lambda _question: _answer(answer="wrong", rows=[]),
-    )
-
-    summary = format_strategy_summary(result)
-
-    assert "strategy" in summary
-    assert "exact_player_id" in summary
-    assert "semantic_chroma" in summary
-    assert "passed" in summary
-    assert "failed" in summary
-    assert "skipped" in summary
-    assert "chunks" in summary
 
 
 def test_format_eval_report_includes_counts_coverage_and_live_note():
@@ -517,13 +315,73 @@ def test_format_eval_report_includes_counts_coverage_and_live_note():
     assert "- Pass rate: 66.7%" in report
     assert "- Required pass rate: 85%" in report
     assert "Deterministic/CI-safe mode was used; non-default cases were skipped." in report
-    assert "skipped case(s) may require Chroma, corpus, and LLM services" in report
+    assert "skipped case(s) may require LM Studio" in report
     assert "## Skipped Live Cases" in report
     assert "## Risk Categories" in report
     assert "- Unsupported guardrails:" in report
     assert "stat query: `stat_rbi_1962`" in report
-    assert "player biography retrieval: `player_bio_babe_ruth`" in report
+    assert "LLM player biography: `player_bio_babe_ruth`" in report
     assert "- `broken_case`: answer missing substring 'Ruth'" in report
+
+
+def test_format_eval_report_labels_live_failures_as_full_suite_failures():
+    cases = load_cases()
+    result = run_cases(
+        cases[:1],
+        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+    )
+    result.failed.append(
+        result.passed[0].__class__(
+            case_id="live_broken_case",
+            status="failed",
+            failures=["unsupported: expected True, got False"],
+        )
+    )
+
+    report = format_eval_report(
+        EvalReport(
+            command="python -m evals.questions --include-live",
+            cases=cases,
+            include_live=True,
+            result=result,
+        )
+    )
+
+    assert (
+        "- Release recommendation: **BLOCK - investigate full local/live eval "
+        "failures before release**" in report
+    )
+    assert "deterministic eval failures" not in report
+
+
+def test_build_eval_artifact_labels_live_failures_as_full_suite_failures():
+    cases = load_cases()
+    result = run_cases(
+        cases[:1],
+        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+    )
+    result.failed.append(
+        result.passed[0].__class__(
+            case_id="live_broken_case",
+            status="failed",
+            failures=["unsupported: expected True, got False"],
+        )
+    )
+
+    artifact = build_eval_artifact(
+        EvalReport(
+            command="python -m evals.questions --include-live --json-report eval-report.json",
+            cases=cases,
+            include_live=True,
+            result=result,
+        ),
+        generated_at="2026-04-28T00:00:00+00:00",
+    )
+
+    assert (
+        artifact["summary"]["release_recommendation"]
+        == "BLOCK - investigate full local/live eval failures before release"
+    )
 
 
 def test_build_eval_artifact_includes_summary_versions_and_cases():
@@ -814,7 +672,7 @@ def test_main_blocks_release_when_no_deterministic_cases_attempted(tmp_path: Pat
                         "id": "bio",
                         "question": "who was Babe Ruth",
                         "intent": "player_biography",
-                        "required_sources": ["chroma"],
+                        "required_sources": ["duckdb"],
                     }
                 ],
             }

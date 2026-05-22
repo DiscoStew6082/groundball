@@ -69,7 +69,7 @@ class Layer(Enum):
 #### 1.2 — `test_component_registry_singleton`
 - [ ] A `get_registry()` function returns the same instance every time (singleton)
 - [ ] Registry tracks all architecture components
-- [ ] Components cover: cli, api_server, query_router, chroma_store, duckdb, corpus_grounding, llm, prompt
+- [ ] Components cover: cli, api_server, query_router, claim_verifier, duckdb, llm, prompt
 
 #### 1.3 — `test_registry_by_layer`
 - [ ] `get_components_by_layer(Layer.ROUTING)` returns only routing-layer components
@@ -113,7 +113,7 @@ class Layer(Enum):
 - [ ] On exception, error is recorded and re-raised
 
 #### 2.5 — `test_trace_hooks_integrated`
-- [ ] Tracing hooks are called in: `cli.answer()`, router.route(), chroma_store.query()
+- [ ] Tracing hooks are called in: `cli.answer()`, router.route(), DuckDB query/verification paths
 - [ ] Hooks can be disabled via env var `DISABLE_TRACING=true`
 - [ ] A full query produces a `PipelineTrace` object
 

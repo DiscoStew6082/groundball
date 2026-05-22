@@ -189,6 +189,13 @@ class TestRouter:
         assert result.intent == "freeform_query"
         assert result.raw_question == "who won the Triple Crown and which years"
 
+    def test_ambiguous_500_club_routes_to_freeform_case(self):
+        result = route("who is in the 500 club")
+
+        assert isinstance(result, FreeformQueryCase)
+        assert result.intent == "freeform_query"
+        assert result.raw_question == "who is in the 500 club"
+
     def test_generic_lowercase_bio_question_does_not_route_as_named_player(self):
         result = route("who was the best hitter")
 

@@ -30,10 +30,12 @@ class TestStatQueryPipeline:
         assert len(result) > 50
 
     def test_full_pipeline_1800s_rate_stat_year(self):
-        """CLI parses 1800s seasons instead of falling back to career leaders."""
+        """CLI answers qualified AVG seasons instead of falling back to career leaders."""
         result = answer("highest batting average in 1894")
 
-        assert "Top AVG leaders (1894-1894):" in result
+        assert "Hugh" in result
+        assert "Duffy" in result
+        assert "AB: 539" in result
         assert "All-time career AVG leaders" not in result
 
     def test_career_hr_leaders_still_works(self):

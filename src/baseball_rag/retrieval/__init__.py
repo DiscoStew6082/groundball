@@ -1,10 +1,7 @@
-"""RAG retrieval layer."""
+"""Retired retrieval package.
 
-from baseball_rag.retrieval.chroma_store import get_store, retrieve
-from baseball_rag.retrieval.strategies import (
-    RetrievalStrategy,
-    available_strategy_names,
-    get_strategy,
-)
+Chroma-backed retrieval was removed from runtime. Structured answers now use
+DuckDB for database-backed facts and the local LLM for open explanations.
+"""
 
-__all__ = ["RetrievalStrategy", "available_strategy_names", "get_store", "get_strategy", "retrieve"]
+__all__: list[str] = []

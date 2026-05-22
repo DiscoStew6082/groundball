@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from baseball_rag.api.server import app
@@ -19,8 +20,7 @@ class TestApi:
 
     def test_query_endpoint_returns_answer(self, caplog):
         """POST /query with JSON body returns {answer: str, sources: list}."""
-        # Note: This will call the real cli.answer(). If ChromaDB isn't indexed,
-        # it returns a fallback message — that's fine.
+        # Note: This calls the real answer path, so we check response structure.
         caplog.set_level("INFO", logger="baseball_rag.api.server")
 
         response = client.post("/query", json={"question": "who had the most RBIs in 1962"})
@@ -146,6 +146,35 @@ class TestApi:
         assert data["metadata"]["unsupported_reason"] == "ambiguous"
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "ambiguous"
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "who led the league in vibes in 1999",
+            "career HR; drop table batting leaders",
+            "which team should I bet on tonight",
+            "is Aaron Judge injured today",
+            "what is the Yankees score right now",
+            "what is Shohei Ohtani's current salary",
+            "who is the greatest baseball player ever",
+            "who won the NBA finals in 2020",
+            "show me Statcast barrel rate leaders",
+            "who led Triple-A in home runs in 2021",
+        ],
+    )
+    def test_query_endpoint_rejects_policy_unsupported_questions(
+        self, question, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post("/query", json={"question": question})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "unsupported"
+        assert data["review"]["queued"] is True
+        assert data["review"]["reason"] == "unsupported"
 
     def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
@@ -315,15 +344,43 @@ class TestApi:
         data = response.json()
         assert data["ok"] is True
         assert data["include_live"] is False
-        assert data["summary"]["attempted"] == 20
+        assert data["summary"]["attempted"] == 25
         assert data["summary"]["recommendation"] in {"PASS", "WARN"}
         assert data["markdown"].startswith("# Baseball RAG Eval Report")
 
-    def test_evals_run_rejects_live_options_without_opt_in(self):
+    def test_evals_run_include_live_adds_llm_warning(self, monkeypatch):
+        monkeypatch.setattr(
+            "baseball_rag.api.server._run_eval_payload",
+            lambda *, include_live: {
+                "ok": True,
+                "mode": "answer",
+                "include_live": include_live,
+                "minimum_pass_rate": 0.85,
+                "summary": {"attempted": 0},
+                "results": {"passed": [], "failed": [], "skipped": []},
+                "failed": [],
+                "skipped": [],
+                "markdown": "# Baseball RAG Eval Report\n",
+                "warnings": [],
+            },
+        )
+
+        response = client.post("/evals/run", json={"include_live": True})
+
+        assert response.status_code == 200
+        assert "LM Studio" in response.json()["warnings"][0]
+
+    def test_evals_run_rejects_removed_retrieval_options(self, monkeypatch):
+        monkeypatch.setattr(
+            "baseball_rag.api.server._run_eval_payload",
+            lambda *, include_live: (_ for _ in ()).throw(
+                AssertionError("eval runner should not be called")
+            ),
+        )
+
         response = client.post("/evals/run", json={"retrieval_only": True})
 
-        assert response.status_code == 400
-        assert "include_live=true" in response.json()["detail"]
+        assert response.status_code == 422
 
     def test_evals_run_default_matches_ci_gate(self):
         response = client.post("/evals/run", json={})
@@ -331,7 +388,7 @@ class TestApi:
         assert response.status_code == 200
         data = response.json()
         assert data["options"]["include_live"] is False
-        assert data["summary"]["attempted"] == 20
+        assert data["summary"]["attempted"] == 25
         assert data["results"]["failed"] == []
 
     def test_guardrails_coverage_endpoint_is_manifest_only(self):

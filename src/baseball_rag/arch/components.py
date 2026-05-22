@@ -174,7 +174,7 @@ class ComponentRegistry:
             return None
 
     # ------------------------------------------------------------------
-    # Defaults — register the eight known components
+    # Defaults — register the active runtime components
     # ------------------------------------------------------------------
 
     def _register_defaults(self) -> None:
@@ -187,6 +187,15 @@ class ComponentRegistry:
                 ),
                 layer=Layer.API,
                 file_path="src/baseball_rag/cli.py",
+            )
+        )
+        self.register(
+            DiagramComponent(
+                id="gradio",
+                label="Gradio UI",
+                description="Browser dashboard where a user submits questions and views results.",
+                layer=Layer.API,
+                file_path="src/baseball_rag/web_app.py",
             )
         )
         self.register(
@@ -205,8 +214,8 @@ class ComponentRegistry:
                 id="query-router",
                 label="Query Router",
                 description=(
-                    "Keyword-based intent classifier that routes to stat_query "
-                    "or general_explanation paths."
+                    "LLM-assisted intent classifier that routes to stat_query, "
+                    "player_biography, freeform_query, or general_explanation paths."
                 ),
                 layer=Layer.ROUTING,
                 file_path="src/baseball_rag/routing/query_router.py",
@@ -214,11 +223,11 @@ class ComponentRegistry:
         )
         self.register(
             DiagramComponent(
-                id="chroma-store",
-                label="Chroma Store",
-                description="Persistent vector store holding embedded baseball corpus chunks.",
+                id="claim-verifier",
+                label="Biography Claim Verifier",
+                description="DuckDB-backed verifier for extracted biography stat claims.",
                 layer=Layer.RETRIEVAL,
-                file_path="src/baseball_rag/retrieval/chroma_store.py",
+                file_path="src/baseball_rag/db/player_stat_claims.py",
             )
         )
         self.register(
@@ -231,18 +240,6 @@ class ComponentRegistry:
                 ),
                 layer=Layer.DATA,
                 file_path="src/baseball_rag/db/duckdb_schema.py",
-            )
-        )
-        self.register(
-            DiagramComponent(
-                id="corpus-grounding",
-                label="Corpus Grounding",
-                description=(
-                    "Retrieved document chunks from the baseball markdown corpus "
-                    "used to ground LLM answers."
-                ),
-                layer=Layer.DATA,
-                file_path="src/baseball_rag/corpus/__init__.py",
             )
         )
         self.register(

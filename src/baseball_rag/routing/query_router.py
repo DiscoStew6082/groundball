@@ -37,6 +37,7 @@ from baseball_rag.db.stat_registry import (
     supported_stat_prompt_list,
 )
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
+from baseball_rag.routing.freeform_ownership import deterministic_freeform_owns
 
 _NAME_TOKEN_RE = r"[^\W\d_](?:[^\W\d_]|[.'-])*"
 _NAME_RE = rf"{_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})*"
@@ -348,6 +349,14 @@ def route(question: str) -> RoutedCase:
             raw_question=question,
         )
 
+    claim_verification_name = _extract_claim_verification_player_name(question)
+    if claim_verification_name is not None:
+        return routed_case(
+            intent="player_biography",
+            player_name=claim_verification_name,
+            raw_question=question,
+        )
+
     player_bio_name = _extract_player_bio_name_heuristic(question)
     if player_bio_name is not None:
         return routed_case(
@@ -356,14 +365,13 @@ def route(question: str) -> RoutedCase:
             raw_question=question,
         )
 
-    freeform_can_plan = _can_plan_deterministic_freeform(question)
     deterministic = _heuristic_route(question)
     if (
         deterministic.intent == "stat_query"
         and deterministic.stat is not None
         and (_should_use_deterministic_stat_route(question) or deterministic.player_name)
     ):
-        if freeform_can_plan and _should_use_deterministic_freeform_route(
+        if deterministic_freeform_owns(
             question,
             competing_stat=deterministic.stat,
         ):
@@ -377,7 +385,7 @@ def route(question: str) -> RoutedCase:
         and deterministic.stat is not None
         and not _should_use_deterministic_stat_route(question)
     ):
-        if freeform_can_plan and _should_use_deterministic_freeform_route(
+        if deterministic_freeform_owns(
             question,
             competing_stat=deterministic.stat,
         ):
@@ -387,7 +395,7 @@ def route(question: str) -> RoutedCase:
             )
         return deterministic
 
-    if freeform_can_plan:
+    if deterministic_freeform_owns(question):
         return routed_case(
             intent="freeform_query",
             raw_question=question,
@@ -480,7 +488,7 @@ def _heuristic_route(question: str) -> RoutedCase:
     # Only classify as stat_query if it's clearly a league-wide leader request
     lower_q = question.lower()
     leader_re = re.compile(
-        r"\b(career|most|least|highest|lowest|lead|leads|led|leader|leaders|top|bottom|best)\b"
+        r"\b(career|most|least|highest|lowest|lead|leads|led|leader|leaders|top|bottom|best|greatest)\b"
     )
     is_leaderboard = bool(leader_re.search(lower_q))
 
@@ -680,24 +688,6 @@ def _should_use_deterministic_stat_route(question: str) -> bool:
     return any(term in lower_q for term in leaderboard_terms)
 
 
-def _can_plan_deterministic_freeform(question: str) -> bool:
-    """Return True when the freeform planner owns a deterministic template."""
-    from baseball_rag.db.freeform_runtime import can_plan_deterministically
-
-    return can_plan_deterministically(question)
-
-
-def _should_use_deterministic_freeform_route(
-    question: str,
-    *,
-    competing_stat: str | None = None,
-) -> bool:
-    """Return True when deterministic freeform should win route precedence."""
-    from baseball_rag.db.freeform_runtime import should_route_deterministic_freeform
-
-    return should_route_deterministic_freeform(question, competing_stat=competing_stat)
-
-
 def _extract_player_name_heuristic(question: str) -> str | None:
     """Extract common two-word player-name patterns for stat questions."""
     import re
@@ -745,6 +735,27 @@ def _extract_player_bio_name_heuristic(question: str) -> str | None:
         if match and _looks_like_explicit_player_bio_name(match.group(1)):
             return _normalize_player_name_casing(match.group(1))
     return None
+
+
+def _extract_claim_verification_player_name(question: str) -> str | None:
+    lower_q = question.lower()
+    if "duckdb" not in lower_q or "claim" not in lower_q:
+        return None
+    if not any(term in lower_q for term in ("verified", "verify", "verifiable")):
+        return None
+
+    for pattern in (
+        rf"^\s*({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+?)"
+        r"(?=,|\s+(?:recorded|had|hit|has|was|is)\b)",
+        rf"\bthat\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+?)"
+        r"(?=\s+(?:recorded|had|hit|has|was|is)\b)",
+        rf"\?\s*({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+?)"
+        r"(?=\s+(?:recorded|had|hit|has|was|is)\b)",
+    ):
+        match = re.search(pattern, question)
+        if match and _looks_like_player_name(match.group(1)):
+            return _normalize_player_name_casing(match.group(1))
+    return _extract_player_bio_name_heuristic(question)
 
 
 def _looks_like_explicit_player_bio_name(value: str) -> bool:

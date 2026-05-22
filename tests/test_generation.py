@@ -1,5 +1,6 @@
 """Tests for generation.answer() — Phase 5.5."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -13,21 +14,23 @@ from baseball_rag.generation.prompt import (
     build_player_bio_prompt,
     build_stat_query_prompt,
 )
-from baseball_rag.retrieval.chroma_store import RetrievedChunk
+
+
+def _chunk(text: str, source: str, title: str, score: float = 0.95) -> SimpleNamespace:
+    return SimpleNamespace(text=text, source=source, title=title, score=score)
 
 
 class TestGenerationAnswer:
     def test_generate_with_context(self):
         """generate_answer(question, chunks) returns non-empty string mentioning context player."""
         chunks = [
-            RetrievedChunk(
+            _chunk(
                 text=(
                     "Babe Ruth was a legendary baseball player who played for "
                     "the NY Yankees from 1920-1934. He hit 714 career home runs."
                 ),
                 source="hof/babe_ruth.md",
                 title="Babe Ruth",
-                score=0.95,
             ),
         ]
         result = answer("who was babe ruth", chunks)
@@ -46,11 +49,10 @@ class TestGenerationExceptionHandling:
 
         with patch("baseball_rag.generation.llm.make_request", fake_request):
             chunks = [
-                RetrievedChunk(
+                _chunk(
                     text="Babe Ruth hit 714 home runs.",
                     source="hof/babe_ruth.md",
                     title="Babe Ruth",
-                    score=0.95,
                 ),
             ]
             with pytest.raises(TimeoutError, match="timed out"):
@@ -67,11 +69,10 @@ class TestGenerationExceptionHandling:
 
         with patch("baseball_rag.generation.llm.make_request", fake_request):
             chunks = [
-                RetrievedChunk(
+                _chunk(
                     text="Babe Ruth hit 714 home runs.",
                     source="hof/babe_ruth.md",
                     title="Babe Ruth",
-                    score=0.95,
                 ),
             ]
             with pytest.raises(json.JSONDecodeError):
@@ -108,17 +109,15 @@ class TestBuildGroundedPrompt:
     def test_formats_context_documents_with_sources(self):
         """Grounded prompt includes source titles, document text, and question."""
         chunks = [
-            RetrievedChunk(
+            _chunk(
                 text="Babe Ruth hit 714 career home runs.",
                 source="hof/babe_ruth.md",
                 title="Babe Ruth",
-                score=0.95,
             ),
-            RetrievedChunk(
+            _chunk(
                 text="Hank Aaron hit 755 career home runs.",
                 source="hof/hank_aaron.md",
                 title="Hank Aaron",
-                score=0.93,
             ),
         ]
 
@@ -140,11 +139,10 @@ class TestBuildGroundedPrompt:
     def test_specialized_grounded_prompts_delegate_to_shared_builder(self, builder):
         """Specialized prompt builders render the same output as build_grounded_prompt."""
         chunks = [
-            RetrievedChunk(
+            _chunk(
                 text="Jackie Robinson debuted for Brooklyn in 1947.",
                 source="hof/jackie_robinson.md",
                 title="Jackie Robinson",
-                score=0.97,
             ),
         ]
         question = "When did Jackie Robinson debut?"
@@ -195,6 +193,18 @@ class TestStripReasoningBlock:
         result = _strip_reasoning_block(raw)
         assert not result.startswith("*")
         assert "Rollie Fingers" in result
+
+    def test_strips_leading_blank_lines_before_bullet_planning(self):
+        """Leading blank lines should not let bullet planning leak through."""
+        raw = (
+            "\n\n"
+            "* Subject: Nolan Ryan\n"
+            "* Goal: produce biography JSON\n"
+            '{"answer": "Nolan Ryan was a Hall of Fame pitcher.", "stat_claims": []}'
+        )
+        result = _strip_reasoning_block(raw)
+        assert result.startswith('{"answer"')
+        assert "Subject:" not in result
 
     def test_strips_markdown_fence(self):
         """Content wrapped in ``` fences is extracted."""

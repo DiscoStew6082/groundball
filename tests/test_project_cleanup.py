@@ -1,0 +1,74 @@
+"""Repository cleanup policies for retired and optional surfaces."""
+
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _dependency_name(requirement: str) -> str:
+    head = requirement.split(";", 1)[0].strip()
+    return head.split("[", 1)[0].split("<", 1)[0].split(">", 1)[0].split("=", 1)[0].strip()
+
+
+def test_default_package_excludes_optional_mlb_api_mcp_surface() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    mypy_config = (ROOT / "mypy.ini").read_text(encoding="utf-8")
+
+    assert pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == [
+        "src/baseball_rag"
+    ]
+    assert "COPY src/ ./src/" not in dockerfile
+    assert "COPY src/baseball_rag/ ./src/baseball_rag/" in dockerfile
+    assert "mypy-mlb_api_mcp" not in mypy_config
+    assert not (ROOT / "src" / "baseball_rag" / "mcp.py").exists()
+
+    dependency_names = {_dependency_name(dep) for dep in pyproject["project"]["dependencies"]}
+    assert "fastmcp" not in dependency_names
+    assert "python-mlb-statsapi" not in dependency_names
+    assert "pybaseball" not in dependency_names
+
+
+def test_ci_runs_all_non_llm_tests_without_chroma_dependency() -> None:
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert "chromadb" not in ci
+    assert '-m "not llm"' in ci
+    assert "unit and not llm" not in ci
+    assert "chroma" not in gitignore.lower()
+
+
+def test_stale_space_deploy_surface_is_not_active() -> None:
+    assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
+    assert not (ROOT / "space-app").exists()
+
+
+def test_stale_architecture_handoff_docs_are_archived() -> None:
+    active_docs = {
+        "architecture-all-six-deepening-handoff-plan.md",
+        "architecture-deepening-handoff.md",
+        "architecture-deepening-plan.md",
+        "architecture-explorer-plan.md",
+        "architecture-worker-handoff-plan.md",
+    }
+
+    for filename in active_docs:
+        assert not (ROOT / "docs" / filename).exists()
+        assert (ROOT / "docs" / "archive" / "architecture" / filename).exists()
+
+
+def test_docs_match_current_eval_and_corpus_runtime() -> None:
+    demo = (ROOT / "docs" / "demo-governance.md").read_text(encoding="utf-8")
+    corpus = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    development = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+
+    assert "evals: 25 passed, 0 failed, 43 skipped" in demo
+    assert "evals: 20 passed, 0 failed, 48 skipped" not in demo
+    assert "local stat-definition Markdown" in corpus
+    assert "stat-definition Markdown remains" in development
+    assert "runtime grounding for supported stat-definition explanations" in development
+    assert (
+        'General explanations such as "what is OPS?" are answered by the LLM directly' not in corpus
+    )

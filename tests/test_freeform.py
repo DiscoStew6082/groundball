@@ -123,10 +123,12 @@ class TestDeterministicTemplates:
         ]
 
     def test_career_pitching_wins_template_is_planned_before_execution(self):
+        from baseball_rag.db import freeform_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
         from baseball_rag.db.freeform import can_plan_deterministically, plan_query
         from baseball_rag.routing import FreeformQueryCase, route
 
+        assert not hasattr(freeform_runtime, "_template_source_detail")
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             planned = plan_query("career pitching wins leaders", get_duckdb())
 
@@ -172,6 +174,34 @@ class TestDeterministicTemplates:
             ("Pete", "Alexander", 373),
         ]
 
+    def test_public_freeform_facade_preserves_planning_compatibility(self):
+        import baseball_rag.db.freeform as freeform
+        from baseball_rag.db.duckdb_schema import get_duckdb
+
+        conn = get_duckdb()
+
+        with patch("baseball_rag.db.freeform.make_request") as mock_call:
+            planned = freeform.plan_query("career pitching wins leaders", conn)
+            result = freeform.query("career pitching wins leaders", conn)
+
+        assert mock_call.call_count == 0
+        assert freeform.can_plan_deterministically("career pitching wins leaders") is True
+        assert (
+            freeform.should_route_deterministic_freeform(
+                "career pitching wins leaders",
+                competing_stat="W",
+            )
+            is True
+        )
+        assert planned.planning_path == "deterministic_template"
+        assert planned.params == [25]
+        assert result.params == planned.params
+        assert result.rows[:3] == [
+            ("Cy", "Young", 511),
+            ("Walter", "Johnson", 417),
+            ("Pete", "Alexander", 373),
+        ]
+
     def test_qualified_season_era_template_bypasses_llm(self):
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             result = self._run_query("who had the lowest ERA in 1968 with enough innings")
@@ -206,6 +236,70 @@ class TestDeterministicTemplates:
         assert result.columns == ["unsupported_reason"]
         assert result.unsupported_reason == "ambiguous"
 
+    def test_matched_template_exposes_route_ownership_and_unsupported_policy(self):
+        from baseball_rag.db.freeform_templates import match_template
+
+        matched = match_template("who is in the 500 club")
+
+        assert matched is not None
+        assert matched.route_owner is True
+        assert matched.unsupported_reason == "ambiguous"
+        assert matched.source_detail == "Matched local deterministic freeform SQL template."
+        assert matched.assembled.params == [
+            "The question says 500 club but does not specify home runs or pitching wins."
+        ]
+
+    @pytest.mark.parametrize(
+        ("question", "expected_team"),
+        [
+            ("who played for the Braves in 1936", "Boston Braves"),
+            ("who played for the Braves%' OR 1=1 -- in 1936", "Boston Braves"),
+            ("who played for the Yankees in 1950", "New York Yankees"),
+        ],
+    )
+    def test_roster_template_bypasses_llm_with_parameterized_team_year(
+        self, question: str, expected_team: str
+    ):
+        with patch("baseball_rag.db.freeform.make_request") as mock_call:
+            result = self._run_query(question)
+
+        assert mock_call.call_count == 0
+        assert result.row_count >= 10
+        assert "?" in result.sql
+        assert "OR 1=1" not in result.sql
+        assert expected_team in {row[2] for row in result.rows}
+
+    def test_qualified_batting_average_template_bypasses_llm_with_ab_guard(self):
+        with patch("baseball_rag.db.freeform.make_request") as mock_call:
+            result = self._run_query("highest batting average in 1894")
+
+        assert mock_call.call_count == 0
+        assert result.params == [1894, 100, 100]
+        assert "AB >= ?" in result.sql
+        assert result.columns == ["nameFirst", "nameLast", "yearID", "lgID", "AVG", "AB"]
+        assert "batting average" in result.source_detail
+        assert "ERA" not in result.source_detail
+
+    def test_qualified_batting_average_seasons_template_does_not_require_year(self):
+        with patch("baseball_rag.db.freeform.make_request") as mock_call:
+            result = self._run_query("best qualified batting average seasons")
+
+        assert mock_call.call_count == 0
+        assert result.unsupported_reason is None
+        assert result.params == [100]
+        assert "AB >= ?" in result.sql
+        assert result.rows[0] == ("Levi", "Meyerle", 1871, "NA", 0.492, 130)
+
+    def test_qualified_era_seasons_template_does_not_require_year(self):
+        with patch("baseball_rag.db.freeform.make_request") as mock_call:
+            result = self._run_query("best qualified ERA seasons")
+
+        assert mock_call.call_count == 0
+        assert result.unsupported_reason is None
+        assert result.params == [300]
+        assert "IPouts >= ?" in result.sql
+        assert result.rows[0] == ("Dick", "Redding", 1917, "WES", 0.82, 461)
+
     def test_underqualified_era_is_unsupported_without_llm(self):
         with patch("baseball_rag.db.freeform.make_request") as mock_call:
             result = self._run_query("career ERA leaders")
@@ -214,6 +308,33 @@ class TestDeterministicTemplates:
         assert result.row_count == 0
         assert result.columns == ["unsupported_reason"]
         assert result.unsupported_reason == "unsupported"
+
+    def test_schema_uses_registry_formula_notes(self):
+        import baseball_rag.db.freeform_schema as schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+
+        schema._cached_schema = None
+        text = schema._get_schema_cached(get_duckdb())
+
+        assert "batting: OPS =" in text
+        assert "minimum sample: AB >= 100" in text
+        assert "lower values rank better" in text
+
+    def test_avg_and_era_templates_use_registry_stat_semantics(self):
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.freeform import query
+        from baseball_rag.db.stat_registry import get_stat
+
+        conn = get_duckdb()
+        avg_result = query("highest batting average in 1894", conn)
+        era_result = query("career ERA leaders qualified by enough innings", conn)
+
+        assert get_stat("AVG").expression("b") in avg_result.sql
+        assert get_stat("AVG").sample_clause("b", threshold="?") in avg_result.sql
+        assert get_stat("ERA").aggregate_expression("pi") in era_result.sql
+        assert get_stat("ERA").sample_clause("pi", aggregate=True, threshold="?") in era_result.sql
+        assert "batting average" in avg_result.source_detail
+        assert "career ERA leaders template" in era_result.source_detail
 
 
 class TestParseIntent:
@@ -369,7 +490,7 @@ class TestGenerateSQLDeterminism:
             _generate_sql("Who played for the Braves in 1936?", "schema")
             assert mock_call.call_count == 1
 
-    def test_llm_intent_is_planned_before_execution(self):
+    def test_roster_intent_is_planned_before_execution_without_llm(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
         from baseball_rag.db.freeform import can_plan_deterministically, plan_query
 
@@ -381,12 +502,12 @@ class TestGenerateSQLDeterminism:
         with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp) as mock_call:
             planned = plan_query("Who played for the Yankees in 1950?", get_duckdb())
 
-        assert can_plan_deterministically("Who played for the Yankees in 1950?") is False
-        assert mock_call.call_count == 1
-        assert planned.planning_path == "llm_intent"
-        assert planned.params == ["%Yankees%", 1950]
-        assert planned.source_label == "LLM-backed typed freeform query"
-        assert "typed intent" in planned.source_detail
+        assert can_plan_deterministically("Who played for the Yankees in 1950?") is True
+        assert mock_call.call_count == 0
+        assert planned.planning_path == "deterministic_template"
+        assert planned.params == ["%yankees%", 1950]
+        assert planned.source_label == "Deterministic template query"
+        assert "roster template" in planned.source_detail
         assert planned.query_spec is not None
         assert planned.query_spec.stat_tables == ["batting"]
 
@@ -407,7 +528,7 @@ class TestGenerateSQLDeterminism:
         assert planned.query_spec.team_identity.team_id == "BSN"
         assert planned.query_spec.team_identity.year == 1936
         assert planned.params == ["BSN", 1936]
-        assert "batting.teamID = ?" in planned.sql
+        assert "b.teamID = ?" in planned.sql
 
     def test_router_year_can_feed_historical_team_identity_when_llm_omits_year(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
@@ -496,11 +617,11 @@ class TestFreeformProvenance:
 
         decision = SimpleNamespace(
             intent="freeform_query",
-            raw_question="Who played for the Braves in 1936?",
+            raw_question="Who played for the Mariners in 1977?",
         )
         mock_resp = MagicMock()
         mock_resp.content = (
-            '{"stat_tables": ["batting"], "team_name_pattern": "Braves", "year_value": 1936}'
+            '{"stat_tables": ["batting"], "team_name_pattern": "Mariners", "year_value": 1977}'
         )
 
         with patch("baseball_rag.db.freeform.make_request", return_value=mock_resp):
@@ -508,6 +629,51 @@ class TestFreeformProvenance:
 
         assert result.sources[0].label == "LLM-backed typed freeform query"
         assert "typed intent" in (result.sources[0].detail or "")
+
+    def test_roster_answer_includes_historical_team_name_without_llm(self):
+        from baseball_rag.service import answer
+
+        with patch(
+            "baseball_rag.db.freeform.make_request",
+            side_effect=AssertionError("roster template should not call the LLM"),
+        ):
+            result = answer("who played for the Braves in 1936")
+
+        assert result.intent == "freeform_query"
+        assert "Braves" in result.answer
+        assert result.sources[0].rows
+        assert result.sources[0].sql and "?" in result.sources[0].sql
+
+    def test_freeform_answer_uses_query_scope_for_relative_single_season_year(
+        self,
+        monkeypatch,
+    ):
+        from baseball_rag.db.freeform_types import FreeformResult
+        from baseball_rag.routing import FreeformQueryCase
+        from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+        from baseball_rag.service import _answer_freeform
+
+        monkeypatch.setenv("BASEBALL_RAG_CURRENT_YEAR", "1937")
+        decision = FreeformQueryCase(
+            raw_question="Who played for the Braves last year?",
+            time_period=TimePeriod(
+                type=TimePeriodType.RELATIVE,
+                value={"direction": "past", "unit": "year", "count": 1},
+            ),
+        )
+        result = FreeformResult(
+            sql="SELECT nameFirst FROM batting WHERE yearID = ?",
+            rows=[("Hank",)],
+            columns=["nameFirst"],
+            row_count=1,
+            truncated=False,
+        )
+
+        with patch("baseball_rag.db.freeform.query", return_value=result) as query:
+            _answer_freeform(decision.raw_question, decision)
+
+        assert decision.year is None
+        assert query.call_args.kwargs["year"] == 1936
 
 
 class TestFreeformResultFormatting:

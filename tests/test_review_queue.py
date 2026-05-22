@@ -3,6 +3,7 @@
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.review_queue import (
     build_review_item,
+    enqueue_review_item,
     list_review_items,
     load_review_items,
     persist_review_item,
@@ -74,17 +75,24 @@ def test_build_review_item_uses_structured_reason_without_sniffing_prose():
     assert item.reason == "ambiguous"
 
 
-def test_build_review_item_detects_low_confidence_chroma_source():
+def test_build_review_item_does_not_use_source_row_reason_for_review_policy():
     answer = StructuredAnswer(
-        answer="Possibly relevant context.",
-        intent="general_explanation",
-        sources=[SourceRecord(type="chroma", label="OPS", score=0.2)],
+        answer="No results found.",
+        intent="freeform_query",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="Unsupported template",
+                rows=[{"unsupported_reason": "ambiguous"}],
+            )
+        ],
+        unsupported=True,
     )
 
-    item = build_review_item("what is ops", answer, low_confidence_threshold=0.4)
+    item = build_review_item("who is in the 500 club", answer)
 
     assert item is not None
-    assert item.reason == "low_confidence"
+    assert item.reason == "unsupported"
 
 
 def test_review_payload_and_jsonl_round_trip(tmp_path):
@@ -100,6 +108,23 @@ def test_review_payload_and_jsonl_round_trip(tmp_path):
 
     assert review_payload(item) == {"queued": True, "reason": "unsupported", "item_id": item.id}
     assert load_review_items(path) == [item]
+
+
+def test_enqueue_review_item_owns_build_persist_payload_choreography(tmp_path, monkeypatch):
+    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+    answer = StructuredAnswer(
+        answer="No grounded result found.",
+        intent="stat_query",
+        unsupported=True,
+        metadata={"query_id": "q_same"},
+    )
+
+    payload = enqueue_review_item("who led MLB in vibes", answer)
+
+    assert payload is not None
+    assert payload["queued"] is True
+    assert payload["reason"] == "unsupported"
+    assert load_review_items(tmp_path / "review.jsonl")[0].id == payload["item_id"]
 
 
 def test_review_id_ignores_volatile_trace_metadata():

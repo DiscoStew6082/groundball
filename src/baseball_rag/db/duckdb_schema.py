@@ -13,6 +13,13 @@ _lock = threading.Lock()
 # Project root: go up 4 levels — lahman.py -> db/ -> baseball_rag/ -> src/ -> repo/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data"
+RETROSHEET_DATA_SUBDIR = Path("secondary_sources") / "retrosheet"
+RETROSHEET_STAT_TABLES = {
+    "retrosheet_batting": "batting.csv",
+    "retrosheet_pitching": "pitching.csv",
+    "retrosheet_fielding": "fielding.csv",
+}
+RETROSHEET_BIOFILE = ("retrosheet_biofile", "biofile0.csv")
 
 # Try to load Teams.csv at module init; fall back to {} if not present.
 _TEAMS_CSV_PATH = DATA_DIR / "Teams.csv"
@@ -163,6 +170,7 @@ def get_duckdb() -> duckdb.DuckDBPyConnection:
             conn.execute(f"CREATE TABLE fielding AS SELECT * FROM read_csv_auto('{fielding_path}')")
             conn.execute(f"CREATE TABLE people AS SELECT * FROM read_csv_auto('{people_path}')")
             conn.execute(f"CREATE TABLE pitching AS SELECT * FROM read_csv_auto('{pitching_path}')")
+            _load_optional_retrosheet_tables(conn, DATA_DIR)
 
             # Create a teams table from _TEAM_MAP so queries can JOIN on it
             teams_rows = ", ".join(f"('{k}', '{v}')" for k, v in _TEAM_MAP.items())
@@ -179,3 +187,37 @@ def get_duckdb() -> duckdb.DuckDBPyConnection:
 def init_db() -> None:
     """No-op — kept for backward compatibility with code that calls it."""
     pass
+
+
+def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: Path) -> None:
+    retrosheet_dir = data_dir / RETROSHEET_DATA_SUBDIR
+    if not retrosheet_dir.exists():
+        return
+
+    for table_name, csv_name in RETROSHEET_STAT_TABLES.items():
+        csv_path = retrosheet_dir / csv_name
+        if csv_path.exists():
+            conn.execute(
+                f"""
+                CREATE TABLE {table_name} AS
+                SELECT *
+                FROM read_csv_auto('{_sql_string(csv_path)}')
+                WHERE lower(stattype) = 'value'
+                  AND lower(gametype) IN ('regular', 'playoff')
+                """
+            )
+
+    table_name, csv_name = RETROSHEET_BIOFILE
+    csv_path = retrosheet_dir / csv_name
+    if csv_path.exists():
+        conn.execute(
+            f"""
+            CREATE TABLE {table_name} AS
+            SELECT *
+            FROM read_csv_auto('{_sql_string(csv_path)}')
+            """
+        )
+
+
+def _sql_string(path: Path) -> str:
+    return str(path).replace("'", "''")

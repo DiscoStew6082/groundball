@@ -84,19 +84,30 @@ class TestComponentRegistrySingleton:
             "cli",
             "api-server",
             "query-router",
-            "chroma-store",
+            "claim-verifier",
             "duckdb",
-            "corpus-grounding",
             "llm",
             "prompt",
         }
         assert expected.issubset(component_ids)
+        assert "corpus-grounding" not in component_ids
 
     def test_components_cover_required_modules(self):
         reg = get_registry()
         ids = {c.id for c in reg.all()}
-        required = ["cli", "query-router", "chroma-store", "duckdb", "llm"]
+        required = ["cli", "query-router", "claim-verifier", "duckdb", "llm"]
         assert all(r in ids for r in required)
+
+    def test_query_router_description_names_current_four_routes(self):
+        """Registry copy reflects the current four-route request architecture."""
+        reg = get_registry()
+        router = reg.get("query-router")
+
+        assert router is not None
+        assert "stat_query" in router.description
+        assert "player_biography" in router.description
+        assert "freeform_query" in router.description
+        assert "general_explanation" in router.description
 
 
 # ---------------------------------------------------------------------------
@@ -177,11 +188,11 @@ class TestTestStatusFromLatestRun:
     def test_component_display_includes_status_indicator(self):
         """A component with a FAIL status shows the fail indicator."""
         comp = DiagramComponent(
-            id="chroma-store",
-            label="Chroma Store",
-            description="Vector store.",
+            id="claim-verifier",
+            label="Biography Claim Verifier",
+            description="Verifies extracted stat claims.",
             layer=Layer.RETRIEVAL,
-            file_path="src/baseball_rag/retrieval/chroma_store.py",
+            file_path="src/baseball_rag/db/player_stat_claims.py",
             test_status=TestStatus.FAIL,
         )
         assert "❌" in comp.status_indicator()

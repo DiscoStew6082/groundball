@@ -1,11 +1,12 @@
 """Public answer() API — Generation layer entry point."""
 
+from typing import Any
+
 from baseball_rag.generation.prompt import build_explanation_prompt
-from baseball_rag.retrieval.chroma_store import RetrievedChunk
 
 
-def answer(question: str, chunks: list[RetrievedChunk]) -> str:
-    """Generate an answer to a question given retrieved context chunks."""
+def answer(question: str, chunks: list[Any]) -> str:
+    """Generate an answer to a question given explicit context chunks."""
     prompt = build_explanation_prompt(question, chunks)
     try:
         from baseball_rag.generation.llm import make_request

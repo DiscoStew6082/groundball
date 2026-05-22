@@ -14,6 +14,35 @@ from baseball_rag.routing import (
 )
 
 
+def test_execute_request_rejects_policy_unsupported_question_before_routing(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+    execution = execute_request(
+        "who won the NBA finals in 2020",
+        adapter_component_id="api",
+        attach_review=True,
+    )
+
+    assert execution.answer.unsupported is True
+    assert execution.answer.unsupported_reason == "unsupported"
+    assert execution.answer.review["queued"] is True
+    assert execution.answer.review["reason"] == "unsupported"
+
+
+def test_execute_request_allows_grounded_greatest_metric_question(tmp_path, monkeypatch):
+    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+    execution = execute_request("who had the greatest number of home runs in 1998")
+
+    assert execution.answer.unsupported is False
+    assert execution.answer.intent == "stat_query"
+    assert "Mark" in execution.answer.answer
+    assert "McGwire" in execution.answer.answer
+
+
 def test_execute_request_replaces_stale_empty_trace_with_request_trace():
     """A stale internal trace must not contaminate the next adapter request."""
     with traced(component_id="orphan", label="Orphan Stage"):
@@ -55,15 +84,12 @@ def test_execute_request_attaches_audit_and_review_once():
     with (
         patch("baseball_rag.request_execution.answer") as answer,
         patch("baseball_rag.audit.build_query_metadata") as build_metadata,
-        patch("baseball_rag.review_queue.build_review_item") as build_review_item,
-        patch("baseball_rag.review_queue.persist_review_item") as persist_review_item,
-        patch("baseball_rag.review_queue.review_payload") as review_payload,
+        patch("baseball_rag.review_queue.enqueue_review_item") as enqueue_review_item,
     ):
         structured = StructuredAnswer(answer="Nope", intent="stat_query", unsupported=True)
         answer.return_value = structured
         build_metadata.return_value = {"query_id": "q_test", "route": "stat_query"}
-        build_review_item.return_value = object()
-        review_payload.return_value = {"queued": True, "reason": "unsupported"}
+        enqueue_review_item.return_value = {"queued": True, "reason": "unsupported"}
 
         execution = execute_request(
             "who led MLB in vibes",
@@ -75,9 +101,31 @@ def test_execute_request_attaches_audit_and_review_once():
     assert execution.answer.metadata == {"query_id": "q_test", "route": "stat_query"}
     assert execution.answer.review == {"queued": True, "reason": "unsupported"}
     build_metadata.assert_called_once()
-    build_review_item.assert_called_once_with("who led MLB in vibes", structured)
-    persist_review_item.assert_called_once_with(build_review_item.return_value)
-    review_payload.assert_called_once_with(build_review_item.return_value)
+    enqueue_review_item.assert_called_once_with("who led MLB in vibes", structured)
+
+
+def test_execute_request_uses_governance_observation_after_answer_trace():
+    calls = []
+
+    with patch("baseball_rag.request_execution.answer") as answer:
+        structured = StructuredAnswer(answer="Nope", intent="stat_query", unsupported=True)
+        answer.return_value = structured
+
+        def observe(self, question, observed_answer, *, trace):
+            calls.append((self.mode, question, observed_answer, trace.route_type))
+            observed_answer.metadata["observed"] = True
+            return observed_answer
+
+        with patch("baseball_rag.query_governance.QueryGovernance.observe", observe):
+            execution = execute_request(
+                "who led MLB in vibes",
+                adapter_component_id="api",
+                attach_audit=True,
+                attach_review=True,
+            )
+
+    assert calls == [("audit_review", "who led MLB in vibes", structured, "stat_query")]
+    assert execution.answer.metadata == {"observed": True}
 
 
 def test_execute_request_passes_conversation_to_answer_service():
@@ -148,7 +196,7 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
             raw_question=question,
         )
 
-    def fake_player_answer(question, decision, *, retrieval_strategy=None):
+    def fake_player_answer(question, decision):
         assert question == "tell me about Hank Aaron"
         assert decision.raw_question == "tell me about Hank Aaron"
         return StructuredAnswer(answer="Hank Aaron biography", intent="player_biography")
@@ -173,6 +221,116 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
     }
     assert execution.trace is not None
     assert execution.trace.route_type == "player_biography"
+
+
+def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(monkeypatch):
+    """Ordinal follow-ups can reference the fifth row from a previous leaderboard."""
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": StructuredAnswer(
+                answer="Career home run leaders",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="Career HR leaders",
+                        rows=[
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                            {"name": "Ruth, Babe", "stat_value": 714},
+                            {"name": "Pujols, Albert", "stat_value": 703},
+                            {"name": "Rodriguez, Alex", "stat_value": 696},
+                        ],
+                    )
+                ],
+            ),
+        }
+    ]
+    routed_questions = []
+
+    def fake_route(question: str) -> RouteResult:
+        routed_questions.append(question)
+        return RouteResult(
+            intent="player_biography",
+            stat=None,
+            player_name="Alex Rodriguez",
+            raw_question=question,
+        )
+
+    def fake_player_answer(question, decision):
+        assert question == "Tell me more about Alex Rodriguez in the list"
+        assert decision.raw_question == "Tell me more about Alex Rodriguez in the list"
+        return StructuredAnswer(answer="Alex Rodriguez biography", intent="player_biography")
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", fake_route)
+    monkeypatch.setattr("baseball_rag.service._answer_player_biography", fake_player_answer)
+
+    execution = execute_request(
+        "Tell me more about the fifth player in the list",
+        adapter_component_id="gradio",
+        conversation=prior_turns,
+    )
+
+    assert routed_questions == ["Tell me more about Alex Rodriguez in the list"]
+    assert execution.answer.answer == "Alex Rodriguez biography"
+    assert execution.answer.metadata == {
+        "original_question": "Tell me more about the fifth player in the list",
+        "context_question": "Tell me more about Alex Rodriguez in the list",
+        "context_source": "career home run leaders",
+        "context_player_name": "Alex Rodriguez",
+    }
+
+
+def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monkeypatch):
+    """Ordinal achievement questions are routed as asked, not as row follow-ups."""
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": StructuredAnswer(
+                answer="Career home run leaders",
+                intent="stat_query",
+                sources=[
+                    SourceRecord(
+                        type="duckdb",
+                        label="Career HR leaders",
+                        rows=[
+                            {"name": "Bonds, Barry", "stat_value": 762},
+                            {"name": "Aaron, Hank", "stat_value": 755},
+                            {"name": "Ruth, Babe", "stat_value": 714},
+                            {"name": "Pujols, Albert", "stat_value": 703},
+                            {"name": "Rodriguez, Alex", "stat_value": 696},
+                        ],
+                    )
+                ],
+            ),
+        }
+    ]
+    routed_questions = []
+
+    def fake_route(question: str) -> RouteResult:
+        routed_questions.append(question)
+        return RouteResult(intent="general_explanation", stat=None, raw_question=question)
+
+    monkeypatch.setattr("baseball_rag.service.init_db", lambda: None)
+    monkeypatch.setattr("baseball_rag.service.route", fake_route)
+    monkeypatch.setattr(
+        "baseball_rag.service._answer_general",
+        lambda question, decision: StructuredAnswer(
+            answer="General answer",
+            intent=decision.intent,
+        ),
+    )
+
+    execution = execute_request(
+        "Tell me about the fifth player to hit 500 home runs",
+        adapter_component_id="gradio",
+        conversation=prior_turns,
+    )
+
+    assert routed_questions == ["Tell me about the fifth player to hit 500 home runs"]
+    assert execution.answer.metadata == {}
 
 
 def test_execute_request_answers_routed_stat_case_through_service(monkeypatch):

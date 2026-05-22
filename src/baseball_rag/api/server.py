@@ -5,7 +5,7 @@ from dataclasses import asdict
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 app = FastAPI(title="Baseball RAG API")
 logger = logging.getLogger(__name__)
@@ -29,10 +29,9 @@ class QueryResponse(BaseModel):
 
 
 class EvalRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     include_live: bool = False
-    strategy: str | None = None
-    all_strategies: bool = False
-    retrieval_only: bool = False
 
 
 class ReviewUpdateRequest(BaseModel):
@@ -91,26 +90,10 @@ def evals_report(include_live: bool = False):
 @app.post("/evals/run")
 def evals_run(req: EvalRunRequest):
     """Run evals with explicit options, deterministic-only by default."""
-    live_options = req.strategy or req.all_strategies or req.retrieval_only
-    if live_options and not req.include_live:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Retrieval strategy and retrieval-only eval options may require Chroma or "
-                "LM Studio; set include_live=true to run them."
-            ),
-        )
-    if req.strategy or req.all_strategies or req.retrieval_only:
-        raise HTTPException(
-            status_code=400,
-            detail="Live strategy evals are supported by the CLI, not this deterministic API.",
-        )
     payload = _run_eval_payload(include_live=req.include_live)
     payload["options"] = req.model_dump()
     if req.include_live:
-        payload.setdefault("warnings", []).append(
-            "include_live=true may require Chroma, corpus, and LM Studio services."
-        )
+        payload.setdefault("warnings", []).append("include_live=true may require LM Studio.")
     return payload
 
 

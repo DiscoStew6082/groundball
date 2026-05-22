@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-SourceType = Literal["duckdb", "chroma", "system"]
+SourceType = Literal["duckdb", "system", "corpus"]
 UnsupportedReason = Literal[
     "unsupported",
     "ambiguous",

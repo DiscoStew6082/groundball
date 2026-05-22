@@ -1,22 +1,20 @@
-"""Shared grounded answer service used by CLI and API."""
+"""Shared answer service used by CLI and API."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any
 
+from baseball_rag import player_biography as _player_biography
 from baseball_rag.conversation import resolve_followup
-from baseball_rag.corpus.lifecycle import is_generated_player_profile_doc_kind
-from baseball_rag.db import (
-    init_db,
-)
+from baseball_rag.db import init_db
 from baseball_rag.db.duckdb_schema import get_duckdb
-from baseball_rag.outcomes import (
-    ambiguous_outcome,
-    llm_unavailable_outcome,
-    missing_corpus_outcome,
-    retrieval_failed_outcome,
-    unsupported_outcome,
+from baseball_rag.general_explanation import GeneralExplanationPolicy
+from baseball_rag.outcomes import unsupported_outcome
+from baseball_rag.player_biography import (
+    PlayerBiographyCaseAnswerer,
+    duckdb_source,
+    verify_player_stat_claims_consensus,
 )
 from baseball_rag.provenance import (
     ReviewReason,
@@ -26,23 +24,25 @@ from baseball_rag.provenance import (
     compact_data_manifest,
 )
 from baseball_rag.request_dispatch import AnswerHandlers, RequestAnswerDispatcher
-from baseball_rag.retrieval.chroma_store import RetrievedChunk
-from baseball_rag.retrieval.decision import RetrievalRequest, retrieve_grounded_chunks
-from baseball_rag.retrieval.strategies import RetrievalStrategy
 from baseball_rag.routing import route
 from baseball_rag.stat_query import answer_stat_query
 
 logger = logging.getLogger(__name__)
-PromptBuilder = Callable[[str, list[RetrievedChunk]], tuple[str, str] | str]
+
+_build_biography_json_repair_prompt = _player_biography.build_biography_json_repair_prompt
+_extract_supplied_stat_claims = _player_biography.extract_supplied_stat_claims
+_is_biography_json_contract = _player_biography.is_biography_json_contract
+_loads_json_object = _player_biography.loads_json_object
+_parse_biography_json = _player_biography.parse_biography_json
+_request_biography_json = _player_biography.request_biography_json
 
 
 def answer(
     question: str,
     *,
-    retrieval_strategy: str | RetrievalStrategy | None = None,
     conversation: list[dict[str, Any]] | None = None,
 ) -> StructuredAnswer:
-    """Answer a question with explicit grounding metadata."""
+    """Answer a question with explicit provenance metadata."""
     dispatcher = RequestAnswerDispatcher(
         initialize=init_db,
         resolve_followup=resolve_followup,
@@ -54,11 +54,7 @@ def answer(
             general_explanation=_answer_general,
         ),
     )
-    return dispatcher.answer(
-        question,
-        retrieval_strategy=retrieval_strategy,
-        conversation=conversation,
-    )
+    return dispatcher.answer(question, conversation=conversation)
 
 
 def render_text(result: StructuredAnswer) -> str:
@@ -70,70 +66,36 @@ def render_text(result: StructuredAnswer) -> str:
     return "\n".join(lines)
 
 
-def _answer_player_biography(
-    question: str,
-    decision: Any,
-    *,
-    retrieval_strategy: str | RetrievalStrategy | None = None,
-) -> StructuredAnswer:
-    resolved_player_id: str | None = None
-    if decision.player_name:
-        from baseball_rag.corpus.player_bios import resolve_player_by_name
-
-        resolution = resolve_player_by_name(decision.player_name, get_duckdb())
-        if resolution.ambiguous:
-            choices = ", ".join(
-                f"{c.full_name} ({c.debut or '?'}-{c.final_game or '?'})"
-                for c in resolution.candidates[:5]
-            )
-            return ambiguous_outcome(
-                answer=(
-                    f"'{decision.player_name}' is ambiguous in the local player registry. "
-                    f"Try a fuller name. Possible matches: {choices}."
-                ),
-                intent=decision.intent,
-                warnings=["No biography was generated because the player name was ambiguous."],
-            )
-        resolved_player_id = resolution.player_id
-
+def _answer_player_biography(question: str, decision: Any) -> StructuredAnswer:
     try:
-        chunks = retrieve_grounded_chunks(
-            RetrievalRequest.from_routed_case(
-                decision,
-                top_k=3,
-                retrieval_strategy=retrieval_strategy,
-                player_id=resolved_player_id,
-            )
-        )
-    except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
-        failure = _chroma_failure_answer(e, intent=decision.intent)
-        if failure is not None:
-            return failure
-        logger.exception("ChromaDB retrieval failed for player biography query %r", question)
-        raise
+        from baseball_rag.generation.llm import make_request
+    except ImportError:  # pragma: no cover
+        make_request = None
+    return PlayerBiographyCaseAnswerer(
+        conn_factory=get_duckdb,
+        make_request=make_request,
+        verify_claims_consensus=verify_player_stat_claims_consensus,
+        extract_claims=_extract_supplied_stat_claims,
+        request_biography=_request_biography_json,
+    ).answer(question, decision)
 
-    if resolved_player_id is not None:
-        chunks = [chunk for chunk in chunks if chunk.player_id in {None, resolved_player_id}]
 
-    if not chunks:
-        if resolved_player_id is not None:
-            return _answer_player_biography_from_duckdb(
-                player_id=resolved_player_id,
-                intent=decision.intent,
-            )
-        return _answer_player_biography_from_llm_memory(
-            question=decision.raw_question,
-            intent=decision.intent,
-            player_name=decision.player_name or question,
-        )
-
-    from baseball_rag.generation.prompt import build_player_bio_prompt
-
-    return _answer_with_grounded_chunks(
-        question=decision.raw_question,
-        intent=decision.intent,
-        chunks=chunks,
-        prompt_builder=build_player_bio_prompt,
+def _duckdb_source(
+    label: str,
+    *,
+    tables: list[str],
+    rows: list[dict[str, Any]] | None = None,
+    sql: str | None = None,
+    detail: str | None = None,
+    data_manifest: dict[str, Any] | None = None,
+) -> SourceRecord:
+    return duckdb_source(
+        label,
+        tables=tables,
+        rows=rows,
+        sql=sql,
+        detail=detail,
+        data_manifest=data_manifest,
     )
 
 
@@ -141,7 +103,11 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     from baseball_rag.db.freeform import format_result, query
 
     conn = get_duckdb()
-    query_result = query(decision.raw_question, conn, year=getattr(decision, "year", None))
+    query_result = query(
+        decision.raw_question,
+        conn,
+        year=_freeform_single_season_year(decision),
+    )
     source = SourceRecord(
         type="duckdb",
         label=query_result.source_label,
@@ -177,174 +143,44 @@ def _answer_freeform(question: str, decision: Any) -> StructuredAnswer:
     )
 
 
-def _answer_general(
-    question: str,
-    decision: Any,
-    *,
-    retrieval_strategy: str | RetrievalStrategy | None = None,
-) -> StructuredAnswer:
-    try:
-        chunks = retrieve_grounded_chunks(
-            RetrievalRequest.from_routed_case(
-                decision,
-                question=question,
-                top_k=3,
-                retrieval_strategy=retrieval_strategy,
-            )
-        )
-    except Exception as e:  # noqa: BLE001 - Chroma errors vary by installed version
-        failure = _chroma_failure_answer(e, intent=decision.intent)
-        if failure is not None:
-            return failure
-        logger.exception("ChromaDB retrieval failed for query %r", question)
-        raise
+def _freeform_single_season_year(decision: Any) -> int | None:
+    time_period = getattr(decision, "time_period", None)
+    if time_period is None:
+        return getattr(decision, "year", None)
 
-    if not chunks:
-        return missing_corpus_outcome(
-            answer=(
-                "No relevant grounded documents were found for that query. "
-                "Try asking about an indexed stat definition, indexed player biography, "
-                "or a database-backed statistic."
-            ),
-            intent=decision.intent,
-            warnings=["No LLM fallback was used because no grounding context was retrieved."],
-        )
+    from baseball_rag.query_scope import QueryScope, resolve_query_scope
 
-    from baseball_rag.generation.prompt import build_explanation_prompt
-
-    return _answer_with_grounded_chunks(
-        question=question,
-        intent=decision.intent,
-        chunks=chunks,
-        prompt_builder=build_explanation_prompt,
+    scope = resolve_query_scope(
+        time_period,
+        raw_question=getattr(decision, "raw_question", ""),
+        stat="freeform",
+        intent=getattr(decision, "intent", "freeform_query"),
+        validate_coverage=False,
     )
+    if isinstance(scope, QueryScope) and scope.is_single_season:
+        return scope.start_year
+    return None
 
 
-def _answer_with_grounded_chunks(
-    *,
-    question: str,
-    intent: str,
-    chunks: list[RetrievedChunk],
-    prompt_builder: PromptBuilder,
-) -> StructuredAnswer:
-    prompt = prompt_builder(question, chunks)
-    sources = [_chroma_source(chunk) for chunk in chunks]
+def _answer_general(question: str, decision: Any) -> StructuredAnswer:
     try:
         from baseball_rag.generation.llm import make_request
-
-        response = make_request(prompt, max_tokens=1500)
-        return StructuredAnswer(answer=response.content, intent=intent, sources=sources)
-    except ConnectionError:
-        lines = ["(LM Studio not running - showing relevant documents instead):\n"]
-        for chunk in chunks[:3]:
-            lines.append(f"[{chunk.title}]\n{chunk.text}\n")
-        return StructuredAnswer(
-            answer="\n".join(lines),
-            intent=intent,
-            sources=sources,
-            warnings=["LM Studio was unavailable, so retrieved context was shown directly."],
-        )
-
-
-def _answer_player_biography_from_llm_memory(
-    *,
-    question: str,
-    intent: str,
-    player_name: str,
-) -> StructuredAnswer:
-    """Answer a missing corpus biography from LLM memory with explicit provenance."""
-    from baseball_rag.generation.llm import make_request
-    from baseball_rag.generation.prompt import build_open_prompt
-
-    try:
-        response = make_request(build_open_prompt(question), max_tokens=700)
-    except ConnectionError:
-        return llm_unavailable_outcome(
-            answer=(
-                f"No player biography found for '{player_name}' in the local corpus, "
-                "and LM Studio was unavailable for an LLM-memory fallback."
-            ),
-            intent=intent,
-            warnings=[
-                "No local corpus biography was found, and LM Studio was unavailable.",
-            ],
-        )
-
-    note = "Note: this answer came from LLM memory, not the local baseball corpus."
-    return StructuredAnswer(
-        answer=f"{response.content}\n\n{note}",
-        intent=intent,
-        sources=[
-            SourceRecord(
-                type="system",
-                label="LLM memory",
-                detail=(
-                    "No local corpus biography was retrieved; the local LLM answered from "
-                    "its model memory."
-                ),
-            )
-        ],
-        warnings=["No local corpus biography was found; the answer came from LLM memory."],
+    except ImportError:  # pragma: no cover
+        make_request = None
+    return GeneralExplanationPolicy(make_request=make_request).answer(
+        decision,
+        fallback_question=question,
     )
 
 
-def _answer_player_biography_from_duckdb(
-    *,
-    player_id: str,
-    intent: str,
-) -> StructuredAnswer:
-    """Build a deterministic player biography from local DuckDB records."""
-    from baseball_rag.corpus.frontmatter import parse_frontmatter
-    from baseball_rag.corpus.player_bios import build_player_bio
-
-    bio_text = build_player_bio(player_id, get_duckdb())
-    parsed = parse_frontmatter(bio_text)
-    metadata = parsed["metadata"]
-    title = str(metadata.get("title") or player_id)
-    body = parsed["body"].strip()
-    return StructuredAnswer(
-        answer=body,
-        intent=intent,
-        sources=[
-            _duckdb_source(
-                f"Generated player biography for {title}",
-                tables=["people", "batting", "pitching", "fielding"],
-                rows=[{"player_id": player_id, "name": title}],
-            )
-        ],
-        warnings=["No indexed corpus biography was found; generated one from local DuckDB data."],
-    )
+def _answer_local_stat_definition(question: str) -> StructuredAnswer | None:
+    return GeneralExplanationPolicy()._answer_local_stat_definition(question)
 
 
-def _duckdb_source(
-    label: str,
-    *,
-    tables: list[str],
-    rows: list[dict[str, Any]] | None = None,
-    sql: str | None = None,
-) -> SourceRecord:
-    return SourceRecord(
-        type="duckdb",
-        label=label,
-        detail=f"Tables: {', '.join(tables)}. Dataset: local Hugging Face NeuML/baseballdata CSVs.",
-        sql=sql,
-        rows=rows or [],
-        data_manifest=compact_data_manifest(),
-    )
+def _markdown_body(text: str) -> str:
+    from baseball_rag.general_explanation import _markdown_body as markdown_body
 
-
-def _chroma_source(chunk: RetrievedChunk) -> SourceRecord:
-    manifest = (
-        compact_data_manifest() if is_generated_player_profile_doc_kind(chunk.doc_kind) else None
-    )
-    return SourceRecord(
-        type="chroma",
-        label=chunk.title,
-        detail=chunk.source,
-        rows=[{"text": chunk.text}],
-        score=chunk.score,
-        data_manifest=manifest,
-    )
+    return markdown_body(text)
 
 
 def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]]:
@@ -360,27 +196,3 @@ def _freeform_unsupported_reason(query_result: Any) -> UnsupportedReason:
     if "unsupported_reason" not in query_result.columns:
         return "no_data"
     return "unsupported"
-
-
-def _is_recoverable_chroma_index_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return "dimension" in message or "embedding" in message
-
-
-def _chroma_failure_answer(exc: Exception, *, intent: str) -> StructuredAnswer | None:
-    if "NotFoundError" in type(exc).__name__ or "not found" in str(exc).lower():
-        return missing_corpus_outcome(
-            answer="No corpus indexed yet - run: uv run python -m baseball_rag.corpus.ingest",
-            intent=intent,
-            warnings=["Chroma collection was not available."],
-        )
-    if _is_recoverable_chroma_index_error(exc):
-        return retrieval_failed_outcome(
-            answer=(
-                "The indexed corpus could not be queried. Rebuild it with: "
-                "uv run python -m baseball_rag.corpus.ingest"
-            ),
-            intent=intent,
-            warning=str(exc),
-        )
-    return None

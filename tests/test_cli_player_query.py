@@ -28,12 +28,12 @@ class TestLatestYearLogic:
         assert len(result) > 50
 
     def test_with_explicit_year_works_normally(self):
-        """'HR leaders in 1999' -> should execute the stat query for 1999-1999."""
+        """'HR leaders in 1999' -> should execute a 1999-1999 leaderboard plan."""
         from baseball_rag.cli import answer
         from baseball_rag.db.queries import StatQueryResult
 
         with (
-            patch("baseball_rag.stat_query.execute_stat_query") as mock_query,
+            patch("baseball_rag.stat_query.execute_stat_query_plan") as mock_query,
             patch("baseball_rag.service.init_db"),
         ):
             mock_query.return_value = StatQueryResult(
@@ -48,13 +48,14 @@ class TestLatestYearLogic:
 
             answer("HR leaders in 1999")
 
-        mock_query.assert_called_once_with(
-            "HR",
-            table="batting",
-            start_year=1999,
-            end_year=1999,
-            position=None,
-        )
+        mock_query.assert_called_once()
+        plan = mock_query.call_args.args[0]
+        assert plan.stat == "HR"
+        assert plan.table == "batting"
+        assert plan.kind == "leaderboard"
+        assert plan.start_year == 1999
+        assert plan.end_year == 1999
+        assert plan.position is None
 
     def test_latest_year_should_be_determined_from_db(self):
         """Verify the fix would need to query DB for max(yearID).

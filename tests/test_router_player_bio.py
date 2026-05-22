@@ -41,6 +41,28 @@ class TestPlayerBioRouting:
         assert result.intent == "player_biography"
         assert result.player_name == "Rogers Hornsby"
 
+    def test_pasted_biography_verification_request_routes_to_player_bio(self):
+        """A supplied biography asking for claim verification should resolve the player."""
+        result = route(
+            "Alex Rodriguez recorded 696 HR, 2,086 RBI, 3,115 H, and 301 SB. "
+            "A three-time American League MVP. Which stat claims can be verified against DuckDB?"
+        )
+
+        assert result.intent == "player_biography"
+        assert result.player_name == "Alex Rodriguez"
+
+    def test_claim_verification_request_can_name_player_after_prompt_prefix(self):
+        result = route("Can DuckDB verify the claim that Babe Ruth hit 714 HR?")
+
+        assert result.intent == "player_biography"
+        assert result.player_name == "Babe Ruth"
+
+    def test_claim_verification_request_can_put_biography_after_question(self):
+        result = route("Which stat claims can be verified against DuckDB? Babe Ruth hit 714 HR.")
+
+        assert result.intent == "player_biography"
+        assert result.player_name == "Babe Ruth"
+
     def test_general_explanation_when_no_player_name(self):
         """'what is baseball' → general_explanation, not player_biography."""
         result = route("what is a balk")

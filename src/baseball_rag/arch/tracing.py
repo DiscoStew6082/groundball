@@ -116,8 +116,8 @@ class traced:
             ...
 
     Usage as context manager::
-        with traced(component_id="chroma-store", label="ChromaDB Query"):
-            chunks = retrieve(query)
+        with traced(component_id="claim-verifier", label="Verify Biography Claims"):
+            verified = verify_claims(query)
 
     On exit the stage is automatically added to the current PipelineTrace
     (creating one if none exists).  Exceptions are re-raised after recording.

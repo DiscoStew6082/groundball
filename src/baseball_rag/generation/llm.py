@@ -147,6 +147,8 @@ def _strip_reasoning_block(text: str) -> str:
     lines = text.split("\n")
     for i, line in enumerate(lines):
         stripped = line.strip()
+        if not stripped:
+            continue
         if not (stripped.startswith("*") or stripped.startswith("-") or stripped.startswith("`")):
             return "\n".join(lines[i:])
     return original

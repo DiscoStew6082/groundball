@@ -1,108 +1,46 @@
-"""Diagnostics for the local baseball corpus index."""
+"""Diagnostics for checked-in corpus material."""
 
 from __future__ import annotations
 
 import json
-import os
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import chromadb
-
 from baseball_rag.corpus import get_hof_bios, get_stat_defs
 from baseball_rag.corpus.lifecycle import (
-    COLLECTION_NAME,
     GENERATED_PLAYER_PROFILES_SECTION,
     MANIFEST_NAME,
-    METADATA_CATEGORY,
-    METADATA_DOC_KIND,
     STATIC_DOCUMENTS_SECTION,
     manifest_section_count,
-    metadata_counts_key_missing,
-    resolve_persist_dir,
 )
-from baseball_rag.embedder import DEFAULT_BASE_URL, DEFAULT_EMBEDDING_MODEL
+from baseball_rag.db.duckdb_schema import DATA_DIR
 
 
-def corpus_diagnostics(persist_dir: Path | None = None) -> dict[str, Any]:
-    """Return tolerant diagnostics for the static corpus and Chroma index."""
-    resolved_dir = resolve_persist_dir(persist_dir)
+def corpus_diagnostics(corpus_dir: Path | None = None) -> dict[str, Any]:
+    """Return tolerant diagnostics for checked-in corpus files and old manifests."""
+    resolved_dir = Path(corpus_dir) if corpus_dir is not None else DATA_DIR
     manifest = _manifest_diagnostics(resolved_dir / MANIFEST_NAME)
-    collection = _collection_diagnostics(resolved_dir)
 
     return {
-        "persist_dir": str(resolved_dir),
+        "corpus_dir": str(resolved_dir),
         "corpus_files": {
             "stat_definition_count": len(get_stat_defs()),
             "hof_bio_count": len(get_hof_bios()),
             "stat_definitions": [p.stem for p in get_stat_defs()],
             "hof_bios": [p.stem for p in get_hof_bios()],
         },
-        "chroma_collection": collection,
         "manifest": manifest,
-        "environment": {
-            "CHROMA_PERSIST_DIR": os.environ.get("CHROMA_PERSIST_DIR"),
-            "LMSTUDIO_BASE_URL": os.environ.get("LMSTUDIO_BASE_URL"),
-            "LMSTUDIO_EMBEDDING_MODEL": os.environ.get("LMSTUDIO_EMBEDDING_MODEL"),
-        },
-        "model_hints": {
-            "embedding_base_url": os.environ.get("LMSTUDIO_BASE_URL", DEFAULT_BASE_URL),
-            "embedding_model": os.environ.get("LMSTUDIO_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
+        "runtime": {
+            "index_required": False,
+            "stat_explanations": "local_markdown_then_llm_fallback",
+            "player_biographies": "llm_generated_duckdb_verified",
         },
     }
 
 
-def diagnostics_json(persist_dir: Path | None = None) -> str:
+def diagnostics_json(corpus_dir: Path | None = None) -> str:
     """Return diagnostics as stable, pretty JSON."""
-    return json.dumps(corpus_diagnostics(persist_dir), indent=2, sort_keys=True)
-
-
-def _collection_diagnostics(persist_dir: Path) -> dict[str, Any]:
-    diagnostics: dict[str, Any] = {
-        "name": COLLECTION_NAME,
-        "persist_dir_exists": persist_dir.exists(),
-        "exists": False,
-        "indexed_count": 0,
-        "category_counts": {},
-        "doc_kind_counts": {},
-        "error": None,
-    }
-
-    if not persist_dir.exists():
-        return diagnostics
-
-    try:
-        client = chromadb.PersistentClient(path=str(persist_dir))
-        collection = client.get_collection(COLLECTION_NAME)
-        indexed_count = collection.count()
-        metadatas = _collection_metadatas(collection, indexed_count)
-    except Exception as exc:  # noqa: BLE001 - Chroma errors vary by version/state
-        diagnostics["error"] = f"{type(exc).__name__}: {exc}"
-        return diagnostics
-
-    diagnostics["exists"] = True
-    diagnostics["indexed_count"] = indexed_count
-    diagnostics["category_counts"] = _metadata_counts(metadatas, METADATA_CATEGORY)
-    diagnostics["doc_kind_counts"] = _metadata_counts(metadatas, METADATA_DOC_KIND)
-    return diagnostics
-
-
-def _collection_metadatas(collection: Any, indexed_count: int) -> list[dict[str, Any]]:
-    if indexed_count <= 0:
-        return []
-    try:
-        result = collection.get(limit=indexed_count, include=["metadatas"])
-    except Exception:
-        return []
-    return [m for m in result.get("metadatas", []) if isinstance(m, dict)]
-
-
-def _metadata_counts(metadatas: list[dict[str, Any]], key: str) -> dict[str, int]:
-    counts = Counter(
-        str(metadata.get(key) or metadata_counts_key_missing()) for metadata in metadatas
-    )
-    return dict(sorted(counts.items()))
+    return json.dumps(corpus_diagnostics(corpus_dir), indent=2, sort_keys=True)
 
 
 def _manifest_diagnostics(path: Path) -> dict[str, Any]:
@@ -125,7 +63,6 @@ def _manifest_diagnostics(path: Path) -> dict[str, Any]:
 
     static_count = manifest_section_count(manifest, STATIC_DOCUMENTS_SECTION)
     generated_count = manifest_section_count(manifest, GENERATED_PLAYER_PROFILES_SECTION)
-    diagnostics["collection_name"] = manifest.get("collection_name")
     diagnostics["generated_at"] = manifest.get("generated_at")
     diagnostics["static_document_count"] = static_count
     diagnostics["generated_player_profile_count"] = generated_count

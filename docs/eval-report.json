@@ -126,6 +126,36 @@
       "status": "passed"
     },
     {
+      "case_id": "stat_definition_ops",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_definition_whip",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_definition_era",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_definition_rbi",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
+      "case_id": "stat_definition_stolen_base",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
       "case_id": "stat_player_missing",
       "failures": [],
       "reason": "not CI-safe",
@@ -228,61 +258,31 @@
       "status": "skipped"
     },
     {
-      "case_id": "strategy_generated_player_wally_pipp",
+      "case_id": "player_bio_wally_pipp",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "strategy_generated_player_matt_olson",
+      "case_id": "player_bio_matt_olson",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "strategy_partial_name_acuna",
+      "case_id": "player_bio_partial_name_acuna",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "strategy_ambiguous_surname_smith",
+      "case_id": "ambiguous_surname_smith",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "strategy_broad_bio_query_yankees_slugger",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_definition_ops",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_definition_whip",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_definition_era",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_definition_rbi",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
-      "case_id": "stat_definition_stolen_base",
+      "case_id": "broad_bio_query_yankees_slugger",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
@@ -415,20 +415,20 @@
     }
   ],
   "command": "python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-  "generated_at": "2026-04-28T17:09:12.378596+00:00",
+  "generated_at": "2026-05-14T18:38:48.303654+00:00",
   "include_live": false,
   "minimum_pass_rate": 0.85,
   "mode": "answer",
   "schema_version": 1,
   "summary": {
-    "attempted": 20,
+    "attempted": 25,
     "cases_loaded": 68,
     "failed": 0,
     "pass_rate": 1.0,
-    "passed": 20,
+    "passed": 25,
     "recommendation": "PASS",
     "release_recommendation": "PASS - deterministic release gate is green",
-    "skipped": 48
+    "skipped": 43
   },
   "versions": {
     "dataset": {

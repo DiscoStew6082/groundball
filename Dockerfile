@@ -9,8 +9,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock .
 RUN uv sync --frozen --no-install-project
 
-# Copy source + corpus + data dirs
-COPY src/ ./src/
+# Copy only the default app package; optional MCP source is intentionally not bundled.
+COPY src/baseball_rag/ ./src/baseball_rag/
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8000 7860

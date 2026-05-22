@@ -3,7 +3,9 @@
 import pytest
 
 from baseball_rag.db.queries import (
+    StatQueryPlan,
     execute_stat_query,
+    execute_stat_query_plan,
     get_career_stat_leaders,
     get_fielding_leaders,
     get_stat_leaders,
@@ -98,6 +100,24 @@ def test_execute_stat_query_returns_executed_sql_for_provenance():
     assert "SUM" in result.sql
     assert "SUM(b.AB) >= 100" in result.sql
     assert result.tables == ["batting", "people"]
+
+
+def test_execute_stat_query_plan_runs_leaderboard_plan_directly():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="OPS",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1970,
+            end_year=1979,
+        )
+    )
+
+    assert result.rows
+    assert result.stat == "OPS"
+    assert result.params == [1970, 1979]
+    assert "SUM(b.AB) >= 100" in result.sql
 
 
 def test_execute_stat_query_career_leaders_do_not_merge_same_name_players():
@@ -267,6 +287,29 @@ def test_answer_stat_query_rejects_partial_player_before_coverage_and_execution(
     assert answer.unsupported_reason == "ambiguous"
     assert answer.review_reason == "ambiguous"
     assert "'Ruth' is ambiguous" in answer.answer
+
+
+def test_answer_stat_query_rejects_player_range_before_coverage(monkeypatch):
+    """Player-specific multi-season lookups stay ambiguous before coverage checks."""
+
+    def fail_execute(_plan):
+        raise AssertionError("player ranges should not execute")
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fail_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="HR",
+            player_name="Aaron Judge",
+            raw_question="Aaron Judge HR from 2026-2027",
+            time_period=TimePeriod(type=TimePeriodType.RANGE, value=[2026, 2027]),
+        )
+    )
+
+    assert answer.unsupported is True
+    assert answer.unsupported_reason == "ambiguous"
+    assert answer.review_reason == "ambiguous"
+    assert "Player-specific HR lookups need one season, not 2026-2027" in answer.answer
 
 
 def test_answer_stat_query_player_no_data_mentions_stat_table(monkeypatch):

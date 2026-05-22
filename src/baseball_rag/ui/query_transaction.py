@@ -39,30 +39,7 @@ class QueryUiUpdate:
     sql: str
     visible_chat_history: list[dict[str, str]]
     conversation: list[dict[str, Any]]
-
-    def as_gradio_values(
-        self,
-    ) -> tuple[
-        list[dict[str, str]],
-        str,
-        str,
-        RowsPayload,
-        list[dict[str, Any]],
-        str,
-        list[dict[str, str]],
-        list[dict[str, Any]],
-    ]:
-        """Return values in the order expected by the Gradio Query tab."""
-        return (
-            self.visible_chat_history,
-            self.question,
-            self.answer_text,
-            self.rows,
-            self.sources,
-            self.sql,
-            self.chat_history,
-            self.conversation,
-        )
+    execution: RequestExecution | None = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +141,7 @@ class QueryTransaction:
             status: QueryStatus = "completed"
         except TimeoutError as exc:
             result = timeout_answer(exc)
+            execution = RequestExecution(answer=result, trace=None)
             status = "failed"
         except (
             AttributeError,
@@ -176,6 +154,7 @@ class QueryTransaction:
         ) as exc:
             logger.exception("Query transaction failed for %r", pending.message)
             result = request_failure_answer(exc)
+            execution = RequestExecution(answer=result, trace=None)
             status = "failed"
 
         presentation = self._presenter.present(result)
@@ -198,6 +177,7 @@ class QueryTransaction:
             sql=presentation.sql,
             visible_chat_history=list(chat_history),
             conversation=conversation,
+            execution=execution,
         )
 
     def run(
