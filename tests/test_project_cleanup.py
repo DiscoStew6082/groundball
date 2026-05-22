@@ -1,5 +1,6 @@
 """Repository cleanup policies for retired and optional surfaces."""
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -149,6 +150,14 @@ def test_service_uses_freeform_runtime_directly() -> None:
 
     assert "baseball_rag.db.freeform import" not in service
     assert "baseball_rag.db.freeform_runtime import" in service
+
+
+def test_freeform_tests_use_runtime_modules_directly() -> None:
+    freeform_tests = (ROOT / "tests" / "test_freeform.py").read_text(encoding="utf-8")
+
+    assert "baseball_rag.db.freeform import" not in freeform_tests
+    assert not re.search(r"^\s*from baseball_rag\.db import freeform\b", freeform_tests, re.M)
+    assert not re.search(r"^\s*import baseball_rag\.db\.freeform\b", freeform_tests, re.M)
 
 
 def test_arch_components_no_longer_exports_component_test_status_alias() -> None:

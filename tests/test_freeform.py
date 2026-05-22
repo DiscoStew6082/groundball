@@ -411,7 +411,7 @@ class TestDeterminismSmokeSuite:
     """
 
     def _run_query(self, question: str) -> tuple[int, list[tuple]]:
-        from baseball_rag.db.freeform import query
+        from baseball_rag.db.freeform_runtime import query
 
         conn = __import__(
             "baseball_rag.db.duckdb_schema",
@@ -752,7 +752,7 @@ class TestFreeformResultFormatting:
     """Tests for display-quality freeform answer formatting."""
 
     def test_player_roster_result_formats_names_without_python_tuples(self):
-        from baseball_rag.db.freeform import format_result
+        from baseball_rag.db.freeform_runtime import format_result
         from baseball_rag.db.freeform_types import FreeformResult
 
         result = FreeformResult(
@@ -776,7 +776,7 @@ class TestFreeformResultFormatting:
         assert "('Wally', 'Berger')" not in text
 
     def test_generic_result_formats_rows_as_labeled_values(self):
-        from baseball_rag.db.freeform import format_result
+        from baseball_rag.db.freeform_runtime import format_result
         from baseball_rag.db.freeform_types import FreeformResult
 
         result = FreeformResult(
@@ -793,7 +793,7 @@ class TestFreeformResultFormatting:
         assert "('Babe', 'Ruth', 714)" not in text
 
     def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
-        from baseball_rag.db.freeform import format_result
+        from baseball_rag.db.freeform_runtime import format_result
         from baseball_rag.db.freeform_types import FreeformResult
 
         result = FreeformResult(
