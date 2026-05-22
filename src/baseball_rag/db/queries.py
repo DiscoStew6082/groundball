@@ -601,33 +601,3 @@ def _normalize(s: str) -> str:
 def _is_suffix(s: str) -> bool:
     """Return True if s is a common baseball name suffix (case-insensitive, strips trailing .)."""
     return s.lower().rstrip(".") in {"jr", "sr", "ii", "iii", "iv"}
-
-
-def get_player_stat(
-    conn: duckdb.DuckDBPyConnection,
-    player_name: str,
-    stat: str,
-    year: int | None = None,
-) -> dict | None:
-    """Compatibility adapter for a batting player stat lookup.
-
-    Args:
-        conn: Active DuckDB connection.
-        player_name: Full name e.g. "Ronald Acuna" or "Matt Olson".
-            Suffixes like "Jr.", "Sr.", "III" are handled automatically.
-        stat: The statistic to fetch (HR, RBI, etc.).
-        year: Optional specific season year.
-
-    Returns:
-        Dict with keys: name, year, team, stat_value, or None if not found.
-    """
-    result = execute_stat_query(
-        stat,
-        table="batting",
-        player_name=player_name,
-        year=year,
-        conn=conn,
-    )
-    if not result.rows:
-        return None
-    return result.rows[0]
