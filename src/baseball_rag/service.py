@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from baseball_rag import player_biography as _player_biography
+from baseball_rag import player_biography
 from baseball_rag.answer_mode import AnswerMode, validate_answer_mode
 from baseball_rag.conversation import resolve_followup
 from baseball_rag.db.duckdb_schema import get_duckdb
@@ -29,13 +29,6 @@ from baseball_rag.routing import route
 from baseball_rag.stat_query import answer_stat_query
 
 logger = logging.getLogger(__name__)
-
-_build_biography_json_repair_prompt = _player_biography.build_biography_json_repair_prompt
-_extract_supplied_stat_claims = _player_biography.extract_supplied_stat_claims
-_is_biography_json_contract = _player_biography.is_biography_json_contract
-_loads_json_object = _player_biography.loads_json_object
-_parse_biography_json = _player_biography.parse_biography_json
-_request_biography_json = _player_biography.request_biography_json
 
 
 def answer(
@@ -82,8 +75,8 @@ def _answer_player_biography(question: str, decision: Any) -> StructuredAnswer:
         conn_factory=get_duckdb,
         make_request=make_request,
         verify_claims_consensus=verify_player_stat_claims_consensus,
-        extract_claims=_extract_supplied_stat_claims,
-        request_biography=_request_biography_json,
+        extract_claims=player_biography.extract_supplied_stat_claims,
+        request_biography=player_biography.request_biography_json,
     ).answer(question, decision)
 
 

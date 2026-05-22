@@ -52,6 +52,14 @@ def test_no_noop_duckdb_init_compatibility_shim() -> None:
     assert "init_db" not in package_init
 
 
+def test_service_no_longer_exposes_biography_contract_patch_aliases() -> None:
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+
+    assert "_request_biography_json" not in service
+    assert "_parse_biography_json" not in service
+    assert "_extract_supplied_stat_claims" not in service
+
+
 def test_stale_space_deploy_surface_is_not_active() -> None:
     assert not (ROOT / ".github" / "workflows" / "deploy.yml").exists()
     assert not (ROOT / "space-app").exists()

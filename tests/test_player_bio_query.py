@@ -441,8 +441,8 @@ def test_llm_biography_retries_once_after_malformed_contract(monkeypatch):
     assert result.sources[0].rows[0]["status"] == "verified"
 
 
-def test_service_private_biography_json_alias_remains_patchable(monkeypatch):
-    """The service compatibility seam should still affect biography generation."""
+def test_player_biography_json_request_dependency_remains_patchable(monkeypatch):
+    """The biography module seam should affect biography generation."""
     calls = []
 
     def fake_request_biography(_make_request, _prompt):
@@ -456,7 +456,10 @@ def test_service_private_biography_json_alias_remains_patchable(monkeypatch):
             raw_question="who was Babe Ruth",
         ),
     )
-    monkeypatch.setattr("baseball_rag.service._request_biography_json", fake_request_biography)
+    monkeypatch.setattr(
+        "baseball_rag.player_biography.request_biography_json",
+        fake_request_biography,
+    )
 
     result = answer("who was Babe Ruth")
 
