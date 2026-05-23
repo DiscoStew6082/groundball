@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from baseball_rag import player_biography
+from baseball_rag import biography_contract, player_biography
 from baseball_rag.answer_mode import AnswerMode, validate_answer_mode
 from baseball_rag.conversation import resolve_followup
 from baseball_rag.db.duckdb_schema import get_duckdb
@@ -78,7 +78,7 @@ def _answer_player_biography(question: str, decision: PlayerBiographyCase) -> St
         make_request=make_request,
         verify_claims_consensus=verify_player_stat_claims_consensus,
         extract_claims=player_biography.extract_supplied_stat_claims,
-        request_biography=player_biography.request_biography_json,
+        request_biography=biography_contract.request_biography_json,
     ).answer(question, decision)
 
 

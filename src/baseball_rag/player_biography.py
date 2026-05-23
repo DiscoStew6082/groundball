@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from baseball_rag import biography_contract as _biography_contract
+from baseball_rag import biography_contract
 from baseball_rag.biography_contract import BiographyContractError
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.player_stat_claims import (
@@ -17,12 +17,6 @@ from baseball_rag.db.player_stat_claims import (
 from baseball_rag.outcomes import ambiguous_outcome, llm_unavailable_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 from baseball_rag.routing import PlayerBiographyCase
-
-build_biography_json_repair_prompt = _biography_contract.build_biography_json_repair_prompt
-is_biography_json_contract = _biography_contract.is_biography_json_contract
-loads_json_object = _biography_contract.loads_json_object
-parse_biography_json = _biography_contract.parse_biography_json
-request_biography_json = _biography_contract.request_biography_json
 
 
 @dataclass
@@ -95,7 +89,7 @@ class PlayerBiographyCaseAnswerer:
                 debut=player.debut,
                 final_game=player.final_game,
             )
-            request_biography = self.request_biography or request_biography_json
+            request_biography = self.request_biography or biography_contract.request_biography_json
             biography = request_biography(request, prompt)
         except (ConnectionError, TimeoutError) as exc:
             return llm_unavailable_outcome(

@@ -121,10 +121,18 @@ def test_no_noop_duckdb_init_compatibility_shim() -> None:
 
 def test_service_no_longer_exposes_biography_contract_patch_aliases() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+    player_biography = (ROOT / "src" / "baseball_rag" / "player_biography.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "_request_biography_json" not in service
     assert "_parse_biography_json" not in service
     assert "_extract_supplied_stat_claims" not in service
+    assert "build_biography_json_repair_prompt =" not in player_biography
+    assert "is_biography_json_contract =" not in player_biography
+    assert "loads_json_object =" not in player_biography
+    assert "parse_biography_json =" not in player_biography
+    assert "request_biography_json =" not in player_biography
 
 
 def test_service_imports_llm_client_directly() -> None:

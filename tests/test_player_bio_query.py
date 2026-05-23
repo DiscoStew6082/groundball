@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 
+from baseball_rag import player_biography
 from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.routing import GeneralExplanationCase, PlayerBiographyCase
 from baseball_rag.service import answer
@@ -441,27 +442,26 @@ def test_llm_biography_retries_once_after_malformed_contract(monkeypatch):
     assert result.sources[0].rows[0]["status"] == "verified"
 
 
-def test_player_biography_json_request_dependency_remains_patchable(monkeypatch):
-    """The biography module seam should affect biography generation."""
+def test_player_biography_answerer_accepts_biography_request_dependency(monkeypatch):
+    """The answerer accepts an explicit biography JSON request dependency."""
     calls = []
 
     def fake_request_biography(_make_request, _prompt):
         calls.append("called")
         return {"answer": "Patched Babe Ruth biography.", "claims": []}
 
-    monkeypatch.setattr(
-        "baseball_rag.service.route",
-        lambda _question: PlayerBiographyCase(
+    answerer = player_biography.PlayerBiographyCaseAnswerer(
+        make_request=lambda *_args, **_kwargs: None,
+        request_biography=fake_request_biography,
+    )
+
+    result = answerer.answer(
+        "who was Babe Ruth",
+        PlayerBiographyCase(
             player_name="Babe Ruth",
             raw_question="who was Babe Ruth",
         ),
     )
-    monkeypatch.setattr(
-        "baseball_rag.player_biography.request_biography_json",
-        fake_request_biography,
-    )
-
-    result = answer("who was Babe Ruth")
 
     assert calls == ["called"]
     assert result.answer == "Patched Babe Ruth biography."
