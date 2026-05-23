@@ -217,36 +217,6 @@ def _looks_like_ordinal_achievement_question(lowered_question: str) -> bool:
     )
 
 
-def _row_from_recent_turn(
-    conversation: list[dict[str, Any]],
-    row_index: int,
-) -> tuple[dict[str, Any] | None, str | None]:
-    row, source_turn = row_from_recent_turn(normalize_transcript(conversation), row_index)
-    return dict(row) if row is not None else None, source_turn
-
-
-def _active_player_from_recent_turn(
-    conversation: list[dict[str, Any]],
-) -> tuple[str | None, str | None]:
-    return active_player_from_recent_turn(normalize_transcript(conversation))
-
-
-def _answer_payload(turn: dict[str, Any]) -> dict[str, Any] | None:
-    answer_payload = turn.get("answer")
-    if isinstance(answer_payload, StructuredAnswer):
-        answer_payload = answer_payload.to_dict()
-    return answer_payload if isinstance(answer_payload, dict) else None
-
-
-def _turn_question(turn: dict[str, Any]) -> str | None:
-    question = turn.get("question")
-    return question if isinstance(question, str) else None
-
-
-def _player_name_from_row(row: dict[str, Any]) -> str | None:
-    return player_name_from_row(row)
-
-
 def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
     rows = source.get("rows") or []
     compact_rows = []

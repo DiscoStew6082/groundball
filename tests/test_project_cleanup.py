@@ -98,6 +98,16 @@ def test_grounded_database_question_no_longer_uses_year_route_shape() -> None:
     assert 'getattr(decision, "year"' not in service
 
 
+def test_conversation_no_longer_exposes_private_transcript_wrappers() -> None:
+    conversation = (ROOT / "src" / "baseball_rag" / "conversation.py").read_text(encoding="utf-8")
+
+    assert "def _row_from_recent_turn(" not in conversation
+    assert "def _active_player_from_recent_turn(" not in conversation
+    assert "def _answer_payload(" not in conversation
+    assert "def _turn_question(" not in conversation
+    assert "def _player_name_from_row(" not in conversation
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"
