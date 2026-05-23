@@ -327,6 +327,46 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
+    def test_malformed_llm_routing_position_falls_back_to_heuristic(self, monkeypatch):
+        """Malformed position fields should not leak into routed cases."""
+
+        def malformed_llm_response(*_args, **_kwargs):
+            return LLMResponse(
+                content=(
+                    '{"intent":"stat_query","stat":"PO","time_period":null,'
+                    '"position":["SS"],"player_name":null}'
+                ),
+                model="test",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", malformed_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
+    def test_malformed_llm_routing_player_name_falls_back_to_heuristic(self, monkeypatch):
+        """Malformed player name fields should not leak into routed cases."""
+
+        def malformed_llm_response(*_args, **_kwargs):
+            return LLMResponse(
+                content=(
+                    '{"intent":"player_biography","stat":null,"time_period":null,'
+                    '"position":null,"player_name":{"first":"Babe","last":"Ruth"}}'
+                ),
+                model="test",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", malformed_llm_response)
+
+        result = route("tell me something interesting about baseball")
+
+        assert result.intent == "general_explanation"
+        assert result.stat is None
+
     def test_llm_routing_timeout_falls_back_to_heuristic(self, monkeypatch):
         """Router LM timeouts should not abort the whole request."""
 

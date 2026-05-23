@@ -383,13 +383,19 @@ def route(question: str) -> RoutedCase:
             raw_stat = data.get("stat")
             if raw_stat is not None and not isinstance(raw_stat, str):
                 raise LLMRoutingOutputError("LLM router stat must be a string or null.")
+            raw_position = data.get("position")
+            if raw_position is not None and not isinstance(raw_position, str):
+                raise LLMRoutingOutputError("LLM router position must be a string or null.")
+            raw_player_name = data.get("player_name")
+            if raw_player_name is not None and not isinstance(raw_player_name, str):
+                raise LLMRoutingOutputError("LLM router player_name must be a string or null.")
 
             return routed_case(
                 intent=cast(Intent, data["intent"]),
                 stat=normalize_stat(raw_stat) if raw_stat else None,
                 time_period=time_period,
-                position=data.get("position"),
-                player_name=data.get("player_name"),
+                position=raw_position,
+                player_name=raw_player_name,
                 raw_question=question,
             )
         raise LLMRoutingOutputError("LLM router output did not contain a supported intent.")
