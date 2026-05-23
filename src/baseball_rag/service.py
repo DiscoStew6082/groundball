@@ -71,10 +71,8 @@ def render_text(result: StructuredAnswer) -> str:
 
 
 def _answer_player_biography(question: str, decision: PlayerBiographyCase) -> StructuredAnswer:
-    try:
-        from baseball_rag.generation.llm import make_request
-    except ImportError:  # pragma: no cover
-        make_request = None
+    from baseball_rag.generation.llm import make_request
+
     return PlayerBiographyCaseAnswerer(
         conn_factory=get_duckdb,
         make_request=make_request,
@@ -174,10 +172,8 @@ def _grounded_database_single_season_year(
 
 
 def _answer_general(question: str, decision: GeneralExplanationCase) -> StructuredAnswer:
-    try:
-        from baseball_rag.generation.llm import make_request
-    except ImportError:  # pragma: no cover
-        make_request = None
+    from baseball_rag.generation.llm import make_request
+
     return GeneralExplanationPolicy(make_request=make_request).answer(decision)
 
 

@@ -127,6 +127,13 @@ def test_service_no_longer_exposes_biography_contract_patch_aliases() -> None:
     assert "_extract_supplied_stat_claims" not in service
 
 
+def test_service_imports_llm_client_directly() -> None:
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+
+    assert "except ImportError" not in service
+    assert "make_request = None" not in service
+
+
 def test_player_biography_answerer_requires_routed_case() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
     player_biography = (ROOT / "src" / "baseball_rag" / "player_biography.py").read_text(
