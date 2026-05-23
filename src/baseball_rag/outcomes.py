@@ -45,36 +45,6 @@ def no_data_outcome(
     )
 
 
-def missing_corpus_outcome(
-    *,
-    answer: str,
-    intent: str,
-    warnings: list[str] | None = None,
-) -> StructuredAnswer:
-    """Build an unsupported outcome for absent local retrieval corpus."""
-    return unsupported_outcome(
-        answer=answer,
-        intent=intent,
-        reason="missing_corpus",
-        warnings=warnings,
-    )
-
-
-def retrieval_failed_outcome(
-    *,
-    answer: str,
-    intent: str,
-    warning: str,
-) -> StructuredAnswer:
-    """Build an unsupported outcome for recoverable retrieval failures."""
-    return unsupported_outcome(
-        answer=answer,
-        intent=intent,
-        reason="retrieval_failed",
-        warnings=[warning],
-    )
-
-
 def llm_unavailable_outcome(
     *,
     answer: str,

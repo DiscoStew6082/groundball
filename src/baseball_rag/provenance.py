@@ -10,8 +10,6 @@ UnsupportedReason = Literal[
     "unsupported",
     "ambiguous",
     "no_data",
-    "missing_corpus",
-    "retrieval_failed",
     "llm_unavailable",
 ]
 ReviewReason = Literal["unsupported", "ambiguous", "low_confidence"]

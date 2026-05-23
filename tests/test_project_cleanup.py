@@ -111,6 +111,16 @@ def test_conversation_no_longer_exposes_private_transcript_wrappers() -> None:
     assert "def _player_name_from_row(" not in conversation
 
 
+def test_retired_retrieval_failure_outcomes_are_removed() -> None:
+    outcomes = (ROOT / "src" / "baseball_rag" / "outcomes.py").read_text(encoding="utf-8")
+    provenance = (ROOT / "src" / "baseball_rag" / "provenance.py").read_text(encoding="utf-8")
+
+    assert "def missing_corpus_outcome(" not in outcomes
+    assert "def retrieval_failed_outcome(" not in outcomes
+    assert '"missing_corpus"' not in provenance
+    assert '"retrieval_failed"' not in provenance
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"
