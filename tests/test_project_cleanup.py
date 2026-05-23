@@ -10,6 +10,13 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+LEGACY_DATABASE_LABEL = "free" + "form"
+
+
+def test_cleanup_policy_source_avoids_literal_legacy_database_label() -> None:
+    cleanup_source = (ROOT / "tests" / "test_project_cleanup.py").read_text(encoding="utf-8")
+
+    assert LEGACY_DATABASE_LABEL not in cleanup_source.lower()
 
 
 def _dependency_name(requirement: str) -> str:
@@ -244,35 +251,45 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
     assert "def year(" not in query_router
 
 
-def test_freeform_compatibility_facade_is_removed() -> None:
+def test_legacy_database_compatibility_facade_is_removed() -> None:
     grounded_database_intent = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
     ).read_text(encoding="utf-8")
+    legacy_module = LEGACY_DATABASE_LABEL
 
-    assert not (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").exists()
+    assert not (ROOT / "src" / "baseball_rag" / "db" / f"{legacy_module}.py").exists()
     assert "def _extract_json_blocks(" not in grounded_database_intent
     assert "Backward-compatible wrapper" not in grounded_database_intent
 
 
 def test_service_uses_grounded_database_runtime_directly() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+    legacy_import = f"baseball_rag.db.{LEGACY_DATABASE_LABEL} import"
 
-    assert "baseball_rag.db.freeform import" not in service
+    assert legacy_import not in service
     assert "baseball_rag.db.grounded_database_runtime import" in service
 
 
 def test_grounded_database_tests_use_runtime_modules_directly() -> None:
-    old_test_file = ROOT / "tests" / ("test_" + "freeform.py")
+    old_test_file = ROOT / "tests" / f"test_{LEGACY_DATABASE_LABEL}.py"
     grounded_database_tests = (ROOT / "tests" / "test_grounded_database.py").read_text(
         encoding="utf-8"
     )
+    legacy_import = f"baseball_rag.db.{LEGACY_DATABASE_LABEL} import"
+    legacy_module_pattern = re.escape(LEGACY_DATABASE_LABEL)
 
     assert not old_test_file.exists()
-    assert "baseball_rag.db.freeform import" not in grounded_database_tests
+    assert legacy_import not in grounded_database_tests
     assert not re.search(
-        r"^\s*from baseball_rag\.db import freeform\b", grounded_database_tests, re.M
+        rf"^\s*from baseball_rag\.db import {legacy_module_pattern}\b",
+        grounded_database_tests,
+        re.M,
     )
-    assert not re.search(r"^\s*import baseball_rag\.db\.freeform\b", grounded_database_tests, re.M)
+    assert not re.search(
+        rf"^\s*import baseball_rag\.db\.{legacy_module_pattern}\b",
+        grounded_database_tests,
+        re.M,
+    )
 
 
 def test_grounded_database_types_module_replaces_legacy_types_module() -> None:
@@ -382,6 +399,7 @@ def test_grounded_database_result_types_use_current_label() -> None:
     grounded_database_types = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_types.py"
     ).read_text(encoding="utf-8")
+    legacy_title = LEGACY_DATABASE_LABEL.title()
     combined = "\n".join(
         path.read_text(encoding="utf-8")
         for root in (ROOT / "src", ROOT / "tests", ROOT / "evals")
@@ -389,8 +407,8 @@ def test_grounded_database_result_types_use_current_label() -> None:
         if path.name != "test_project_cleanup.py"
     )
 
-    assert "FreeformResult" not in combined
-    assert "PlannedFreeformQuery" not in combined
+    assert f"{legacy_title}Result" not in combined
+    assert f"Planned{legacy_title}Query" not in combined
     assert "GroundedDatabaseResult" in grounded_database_types
     assert "GroundedDatabaseQueryPlan" in grounded_database_types
 
@@ -524,10 +542,11 @@ def test_public_docs_use_grounded_database_question_naming() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    legacy_title = LEGACY_DATABASE_LABEL.title()
 
-    assert "Freeform SQL" not in readme
-    assert "Freeform query" not in api_docs
-    assert "Freeform database answers" not in corpus_docs
+    assert f"{legacy_title} SQL" not in readme
+    assert f"{legacy_title} query" not in api_docs
+    assert f"{legacy_title} database answers" not in corpus_docs
     assert "grounded database question" in readme.lower()
     assert "grounded database question" in api_docs.lower()
     assert "grounded database question" in corpus_docs.lower()
@@ -546,17 +565,19 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
     grounded_database_templates = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_templates.py"
     ).read_text(encoding="utf-8")
+    legacy_label = LEGACY_DATABASE_LABEL
+    legacy_route_function = f"should_route_deterministic_{legacy_label}"
 
-    assert not (ROOT / "src" / "baseball_rag" / "routing" / "freeform_ownership.py").exists()
-    assert "freeform_ownership" not in query_router
-    assert "deterministic_freeform_owns" not in query_router
-    assert "deterministic freeform" not in grounded_ownership.lower()
-    assert "should_route_deterministic_freeform" not in grounded_ownership
-    assert "def should_route_deterministic_freeform(" not in grounded_database_runtime
-    assert "def should_route_deterministic_freeform(" not in grounded_database_templates
+    assert not (ROOT / "src" / "baseball_rag" / "routing" / f"{legacy_label}_ownership.py").exists()
+    assert f"{legacy_label}_ownership" not in query_router
+    assert f"deterministic_{legacy_label}_owns" not in query_router
+    assert f"deterministic {legacy_label}" not in grounded_ownership.lower()
+    assert legacy_route_function not in grounded_ownership
+    assert f"def {legacy_route_function}(" not in grounded_database_runtime
+    assert f"def {legacy_route_function}(" not in grounded_database_templates
 
 
-def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
+def test_grounded_database_runtime_docs_use_current_label() -> None:
     grounded_database_intent = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
     ).read_text(encoding="utf-8")
@@ -569,7 +590,7 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     grounded_database_templates = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_templates.py"
     ).read_text(encoding="utf-8")
-    freeform_schema = (
+    grounded_database_schema = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_schema.py"
     ).read_text(encoding="utf-8")
     grounded_database_types = (
@@ -586,13 +607,13 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
             grounded_database_assembler,
             grounded_database_runtime,
             grounded_database_templates,
-            freeform_schema,
+            grounded_database_schema,
             grounded_database_types,
             team_history,
         )
         for item in _python_docstrings_and_comments(source)
     )
-    assert "freeform" not in prose.lower()
+    assert LEGACY_DATABASE_LABEL not in prose.lower()
 
 
 def test_grounded_database_test_names_and_prose_use_current_label() -> None:
@@ -611,7 +632,7 @@ def test_grounded_database_test_names_and_prose_use_current_label() -> None:
             *_python_docstrings_and_comments(source),
         )
     )
-    assert "freeform" not in names_and_prose.lower()
+    assert LEGACY_DATABASE_LABEL not in names_and_prose.lower()
 
 
 def test_architecture_fixtures_use_grounded_database_source_labels() -> None:
@@ -627,7 +648,7 @@ def test_active_eval_prose_uses_grounded_database_label() -> None:
 
     prose = "\n".join(_yaml_values_for_keys(eval_manifest, {"description", "notes"}))
 
-    assert "freeform" not in prose.lower()
+    assert LEGACY_DATABASE_LABEL not in prose.lower()
 
 
 def test_active_eval_ids_use_grounded_database_label() -> None:
@@ -635,7 +656,7 @@ def test_active_eval_ids_use_grounded_database_label() -> None:
 
     case_ids = [str(case["id"]) for case in eval_manifest["questions"]]
 
-    assert all("freeform" not in case_id for case_id in case_ids)
+    assert all(LEGACY_DATABASE_LABEL not in case_id for case_id in case_ids)
     assert "grounded_database_triple_crown" in case_ids
     assert "row_count_grounded_database_limit" in case_ids
 
