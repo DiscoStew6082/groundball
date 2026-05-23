@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from baseball_rag.arch.tracing import finish_trace, get_current_trace, traced
+from baseball_rag.conversation import conversation_turn
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.request_execution import execute_request
 from baseball_rag.routing import (
@@ -184,9 +185,9 @@ def test_execute_request_passes_conversation_to_answer_service():
 def test_execute_request_resolves_followup_dispatches_and_attaches_context(monkeypatch):
     """Follow-up context is resolved, answered, and annotated by the request path."""
     prior_turns = [
-        {
-            "question": "career home run leaders",
-            "answer": StructuredAnswer(
+        conversation_turn(
+            "career home run leaders",
+            StructuredAnswer(
                 answer="Career home run leaders",
                 intent="stat_query",
                 sources=[
@@ -200,7 +201,7 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
                     )
                 ],
             ),
-        }
+        )
     ]
     routed_questions = []
 
@@ -241,9 +242,9 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
 def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(monkeypatch):
     """Ordinal follow-ups can reference the fifth row from a previous leaderboard."""
     prior_turns = [
-        {
-            "question": "career home run leaders",
-            "answer": StructuredAnswer(
+        conversation_turn(
+            "career home run leaders",
+            StructuredAnswer(
                 answer="Career home run leaders",
                 intent="stat_query",
                 sources=[
@@ -260,7 +261,7 @@ def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(m
                     )
                 ],
             ),
-        }
+        )
     ]
     routed_questions = []
 
@@ -299,9 +300,9 @@ def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(m
 def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monkeypatch):
     """Ordinal achievement questions are routed as asked, not as row follow-ups."""
     prior_turns = [
-        {
-            "question": "career home run leaders",
-            "answer": StructuredAnswer(
+        conversation_turn(
+            "career home run leaders",
+            StructuredAnswer(
                 answer="Career home run leaders",
                 intent="stat_query",
                 sources=[
@@ -318,7 +319,7 @@ def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monk
                     )
                 ],
             ),
-        }
+        )
     ]
     routed_questions = []
 

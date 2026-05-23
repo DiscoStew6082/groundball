@@ -251,6 +251,15 @@ def test_conversation_turn_requires_structured_answer_payloads() -> None:
     assert "{**self.payload" not in presentation
 
 
+def test_conversation_transcript_accepts_serialized_answer_payloads_only() -> None:
+    transcript = (ROOT / "src" / "baseball_rag" / "conversation_transcript.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "StructuredAnswer" not in transcript
+    assert "def _answer_payload(" not in transcript
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"

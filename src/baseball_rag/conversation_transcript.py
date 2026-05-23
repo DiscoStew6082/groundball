@@ -6,8 +6,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from baseball_rag.provenance import StructuredAnswer
-
 
 @dataclass(frozen=True)
 class TranscriptRow:
@@ -44,8 +42,8 @@ def normalize_transcript(
     for raw_turn in conversation:
         if not isinstance(raw_turn, Mapping):
             continue
-        answer_payload = _answer_payload(raw_turn)
-        if answer_payload is None:
+        answer_payload = raw_turn.get("answer")
+        if not isinstance(answer_payload, Mapping):
             continue
         question = raw_turn.get("question")
         metadata = answer_payload.get("metadata")
@@ -96,13 +94,6 @@ def player_name_from_row(row: Mapping[str, Any]) -> str | None:
         if first and last:
             return f"{first} {last}"
     return name
-
-
-def _answer_payload(turn: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    answer_payload = turn.get("answer")
-    if isinstance(answer_payload, StructuredAnswer):
-        answer_payload = answer_payload.to_dict()
-    return answer_payload if isinstance(answer_payload, Mapping) else None
 
 
 def _normalize_sources(raw_sources: object) -> tuple[TranscriptSource, ...]:
