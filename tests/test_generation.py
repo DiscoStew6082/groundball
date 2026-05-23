@@ -64,7 +64,7 @@ class TestStripReasoningBlock:
         assert result == raw
 
     def test_strips_leading_bullet_list(self):
-        """Lines starting with * or - at the top are stripped (fallback stripper)."""
+        """Lines starting with * or - at the top are stripped."""
         raw = (
             "* Rollie Fingers: famous moustache\n"
             "* Pete Rose: also known for facial hair\n"

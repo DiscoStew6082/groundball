@@ -635,6 +635,20 @@ def test_llm_streaming_compatibility_api_is_removed() -> None:
     assert stream_api not in llm_tests
 
 
+def test_llm_reasoning_stripper_is_not_described_as_fallback() -> None:
+    llm = (ROOT / "src" / "baseball_rag" / "generation" / "llm.py").read_text(encoding="utf-8")
+    llm_tests = (ROOT / "tests" / "test_generation.py").read_text(encoding="utf-8")
+    prose = "\n".join(
+        (
+            *_python_docstrings_and_comments(llm),
+            *_python_docstrings_and_comments(llm_tests),
+        )
+    )
+
+    assert "fallback stripper" not in prose
+    assert "fallback for any remaining structured prefix" not in prose
+
+
 def test_retrieved_document_generation_surface_is_removed() -> None:
     generation_init = (ROOT / "src" / "baseball_rag" / "generation" / "__init__.py").read_text(
         encoding="utf-8"

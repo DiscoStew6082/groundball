@@ -142,8 +142,7 @@ def _strip_reasoning_block(text: str) -> str:
     if think_match:
         text = text.replace(think_match.group(0), "").strip()
 
-    # Strip leading reasoning block: lines starting with list markers
-    # (fallback for any remaining structured prefix)
+    # Strip any remaining leading reasoning prefix made of list-marker lines.
     lines = text.split("\n")
     for i, line in enumerate(lines):
         stripped = line.strip()
