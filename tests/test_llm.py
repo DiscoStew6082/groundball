@@ -66,7 +66,7 @@ class TestLLMClient:
         mock_resp = MagicMock()
         mock_resp.raise_for_status.return_value = None
         mock_resp.json.return_value = {
-            "choices": [{"message": {"content": "", "reasoning_content": ""}}],
+            "choices": [{"message": {"content": ""}}],
             "model": "gemma-4-26b",
         }
 

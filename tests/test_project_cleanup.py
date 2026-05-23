@@ -548,11 +548,13 @@ def test_execute_stat_query_compatibility_adapter_is_removed() -> None:
 
 def test_llm_prompt_string_compatibility_is_removed() -> None:
     llm = (ROOT / "src" / "baseball_rag" / "generation" / "llm.py").read_text(encoding="utf-8")
+    llm_tests = (ROOT / "tests" / "test_llm.py").read_text(encoding="utf-8")
 
     assert "str | tuple" not in llm
     assert "backward compat" not in llm
     assert "_content_to_text" not in llm
     assert "reasoning_content" not in llm
+    assert "reasoning_content" not in llm_tests
 
 
 def test_llm_streaming_compatibility_api_is_removed() -> None:
