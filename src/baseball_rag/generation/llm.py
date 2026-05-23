@@ -156,29 +156,6 @@ def _strip_reasoning_block(text: str) -> str:
     return original
 
 
-def _content_to_text(value: object) -> str:
-    """Normalize OpenAI-compatible message content variants into text."""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return "".join(_content_to_text(item) for item in value)
-    if isinstance(value, dict):
-        for key in ("text", "content", "reasoning_content"):
-            text = _content_to_text(value.get(key))
-            if text:
-                return text
-    return ""
-
-
-def _message_content(choice: dict) -> str:
-    content = _content_to_text(choice.get("content"))
-    if content:
-        return content
-    return _content_to_text(choice.get("reasoning_content"))
-
-
 def _messages_from_prompt(prompt: Prompt) -> list[dict[str, str]]:
     if (
         not isinstance(prompt, tuple)
@@ -232,7 +209,9 @@ def make_request(
         raise LLMMalformedResponseError(
             "LM Studio returned a malformed chat completion response."
         ) from exc
-    raw = _message_content(choice)
+    raw = choice.get("content")
+    if not isinstance(raw, str):
+        raise LLMMalformedResponseError("LM Studio returned a malformed chat completion response.")
     content = _strip_reasoning_block(raw)
     if not content.strip():
         raise LLMEmptyOutputError("LM Studio returned an empty response.")
@@ -267,8 +246,6 @@ def make_request_stream(
 
             chunk = _json.loads(line[6:])
             delta = chunk.get("choices", [{}])[0].get("delta", {})
-            token = _content_to_text(delta.get("content")) + _content_to_text(
-                delta.get("reasoning_content")
-            )
-            if token:
+            token = delta.get("content")
+            if isinstance(token, str) and token:
                 yield token

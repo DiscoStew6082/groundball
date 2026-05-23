@@ -40,8 +40,8 @@ class TestLLMClient:
         assert len(result.content) > 0
         assert result.model == "gemma-4-26b"
 
-    def test_generate_returns_text_from_content_parts(self):
-        """OpenAI-compatible content parts should be joined into returned text."""
+    def test_generate_rejects_non_string_content(self):
+        """LM responses must provide a plain string assistant message."""
         mock_resp = MagicMock()
         mock_resp.raise_for_status.return_value = None
         mock_resp.json.return_value = {
@@ -59,9 +59,8 @@ class TestLLMClient:
         }
 
         with patch("requests.post", return_value=mock_resp):
-            result = make_request(_prompt("who was Babe Ruth"))
-
-        assert result.content == "Babe Ruth played for the Yankees."
+            with pytest.raises(LLMMalformedResponseError, match="malformed"):
+                make_request(_prompt("who was Babe Ruth"))
 
     def test_generate_raises_when_response_has_no_text(self):
         """Successful LM responses with no final text should fail visibly upstream."""
@@ -171,8 +170,8 @@ class TestLLMClient:
         # Note: token may include leading space from SSE delta
         assert any("Mantle" in t for t in tokens)
 
-    def test_stream_joins_content_parts_and_reasoning_content(self):
-        """Streaming keeps content plus reasoning fields while normalizing parts."""
+    def test_stream_ignores_non_string_content(self):
+        """Streaming yields only plain string content deltas."""
         lines = [
             (
                 'data: {"choices":[{"delta":{"content":'
@@ -188,7 +187,7 @@ class TestLLMClient:
         with patch("requests.post", return_value=mock_resp):
             tokens = list(make_request_stream(_prompt("who was Babe Ruth")))
 
-        assert tokens == ["Babe Ruth played baseball"]
+        assert tokens == []
 
     def test_stream_with_tuple_prompt(self):
         """make_request_stream also supports (system, user) tuple prompts."""

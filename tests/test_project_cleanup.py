@@ -525,6 +525,8 @@ def test_llm_prompt_string_compatibility_is_removed() -> None:
 
     assert "str | tuple" not in llm
     assert "backward compat" not in llm
+    assert "_content_to_text" not in llm
+    assert "reasoning_content" not in llm
 
 
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
