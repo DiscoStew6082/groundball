@@ -47,47 +47,6 @@ def _team_name(team_id: str) -> str:
 
 
 @traced(component_id="duckdb", label="DB Query")
-def execute_stat_query(
-    stat: str,
-    *,
-    table: StatTable,
-    start_year: int | None = None,
-    end_year: int | None = None,
-    player_name: str | None = None,
-    year: int | None = None,
-    position: str | None = None,
-    limit: int = 10,
-    conn: duckdb.DuckDBPyConnection | None = None,
-) -> StatQueryResult:
-    """Compatibility adapter for deterministic stat queries.
-
-    New deterministic callers should pass a StatQueryPlan to execute_stat_query_plan.
-    """
-    stat_def = get_stat(stat, table=table)
-    if player_name:
-        kind: StatQueryKind = "player"
-    elif start_year is not None and end_year is not None:
-        kind = "leaderboard"
-    else:
-        kind = "career"
-    return _execute_stat_query_plan(
-        StatQueryPlan(
-            stat=stat_def.canonical,
-            table=stat_def.table,
-            kind=kind,
-            intent="stat_query",
-            position=position,
-            player_name=player_name,
-            year=year,
-            start_year=start_year,
-            end_year=end_year,
-            limit=limit,
-        ),
-        conn=conn,
-    )
-
-
-@traced(component_id="duckdb", label="DB Query")
 def execute_stat_query_plan(
     plan: StatQueryPlan,
     *,

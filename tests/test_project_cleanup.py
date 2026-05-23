@@ -159,6 +159,14 @@ def test_fielding_leaders_compatibility_adapter_is_removed() -> None:
     assert "get_fielding_leaders" not in package_init
 
 
+def test_execute_stat_query_compatibility_adapter_is_removed() -> None:
+    queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
+    db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")
+
+    assert "def execute_stat_query(" not in queries
+    assert "execute_stat_query" not in db_init
+
+
 def test_duckdb_schema_no_longer_exports_team_map_alias() -> None:
     duckdb_schema = (ROOT / "src" / "baseball_rag" / "db" / "duckdb_schema.py").read_text(
         encoding="utf-8"

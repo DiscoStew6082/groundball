@@ -4,7 +4,6 @@ import pytest
 
 from baseball_rag.db.queries import (
     StatQueryPlan,
-    execute_stat_query,
     execute_stat_query_plan,
 )
 from baseball_rag.routing import StatQueryCase
@@ -146,9 +145,18 @@ def test_unknown_stat_is_rejected_before_sql_execution():
         )
 
 
-def test_execute_stat_query_returns_executed_sql_for_provenance():
+def test_execute_stat_query_plan_returns_executed_sql_for_provenance():
     """Stat provenance should be built from the query that actually ran."""
-    result = execute_stat_query("OPS", table="batting", start_year=1970, end_year=1979)
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="OPS",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1970,
+            end_year=1979,
+        )
+    )
 
     assert result.rows
     assert result.sql == result.executed_sql
@@ -175,8 +183,10 @@ def test_execute_stat_query_plan_runs_leaderboard_plan_directly():
     assert "SUM(b.AB) >= 100" in result.sql
 
 
-def test_execute_stat_query_career_leaders_do_not_merge_same_name_players():
-    result = execute_stat_query("HR", table="batting")
+def test_execute_stat_query_plan_career_leaders_do_not_merge_same_name_players():
+    result = execute_stat_query_plan(
+        StatQueryPlan(stat="HR", table="batting", kind="career", intent="stat_query")
+    )
 
     assert result.rows[0]["name"] == "Bonds, Barry"
     assert result.rows[0]["stat_value"] == 762
@@ -184,13 +194,17 @@ def test_execute_stat_query_career_leaders_do_not_merge_same_name_players():
     assert "b.playerID" in result.sql
 
 
-def test_execute_stat_query_supports_fielding_putouts():
-    result = execute_stat_query(
-        "PO",
-        table="fielding",
-        start_year=1983,
-        end_year=1983,
-        position="OF",
+def test_execute_stat_query_plan_supports_fielding_putouts():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="PO",
+            table="fielding",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1983,
+            end_year=1983,
+            position="OF",
+        )
     )
 
     assert result.rows
@@ -199,8 +213,10 @@ def test_execute_stat_query_supports_fielding_putouts():
     assert "f.POS = ?" in result.sql
 
 
-def test_execute_stat_query_supports_career_fielding_putouts():
-    result = execute_stat_query("PO", table="fielding")
+def test_execute_stat_query_plan_supports_career_fielding_putouts():
+    result = execute_stat_query_plan(
+        StatQueryPlan(stat="PO", table="fielding", kind="career", intent="stat_query")
+    )
 
     assert result.rows
     assert result.rows[0]["name"] == "Beckley, Jake"
@@ -208,8 +224,17 @@ def test_execute_stat_query_supports_career_fielding_putouts():
     assert "FROM fielding f" in result.sql
 
 
-def test_execute_stat_query_uses_pitching_table_for_era():
-    result = execute_stat_query("ERA", table="pitching", start_year=1968, end_year=1968)
+def test_execute_stat_query_plan_uses_pitching_table_for_era():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="ERA",
+            table="pitching",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1968,
+            end_year=1968,
+        )
+    )
 
     assert result.rows
     assert result.stat == "ERA"
@@ -219,8 +244,17 @@ def test_execute_stat_query_uses_pitching_table_for_era():
 
 
 @pytest.mark.parametrize("stat", ["ERA", "WHIP"])
-def test_execute_stat_query_orders_pitching_rate_stats_lowest_first(stat):
-    result = execute_stat_query(stat, table="pitching", start_year=1968, end_year=1968)
+def test_execute_stat_query_plan_orders_pitching_rate_stats_lowest_first(stat):
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat=stat,
+            table="pitching",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1968,
+            end_year=1968,
+        )
+    )
 
     values = [row["stat_value"] for row in result.rows]
     assert values == sorted(values)
@@ -229,16 +263,34 @@ def test_execute_stat_query_orders_pitching_rate_stats_lowest_first(stat):
     assert "ORDER BY stat_value ASC" in result.sql
 
 
-def test_execute_stat_query_avg_range_uses_minimum_at_bats_guard():
-    result = execute_stat_query("AVG", table="batting", start_year=1894, end_year=1894)
+def test_execute_stat_query_plan_avg_range_uses_minimum_at_bats_guard():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="AVG",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1894,
+            end_year=1894,
+        )
+    )
 
     assert result.rows
     assert all(0 < row["stat_value"] < 1 for row in result.rows)
     assert "SUM(b.AB) >= 100" in result.sql
 
 
-def test_execute_stat_query_player_ops_uses_executed_guarded_sql_for_provenance():
-    result = execute_stat_query("OPS", table="batting", player_name="Ted Williams", year=1941)
+def test_execute_stat_query_plan_player_ops_uses_executed_guarded_sql_for_provenance():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="OPS",
+            table="batting",
+            kind="player",
+            intent="stat_query",
+            player_name="Ted Williams",
+            year=1941,
+        )
+    )
 
     assert result.rows
     assert result.sql == result.executed_sql
@@ -247,8 +299,17 @@ def test_execute_stat_query_player_ops_uses_executed_guarded_sql_for_provenance(
     assert "strip_accents" in result.sql
 
 
-def test_execute_stat_query_supports_player_pitching_stats():
-    result = execute_stat_query("W", table="pitching", player_name="Cy Young", year=1901)
+def test_execute_stat_query_plan_supports_player_pitching_stats():
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="W",
+            table="pitching",
+            kind="player",
+            intent="stat_query",
+            player_name="Cy Young",
+            year=1901,
+        )
+    )
 
     assert result.rows
     assert result.rows[0]["name"] == "Young, Cy"
