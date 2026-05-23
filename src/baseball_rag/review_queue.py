@@ -13,7 +13,7 @@ from typing import Any, Literal
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.support_state import answer_support_state
 
-ReviewReason = Literal["unsupported", "ambiguous", "low_confidence"]
+ReviewReason = Literal["unsupported", "ambiguous"]
 ReviewStatus = Literal["open", "resolved", "dismissed"]
 DEFAULT_REVIEW_QUEUE_PATH = Path("data/review_queue.jsonl")
 
@@ -36,11 +36,8 @@ class ReviewQueueItem:
 def build_review_item(
     question: str,
     answer: StructuredAnswer,
-    *,
-    low_confidence_threshold: float = 0.35,
 ) -> ReviewQueueItem | None:
     """Return a review item when an answer should be checked by a person."""
-    _ = low_confidence_threshold
     reason = answer_support_state(answer).review_reason
     if reason is None:
         return None

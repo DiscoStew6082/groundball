@@ -45,7 +45,7 @@ Key choices:
 - ChromaDB was removed because it duplicated generated facts and added fragile local state. DuckDB remains the source of truth for structured baseball facts.
 - CI runs a deterministic-only AI release gate with Markdown/JSON artifacts and baseline comparison. Live LLM evals stay optional local commands.
 - API responses include audit metadata for route, unsupported status, SQL template hash, source summaries, latency, dataset/model versions, and exact eval-manifest matches.
-- Unsupported, ambiguous, or low-confidence API answers are written to a small JSONL human-review queue.
+- Unsupported or ambiguous API answers are written to a small JSONL human-review queue.
 
 ## API Example
 

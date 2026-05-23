@@ -121,6 +121,19 @@ def test_retired_retrieval_failure_outcomes_are_removed() -> None:
     assert '"retrieval_failed"' not in provenance
 
 
+def test_low_confidence_review_queue_surface_is_removed() -> None:
+    provenance = (ROOT / "src" / "baseball_rag" / "provenance.py").read_text(encoding="utf-8")
+    review_queue = (ROOT / "src" / "baseball_rag" / "review_queue.py").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
+
+    assert "low_confidence" not in provenance
+    assert "low_confidence" not in review_queue
+    assert "low_confidence_threshold" not in review_queue
+    assert "low-confidence" not in readme
+    assert "low-confidence" not in api_docs
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"

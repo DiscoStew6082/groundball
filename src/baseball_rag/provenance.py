@@ -12,7 +12,7 @@ UnsupportedReason = Literal[
     "no_data",
     "llm_unavailable",
 ]
-ReviewReason = Literal["unsupported", "ambiguous", "low_confidence"]
+ReviewReason = Literal["unsupported", "ambiguous"]
 
 
 @dataclass
