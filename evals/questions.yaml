@@ -380,7 +380,7 @@ questions:
   - id: row_count_freeform_limit
     question: "list players who played in 2022"
     expected_max_rows: 1000
-    notes: "Freeform results must respect MAX_ROWS."
+    notes: "Grounded database results must respect MAX_ROWS."
   - id: team_history_boston_braves
     question: "who played for the Braves in 1936"
     intent: grounded_database_question

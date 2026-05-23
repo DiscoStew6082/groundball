@@ -7,6 +7,8 @@ import tokenize
 import tomllib
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -38,6 +40,19 @@ def _python_definition_names(source: str) -> list[str]:
         for node in ast.walk(module)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
     ]
+
+
+def _yaml_values_for_keys(value: object, keys: set[str]) -> list[str]:
+    if isinstance(value, dict):
+        values: list[str] = []
+        for key, item in value.items():
+            if key in keys and isinstance(item, str):
+                values.append(item)
+            values.extend(_yaml_values_for_keys(item, keys))
+        return values
+    if isinstance(value, list):
+        return [item for entry in value for item in _yaml_values_for_keys(entry, keys)]
+    return []
 
 
 def test_default_package_excludes_optional_mlb_api_mcp_surface() -> None:
@@ -440,6 +455,14 @@ def test_grounded_database_test_names_and_prose_use_current_label() -> None:
         )
     )
     assert "freeform" not in names_and_prose.lower()
+
+
+def test_active_eval_prose_uses_grounded_database_label() -> None:
+    eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
+
+    prose = "\n".join(_yaml_values_for_keys(eval_manifest, {"description", "notes"}))
+
+    assert "freeform" not in prose.lower()
 
 
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
