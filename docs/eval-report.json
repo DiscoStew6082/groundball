@@ -66,61 +66,61 @@
       "status": "passed"
     },
     {
-      "case_id": "freeform_triple_crown",
+      "case_id": "grounded_database_triple_crown",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_30_30_club",
+      "case_id": "grounded_database_30_30_club",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_500_home_run_club",
+      "case_id": "grounded_database_500_home_run_club",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_pitchers_300_wins",
+      "case_id": "grounded_database_pitchers_300_wins",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_pitching_wins_leaders",
+      "case_id": "grounded_database_pitching_wins_leaders",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_pitchers_500_wins",
+      "case_id": "grounded_database_pitchers_500_wins",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_lowest_era_qualified_1968",
+      "case_id": "grounded_database_lowest_era_qualified_1968",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_career_era_qualified",
+      "case_id": "grounded_database_career_era_qualified",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_ambiguous_500_club",
+      "case_id": "grounded_database_ambiguous_500_club",
       "failures": [],
       "reason": null,
       "status": "passed"
     },
     {
-      "case_id": "freeform_underqualified_career_era",
+      "case_id": "grounded_database_underqualified_career_era",
       "failures": [],
       "reason": null,
       "status": "passed"
@@ -180,19 +180,19 @@
       "status": "skipped"
     },
     {
-      "case_id": "freeform_braves_1936",
+      "case_id": "grounded_database_braves_1936",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "freeform_yankees_1950",
+      "case_id": "grounded_database_yankees_1950",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "freeform_dodgers_1955",
+      "case_id": "grounded_database_dodgers_1955",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
@@ -324,13 +324,13 @@
       "status": "skipped"
     },
     {
-      "case_id": "source_manifest_present_freeform",
+      "case_id": "source_manifest_present_grounded_database",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
     },
     {
-      "case_id": "sql_visible_freeform",
+      "case_id": "sql_visible_grounded_database",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
@@ -348,7 +348,7 @@
       "status": "skipped"
     },
     {
-      "case_id": "row_count_freeform_limit",
+      "case_id": "row_count_grounded_database_limit",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"

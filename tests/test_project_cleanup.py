@@ -465,6 +465,16 @@ def test_active_eval_prose_uses_grounded_database_label() -> None:
     assert "freeform" not in prose.lower()
 
 
+def test_active_eval_ids_use_grounded_database_label() -> None:
+    eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
+
+    case_ids = [str(case["id"]) for case in eval_manifest["questions"]]
+
+    assert all("freeform" not in case_id for case_id in case_ids)
+    assert "grounded_database_triple_crown" in case_ids
+    assert "row_count_grounded_database_limit" in case_ids
+
+
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
     corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
         encoding="utf-8"

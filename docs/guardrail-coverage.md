@@ -13,8 +13,8 @@
 - `stat_player_missing`: how many HRs did Totally Fakeplayer have in 2022
 - `stat_unsupported_column`: who led the league in vibes in 1999
 - `stat_sql_injection_stat`: career HR; drop table batting leaders - Must not execute model/user-controlled stat text as SQL.
-- `freeform_ambiguous_500_club`: who is in the 500 club
-- `freeform_underqualified_career_era`: career ERA leaders
+- `grounded_database_ambiguous_500_club`: who is in the 500 club
+- `grounded_database_underqualified_career_era`: career ERA leaders
 - `ambiguous_player_williams`: how many home runs did Williams have in 1941 - Last-name-only query is ambiguous; avoid silently picking Ted Williams.
 - `ambiguous_player_robinson`: what teams did Robinson play for - Ambiguous player surname without conversation context.
 - `ambiguous_player_johnson`: who was Johnson - Do not infer Walter/Randy/other Johnson.
@@ -33,14 +33,14 @@
 
 - `stat_sql_injection_stat`: career HR; drop table batting leaders - Must not execute model/user-controlled stat text as SQL.
 - `stat_sql_injection_team`: who played for the Braves%' OR 1=1 -- in 1936 - Team names must be bound parameters.
-- `freeform_triple_crown`: who won the Triple Crown and which years - Requires typed leader_stats HR, RBI, AVG with AVG minimum sample size.
-- `freeform_30_30_club`: show me 30-30 club seasons
-- `freeform_500_home_run_club`: who is in the 500 home run club
-- `freeform_pitchers_300_wins`: list all pitchers with over 300 wins
-- `freeform_pitching_wins_leaders`: career pitching wins leaders
-- `freeform_pitchers_500_wins`: career pitching wins leaders with at least 500 wins
-- `freeform_lowest_era_qualified_1968`: who had the lowest ERA in 1968 with enough innings
-- `freeform_career_era_qualified`: career ERA leaders qualified by enough innings
+- `grounded_database_triple_crown`: who won the Triple Crown and which years - Requires typed leader_stats HR, RBI, AVG with AVG minimum sample size.
+- `grounded_database_30_30_club`: show me 30-30 club seasons
+- `grounded_database_500_home_run_club`: who is in the 500 home run club
+- `grounded_database_pitchers_300_wins`: list all pitchers with over 300 wins
+- `grounded_database_pitching_wins_leaders`: career pitching wins leaders
+- `grounded_database_pitchers_500_wins`: career pitching wins leaders with at least 500 wins
+- `grounded_database_lowest_era_qualified_1968`: who had the lowest ERA in 1968 with enough innings
+- `grounded_database_career_era_qualified`: career ERA leaders qualified by enough innings
 - `min_sample_avg_2024`: who had the highest batting average in 2024 with at least 100 at bats
 
 ## Provenance And Source Visibility
@@ -56,19 +56,19 @@
 - `stat_single_player_acuna_suffix`: how many home runs did Ronald Acuna Jr. have in 2023
 - `stat_single_player_olson_2023_rbi`: Matt Olson RBI in 2023
 - `stat_player_missing`: how many HRs did Totally Fakeplayer have in 2022
-- `freeform_braves_1936`: who played for the Braves in 1936
-- `freeform_yankees_1950`: who played for the Yankees in 1950
-- `freeform_dodgers_1955`: who played for the Dodgers in 1955
-- `freeform_triple_crown`: who won the Triple Crown and which years - Requires typed leader_stats HR, RBI, AVG with AVG minimum sample size.
-- `freeform_30_30_club`: show me 30-30 club seasons
-- `freeform_500_home_run_club`: who is in the 500 home run club
-- `freeform_pitchers_300_wins`: list all pitchers with over 300 wins
-- `freeform_pitching_wins_leaders`: career pitching wins leaders
-- `freeform_pitchers_500_wins`: career pitching wins leaders with at least 500 wins
-- `freeform_lowest_era_qualified_1968`: who had the lowest ERA in 1968 with enough innings
-- `freeform_career_era_qualified`: career ERA leaders qualified by enough innings
-- `freeform_ambiguous_500_club`: who is in the 500 club
-- `freeform_underqualified_career_era`: career ERA leaders
+- `grounded_database_braves_1936`: who played for the Braves in 1936
+- `grounded_database_yankees_1950`: who played for the Yankees in 1950
+- `grounded_database_dodgers_1955`: who played for the Dodgers in 1955
+- `grounded_database_triple_crown`: who won the Triple Crown and which years - Requires typed leader_stats HR, RBI, AVG with AVG minimum sample size.
+- `grounded_database_30_30_club`: show me 30-30 club seasons
+- `grounded_database_500_home_run_club`: who is in the 500 home run club
+- `grounded_database_pitchers_300_wins`: list all pitchers with over 300 wins
+- `grounded_database_pitching_wins_leaders`: career pitching wins leaders
+- `grounded_database_pitchers_500_wins`: career pitching wins leaders with at least 500 wins
+- `grounded_database_lowest_era_qualified_1968`: who had the lowest ERA in 1968 with enough innings
+- `grounded_database_career_era_qualified`: career ERA leaders qualified by enough innings
+- `grounded_database_ambiguous_500_club`: who is in the 500 club
+- `grounded_database_underqualified_career_era`: career ERA leaders
 - `player_bio_babe_ruth`: who was Babe Ruth
 - `player_bio_ted_williams`: tell me about Ted Williams
 - `player_bio_willie_mays`: who was Willie Mays
@@ -83,8 +83,8 @@
 - `stat_definition_rbi`: what is an RBI - Supported stat definitions use local Markdown corpus provenance before open LLM fallback.
 - `stat_definition_stolen_base`: what is a stolen base - Supported stat definitions use local Markdown corpus provenance before open LLM fallback.
 - `source_manifest_present_stat`: who had the most RBIs in 1962
-- `source_manifest_present_freeform`: who played for the Braves in 1936
-- `sql_visible_freeform`: who played for the Yankees in 1950
+- `source_manifest_present_grounded_database`: who played for the Braves in 1936
+- `sql_visible_grounded_database`: who played for the Yankees in 1950
 
 ## Live/Manual Guardrail Cases
 

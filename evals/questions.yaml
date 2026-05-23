@@ -85,23 +85,23 @@ questions:
     intent: grounded_database_question
     expected_sql_parameterized: true
     notes: "Team names must be bound parameters."
-  - id: freeform_braves_1936
+  - id: grounded_database_braves_1936
     question: "who played for the Braves in 1936"
     intent: grounded_database_question
     expected_min_rows: 10
     required_sources: ["duckdb"]
     expected_sql_contains: ["JOIN batting", "JOIN teams", "?"]
-  - id: freeform_yankees_1950
+  - id: grounded_database_yankees_1950
     question: "who played for the Yankees in 1950"
     intent: grounded_database_question
     expected_min_rows: 10
     required_sources: ["duckdb"]
-  - id: freeform_dodgers_1955
+  - id: grounded_database_dodgers_1955
     question: "who played for the Dodgers in 1955"
     intent: grounded_database_question
     expected_min_rows: 10
     required_sources: ["duckdb"]
-  - id: freeform_triple_crown
+  - id: grounded_database_triple_crown
     question: "who won the Triple Crown and which years"
     intent: grounded_database_question
     ci_safe: true
@@ -117,7 +117,7 @@ questions:
         HR: 42
         RBI: 152
     notes: "Requires typed leader_stats HR, RBI, AVG with AVG minimum sample size."
-  - id: freeform_30_30_club
+  - id: grounded_database_30_30_club
     question: "show me 30-30 club seasons"
     intent: grounded_database_question
     ci_safe: true
@@ -131,7 +131,7 @@ questions:
         yearID: 1963
         HR: 44
         SB: 31
-  - id: freeform_500_home_run_club
+  - id: grounded_database_500_home_run_club
     question: "who is in the 500 home run club"
     intent: grounded_database_question
     ci_safe: true
@@ -146,7 +146,7 @@ questions:
       - nameFirst: "Babe"
         nameLast: "Ruth"
         career_HR: 714
-  - id: freeform_pitchers_300_wins
+  - id: grounded_database_pitchers_300_wins
     question: "list all pitchers with over 300 wins"
     intent: grounded_database_question
     ci_safe: true
@@ -158,7 +158,7 @@ questions:
       - nameFirst: "Cy"
         nameLast: "Young"
         career_W: 511
-  - id: freeform_pitching_wins_leaders
+  - id: grounded_database_pitching_wins_leaders
     question: "career pitching wins leaders"
     intent: grounded_database_question
     ci_safe: true
@@ -173,7 +173,7 @@ questions:
       - nameFirst: "Walter"
         nameLast: "Johnson"
         career_W: 417
-  - id: freeform_pitchers_500_wins
+  - id: grounded_database_pitchers_500_wins
     question: "career pitching wins leaders with at least 500 wins"
     intent: grounded_database_question
     ci_safe: true
@@ -185,7 +185,7 @@ questions:
       - nameFirst: "Cy"
         nameLast: "Young"
         career_W: 511
-  - id: freeform_lowest_era_qualified_1968
+  - id: grounded_database_lowest_era_qualified_1968
     question: "who had the lowest ERA in 1968 with enough innings"
     intent: grounded_database_question
     ci_safe: true
@@ -205,7 +205,7 @@ questions:
         lgID: "NL"
         ERA: 1.12
     minimum_sample_size: "IPouts >= 300"
-  - id: freeform_career_era_qualified
+  - id: grounded_database_career_era_qualified
     question: "career ERA leaders qualified by enough innings"
     intent: grounded_database_question
     ci_safe: true
@@ -218,7 +218,7 @@ questions:
         nameLast: "Walsh"
         career_ERA: 1.82
         IPouts: 8893
-  - id: freeform_ambiguous_500_club
+  - id: grounded_database_ambiguous_500_club
     question: "who is in the 500 club"
     intent: grounded_database_question
     ci_safe: true
@@ -227,7 +227,7 @@ questions:
     expected_review_reason: ambiguous
     expected_max_rows: 0
     required_sources: ["duckdb"]
-  - id: freeform_underqualified_career_era
+  - id: grounded_database_underqualified_career_era
     question: "career ERA leaders"
     intent: grounded_database_question
     ci_safe: true
@@ -364,10 +364,10 @@ questions:
   - id: source_manifest_present_stat
     question: "who had the most RBIs in 1962"
     required_source_manifest_fields: ["dataset", "files", "coverage", "download"]
-  - id: source_manifest_present_freeform
+  - id: source_manifest_present_grounded_database
     question: "who played for the Braves in 1936"
     required_source_manifest_fields: ["dataset", "files", "coverage", "download"]
-  - id: sql_visible_freeform
+  - id: sql_visible_grounded_database
     question: "who played for the Yankees in 1950"
     expected_sql_visible: true
   - id: sql_visible_api
@@ -377,7 +377,7 @@ questions:
     question: "who had the most RBIs in 1962"
     expected_min_rows: 10
     expected_max_rows: 10
-  - id: row_count_freeform_limit
+  - id: row_count_grounded_database_limit
     question: "list players who played in 2022"
     expected_max_rows: 1000
     notes: "Grounded database results must respect MAX_ROWS."

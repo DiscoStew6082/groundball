@@ -79,7 +79,7 @@ def test_selected_cases_defaults_to_ci_safe_stat_queries():
 
     assert "stat_rbi_1962" in selected_ids
     assert "player_bio_babe_ruth" not in selected_ids
-    assert "freeform_braves_1936" not in selected_ids
+    assert "grounded_database_braves_1936" not in selected_ids
 
 
 def test_default_selection_rejects_live_llm_cases_even_when_ci_safe_flag_is_set():
@@ -191,10 +191,10 @@ def test_validate_case_checks_structured_reason_expectations():
 def test_validate_case_rejects_unexpected_unsupported_answers():
     base = load_cases()[0]
     case = base.__class__(
-        id="supported_freeform",
+        id="supported_grounded_database",
         question="best qualified batting average seasons",
         spec={
-            "id": "supported_freeform",
+            "id": "supported_grounded_database",
             "question": "best qualified batting average seasons",
             "intent": "grounded_database_question",
             "minimum_sample_size": "AB >= 100",
