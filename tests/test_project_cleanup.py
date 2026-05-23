@@ -320,6 +320,19 @@ def test_retired_corpus_ingest_entrypoint_is_removed() -> None:
     assert "retired ingest command" not in architecture_docs.lower()
 
 
+def test_public_docs_use_grounded_database_question_naming() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
+    corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+
+    assert "Freeform SQL" not in readme
+    assert "Freeform query" not in api_docs
+    assert "Freeform database answers" not in corpus_docs
+    assert "grounded database question" in readme.lower()
+    assert "grounded database question" in api_docs.lower()
+    assert "grounded database question" in corpus_docs.lower()
+
+
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
     corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
         encoding="utf-8"

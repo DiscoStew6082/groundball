@@ -321,7 +321,7 @@ The `/query` endpoint calls the shared answer service. The CLI renders the same
 structured answer as text, while the API returns the full JSON payload:
 
 1. **Stat query** → DuckDB lookup with registered stat whitelist
-2. **Freeform query** → typed query spec → parameterized SQL → DuckDB
+2. **Grounded database question** → typed query spec → parameterized SQL → DuckDB
 3. **Player biography** → DuckDB identity resolution + LLM JSON generation + DuckDB stat-claim verification
 4. **General question** → local stat definition when supported, otherwise LLM open explanation
 

@@ -18,7 +18,7 @@ corpus/
 ## Runtime Behavior
 
 - Structured stat answers are DuckDB-backed and expose SQL, rows, and manifest provenance.
-- Freeform database answers use typed query specs and parameterized DuckDB SQL.
+- Grounded database question answers use typed query specs and parameterized DuckDB SQL.
 - Player biographies resolve the player identity through DuckDB, then ask the LLM for JSON containing `answer` and `stat_claims`.
 - Supported career and season stat claims extracted from biographies are verified against DuckDB.
 - Supported stat-definition explanations such as "what is OPS?" use local stat-definition Markdown before the open LLM fallback.
