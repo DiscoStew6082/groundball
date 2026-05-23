@@ -15,7 +15,7 @@ uv run python -m evals.questions \
 Expected headline:
 
 ```text
-evals: 25 passed, 0 failed, 43 skipped
+evals: 26 passed, 0 failed, 44 skipped
 ```
 
 Show:
@@ -29,7 +29,7 @@ Talking point: skipped cases are intentional. CI gates only deterministic cases;
 ## 2. Confirm CI-Safe Quality Checks
 
 ```bash
-uv run ruff check
+uv run ruff check src/ tests/ evals/
 uv run pytest tests/ -m "not llm" -q
 ```
 

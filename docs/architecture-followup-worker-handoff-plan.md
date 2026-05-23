@@ -1,7 +1,8 @@
-# Architecture Follow-Up Worker Handoff Plan
+# Completed Architecture Follow-Up Worker Handoff Record
 
-This plan turns the 2026-05-23 architecture review into worker-agent handoffs.
-It covers six fresh deepening opportunities:
+This record captures the worker-agent handoffs that turned the 2026-05-23
+architecture review into completed implementation work. It covered six fresh
+deepening opportunities:
 
 1. Claim Verification Evidence Module
 2. Source Provenance Module
@@ -9,6 +10,52 @@ It covers six fresh deepening opportunities:
 4. Request Lifecycle Ordering Module
 5. Visible Evidence Presentation Module
 6. Eval Reporting Module
+
+## Implementation Status
+
+Status: Completed. The six follow-up Modules were implemented and integrated in
+commit `148ddd3` (`Deepen architecture follow-up modules`). The sections below
+are historical handoff instructions, not current open work. Use this status
+ledger as the source for what landed before starting any new follow-up work.
+
+Completion summary:
+
+- Claim verification evidence kept the public consensus verifier stable and
+  preserved Lahman plus optional Retrosheet evidence rows, SQL, params, warning
+  behavior, and compatibility payloads.
+- Source provenance now centralizes compact primary and secondary manifest
+  shaping in `src/baseball_rag/provenance.py`.
+- Routing decisions now use stable route facts from
+  `src/baseball_rag/routing/contracts.py` and an ordered decision chain in
+  `src/baseball_rag/routing/decisions.py`, with compatibility exports preserved
+  from `query_router.py`.
+- Request lifecycle ordering now lives behind
+  `src/baseball_rag/request_lifecycle.py`, while `execute_request(...)` remains
+  the public adapter.
+- Visible evidence presentation now lets `AnswerPresenter` select useful
+  verification rows and SQL for multi-source answers while preserving the
+  common DuckDB stat display.
+- Eval reporting now uses `build_eval_report_payload` so CLI artifacts and API
+  governance payloads share summary and case-list data without duplicating that
+  shaping in the API endpoint.
+
+Verification run for `148ddd3`:
+
+- `uv run ruff check src/ tests/ evals/` -> passed
+- `uv run mypy src/` -> passed
+- `uv run pytest -q` -> 710 passed
+- `uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json` -> `evals: 26 passed, 0 failed, 44 skipped`
+- Codex in-app Browser smoke at `http://127.0.0.1:7861/` -> default query
+  showed Davis/Tommy, result rows, source JSON, SQL, and an enabled Ask button;
+  the dev server was left running.
+
+Review follow-up:
+
+- Review found that secondary-only and conflict rows needed visible row-level
+  SQL/params aligned with the Retrosheet evidence; both findings were fixed
+  before commit.
+- Review found no remaining actionable integration blockers after the final
+  pass.
 
 No `CONTEXT.md` or `docs/adr/` exists in this repo. Workers should use
 `README.md`, `docs/architecture.md`, and the archived architecture handoff docs
@@ -636,7 +683,7 @@ and explain the behavior alignment.
 
 ## Integration Lead Checklist
 
-Use this checklist after all worker branches are ready:
+Historical checklist used for the `148ddd3` integration:
 
 1. Rebase or merge workers in wave order.
 2. Resolve conflicts without reverting unrelated user changes.

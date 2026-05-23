@@ -139,13 +139,18 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
 | `review` | object/null | Human review queue hint for unsupported or ambiguous answers |
 | `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match, latency, and trace stages |
-| `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, and license notes for DuckDB-backed answers |
+| `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, license notes, and optional `consensus_sources` plus `secondary_manifests.retrosheet` availability details for biography stat-claim evidence |
 
 ---
 
 ### `GET /evals/report`
 
 Run the deterministic eval release gate and return JSON plus Markdown. The endpoint does not write report files and does not require LM Studio, external LMs, or live services by default.
+
+`GET /evals/report` and `POST /evals/run` share the same report payload builder
+for artifact-derived summary and case lists, so API governance payloads and
+checked-in eval artifacts stay aligned without claiming identical top-level
+schemas.
 
 **Query parameters**
 
@@ -160,19 +165,25 @@ Run the deterministic eval release gate and return JSON plus Markdown. The endpo
   "ok": true,
   "mode": "answer",
   "include_live": false,
-  "minimum_pass_rate": 1.0,
+  "minimum_pass_rate": 0.85,
   "summary": {
-    "passed": 20,
+    "cases_loaded": 70,
+    "attempted": 26,
+    "passed": 26,
     "failed": 0,
-    "skipped": 48,
+    "skipped": 44,
     "pass_rate": 1.0,
-    "recommendation": "PASS"
+    "recommendation": "PASS",
+    "release_recommendation": "PASS - deterministic release gate is green"
   },
   "results": {
     "passed": [],
     "failed": [],
     "skipped": []
   },
+  "failed": [],
+  "skipped": [],
+  "warnings": [],
   "markdown": "# Baseball RAG Eval Report\n..."
 }
 ```
@@ -211,10 +222,10 @@ Return manifest-only guardrail coverage generated from `evals/questions.yaml`. T
 ```json
 {
   "summary": {
-    "ci_safe_deterministic_guardrails": 10,
+    "ci_safe_deterministic_guardrails": 11,
     "unsupported_guardrails": 18,
-    "sql_safety": 11,
-    "provenance_source_visibility": 41,
+    "sql_safety": 12,
+    "provenance_source_visibility": 43,
     "live_manual_guardrail_cases": 0
   },
   "categories": {
@@ -320,13 +331,13 @@ Return the complete local dataset provenance manifest.
 The `/query` endpoint calls the shared answer service. The CLI renders the same
 structured answer as text, while the API returns the full JSON payload:
 
-1. **Stat query** → DuckDB lookup with registered stat whitelist
-2. **Grounded database question** → typed query spec → parameterized SQL → DuckDB
-3. **Player biography** → DuckDB identity resolution + LLM JSON generation + DuckDB stat-claim verification
-4. **General question** → local stat definition when supported, otherwise LLM open explanation
+1. **Stat query** -> DuckDB lookup with registered stat whitelist
+2. **Grounded database question** -> typed query spec -> parameterized SQL -> DuckDB
+3. **Player biography** -> DuckDB identity resolution + LLM JSON generation + Lahman/Retrosheet stat-claim consensus when available
+4. **General question** -> local stat definition when supported, otherwise LLM open explanation
 
-This means API and CLI behave identically for the same input.
+The request lifecycle, route contracts, provenance shaping, and eval report payload builder are shared rather than rebuilt separately for API responses.
 
 ## Development
 
-The server is intentionally minimal — it reuses the CLI logic rather than duplicating it, keeping the API and command-line interface consistent.
+The server is intentionally minimal: it reuses the shared request lifecycle rather than duplicating CLI logic.

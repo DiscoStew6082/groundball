@@ -72,7 +72,7 @@ uv run python -m baseball_rag.web_app --ttl-seconds 3600
 ### Lint
 
 ```bash
-uv run ruff check src/ tests/
+uv run ruff check src/ tests/ evals/
 ```
 
 ### Type Check
@@ -101,8 +101,8 @@ Coverage report is also generated as `coverage.xml` and `coverage.html` (see `.c
 
 | Job | Depends On | What it does |
 |-----|------------|--------------|
-| `lint` | — | `ruff check src/ tests/` |
-| `typecheck` | — | `mypy src/` + type stubs |
+| `lint` | - | `ruff check` across configured Python files, including `src/`, `tests/`, and `evals/` |
+| `typecheck` | - | `mypy src/` + type stubs |
 | `test` | lint, typecheck | Unit pytest suite, deterministic eval release gate, reliability report artifacts/run summary, coverage artifact, and optional Codecov upload |
 
 Python version: **3.11** (ubuntu-latest). All dependencies installed via pip (not uv) in CI to avoid PATH issues.

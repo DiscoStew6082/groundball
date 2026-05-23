@@ -1102,8 +1102,10 @@ def test_docs_match_current_eval_and_corpus_runtime() -> None:
     development = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
     guardrail_coverage = (ROOT / "docs" / "guardrail-coverage.md").read_text(encoding="utf-8")
 
-    assert "evals: 25 passed, 0 failed, 43 skipped" in demo
+    assert "evals: 26 passed, 0 failed, 44 skipped" in demo
+    assert "evals: 25 passed, 0 failed, 43 skipped" not in demo
     assert "evals: 20 passed, 0 failed, 48 skipped" not in demo
+    assert "uv run ruff check src/ tests/ evals/" in development
     assert "local stat-definition Markdown" in corpus
     assert "stat-definition Markdown remains" in development
     assert "runtime grounding for supported stat-definition explanations" in development
@@ -1111,3 +1113,38 @@ def test_docs_match_current_eval_and_corpus_runtime() -> None:
     assert (
         'General explanations such as "what is OPS?" are answered by the LLM directly' not in corpus
     )
+
+
+def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    handoff = (ROOT / "docs" / "architecture-followup-worker-handoff-plan.md").read_text(
+        encoding="utf-8"
+    )
+    api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
+
+    assert "routing/contracts.py" in architecture
+    assert "routing/decisions.py" in architecture
+    assert "request_lifecycle.py" in architecture
+    assert "AnswerPresenter" in architecture
+    assert "build_eval_report_payload" in architecture
+    assert "Retrosheet is optional secondary consensus evidence" in architecture
+    assert "Status: Completed" in handoff
+    assert "historical handoff instructions, not current open work" in handoff
+    assert "148ddd3" in handoff
+    assert "uv run pytest -q` -> 710 passed" in handoff
+    assert f'"minimum_pass_rate": {eval_manifest["minimum_pass_rate"]}' in api_docs
+    assert (
+        "share the same report payload builder\nfor artifact-derived summary and case lists"
+        in api_docs
+    )
+    assert "without claiming identical top-level\nschemas" in api_docs
+    assert "secondary_manifests.retrosheet" in api_docs
+    assert '"release_recommendation": "PASS - deterministic release gate is green"' in api_docs
+    assert "follow-up resolution,\nunsupported policy" not in architecture
+    assert "follow-up context" not in architecture
+    assert "Conversation context is still passed into the answer service" in architecture
+    assert "share one report shape" not in architecture
+    assert "share one report shape" not in handoff
+    assert "Retrosheet consensus evidence for biography stat claims" in readme
