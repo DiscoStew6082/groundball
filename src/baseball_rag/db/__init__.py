@@ -3,13 +3,11 @@
 from baseball_rag.db.duckdb_schema import DATA_DIR
 from baseball_rag.db.queries import (
     execute_stat_query,
-    get_career_stat_leaders,
     get_fielding_leaders,
 )
 
 __all__ = [
     "DATA_DIR",
     "execute_stat_query",
-    "get_career_stat_leaders",
     "get_fielding_leaders",
 ]

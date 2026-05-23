@@ -163,21 +163,6 @@ def _execute_stat_query_plan(
     return _execute_batting_career(stat, limit=limit, conn=conn)
 
 
-@traced(component_id="duckdb", label="DB Query")
-def get_career_stat_leaders(stat: str, limit: int = 10) -> list[dict]:
-    """Compatibility adapter for career batting stat leaders.
-
-    Args:
-        stat: The statistic to rank by (HR, RBI, H, etc.)
-        limit: Number of results to return
-
-    Returns:
-        List of dicts with keys: name, team, stat_value
-    """
-    result = execute_stat_query(stat, table="batting", limit=limit)
-    return result.rows
-
-
 def get_fielding_leaders(year: int, position: str) -> list[dict]:
     """Compatibility adapter for fielding putouts leaders for a given year and position.
 

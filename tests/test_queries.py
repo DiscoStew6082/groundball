@@ -6,7 +6,6 @@ from baseball_rag.db.queries import (
     StatQueryPlan,
     execute_stat_query,
     execute_stat_query_plan,
-    get_career_stat_leaders,
     get_fielding_leaders,
 )
 from baseball_rag.routing import StatQueryCase
@@ -55,7 +54,9 @@ def test_rbi_leaders_1962():
 
 def test_career_hr_leaders():
     """Test career HR leaders - Babe Ruth should be #1."""
-    result = get_career_stat_leaders("HR")
+    result = execute_stat_query_plan(
+        StatQueryPlan(stat="HR", table="batting", kind="career", intent="stat_query")
+    ).rows
     assert len(result) >= 3
     top_10_names = [row["name"] for row in result[:10]]
     assert any("Ruth" in name or "Babe" in name for name in top_10_names), (
@@ -65,7 +66,9 @@ def test_career_hr_leaders():
 
 def test_career_ops_leaders_use_weighted_rate_not_summed_seasons():
     """Career OPS must be calculated from aggregate components, not summed yearly OPS."""
-    result = get_career_stat_leaders("OPS")
+    result = execute_stat_query_plan(
+        StatQueryPlan(stat="OPS", table="batting", kind="career", intent="stat_query")
+    ).rows
 
     assert len(result) > 0
     assert 0 < result[0]["stat_value"] < 2

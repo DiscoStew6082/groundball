@@ -86,19 +86,27 @@ class TestEndToEndTracing:
         # The trace object itself stores whatever was passed
         assert trace.route_type is None  # passes the raw value through
 
-    def test_get_stat_leaders_directly_traced(self):
-        """get_career_stat_leaders() emits a 'duckdb' stage when called directly."""
-        from baseball_rag.db.queries import get_career_stat_leaders
+    def test_execute_stat_query_plan_directly_traced(self):
+        """execute_stat_query_plan() emits a 'duckdb' stage when called directly."""
+        from baseball_rag.db.queries import StatQueryPlan, execute_stat_query_plan
 
         start_trace("test db tracing")
         with traced(component_id="cli", label="CLI"):
             pass
-        result = get_career_stat_leaders("HR", limit=5)
+        result = execute_stat_query_plan(
+            StatQueryPlan(
+                stat="HR",
+                table="batting",
+                kind="career",
+                intent="stat_query",
+                limit=5,
+            )
+        )
         trace = finish_trace(route_type="stat_query")
 
         assert trace is not None
         # duckdb should be present if the function was called
-        assert isinstance(result, list)
+        assert result.rows
 
     def test_route_function_traced(self):
         """route() itself emits a 'query-router' stage when traced directly."""
