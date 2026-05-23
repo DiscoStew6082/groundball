@@ -104,8 +104,19 @@ class TestApi:
         data = response.json()
         assert data["answer"] == "Tommy Davis led MLB with 153 RBI in 1962."
         assert data["metadata"]["answer_mode"] == "llm_flavored"
+        assert data["metadata"]["route"] == "stat_query"
+        assert data["metadata"]["unsupported"] is False
+        assert data["metadata"]["sql_visible"] is True
+        assert data["metadata"]["source_count"] == 1
+        assert data["metadata"]["source_types"] == ["duckdb"]
+        assert data["metadata"]["trace"]["route_type"] == "stat_query"
+        assert data["metadata"]["sql"]["template_hash"].startswith("sha256:")
+        assert data["metadata"]["sql"]["row_count"] >= 1
+        assert data["metadata"]["dataset"]["name"] == "NeuML/baseballdata"
+        assert data["metadata"]["eval"]["case_id"] == "stat_rbi_1962"
         assert data["sources"][0]["type"] == "duckdb"
         assert data["sources"][0]["rows"]
+        assert data["sources"][0]["sql"]
 
     def test_query_endpoint_llm_flavored_falls_back_to_verified_stats_when_llm_unavailable(
         self, monkeypatch

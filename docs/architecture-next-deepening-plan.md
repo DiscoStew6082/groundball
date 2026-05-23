@@ -1,6 +1,6 @@
 # Next Architecture Deepening Implementation Plan
 
-Status: Planned. This document is the handoff record for the four fresh
+Status: Completed locally. This document is the handoff record for the four fresh
 deepening opportunities identified after the completed 2026-05-23 architecture
 follow-up in `docs/architecture-followup-worker-handoff-plan.md`.
 
@@ -98,7 +98,63 @@ For the UI command, use the Codex in-app Browser at
 SQL, and an enabled Ask button, make the Browser visible, and leave the dev
 server running.
 
+Final integration ledger:
+
+- `uv run ruff check src/ tests/ evals/` passed.
+- `uv run mypy src/` passed.
+- `uv run pytest -q` passed with 720 tests.
+- `uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
+  passed with 26 passed, 0 failed, and 44 skipped.
+- Browser smoke passed at `http://127.0.0.1:7861/`: the default query returned
+  Davis/Tommy evidence, result rows, source JSON, SQL, and an enabled Ask
+  button. The local UI server was left running.
+- Worker review findings were fixed. Final review found and fixed a name-only
+  grounded database narration guard gap before commit.
+
 ## Worker A: LLM-Flavored Narration Guard Module
+
+Status: Implemented and reviewed locally.
+
+Implementation ledger:
+
+- Added `src/baseball_rag/llm_narration_guard.py` as the focused Module for
+  verified LLM narration over DuckDB-backed `stat_query` and
+  `grounded_database_question` answers.
+- Moved primary DuckDB source selection, prompt construction, LLM
+  unavailable fallback, unverified-number fallback, numeric/stat claim
+  extraction, name-to-row attribution, and row/year validation out of
+  `service.py`.
+- Kept `service.py` as orchestration: dispatch the routed answer, apply the
+  narration guard for `answer_mode="llm_flavored"`, then stamp answer-mode
+  metadata.
+- Reworked the unsupported-answer test so it observes public behavior instead
+  of monkeypatching a private `service.py` helper.
+- Strengthened the API `llm_flavored` test to assert preserved route, SQL,
+  source, trace, dataset, eval, and answer-mode metadata.
+- Review found that no-number wrong-player narration could pass the numeric
+  guard; added a public regression test and made the narration guard validate
+  name attribution even when an LLM answer contains no numeric claims.
+- Final review found that name-only grounded database rows without stat columns
+  could still accept an unverified player name. Added a public regression test
+  and now build name evidence even when a row has no stat claims.
+- Follow-up review found the stricter name-only evidence could falsely reject
+  ordinary verified-name prose. Added acceptance coverage and narrowed
+  lowercase residual-name scanning to numeric/stat-claim segments while keeping
+  non-primary leadership claims guarded.
+- Final review found verified multi-name name-only prose in comma-list form
+  could still fall back. Added acceptance coverage and allowed multi-row
+  validation only for segments without numeric/stat attribution.
+- Follow-up review found mixed leader/non-leader name-only claims and
+  lowercase unverified names still needed tighter checks. Added red tests for
+  both and tightened the leadership and lowercase residual-name guards.
+- Verification:
+  `uv run pytest tests/test_service.py tests/test_api.py tests/test_grounded_database.py tests/test_request_execution.py -q`
+  passed with 144 tests.
+- Verification after review fix:
+  `uv run pytest tests/test_service.py tests/test_api.py tests/test_grounded_database.py tests/test_stat_registry.py tests/test_biography_contract.py tests/test_generation.py tests/test_player_bio_query.py tests/test_player_stat_claims_consensus.py -q`
+  passed with 224 tests.
+- Verification:
+  `uv run ruff check src/ tests/ evals/` passed.
 
 ### Ownership
 
@@ -183,6 +239,31 @@ or SQL visibility changes.
 - Do not solve failures with token caps.
 
 ## Worker B: Grounded Database Planning Module
+
+Status: Implemented and reviewed locally.
+
+Implementation ledger:
+
+- Added `src/baseball_rag/db/grounded_database_planner.py` as the planning
+  Module behind the existing runtime Interface.
+- Moved deterministic template matching, LLM-backed typed spec extraction,
+  contextual year hints, team identity enrichment, and SQL assembly out of
+  `grounded_database_runtime.py`.
+- Kept `query(...)`, `plan_query(...)`,
+  `can_plan_deterministically(...)`, and
+  `should_route_deterministic_grounded_database(...)` as compatibility
+  runtime Interfaces.
+- Refactored the unsupported deterministic template test to cover the public
+  `plan_query(...)` surface instead of importing `match_template(...)`
+  directly for route ownership and unsupported policy.
+- Verification:
+  `uv run pytest tests/test_grounded_database.py tests/test_router.py -q`
+  passed with 100 tests.
+- Verification:
+  `uv run pytest tests/test_request_execution.py tests/test_api.py -q`
+  passed with 55 tests.
+- Verification:
+  `uv run ruff check src/ tests/ evals/` passed.
 
 ### Ownership
 
@@ -270,6 +351,33 @@ reasoning, or row shapes change.
 
 ## Worker D: DuckDB Result Answer Assembly Module
 
+Status: Implemented and reviewed locally.
+
+Implementation ledger:
+
+- Added `src/baseball_rag/db/answer_assembly.py` as the DuckDB-backed
+  result-to-`StructuredAnswer` assembly Module.
+- Moved stat result answer text, stat source construction, player/no-data
+  warning policy, grounded database source construction, zero-row
+  unsupported/no-data mapping, and grounded truncation warning policy behind
+  the new assembly Module.
+- Kept stat planning/execution in `stat_query.py` and `db/queries.py`, kept
+  grounded database planning/execution/formatting in the grounded database
+  Modules, and kept `service.py` as grounded answer orchestration.
+- Strengthened stat assembly tests to assert answer text, rows, SQL, source
+  label/detail, and Lahman manifest together.
+- Added grounded database assembly tests for source-row first-100 behavior,
+  truncation warnings, and zero-row `ambiguous`/`unsupported`/`no_data`
+  mapping.
+- Verification:
+  `uv run pytest tests/test_queries.py tests/test_grounded_database.py tests/test_answer_presentation.py tests/test_request_execution.py tests/test_service.py tests/test_api.py -q`
+  passed with 176 tests.
+- Verification:
+  `uv run ruff check src/ tests/ evals/` passed.
+- Review noted a trailing whitespace issue and import-time coupling to the
+  grounded database runtime formatter; the whitespace was fixed and the
+  formatter import was localized to answer assembly execution.
+
 ### Ownership
 
 Primary files:
@@ -355,6 +463,31 @@ warnings, metadata, or unsupported payloads change.
 - Keep manifest provenance attached to DuckDB-backed sources.
 
 ## Worker C: Biography Stat Claim Vocabulary Module
+
+Status: Implemented and reviewed locally.
+
+Implementation ledger:
+
+- Added `src/baseball_rag/db/biography_stat_vocabulary.py` as the focused
+  vocabulary Module for supported biography claim stats, aliases, prompt stat
+  lists, supplied-claim regex source, contextual `SO` definitions, and
+  Retrosheet column/adapter vocabulary.
+- Routed biography repair prompts, player biography generation prompts,
+  supplied-biography stat extraction, Lahman claim definition lookup, and
+  Retrosheet column lookup through the shared vocabulary.
+- Preserved supplied-claim behavior for supported stats and the explicit
+  unsupported `MVP` case.
+- Aligned claim verification with the biography contract: SQL-only registry
+  stats such as `BB` remain SQL-addressable but are unsupported as biography
+  stat claims.
+- Review found that supplied-claim extraction emitted raw aliases and missed
+  some singular aliases; added alias normalization/invariant tests and now
+  canonicalize extracted supplied claims before verification.
+- Preserved contextual pitching `SO` verification and optional Retrosheet
+  consensus evidence, including `stattype` and `gametype` filters.
+- Verification:
+  `uv run pytest tests/test_stat_registry.py tests/test_biography_contract.py tests/test_generation.py tests/test_player_bio_query.py tests/test_player_stat_claims_consensus.py tests/test_service.py tests/test_api.py -q`
+  passed with 161 tests.
 
 ### Ownership
 

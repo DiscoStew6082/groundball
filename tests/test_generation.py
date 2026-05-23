@@ -1,8 +1,10 @@
 """Tests for generation prompt helpers."""
 
+from baseball_rag.db.biography_stat_vocabulary import biography_claim_prompt_stat_list
 from baseball_rag.generation.llm import _strip_reasoning_block
 from baseball_rag.generation.prompt import (
     build_open_prompt,
+    build_player_biography_json_prompt,
 )
 
 
@@ -28,6 +30,20 @@ class TestBuildOpenPrompt:
         assert "Question:" in user
         # Must not contain any document references (there are no docs)
         assert "[Source:" not in user
+
+
+def test_player_biography_prompt_uses_claim_vocabulary_stat_list():
+    system, user = build_player_biography_json_prompt(
+        question="who was Nolan Ryan",
+        player_name="Nolan Ryan",
+        player_id="ryanno01",
+        debut="1966-09-11",
+        final_game="1993-09-22",
+    )
+
+    assert biography_claim_prompt_stat_list() in system
+    assert "2B" not in system
+    assert "Nolan Ryan" in user
 
 
 class TestStripReasoningBlock:

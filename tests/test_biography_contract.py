@@ -2,9 +2,11 @@ import pytest
 
 from baseball_rag.biography_contract import (
     BiographyContractError,
+    build_biography_json_repair_prompt,
     parse_biography_json,
     request_biography_json,
 )
+from baseball_rag.db.biography_stat_vocabulary import biography_claim_prompt_stat_list
 from baseball_rag.db.player_stat_claims import PlayerStatClaim
 from baseball_rag.generation.llm import LLMResponse
 
@@ -69,6 +71,13 @@ def test_biography_contract_repairs_malformed_first_response_once():
     assert contract == {"answer": "Fixed biography.", "claims": []}
     assert len(prompts) == 2
     assert "Repair this invalid response" in prompts[1][0][1]
+
+
+def test_biography_repair_prompt_uses_claim_vocabulary_stat_list():
+    system_prompt, user_prompt = build_biography_json_repair_prompt("not json")
+
+    assert biography_claim_prompt_stat_list() in system_prompt
+    assert "not json" in user_prompt
 
 
 def test_biography_contract_invalid_claim_payload_becomes_typed_failure():

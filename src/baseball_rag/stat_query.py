@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
-
+from baseball_rag.db.answer_assembly import answer_stat_result
 from baseball_rag.db.queries import StatQueryPlan, StatQueryResult, execute_stat_query_plan
 from baseball_rag.db.stat_registry import get_stat
-from baseball_rag.outcomes import ambiguous_outcome, no_data_outcome
-from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
+from baseball_rag.outcomes import ambiguous_outcome
+from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.query_scope import QueryScope, coverage_source, resolve_query_scope
 from baseball_rag.routing.query_router import StatQueryCase
 
@@ -104,93 +103,7 @@ def answer_stat_query_result(
     query_result: StatQueryResult,
 ) -> StructuredAnswer:
     """Build the public answer and provenance from an executed stat result."""
-    if plan.kind == "player":
-        return _answer_player_stat_result(plan, query_result)
-    if plan.kind == "leaderboard":
-        return _answer_leaderboard_result(plan, query_result)
-    return _answer_career_leaderboard_result(plan, query_result)
-
-
-def _answer_player_stat_result(
-    plan: StatQueryPlan,
-    query_result: StatQueryResult,
-) -> StructuredAnswer:
-    if not query_result.rows:
-        qualifier = f" in {plan.year}" if plan.year else ""
-        return no_data_outcome(
-            answer=(
-                f"No {plan.stat} result found for {plan.player_name}{qualifier} "
-                f"in the local Lahman-derived {plan.table} data."
-            ),
-            intent=plan.intent,
-            sources=[_source_from_result(query_result)],
-            warnings=["No alternate leaderboard was returned because the question named a player."],
-        )
-
-    result = query_result.rows[0]
-    team_str = f" ({result['team']})" if result["team"] else ""
-    return StructuredAnswer(
-        answer=f"{result['name']}{team_str} ({result['year']}): {result['stat_value']} {plan.stat}",
-        intent=plan.intent,
-        sources=[_source_from_result(query_result)],
-    )
-
-
-def _answer_leaderboard_result(
-    plan: StatQueryPlan,
-    query_result: StatQueryResult,
-) -> StructuredAnswer:
-    rows = query_result.rows
-    if not rows:
-        return no_data_outcome(
-            answer=(
-                f"No {plan.stat} results found for {plan.start_year}-{plan.end_year} "
-                "in the local Lahman-derived data."
-            ),
-            intent=plan.intent,
-            sources=[_source_from_result(query_result)],
-            warnings=[
-                "No alternate leaderboard was returned because the question specified a year."
-            ],
-        )
-
-    lines = [f"Top {plan.stat} leaders ({plan.start_year}-{plan.end_year}):"]
-    for i, row in enumerate(rows[:10], 1):
-        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {plan.stat}")
-    return StructuredAnswer(
-        answer="\n".join(lines),
-        intent=plan.intent,
-        sources=[_source_from_result(query_result)],
-    )
-
-
-def _answer_career_leaderboard_result(
-    plan: StatQueryPlan,
-    query_result: StatQueryResult,
-) -> StructuredAnswer:
-    rows = query_result.rows
-    lines = [f"All-time career {plan.stat} leaders:"]
-    for i, row in enumerate(rows[:10], 1):
-        lines.append(f"  {i}. {row['name']}: {row['stat_value']} {plan.stat}")
-    return StructuredAnswer(
-        answer="\n".join(lines),
-        intent=plan.intent,
-        sources=[_source_from_result(query_result)],
-    )
-
-
-def _source_from_result(query_result: Any) -> SourceRecord:
-    return SourceRecord(
-        type="duckdb",
-        label=query_result.label,
-        detail=(
-            f"Tables: {', '.join(query_result.tables)}. "
-            "Dataset: local Hugging Face NeuML/baseballdata CSVs."
-        ),
-        sql=query_result.executed_sql,
-        rows=query_result.rows,
-        data_manifest=compact_data_manifest(),
-    )
+    return answer_stat_result(plan, query_result)
 
 
 def _is_partial_player_name(player_name: str | None) -> bool:

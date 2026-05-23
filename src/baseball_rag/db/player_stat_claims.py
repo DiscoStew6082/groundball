@@ -8,14 +8,16 @@ from typing import Any, Literal, cast
 
 import duckdb
 
+from baseball_rag.db.biography_stat_vocabulary import (
+    biography_claim_stat_definitions,
+    retrosheet_adapter_stats,
+    retrosheet_stat_column_candidates,
+)
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.stat_registry import (
     StatDefinition,
     StatSqlAdapter,
     StatTable,
-    get_stat,
-    infer_stat_table,
-    normalize_stat,
     quote_identifier,
 )
 from baseball_rag.provenance import compact_consensus_data_manifest
@@ -30,40 +32,7 @@ ConsensusStatus = Literal[
     "conflict",
     "unsupported",
 ]
-_CONTEXTUAL_STATS: dict[tuple[str, StatTable], StatDefinition] = {
-    ("SO", "pitching"): StatDefinition("SO", "pitching", "SO"),
-}
 _STAT_TABLES: set[str] = {"batting", "pitching", "fielding"}
-_RETROSHEET_COLUMNS: dict[StatTable, dict[str, tuple[str, ...]]] = {
-    "batting": {
-        "HR": ("b_hr", "HR"),
-        "RBI": ("b_rbi", "RBI"),
-        "H": ("b_h", "H"),
-        "AB": ("b_ab", "AB"),
-        "R": ("b_r", "R"),
-        "2B": ("b_d", "2B"),
-        "3B": ("b_t", "3B"),
-        "SB": ("b_sb", "SB"),
-        "BB": ("b_w", "BB"),
-        "SO": ("b_k", "SO"),
-        "HBP": ("b_hbp", "HBP"),
-        "SF": ("b_sf", "SF"),
-    },
-    "pitching": {
-        "W": ("wp", "W"),
-        "L": ("lp", "L"),
-        "GS": ("gs", "GS"),
-        "SV": ("save", "SV"),
-        "IPOUTS": ("p_ipouts", "IPouts"),
-        "H": ("p_h", "H"),
-        "ER": ("p_er", "ER"),
-        "BB": ("p_w", "BB"),
-        "SO": ("p_k", "SO"),
-    },
-    "fielding": {
-        "PO": ("d_po", "PO"),
-    },
-}
 
 
 @dataclass(frozen=True)
@@ -693,32 +662,11 @@ def _verification_from_row(
 
 
 def _candidate_stat_definitions(claim: PlayerStatClaim) -> list[StatDefinition]:
-    canonical = normalize_stat(claim.stat)
-    table_hint = claim.table or _infer_claim_table(claim)
-    if table_hint is None:
-        return [get_stat(canonical)]
-
-    primary = _stat_definition_for_table(canonical, table_hint)
-    candidates = [primary]
-    if claim.table is None:
-        default = get_stat(canonical)
-        if default.table != primary.table:
-            candidates.append(default)
-    return candidates
-
-
-def _stat_definition_for_table(canonical: str, table: StatTable) -> StatDefinition:
-    try:
-        return get_stat(canonical, table=table)
-    except ValueError:
-        contextual = _CONTEXTUAL_STATS.get((canonical, table))
-        if contextual is not None:
-            return contextual
-        raise
-
-
-def _infer_claim_table(claim: PlayerStatClaim) -> StatTable | None:
-    return infer_stat_table(claim.stat, text=claim.text)
+    return biography_claim_stat_definitions(
+        claim.stat,
+        table=claim.table,
+        text=claim.text,
+    )
 
 
 def _lookup_player_stat(
@@ -1032,7 +980,7 @@ def _retrosheet_sql_adapter(
 ) -> StatSqlAdapter | None:
     column_map = {
         stat: column
-        for stat in _RETROSHEET_COLUMNS.get(stat_table, {})
+        for stat in retrosheet_adapter_stats(stat_table)
         if (column := _retrosheet_stat_column(conn, table, stat_table, stat)) is not None
     }
     return StatSqlAdapter(table=stat_table, columns=column_map) if column_map else None
@@ -1077,8 +1025,7 @@ def _retrosheet_stat_column(
     stat_table: StatTable,
     stat: str,
 ) -> str | None:
-    canonical = stat.upper()
-    candidates = _RETROSHEET_COLUMNS.get(stat_table, {}).get(canonical, (stat,))
+    candidates = retrosheet_stat_column_candidates(stat_table, stat) or (stat,)
     return _first_existing_column(conn, table, candidates)
 
 

@@ -8,6 +8,10 @@ from typing import Any, Callable
 
 from baseball_rag import biography_contract
 from baseball_rag.biography_contract import BiographyContractError
+from baseball_rag.db.biography_stat_vocabulary import (
+    biography_claim_stat_regex_source,
+    normalize_biography_claim_stat,
+)
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
@@ -213,8 +217,7 @@ def extract_supplied_stat_claims(question: str) -> list[PlayerStatClaim]:
     claims: list[tuple[int, PlayerStatClaim]] = []
     stat_pattern = re.compile(
         r"(?P<value>(?:\d[\d,]*(?:\.\d+)?|\.\d+))\s*"
-        r"(?P<stat>HR|HRS|home runs?|RBI|RBIs|runs batted in|H|hits?|SB|stolen bases?|"
-        r"AVG|batting average|OPS|W|wins?|ERA|WHIP|SO|strikeouts?|PO|putouts?)\b",
+        rf"(?P<stat>{biography_claim_stat_regex_source()})\b",
         re.IGNORECASE,
     )
     for match in stat_pattern.finditer(question):
@@ -223,7 +226,7 @@ def extract_supplied_stat_claims(question: str) -> list[PlayerStatClaim]:
             (
                 match.start(),
                 PlayerStatClaim(
-                    stat=match.group("stat"),
+                    stat=normalize_biography_claim_stat(match.group("stat")),
                     value=match.group("value").replace(",", ""),
                     scope="season" if year is not None else "career",
                     year=year,

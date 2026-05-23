@@ -260,17 +260,19 @@ class TestDeterministicTemplates:
         assert result.unsupported_reason == "ambiguous"
 
     def test_matched_template_exposes_route_ownership_and_unsupported_policy(self):
-        from baseball_rag.db.grounded_database_templates import match_template
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import plan_query
 
-        matched = match_template("who is in the 500 club")
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        planned = plan_query("who is in the 500 club", get_duckdb(), request_fn=mock_call)
 
-        assert matched is not None
-        assert matched.route_owner is True
-        assert matched.unsupported_reason == "ambiguous"
-        assert matched.source_detail == (
+        assert mock_call.call_count == 0
+        assert planned.planning_path == "deterministic_template"
+        assert planned.unsupported_reason == "ambiguous"
+        assert planned.source_detail == (
             "Matched local deterministic grounded database SQL template."
         )
-        assert matched.assembled.params == [
+        assert planned.params == [
             "The question says 500 club but does not specify home runs or pitching wins."
         ]
 
@@ -791,6 +793,74 @@ class TestGroundedDatabaseProvenance:
 
         assert decision.time_period.type == TimePeriodType.RELATIVE
         assert query.call_args.kwargs["year"] == 1936
+
+    def test_grounded_database_answer_truncates_source_rows_and_warns(self):
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+        from baseball_rag.routing import GroundedDatabaseQuestionCase
+        from baseball_rag.service import _answer_grounded_database_question
+
+        decision = GroundedDatabaseQuestionCase(raw_question="show players")
+        result = GroundedDatabaseResult(
+            sql="SELECT name FROM people",
+            rows=[(f"Player {index}",) for index in range(150)],
+            columns=["name"],
+            row_count=150,
+            truncated=True,
+            source_label="LLM-backed typed grounded database query",
+            source_detail="LLM extracted a typed intent.",
+        )
+
+        with patch("baseball_rag.db.grounded_database_runtime.query", return_value=result):
+            answer = _answer_grounded_database_question(decision.raw_question, decision)
+
+        assert answer.intent == "grounded_database_question"
+        assert answer.warnings == ["Results were truncated at the configured row limit."]
+        assert answer.sources[0].rows == [{"name": f"Player {index}"} for index in range(100)]
+        assert answer.sources[0].columns == ["name"]
+        assert answer.sources[0].sql == "SELECT name FROM people"
+        assert answer.sources[0].data_manifest["dataset"]["name"] == "NeuML/baseballdata"
+
+    @pytest.mark.parametrize(
+        ("unsupported_reason", "columns", "expected_reason", "expected_review_reason"),
+        [
+            ("ambiguous", ["unsupported_reason"], "ambiguous", "ambiguous"),
+            ("unsupported", ["unsupported_reason"], "unsupported", "unsupported"),
+            (None, ["name"], "no_data", "unsupported"),
+        ],
+    )
+    def test_grounded_database_zero_row_answer_preserves_unsupported_mapping(
+        self,
+        unsupported_reason: str | None,
+        columns: list[str],
+        expected_reason: str,
+        expected_review_reason: str,
+    ):
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+        from baseball_rag.routing import GroundedDatabaseQuestionCase
+        from baseball_rag.service import _answer_grounded_database_question
+
+        decision = GroundedDatabaseQuestionCase(raw_question="who is in the 500 club")
+        result = GroundedDatabaseResult(
+            sql="SELECT ? AS unsupported_reason WHERE FALSE",
+            rows=[],
+            columns=columns,
+            row_count=0,
+            truncated=False,
+            params=["unsupported detail"],
+            source_label="Deterministic template query",
+            source_detail="Matched local deterministic grounded database SQL template.",
+            unsupported_reason=unsupported_reason,
+        )
+
+        with patch("baseball_rag.db.grounded_database_runtime.query", return_value=result):
+            answer = _answer_grounded_database_question(decision.raw_question, decision)
+
+        assert answer.unsupported is True
+        assert answer.unsupported_reason == expected_reason
+        assert answer.review_reason == expected_review_reason
+        assert "Try rephrasing with a specific team, player, stat, or year." in answer.answer
+        assert answer.sources[0].label == "Deterministic template query"
+        assert answer.sources[0].rows == []
 
 
 class TestGroundedDatabaseResultFormatting:

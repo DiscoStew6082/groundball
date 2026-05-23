@@ -1,5 +1,7 @@
 """Prompt templates for local LLM requests."""
 
+from baseball_rag.db.biography_stat_vocabulary import biography_claim_prompt_stat_list
+
 PROMPT_VERSION = "grounded-answer-v1"
 
 
@@ -22,11 +24,11 @@ def build_player_biography_json_prompt(
         "]}\n"
         "The answer should be readable prose. Put every explicit career total or "
         "specific-season statistic from the answer into stat_claims. Use canonical "
-        "stat names such as HR, RBI, H, SB, AVG, OPS, W, ERA, WHIP, SO, or PO. "
+        f"stat names such as {biography_claim_prompt_stat_list()}. "
         "For ambiguous stats such as SO, identify whether the claim is batting or "
         "pitching in the table field or in the claim text. "
-        "Only include stat_claims for supported DuckDB-verifiable stats: HR, RBI, H, "
-        "SB, AVG, OPS, W, ERA, WHIP, SO, or PO. "
+        "Only include stat_claims for supported DuckDB-verifiable stats: "
+        f"{biography_claim_prompt_stat_list()}. "
         "If the biography includes no explicit stat totals, return an empty "
         "stat_claims array. Do not include markdown, bullets, notes, analysis, or "
         "examples. The first character must be { and the last character must be }.",

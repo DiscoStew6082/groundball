@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from baseball_rag.db.biography_stat_vocabulary import biography_claim_prompt_stat_list
 from baseball_rag.db.player_stat_claims import PlayerStatClaim
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
 
@@ -59,8 +60,8 @@ def build_biography_json_repair_prompt(invalid_content: str) -> tuple[str, str]:
         '"table": "batting"|"pitching"|"fielding"|null}'
         "]}\n"
         "Do not include markdown, bullets, notes, analysis, or examples. "
-        "Only include stat_claims for supported DuckDB-verifiable stats: HR, RBI, H, "
-        "SB, AVG, OPS, W, ERA, WHIP, SO, or PO. "
+        "Only include stat_claims for supported DuckDB-verifiable stats: "
+        f"{biography_claim_prompt_stat_list()}. "
         "The first character must be { and the last character must be }.",
         (
             "Repair this invalid response into the final JSON contract. "

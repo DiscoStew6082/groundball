@@ -347,6 +347,12 @@ def test_answer_stat_query_source_sql_matches_executed_sql(monkeypatch):
 
     assert "Top OPS leaders (1970-1979):" in answer.answer
     assert answer.sources[0].sql == "SELECT parameterized_ops WHERE b.yearID >= ? AND b.yearID <= ?"
+    assert answer.intent == "stat_query"
+    assert answer.sources[0].type == "duckdb"
+    assert answer.sources[0].label == "OPS leaderboard for 1970-1979"
+    assert "Tables: batting, people" in (answer.sources[0].detail or "")
+    assert answer.sources[0].rows == [{"name": "Player, One", "team": "Range", "stat_value": 1.234}]
+    assert answer.sources[0].data_manifest["dataset"]["name"] == "NeuML/baseballdata"
     assert captured["plan"].stat == "OPS"
 
 

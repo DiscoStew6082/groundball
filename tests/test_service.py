@@ -227,6 +227,40 @@ def test_llm_flavored_stat_query_rejects_last_name_misattributed_claim(monkeypat
     assert "unverified numbers" in result.answer
 
 
+def test_llm_flavored_stat_query_rejects_non_numeric_wrong_player_claim(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Frank Robinson led MLB that season.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Frank Robinson led MLB" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_multi_name_non_leader_claim(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis, Willie Mays led MLB that season.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Tommy Davis, Willie Mays led MLB" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
 def test_llm_flavored_stat_query_rejects_bad_clause_after_good_clause(monkeypatch):
     def fake_llm(_prompt, **_kwargs):
         return LLMResponse(
@@ -439,14 +473,133 @@ def test_llm_flavored_grounded_template_rejects_cross_row_year_stat_claim(
     assert "unverified numbers" in result.answer
 
 
+def test_llm_flavored_grounded_name_only_result_rejects_unverified_name(
+    monkeypatch,
+):
+    from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Mickey Mantle was listed on that roster.",
+            model="test-model",
+            done=True,
+        )
+
+    result = GroundedDatabaseResult(
+        sql="SELECT name FROM people",
+        rows=[("Davis, Tommy",), ("Mays, Willie",)],
+        columns=["name"],
+        row_count=2,
+        truncated=False,
+        source_label="LLM-backed typed grounded database query",
+        source_detail="LLM extracted a typed intent.",
+    )
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    monkeypatch.setattr("baseball_rag.db.grounded_database_runtime.query", lambda *_, **__: result)
+
+    answer_result = answer("who played for the Braves in 1936", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy" in answer_result.answer
+    assert "Mickey Mantle" not in answer_result.answer
+    assert "unverified numbers" in answer_result.answer
+
+
+def test_llm_flavored_grounded_name_only_result_accepts_verified_name_prose(
+    monkeypatch,
+):
+    from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis was listed on that roster.",
+            model="test-model",
+            done=True,
+        )
+
+    result = GroundedDatabaseResult(
+        sql="SELECT name FROM people",
+        rows=[("Davis, Tommy",), ("Mays, Willie",)],
+        columns=["name"],
+        row_count=2,
+        truncated=False,
+        source_label="LLM-backed typed grounded database query",
+        source_detail="LLM extracted a typed intent.",
+    )
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    monkeypatch.setattr("baseball_rag.db.grounded_database_runtime.query", lambda *_, **__: result)
+
+    answer_result = answer("who played for the Braves in 1936", answer_mode="llm_flavored")
+
+    assert answer_result.answer == "Tommy Davis was listed on that roster."
+
+
+def test_llm_flavored_grounded_name_only_result_accepts_multiple_verified_names(
+    monkeypatch,
+):
+    from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis, Willie Mays, and Hank Aaron were listed on that roster.",
+            model="test-model",
+            done=True,
+        )
+
+    result = GroundedDatabaseResult(
+        sql="SELECT name FROM people",
+        rows=[("Davis, Tommy",), ("Mays, Willie",), ("Aaron, Hank",)],
+        columns=["name"],
+        row_count=3,
+        truncated=False,
+        source_label="LLM-backed typed grounded database query",
+        source_detail="LLM extracted a typed intent.",
+    )
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    monkeypatch.setattr("baseball_rag.db.grounded_database_runtime.query", lambda *_, **__: result)
+
+    answer_result = answer("who played for the Braves in 1936", answer_mode="llm_flavored")
+
+    assert answer_result.answer == (
+        "Tommy Davis, Willie Mays, and Hank Aaron were listed on that roster."
+    )
+
+
+def test_llm_flavored_grounded_name_only_result_rejects_lowercase_unverified_name(
+    monkeypatch,
+):
+    from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis and mickey mantle were listed on that roster.",
+            model="test-model",
+            done=True,
+        )
+
+    result = GroundedDatabaseResult(
+        sql="SELECT name FROM people",
+        rows=[("Davis, Tommy",)],
+        columns=["name"],
+        row_count=1,
+        truncated=False,
+        source_label="LLM-backed typed grounded database query",
+        source_detail="LLM extracted a typed intent.",
+    )
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    monkeypatch.setattr("baseball_rag.db.grounded_database_runtime.query", lambda *_, **__: result)
+
+    answer_result = answer("who played for the Braves in 1936", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy" in answer_result.answer
+    assert "mickey mantle" not in answer_result.answer
+    assert "unverified numbers" in answer_result.answer
+
+
 def test_llm_flavored_unsupported_answer_skips_final_narration(monkeypatch):
-    def fail_narration(**_kwargs):
+    def fail_llm(*_args, **_kwargs):
         raise AssertionError("unsupported answers must not call final narration")
 
-    monkeypatch.setattr(
-        "baseball_rag.service._llm_flavored_grounded_database_answer",
-        fail_narration,
-    )
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
 
     result = answer("who is in the 500 club", answer_mode="llm_flavored")
 

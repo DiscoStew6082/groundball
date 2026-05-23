@@ -659,6 +659,16 @@ def test_supplied_biography_verification_scores_all_claims_without_llm(monkeypat
     ]
 
 
+def test_supplied_biography_extraction_canonicalizes_supported_aliases():
+    claims = player_biography.extract_supplied_stat_claims(
+        "Can DuckDB verify these claim totals? The player had 1 home run, "
+        "2 stolen base, 3 hit, 4 win, and 5 strikeout."
+    )
+
+    assert [claim.stat for claim in claims] == ["HR", "SB", "H", "W", "SO"]
+    assert [claim.value for claim in claims] == ["1", "2", "3", "4", "5"]
+
+
 def test_supplied_biography_consensus_scorecard_counts_source_disagreements(monkeypatch):
     def fail_llm(*_args, **_kwargs):
         raise AssertionError("supplied biography verification should not call the LLM")

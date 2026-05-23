@@ -1,5 +1,16 @@
 """Tests for shared stat vocabulary."""
 
+import re
+
+from baseball_rag.db.biography_stat_vocabulary import (
+    biography_claim_stat_aliases,
+    biography_claim_stat_definitions,
+    biography_claim_stat_regex_source,
+    normalize_biography_claim_stat,
+    retrosheet_adapter_stats,
+    retrosheet_stat_column_candidates,
+    supported_biography_claim_stats,
+)
 from baseball_rag.db.stat_registry import (
     StatSqlAdapter,
     find_stat_in_text,
@@ -102,3 +113,50 @@ def test_registry_infers_contextual_pitching_strikeouts():
     assert infer_stat_table("SO", text="struck out 200 batters as a pitcher") == "pitching"
     assert infer_stat_table("strikeouts", text="89 batting strikeouts") == "batting"
     assert infer_stat_table("SO", text="89 strikeouts") is None
+
+
+def test_biography_claim_vocabulary_is_explicit_subset_of_sql_registry():
+    claim_stats = supported_biography_claim_stats()
+
+    assert claim_stats == ["AVG", "ERA", "H", "HR", "OPS", "PO", "RBI", "SB", "SO", "W", "WHIP"]
+    assert set(claim_stats) < set(supported_stats())
+    assert {"2B", "3B", "AB", "BB", "G", "GS", "L", "R", "SV"}.isdisjoint(claim_stats)
+
+    aliases = biography_claim_stat_aliases()
+    assert aliases["home runs"] == "HR"
+    assert aliases["batting average"] == "AVG"
+    assert aliases["putouts"] == "PO"
+
+
+def test_biography_claim_vocabulary_builds_supplied_claim_regex_source():
+    pattern = re.compile(rf"(?P<stat>{biography_claim_stat_regex_source()})\b", re.IGNORECASE)
+
+    assert pattern.search("2,086 runs batted in").group("stat") == "runs batted in"
+    assert pattern.search(".342 batting average").group("stat") == "batting average"
+    assert pattern.search("302 putouts").group("stat") == "putouts"
+
+
+def test_biography_claim_vocabulary_normalizes_every_supported_alias():
+    for alias, canonical in biography_claim_stat_aliases().items():
+        assert normalize_biography_claim_stat(alias) == canonical
+        assert biography_claim_stat_definitions(alias)
+
+    assert normalize_biography_claim_stat("home run") == "HR"
+    assert normalize_biography_claim_stat("stolen base") == "SB"
+    assert normalize_biography_claim_stat("hit") == "H"
+
+
+def test_biography_claim_vocabulary_exposes_contextual_defs_and_retrosheet_columns():
+    definitions = biography_claim_stat_definitions(
+        "SO",
+        text="struck out 200 batters as a pitcher",
+    )
+
+    assert definitions[0].table == "pitching"
+    assert definitions[0].canonical == "SO"
+    assert [definition.table for definition in definitions] == ["pitching", "batting"]
+    assert retrosheet_stat_column_candidates("pitching", "SO") == ("p_k", "SO")
+    assert retrosheet_stat_column_candidates("batting", "OPS") == ()
+    assert {"H", "BB", "HBP", "AB", "SF", "2B", "3B", "HR"} <= set(
+        retrosheet_adapter_stats("batting")
+    )

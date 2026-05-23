@@ -3,6 +3,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
+from baseball_rag.db.biography_stat_vocabulary import supported_biography_claim_stats
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
     shape_biography_stat_claim_consensus,
@@ -383,6 +384,21 @@ def test_consensus_unsupported_for_unsupported_stats():
     assert row["secondary_actual_value"] is None
 
 
+def test_consensus_keeps_sql_only_stats_out_of_biography_claim_vocabulary():
+    conn = _conn()
+    _add_player(conn)
+    _add_batting(conn)
+
+    row = _row(conn, PlayerStatClaim(stat="BB", value=20, year=1927))
+
+    assert "BB" in supported_stats()
+    assert "BB" not in supported_biography_claim_stats()
+    assert row["consensus_status"] == "unsupported"
+    assert row["primary_status"] == "unsupported_stat"
+    assert row["secondary_status"] == "unsupported"
+    assert "Unsupported biography stat claim" in row["warning"]
+
+
 @pytest.mark.parametrize("bad_value", ["many", None, float("nan")])
 def test_consensus_unsupported_for_invalid_values(bad_value: object):
     conn = _conn()
@@ -589,7 +605,6 @@ def test_consensus_verifies_real_retrosheet_daily_log_headers():
             PlayerStatClaim(stat="HR", value=60, year=1927),
             PlayerStatClaim(stat="AVG", value=0.356, year=1927),
             PlayerStatClaim(stat="W", value=1, year=1927),
-            PlayerStatClaim(stat="G", value=2, year=1927, table="pitching"),
             PlayerStatClaim(stat="SO", value=12, year=1927, text="12 strikeouts as a pitcher"),
             PlayerStatClaim(stat="PO", value=302, year=1927),
         ]
@@ -598,7 +613,6 @@ def test_consensus_verifies_real_retrosheet_daily_log_headers():
     assert rows["HR"]["secondary_status"] == "verified"
     assert rows["AVG"]["secondary_status"] == "verified"
     assert rows["W"]["secondary_status"] == "verified"
-    assert rows["G"]["secondary_status"] == "verified"
     assert rows["SO"]["secondary_status"] == "verified"
     assert rows["PO"]["secondary_status"] == "verified"
 
@@ -613,8 +627,8 @@ def test_consensus_verifies_real_retrosheet_daily_log_headers():
     )
 
 
-@pytest.mark.parametrize("stat", supported_stats())
-def test_consensus_has_retrosheet_mapping_for_every_default_registry_stat(stat: str):
+@pytest.mark.parametrize("stat", supported_biography_claim_stats())
+def test_consensus_has_retrosheet_mapping_for_every_biography_claim_stat(stat: str):
     conn = _conn()
     _add_player(conn)
     conn.execute(
