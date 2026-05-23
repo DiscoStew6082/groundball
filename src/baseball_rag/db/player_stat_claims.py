@@ -99,7 +99,7 @@ class PlayerStatClaim:
             if not isinstance(raw_table, str) or raw_table not in _STAT_TABLES:
                 raise ValueError("stat claim table must be batting, pitching, or fielding")
             table = cast(StatTable, raw_table)
-        text = payload.get("text") or payload.get("context")
+        text = payload.get("text")
         return cls(
             stat=stat,
             value=payload.get("value"),

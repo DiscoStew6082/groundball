@@ -76,3 +76,13 @@ def test_biography_contract_invalid_claim_payload_becomes_typed_failure():
         parse_biography_json(
             '{"answer":"Bad claim.","stat_claims":[{"stat":"HR","value":1,"scope":"game"}]}'
         )
+
+
+def test_biography_contract_does_not_accept_context_as_claim_text_alias():
+    contract = parse_biography_json(
+        '{"answer":"Nolan Ryan was a Hall of Fame pitcher.",'
+        '"stat_claims":[{"stat":"SO","value":5714,"scope":"career",'
+        '"year":null,"context":"5,714 strikeouts","table":"pitching"}]}'
+    )
+
+    assert contract["claims"][0].text is None

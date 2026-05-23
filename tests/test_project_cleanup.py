@@ -162,6 +162,14 @@ def test_player_biography_uses_consensus_verifier_directly() -> None:
     assert "return verify_player_stat_claims(player_id, claims, conn=conn)" not in player_biography
 
 
+def test_biography_stat_claim_payload_uses_current_text_field_only() -> None:
+    player_stat_claims = (ROOT / "src" / "baseball_rag" / "db" / "player_stat_claims.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'payload.get("context")' not in player_stat_claims
+
+
 def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
         encoding="utf-8"
