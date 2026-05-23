@@ -82,6 +82,19 @@ def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     assert "_validated_legacy_intent" not in request_dispatch
 
 
+def test_request_dispatch_handlers_require_routed_cases() -> None:
+    request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
+        encoding="utf-8"
+    )
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+
+    assert "Callable[..., StructuredAnswer]" not in request_dispatch
+    assert "Callable[[Any], StructuredAnswer]" not in request_dispatch
+    assert "Callable[[str, Any], StructuredAnswer]" not in request_dispatch
+    assert "route_question: Callable[[str], Any]" not in request_dispatch
+    assert "def _answer_general(question: str, decision: Any)" not in service
+
+
 def test_request_dispatch_no_longer_has_noop_initialize_hook() -> None:
     request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
         encoding="utf-8"

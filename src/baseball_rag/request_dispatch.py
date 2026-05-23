@@ -22,10 +22,10 @@ from baseball_rag.unsupported_policy import unsupported_policy_outcome
 class AnswerHandlers:
     """Concrete answer handlers for routed request cases."""
 
-    stat_query: Callable[[Any], StructuredAnswer]
-    player_biography: Callable[..., StructuredAnswer]
-    grounded_database_question: Callable[[str, Any], StructuredAnswer]
-    general_explanation: Callable[..., StructuredAnswer]
+    stat_query: Callable[[StatQueryCase], StructuredAnswer]
+    player_biography: Callable[[str, PlayerBiographyCase], StructuredAnswer]
+    grounded_database_question: Callable[[str, GroundedDatabaseQuestionCase], StructuredAnswer]
+    general_explanation: Callable[[str, GeneralExplanationCase], StructuredAnswer]
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class RequestAnswerDispatcher:
     """Resolve, route, dispatch, and annotate one user request."""
 
     resolve_followup: Callable[[str, list[dict[str, Any]] | None], ConversationResolution]
-    route_question: Callable[[str], Any]
+    route_question: Callable[[str], RoutedCase]
     handlers: AnswerHandlers
 
     def answer(
@@ -80,7 +80,7 @@ class RequestAnswerDispatcher:
         *,
         original_question: str,
         resolution: ConversationResolution,
-        decision: Any,
+        decision: RoutedCase,
     ) -> None:
         attach_context_metadata(
             result,

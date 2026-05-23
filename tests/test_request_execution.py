@@ -395,32 +395,47 @@ def test_execute_request_grounds_player_stat_question_without_possessive():
 
 def test_execute_request_dispatches_new_routed_case_types(monkeypatch):
     """The request path dispatches each validated routed case by type."""
+    player_case = PlayerBiographyCase(
+        player_name="Hank Aaron",
+        raw_question="who was Hank Aaron",
+    )
+    grounded_case = GroundedDatabaseQuestionCase(raw_question="who won the Triple Crown")
+    general_case = GeneralExplanationCase(raw_question="what is OPS", stat="OPS")
+
+    def fake_player_handler(
+        _question: str,
+        decision: PlayerBiographyCase,
+    ) -> StructuredAnswer:
+        assert decision is player_case
+        return StructuredAnswer(answer="bio", intent=decision.intent)
+
+    def fake_grounded_handler(
+        _question: str,
+        decision: GroundedDatabaseQuestionCase,
+    ) -> StructuredAnswer:
+        assert decision is grounded_case
+        return StructuredAnswer(answer="grounded database", intent=decision.intent)
+
+    def fake_general_handler(
+        _question: str,
+        decision: GeneralExplanationCase,
+    ) -> StructuredAnswer:
+        assert decision is general_case
+        return StructuredAnswer(answer="general", intent=decision.intent)
+
     cases = [
+        (player_case, "_answer_player_biography", fake_player_handler, "bio"),
         (
-            PlayerBiographyCase(player_name="Hank Aaron", raw_question="who was Hank Aaron"),
-            "_answer_player_biography",
-            "bio",
-        ),
-        (
-            GroundedDatabaseQuestionCase(raw_question="who won the Triple Crown"),
+            grounded_case,
             "_answer_grounded_database_question",
+            fake_grounded_handler,
             "grounded database",
         ),
-        (
-            GeneralExplanationCase(raw_question="what is OPS", stat="OPS"),
-            "_answer_general",
-            "general",
-        ),
+        (general_case, "_answer_general", fake_general_handler, "general"),
     ]
 
-    for routed, handler_name, expected in cases:
+    for routed, handler_name, fake_handler, expected in cases:
         monkeypatch.setattr("baseball_rag.service.route", lambda _question, routed=routed: routed)
-
-        def fake_handler(*args, expected=expected, **kwargs):
-            decision = args[1]
-            assert decision is routed
-            return StructuredAnswer(answer=expected, intent=decision.intent)
-
         monkeypatch.setattr(f"baseball_rag.service.{handler_name}", fake_handler)
 
         execution = execute_request(routed.raw_question, adapter_component_id="api")
