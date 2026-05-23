@@ -358,7 +358,7 @@ class TestParseIntent:
     """Tests for the intent parser -- LLM output -> Intent dataclass."""
 
     def test_parses_valid_intent_json(self):
-        from baseball_rag.db.freeform_intent import _parse_intent
+        from baseball_rag.db.grounded_database_intent import _parse_intent
 
         raw = (
             '{"stat_tables": ["batting", "pitching"], '
@@ -371,7 +371,7 @@ class TestParseIntent:
         assert intent.year_value == 1936
 
     def test_parses_minimal_intent(self):
-        from baseball_rag.db.freeform_intent import _parse_intent
+        from baseball_rag.db.grounded_database_intent import _parse_intent
 
         raw = '{"stat_tables": ["batting"]}'
         intent = _parse_intent(raw)
@@ -381,7 +381,7 @@ class TestParseIntent:
         assert intent.year_value is None
 
     def test_strips_markdown_fences(self):
-        from baseball_rag.db.freeform_intent import _parse_intent
+        from baseball_rag.db.grounded_database_intent import _parse_intent
 
         raw = '```json\n{"stat_tables": ["fielding"], "team_name_pattern": "Giants"}\n```'
         intent = _parse_intent(raw)
@@ -390,13 +390,13 @@ class TestParseIntent:
         assert intent.team_name_pattern == "Giants"
 
     def test_raises_on_malformed_json(self):
-        from baseball_rag.db.freeform_intent import _parse_intent
+        from baseball_rag.db.grounded_database_intent import _parse_intent
 
         with pytest.raises(ValueError, match="Could not determine"):
             _parse_intent("not valid json at all")
 
     def test_raises_when_stat_tables_missing(self):
-        from baseball_rag.db.freeform_intent import _parse_intent
+        from baseball_rag.db.grounded_database_intent import _parse_intent
 
         with pytest.raises(ValueError, match="stat_tables"):
             _parse_intent('{"team_name_pattern": "Braves"}')
@@ -474,7 +474,7 @@ class TestGenerateSQLDeterminism:
         """Identical calls with same intent should produce byte-for-byte identical SQL."""
         import json
 
-        from baseball_rag.db.freeform_intent import _generate_sql
+        from baseball_rag.db.grounded_database_intent import _generate_sql
 
         # Mock the LLM to return a known intent JSON
         raw_response = json.dumps(
@@ -502,7 +502,7 @@ class TestGenerateSQLDeterminism:
 
     def test_generate_sql_calls_llm_once(self):
         """_generate_sql should make exactly one LLM call per invocation."""
-        from baseball_rag.db.freeform_intent import _generate_sql
+        from baseball_rag.db.grounded_database_intent import _generate_sql
 
         mock_resp = MagicMock()
         mock_resp.content = (

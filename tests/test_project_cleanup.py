@@ -245,13 +245,13 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
 
 
 def test_freeform_compatibility_facade_is_removed() -> None:
-    freeform_intent = (ROOT / "src" / "baseball_rag" / "db" / "freeform_intent.py").read_text(
-        encoding="utf-8"
-    )
+    grounded_database_intent = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
+    ).read_text(encoding="utf-8")
 
     assert not (ROOT / "src" / "baseball_rag" / "db" / "freeform.py").exists()
-    assert "def _extract_json_blocks(" not in freeform_intent
-    assert "Backward-compatible wrapper" not in freeform_intent
+    assert "def _extract_json_blocks(" not in grounded_database_intent
+    assert "Backward-compatible wrapper" not in grounded_database_intent
 
 
 def test_service_uses_freeform_runtime_directly() -> None:
@@ -289,6 +289,23 @@ def test_grounded_database_types_module_replaces_legacy_types_module() -> None:
 def test_grounded_database_assembler_module_replaces_legacy_module() -> None:
     old_module = "free" + "form_assembler"
     new_module = "grounded_database_assembler"
+    search_roots = [ROOT / "src", ROOT / "tests", ROOT / "evals"]
+
+    assert not (ROOT / "src" / "baseball_rag" / "db" / f"{old_module}.py").exists()
+    assert (ROOT / "src" / "baseball_rag" / "db" / f"{new_module}.py").exists()
+    for path in (
+        path
+        for root in search_roots
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
+
+
+def test_grounded_database_intent_module_replaces_legacy_module() -> None:
+    old_module = "free" + "form_intent"
+    new_module = "grounded_database_intent"
     search_roots = [ROOT / "src", ROOT / "tests", ROOT / "evals"]
 
     assert not (ROOT / "src" / "baseball_rag" / "db" / f"{old_module}.py").exists()
@@ -450,9 +467,9 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
 
 
 def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
-    freeform_intent = (ROOT / "src" / "baseball_rag" / "db" / "freeform_intent.py").read_text(
-        encoding="utf-8"
-    )
+    grounded_database_intent = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
+    ).read_text(encoding="utf-8")
     grounded_database_assembler = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_assembler.py"
     ).read_text(encoding="utf-8")
@@ -475,7 +492,7 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     prose = "\n".join(
         item
         for source in (
-            freeform_intent,
+            grounded_database_intent,
             grounded_database_assembler,
             freeform_runtime,
             freeform_templates,
