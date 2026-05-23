@@ -82,6 +82,16 @@ def test_request_dispatch_no_longer_has_noop_initialize_hook() -> None:
     assert "initialize=lambda: None" not in service
 
 
+def test_general_explanation_no_longer_uses_fallback_question_shape() -> None:
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+    general_explanation = (ROOT / "src" / "baseball_rag" / "general_explanation.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "fallback_question" not in service
+    assert "fallback_question" not in general_explanation
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"

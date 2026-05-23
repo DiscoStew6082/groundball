@@ -55,7 +55,7 @@ def test_service_general_explanation_uses_policy_module(monkeypatch):
     assert result.answer == "policy answer"
 
 
-def test_service_general_explanation_uses_fallback_question_for_local_definition(monkeypatch):
+def test_service_general_explanation_uses_routed_question_for_local_definition(monkeypatch):
     from baseball_rag.service import _answer_general
 
     def fail_llm(*_args, **_kwargs):
@@ -65,7 +65,7 @@ def test_service_general_explanation_uses_fallback_question_for_local_definition
 
     result = _answer_general(
         "what is OPS",
-        GeneralExplanationCase(raw_question="", stat="OPS"),
+        GeneralExplanationCase(raw_question="what is OPS", stat="OPS"),
     )
 
     assert result.sources[0].label == "Local stat definition: OPS"

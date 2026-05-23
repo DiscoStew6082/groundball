@@ -21,11 +21,9 @@ class GeneralExplanationPolicy:
     def answer(
         self,
         decision: GeneralExplanationCase,
-        *,
-        fallback_question: str | None = None,
     ) -> StructuredAnswer:
         """Return a structured explanation without exposing the backing path."""
-        question = decision.raw_question or fallback_question or ""
+        question = decision.raw_question
         local_definition = self._answer_local_stat_definition(question)
         if local_definition is not None:
             return local_definition

@@ -172,10 +172,7 @@ def _answer_general(question: str, decision: Any) -> StructuredAnswer:
         from baseball_rag.generation.llm import make_request
     except ImportError:  # pragma: no cover
         make_request = None
-    return GeneralExplanationPolicy(make_request=make_request).answer(
-        decision,
-        fallback_question=question,
-    )
+    return GeneralExplanationPolicy(make_request=make_request).answer(decision)
 
 
 def _answer_local_stat_definition(question: str) -> StructuredAnswer | None:
