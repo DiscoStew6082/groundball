@@ -653,6 +653,23 @@ def test_hof_biography_corpus_is_removed() -> None:
     assert "Other checked-in corpus material" not in readme
 
 
+def test_stat_definition_open_llm_path_is_not_described_as_fallback() -> None:
+    diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
+        encoding="utf-8"
+    )
+    corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    coverage_docs = (ROOT / "docs" / "guardrail-coverage.md").read_text(encoding="utf-8")
+    eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
+    old_label = "local_markdown_then_llm_" + "fallback"
+    old_phrase = "open LLM " + "fallback"
+    eval_notes = "\n".join(_yaml_values_for_keys(eval_manifest, {"notes"}))
+
+    assert old_label not in diagnostics
+    assert old_phrase not in corpus_docs
+    assert old_phrase not in coverage_docs
+    assert old_phrase not in eval_notes
+
+
 def test_duckdb_markdown_player_bio_builder_is_removed() -> None:
     player_bios = (ROOT / "src" / "baseball_rag" / "corpus" / "player_bios.py").read_text(
         encoding="utf-8"

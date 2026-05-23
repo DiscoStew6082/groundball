@@ -18,7 +18,7 @@ def corpus_diagnostics() -> dict[str, Any]:
         },
         "runtime": {
             "index_required": False,
-            "stat_explanations": "local_markdown_then_llm_fallback",
+            "stat_explanations": "local_markdown_then_open_llm",
             "player_biographies": "llm_generated_duckdb_verified",
         },
     }

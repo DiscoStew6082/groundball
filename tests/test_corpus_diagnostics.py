@@ -16,7 +16,7 @@ def test_corpus_diagnostics_reports_checked_in_corpus_without_manifest_state():
     assert diagnostics["corpus_files"]["stat_definition_count"] == 10
     assert "hof_bio_count" not in diagnostics["corpus_files"]
     assert diagnostics["runtime"]["index_required"] is False
-    assert diagnostics["runtime"]["stat_explanations"] == "local_markdown_then_llm_fallback"
+    assert diagnostics["runtime"]["stat_explanations"] == "local_markdown_then_open_llm"
 
 
 def test_corpus_diagnostics_ignores_retired_manifest_counts(tmp_path):
