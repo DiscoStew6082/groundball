@@ -644,6 +644,10 @@ def test_duckdb_markdown_player_bio_builder_is_removed() -> None:
     assert "generated_player_profile_frontmatter" not in player_bios
 
 
+def test_generated_player_profile_lifecycle_helpers_are_removed() -> None:
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "lifecycle.py").exists()
+
+
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
     diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
     read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(
@@ -828,23 +832,16 @@ def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
     diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
         encoding="utf-8"
     )
-    lifecycle = (ROOT / "src" / "baseball_rag" / "corpus" / "lifecycle.py").read_text(
-        encoding="utf-8"
-    )
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
     architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "corpus_manifest.json" not in diagnostics
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "lifecycle.py").exists()
     assert "persist-dir" not in corpus_main
     assert "persist-dir" not in readme
     assert '"diag"' not in corpus_main
-    assert "manifest_section_count" not in lifecycle
-    assert "write_corpus_manifest" not in lifecycle
-    assert "new_manifest" not in lifecycle
-    assert "finalize_manifest_counts" not in lifecycle
-    assert "manifest_documents" not in lifecycle
     assert "old ignored manifest" not in corpus_docs
     assert "old ignored manifest" not in development_docs
     assert "old ignored manifest" not in architecture_docs
