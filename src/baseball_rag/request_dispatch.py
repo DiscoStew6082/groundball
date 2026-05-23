@@ -32,7 +32,6 @@ class AnswerHandlers:
 class RequestAnswerDispatcher:
     """Resolve, route, dispatch, and annotate one user request."""
 
-    initialize: Callable[[], None]
     resolve_followup: Callable[[str, list[dict[str, Any]] | None], ConversationResolution]
     route_question: Callable[[str], Any]
     handlers: AnswerHandlers
@@ -44,7 +43,6 @@ class RequestAnswerDispatcher:
         conversation: list[dict[str, Any]] | None = None,
     ) -> StructuredAnswer:
         """Return a structured answer for one user question."""
-        self.initialize()
         resolution = self.resolve_followup(question, conversation)
         routed_question = resolution.resolved_question
         policy_result = unsupported_policy_outcome(routed_question)

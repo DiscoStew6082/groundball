@@ -71,6 +71,17 @@ def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     assert "_validated_legacy_intent" not in request_dispatch
 
 
+def test_request_dispatch_no_longer_has_noop_initialize_hook() -> None:
+    request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
+        encoding="utf-8"
+    )
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+
+    assert "initialize:" not in request_dispatch
+    assert "self.initialize()" not in request_dispatch
+    assert "initialize=lambda: None" not in service
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"

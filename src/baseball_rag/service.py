@@ -40,7 +40,6 @@ def answer(
     """Answer a question with explicit provenance metadata."""
     validated_answer_mode: AnswerMode = validate_answer_mode(answer_mode)
     dispatcher = RequestAnswerDispatcher(
-        initialize=lambda: None,
         resolve_followup=resolve_followup,
         route_question=route,
         handlers=AnswerHandlers(
