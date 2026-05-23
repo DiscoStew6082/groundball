@@ -14,7 +14,7 @@ def test_corpus_diagnostics_reports_checked_in_corpus_without_manifest_state():
     assert diagnostics["corpus_dir"] == str(STAT_DEFS_DIR.parent)
     assert "manifest" not in diagnostics
     assert diagnostics["corpus_files"]["stat_definition_count"] == 10
-    assert diagnostics["corpus_files"]["hof_bio_count"] == 5
+    assert "hof_bio_count" not in diagnostics["corpus_files"]
     assert diagnostics["runtime"]["index_required"] is False
     assert diagnostics["runtime"]["stat_explanations"] == "local_markdown_then_llm_fallback"
 

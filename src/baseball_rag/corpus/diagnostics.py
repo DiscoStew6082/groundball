@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from baseball_rag.corpus import HOF_DIR, STAT_DEFS_DIR, get_hof_bios, get_stat_defs
+from baseball_rag.corpus import STAT_DEFS_DIR, get_stat_defs
 
 
 def corpus_diagnostics() -> dict[str, Any]:
@@ -13,11 +13,8 @@ def corpus_diagnostics() -> dict[str, Any]:
         "corpus_dir": str(STAT_DEFS_DIR.parent),
         "corpus_files": {
             "stat_definition_count": len(get_stat_defs()),
-            "hof_bio_count": len(get_hof_bios()),
             "stat_definitions_dir": str(STAT_DEFS_DIR),
-            "hof_dir": str(HOF_DIR),
             "stat_definitions": [p.stem for p in get_stat_defs()],
-            "hof_bios": [p.stem for p in get_hof_bios()],
         },
         "runtime": {
             "index_required": False,

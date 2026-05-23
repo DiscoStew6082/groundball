@@ -1,6 +1,6 @@
 # Corpus Material
 
-The Markdown under `src/baseball_rag/corpus/` is checked-in project material. It is useful for examples, docs, and tests. The stat-definition Markdown remains runtime grounding for supported stat-definition explanations; Hall of Fame biography Markdown is not runtime grounding for player biographies.
+The Markdown under `src/baseball_rag/corpus/` is checked-in project material. The stat-definition Markdown remains runtime grounding for supported stat-definition explanations.
 
 ChromaDB indexing was removed because it duplicated generated baseball facts and introduced fragile local state. The runtime now uses DuckDB for structured facts, local LLM generation for open prose, and DuckDB verification for extractable biography stat claims.
 
@@ -11,8 +11,7 @@ corpus/
 ├── __init__.py              # Path constants and helper listings
 ├── diagnostics.py           # Checked-in corpus diagnostics
 ├── frontmatter.py           # YAML frontmatter parser
-├── stat_definitions/        # 10 markdown files, one per stat
-└── hof/                     # 5 Hall of Fame player biography examples
+└── stat_definitions/        # 10 markdown files, one per stat
 ```
 
 ## Runtime Behavior
@@ -58,7 +57,7 @@ uv run python -m baseball_rag.corpus diagnostics
 The report includes:
 
 - resolved corpus directory
-- checked-in stat definition and Hall of Fame Markdown counts
+- checked-in stat definition Markdown counts
 - runtime flags showing that no index is required
 
 Diagnostics do not require a vector index.

@@ -1,6 +1,6 @@
 """Tests for corpus content existence."""
 
-from baseball_rag.corpus import get_hof_bios, get_stat_defs
+from baseball_rag.corpus import get_stat_defs
 
 
 class TestCorpusContent:
@@ -10,11 +10,6 @@ class TestCorpusContent:
         """At least 10 stat definition documents exist."""
         paths = get_stat_defs()
         assert len(paths) >= 10, f"Expected ≥10 stat defs, got {len(paths)}: {paths}"
-
-    def test_hof_bios_exist(self):
-        """At least 5 Hall of Fame biographies exist."""
-        paths = get_hof_bios()
-        assert len(paths) >= 5, f"Expected ≥5 HoF bios, got {len(paths)}: {paths}"
 
     def test_stat_definitions_have_frontmatter(self):
         """Each stat definition has valid YAML frontmatter with required fields."""
@@ -29,31 +24,10 @@ class TestCorpusContent:
             assert "category" in meta, f"{path.name} missing category"
             assert meta["category"] == "stat_definition"
 
-    def test_hof_bios_have_frontmatter(self):
-        """Each HoF biography has valid YAML frontmatter with required fields."""
-        from baseball_rag.corpus.frontmatter import parse_frontmatter
-
-        for path in get_hof_bios():
-            content = path.read_text()
-            result = parse_frontmatter(content)
-            assert "metadata" in result, f"{path.name} missing metadata"
-            meta = result["metadata"]
-            assert "title" in meta, f"{path.name} missing title"
-            assert "category" in meta, f"{path.name} missing category"
-            assert meta["category"] == "hof_bio"
-
     def test_stat_definitions_have_body(self):
         """Each stat definition has non-empty body text."""
         from baseball_rag.corpus.frontmatter import parse_frontmatter
 
         for path in get_stat_defs():
-            result = parse_frontmatter(path.read_text())
-            assert len(result["body"].strip()) > 50, f"{path.name} body too short"
-
-    def test_hof_bios_have_body(self):
-        """Each HoF biography has non-empty body text."""
-        from baseball_rag.corpus.frontmatter import parse_frontmatter
-
-        for path in get_hof_bios():
             result = parse_frontmatter(path.read_text())
             assert len(result["body"].strip()) > 50, f"{path.name} body too short"

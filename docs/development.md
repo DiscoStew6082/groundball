@@ -30,9 +30,7 @@ uv run python -m baseball_rag.db.download --manifest-only
 ### Corpus Material
 
 ChromaDB indexing has been removed. Checked-in stat-definition Markdown remains
-runtime grounding for supported stat-definition explanations. Hall of Fame
-biography Markdown remains project material for docs/tests, but it is not
-runtime grounding for player biographies.
+runtime grounding for supported stat-definition explanations.
 
 For a full local data rebuild from scratch:
 

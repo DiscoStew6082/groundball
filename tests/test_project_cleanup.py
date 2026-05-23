@@ -635,6 +635,24 @@ def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
     assert "static_doc_ids_for_query" not in static_vocab
 
 
+def test_hof_biography_corpus_is_removed() -> None:
+    corpus_init = (ROOT / "src" / "baseball_rag" / "corpus" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
+        encoding="utf-8"
+    )
+    corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "hof").exists()
+    assert "HOF_DIR" not in corpus_init
+    assert "get_hof_bios" not in corpus_init
+    assert "hof_bio" not in diagnostics
+    assert "Hall of Fame" not in corpus_docs
+    assert "Other checked-in corpus material" not in readme
+
+
 def test_duckdb_markdown_player_bio_builder_is_removed() -> None:
     player_bios = (ROOT / "src" / "baseball_rag" / "corpus" / "player_bios.py").read_text(
         encoding="utf-8"

@@ -167,7 +167,7 @@ Generated data policy:
 - `data/manifest.json` is tracked because it documents the data contract.
 - `data/*.csv` is downloaded on demand.
 - `data/*.duckdb` files are generated local state and are not tracked.
-- Checked-in stat-definition Markdown under `src/baseball_rag/corpus/stat_definitions/` is runtime grounding for supported stat-definition explanations. Other checked-in corpus material remains project material for docs/tests and is not runtime grounding for player biographies.
+- Checked-in stat-definition Markdown under `src/baseball_rag/corpus/stat_definitions/` is runtime grounding for supported stat-definition explanations.
 
 Populate structured data and regenerate the manifest:
 
