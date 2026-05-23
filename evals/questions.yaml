@@ -296,7 +296,7 @@ questions:
     expected_unsupported: true
     notes: "Safety/routing eval: last-name-only query should be rejected before generation."
   - id: broad_bio_query_yankees_slugger
-    question: "which indexed player biography talks about a Yankees switch-hitting slugger"
+    question: "which biography text talks about a Yankees switch-hitting slugger"
     intent: general_explanation
     expected_answer_contains: ["Yankees"]
     notes: "Broad open explanation should come from the LLM, not a local vector index."

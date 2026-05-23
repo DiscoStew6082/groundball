@@ -634,11 +634,18 @@ def test_public_docs_use_grounded_database_question_naming() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    eval_report = (ROOT / "docs" / "eval-report.md").read_text(encoding="utf-8")
+    eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
     legacy_title = LEGACY_DATABASE_LABEL.title()
+    eval_questions = "\n".join(str(case["question"]) for case in eval_manifest["questions"])
 
     assert f"{legacy_title} SQL" not in readme
     assert f"{legacy_title} query" not in api_docs
     assert f"{legacy_title} database answers" not in corpus_docs
+    assert "grounded database fallback" not in readme
+    assert "missing indexes" not in api_docs
+    assert "indexed player biography" not in eval_report
+    assert "indexed player biography" not in eval_questions
     assert "grounded database question" in readme.lower()
     assert "grounded database question" in api_docs.lower()
     assert "grounded database question" in corpus_docs.lower()

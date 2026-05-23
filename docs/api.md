@@ -135,7 +135,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `answer` | string | Full answer text (preformatted verified stats or LLM-flavored prose, depending on `answer_mode` and route) |
 | `intent` | string | Router intent used to answer the question |
 | `sources` | array | DuckDB evidence or verification records used to ground the answer |
-| `warnings` | array | Non-fatal caveats, such as missing indexes or truncated results |
+| `warnings` | array | Non-fatal caveats, such as truncated results or LLM-backed open explanation errors |
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
 | `review` | object/null | Human review queue hint for unsupported or ambiguous answers |
 | `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match, latency, and trace stages |

@@ -141,7 +141,7 @@ These make a compact demo script for the CLI, API, or Gradio UI:
 
 - "who had the most RBIs in 1962" - deterministic stat query from DuckDB.
 - "who won the Triple Crown and which years" - deterministic grounded database template with a visible provenance badge.
-- "who played for the Braves in 1936" - LLM-backed typed grounded database fallback using parameterized SQL.
+- "who played for the Braves in 1936" - typed grounded database question using parameterized SQL.
 - "who played for the Dodgers in 1947" - historical roster query with old team names handled through the database.
 - "who was Babe Ruth" - LLM-generated player biography with DuckDB identity and stat-claim verification.
 - "what is OPS" - local stat-definition explanation with corpus provenance.
