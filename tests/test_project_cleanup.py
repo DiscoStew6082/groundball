@@ -145,6 +145,16 @@ def test_player_biography_answerer_requires_routed_case() -> None:
     assert "def _answer_player_biography(question: str, decision: Any)" not in service
 
 
+def test_player_biography_uses_consensus_verifier_directly() -> None:
+    player_biography = (ROOT / "src" / "baseball_rag" / "player_biography.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "except ImportError" not in player_biography
+    assert "_db_verify_player_stat_claims_consensus" not in player_biography
+    assert "return verify_player_stat_claims(player_id, claims, conn=conn)" not in player_biography
+
+
 def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
         encoding="utf-8"

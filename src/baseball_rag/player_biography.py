@@ -12,37 +12,17 @@ from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
     shape_biography_stat_claim_consensus,
-    verify_player_stat_claims,
+    verify_player_stat_claims_consensus,
 )
 from baseball_rag.outcomes import ambiguous_outcome, llm_unavailable_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
 from baseball_rag.routing import PlayerBiographyCase
-
-_db_verify_player_stat_claims_consensus: Any | None
-try:
-    from baseball_rag.db.player_stat_claims import (
-        verify_player_stat_claims_consensus as _db_verify_player_stat_claims_consensus,
-    )
-except ImportError:  # pragma: no cover - removed when the DB consensus slice lands
-    _db_verify_player_stat_claims_consensus = None
 
 build_biography_json_repair_prompt = _biography_contract.build_biography_json_repair_prompt
 is_biography_json_contract = _biography_contract.is_biography_json_contract
 loads_json_object = _biography_contract.loads_json_object
 parse_biography_json = _biography_contract.parse_biography_json
 request_biography_json = _biography_contract.request_biography_json
-
-
-def verify_player_stat_claims_consensus(
-    player_id: str,
-    claims: list[PlayerStatClaim],
-    *,
-    conn: Any,
-) -> list[Any]:
-    """Verify biography stat claims with the Retrosheet consensus API when present."""
-    if _db_verify_player_stat_claims_consensus is not None:
-        return _db_verify_player_stat_claims_consensus(player_id, claims, conn=conn)
-    return verify_player_stat_claims(player_id, claims, conn=conn)
 
 
 @dataclass
