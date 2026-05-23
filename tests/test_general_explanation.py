@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 from baseball_rag.general_explanation import GeneralExplanationPolicy
 from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.routing import GeneralExplanationCase
@@ -69,17 +67,6 @@ def test_service_general_explanation_uses_routed_question_for_local_definition(m
     )
 
     assert result.sources[0].label == "Local stat definition: OPS"
-
-
-def test_runtime_general_explanations_do_not_use_grounded_generation_helpers(monkeypatch):
-    with patch("baseball_rag.generation.answer.answer") as grounded_answer:
-        grounded_answer.side_effect = AssertionError("general explanations use policy answers")
-
-        result = GeneralExplanationPolicy(make_request=lambda *_args, **_kwargs: None).answer(
-            GeneralExplanationCase(raw_question="what is RBI", stat="RBI")
-        )
-
-    assert "run batted in" in result.answer.lower()
 
 
 def test_general_explanation_policy_calls_open_llm_for_non_local_question():

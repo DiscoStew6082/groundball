@@ -608,6 +608,24 @@ def test_llm_streaming_compatibility_api_is_removed() -> None:
     assert stream_api not in llm_tests
 
 
+def test_retrieved_document_generation_surface_is_removed() -> None:
+    generation_init = (ROOT / "src" / "baseball_rag" / "generation" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    prompt = (ROOT / "src" / "baseball_rag" / "generation" / "prompt.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert not (ROOT / "src" / "baseball_rag" / "generation" / "answer.py").exists()
+    assert "from baseball_rag.generation.answer import answer" not in generation_init
+    assert '"answer"' not in generation_init
+    assert "build_grounded_prompt" not in prompt
+    assert "build_stat_query_prompt" not in prompt
+    assert "build_explanation_prompt" not in prompt
+    assert "build_player_bio_prompt" not in prompt
+    assert "PromptBundle" not in prompt
+
+
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
     diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
     read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(
