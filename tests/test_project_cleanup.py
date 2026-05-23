@@ -662,32 +662,23 @@ def test_hof_biography_corpus_is_removed() -> None:
     corpus_init = (ROOT / "src" / "baseball_rag" / "corpus" / "__init__.py").read_text(
         encoding="utf-8"
     )
-    diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
-        encoding="utf-8"
-    )
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert not (ROOT / "src" / "baseball_rag" / "corpus" / "hof").exists()
     assert "HOF_DIR" not in corpus_init
     assert "get_hof_bios" not in corpus_init
-    assert "hof_bio" not in diagnostics
     assert "Hall of Fame" not in corpus_docs
     assert "Other checked-in corpus material" not in readme
 
 
 def test_stat_definition_open_llm_path_is_not_described_as_fallback() -> None:
-    diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
-        encoding="utf-8"
-    )
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     coverage_docs = (ROOT / "docs" / "guardrail-coverage.md").read_text(encoding="utf-8")
     eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
-    old_label = "local_markdown_then_llm_" + "fallback"
     old_phrase = "open LLM " + "fallback"
     eval_notes = "\n".join(_yaml_values_for_keys(eval_manifest, {"notes"}))
 
-    assert old_label not in diagnostics
     assert old_phrase not in corpus_docs
     assert old_phrase not in coverage_docs
     assert old_phrase not in eval_notes
@@ -749,14 +740,11 @@ def test_arch_components_no_longer_exports_component_test_status_alias() -> None
 
 
 def test_retired_corpus_ingest_entrypoint_is_removed() -> None:
-    corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
-        encoding="utf-8"
-    )
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
 
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").exists()
     assert not (ROOT / "src" / "baseball_rag" / "corpus" / "ingest.py").exists()
-    assert "ingest_main" not in corpus_main
     assert "Retired Ingest Command" not in corpus_docs
     assert "retired ingest command" not in architecture_docs.lower()
 
@@ -892,26 +880,31 @@ def test_active_eval_ids_use_grounded_database_label() -> None:
 
 
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
-    corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
-        encoding="utf-8"
-    )
-    diagnostics = (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").read_text(
-        encoding="utf-8"
-    )
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
     architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "corpus_manifest.json" not in diagnostics
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").exists()
     assert not (ROOT / "src" / "baseball_rag" / "corpus" / "lifecycle.py").exists()
-    assert "persist-dir" not in corpus_main
     assert "persist-dir" not in readme
-    assert '"diag"' not in corpus_main
     assert "old ignored manifest" not in corpus_docs
     assert "old ignored manifest" not in development_docs
     assert "old ignored manifest" not in architecture_docs
     assert "old ignored manifest" not in readme
+
+
+def test_corpus_diagnostics_cli_surface_is_removed() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
+    development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").exists()
+    assert not (ROOT / "src" / "baseball_rag" / "corpus" / "diagnostics.py").exists()
+    assert not (ROOT / "tests" / "test_corpus_diagnostics.py").exists()
+    assert "baseball_rag.corpus diagnostics" not in readme
+    assert "baseball_rag.corpus diagnostics" not in corpus_docs
+    assert "baseball_rag.corpus diagnostics" not in development_docs
 
 
 def test_stale_space_deploy_surface_is_not_active() -> None:

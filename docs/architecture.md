@@ -58,5 +58,3 @@ Supported stat-definition questions such as "what is OPS?" read the checked-in l
 ## Corpus Material
 
 Markdown files under `src/baseball_rag/corpus/` remain useful project material for docs and tests. ChromaDB indexing and Chroma-backed retrieval were removed because the index duplicated generated facts and created fragile local state.
-
-Corpus diagnostics report checked-in corpus counts and runtime flags only.

@@ -175,12 +175,6 @@ Populate structured data and regenerate the manifest:
 uv run python -m baseball_rag.db.download
 ```
 
-Inspect checked-in corpus material:
-
-```bash
-uv run python -m baseball_rag.corpus diagnostics
-```
-
 ## Evaluation
 
 The golden eval set lives in [evals/questions.yaml](evals/questions.yaml). CI treats the deterministic subset as an AI release gate. The gate emits Markdown and JSON artifacts, compares against [evals/baseline.json](evals/baseline.json), and returns `PASS`, `WARN`, or `BLOCK`.

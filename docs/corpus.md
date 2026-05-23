@@ -9,7 +9,6 @@ ChromaDB indexing was removed because it duplicated generated baseball facts and
 ```text
 corpus/
 ├── __init__.py              # Path constants and helper listings
-├── diagnostics.py           # Checked-in corpus diagnostics
 ├── frontmatter.py           # YAML frontmatter parser
 └── stat_definitions/        # 10 markdown files, one per stat
 ```
@@ -45,19 +44,3 @@ The parser still supports this format for docs/tests:
 parse_frontmatter(content)
   -> {"metadata": {"title": ..., "category": ..., "tags": [...]}, "body": "..."}
 ```
-
-## Diagnostics
-
-Print corpus diagnostics as JSON:
-
-```bash
-uv run python -m baseball_rag.corpus diagnostics
-```
-
-The report includes:
-
-- resolved corpus directory
-- checked-in stat definition Markdown counts
-- runtime flags showing that no index is required
-
-Diagnostics do not require a vector index.
