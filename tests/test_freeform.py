@@ -635,12 +635,10 @@ class TestFreeformProvenance:
         ],
     )
     def test_deterministic_template_source_label(self, question: str, detail: str):
-        from types import SimpleNamespace
-
+        from baseball_rag.routing import GroundedDatabaseQuestionCase
         from baseball_rag.service import _answer_grounded_database_question
 
-        decision = SimpleNamespace(
-            intent="grounded_database_question",
+        decision = GroundedDatabaseQuestionCase(
             raw_question=question,
         )
 
@@ -654,12 +652,10 @@ class TestFreeformProvenance:
         assert detail in (result.sources[0].detail or "")
 
     def test_llm_backed_freeform_source_label(self):
-        from types import SimpleNamespace
-
+        from baseball_rag.routing import GroundedDatabaseQuestionCase
         from baseball_rag.service import _answer_grounded_database_question
 
-        decision = SimpleNamespace(
-            intent="grounded_database_question",
+        decision = GroundedDatabaseQuestionCase(
             raw_question="Who played for the Mariners in 1977?",
         )
         mock_resp = MagicMock()

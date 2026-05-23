@@ -96,6 +96,9 @@ def test_grounded_database_question_no_longer_uses_year_route_shape() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
 
     assert 'getattr(decision, "year"' not in service
+    assert 'getattr(decision, "time_period"' not in service
+    assert 'getattr(decision, "raw_question"' not in service
+    assert 'getattr(decision, "intent"' not in service
 
 
 def test_conversation_no_longer_exposes_private_transcript_wrappers() -> None:

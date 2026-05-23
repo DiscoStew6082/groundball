@@ -25,7 +25,7 @@ from baseball_rag.provenance import (
     compact_data_manifest,
 )
 from baseball_rag.request_dispatch import AnswerHandlers, RequestAnswerDispatcher
-from baseball_rag.routing import route
+from baseball_rag.routing import GroundedDatabaseQuestionCase, route
 from baseball_rag.stat_query import answer_stat_query
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ def _duckdb_source(
 
 def _answer_grounded_database_question(
     _question: str,
-    decision: Any,
+    decision: GroundedDatabaseQuestionCase,
 ) -> StructuredAnswer:
     from baseball_rag.db.freeform_runtime import format_result, query
     from baseball_rag.generation.llm import make_request
@@ -148,18 +148,19 @@ def _answer_grounded_database_question(
     )
 
 
-def _grounded_database_single_season_year(decision: Any) -> int | None:
-    time_period = getattr(decision, "time_period", None)
-    if time_period is None:
+def _grounded_database_single_season_year(
+    decision: GroundedDatabaseQuestionCase,
+) -> int | None:
+    if decision.time_period is None:
         return None
 
     from baseball_rag.query_scope import QueryScope, resolve_query_scope
 
     scope = resolve_query_scope(
-        time_period,
-        raw_question=getattr(decision, "raw_question", ""),
+        decision.time_period,
+        raw_question=decision.raw_question,
         stat="grounded database question",
-        intent=getattr(decision, "intent", "grounded_database_question"),
+        intent=decision.intent,
         validate_coverage=False,
     )
     if isinstance(scope, QueryScope) and scope.is_single_season:
