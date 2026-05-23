@@ -256,7 +256,7 @@ def test_recent_unsupported_row_shape_blocks_stale_followup_resolution():
             },
         },
         {
-            "question": "old client row shape",
+            "question": "unsupported row shape",
             "answer": {
                 "sources": [
                     {
@@ -291,7 +291,7 @@ def test_compact_turn_with_recent_unsupported_row_shape_blocks_stale_resolution(
         ),
     )
     recent_turn = conversation_turn(
-        "old client answer shape",
+        "unsupported answer shape",
         StructuredAnswer(
             answer="Legacy answer",
             intent="stat_query",

@@ -229,6 +229,13 @@ def test_support_state_tests_do_not_describe_unstructured_reasons_as_legacy() ->
     assert "legacy warning reason" not in support_state_tests
 
 
+def test_conversation_unsupported_shape_tests_are_not_named_old_client() -> None:
+    conversation_tests = (ROOT / "tests" / "test_conversation.py").read_text(encoding="utf-8")
+
+    assert "old client row shape" not in conversation_tests
+    assert "old client answer shape" not in conversation_tests
+
+
 def test_general_explanation_no_longer_uses_fallback_question_shape() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
     general_explanation = (ROOT / "src" / "baseball_rag" / "general_explanation.py").read_text(
