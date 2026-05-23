@@ -233,6 +233,17 @@ questions:
   - id: min_sample_avg_no_qualifier
     question: "highest batting average in 1894"
     intent: grounded_database_question
+    ci_safe: true
+    expected_sql_parameterized: true
+    expected_min_rows: 1
+    required_sources: ["duckdb"]
+    expected_answer_contains: ["Hugh", "Duffy", "1894", "AVG"]
+    expected_rows:
+      - name: "Hugh Duffy"
+        yearID: 1894
+        lgID: "NL"
+        AVG: 0.44
+        AB: 539
     minimum_sample_size: "AB >= 100"
     notes: "Default AVG leader specs should use a minimum AB guard."
   - id: ambiguous_player_williams
@@ -253,6 +264,28 @@ questions:
     intent: player_biography
     expected_answer_contains: ["Babe Ruth"]
     required_sources: ["duckdb"]
+  - id: player_bio_babe_ruth_tell_me
+    question: "tell me about Babe Ruth"
+    intent: player_biography
+    expected_answer_contains: ["Babe Ruth"]
+    required_sources: ["duckdb"]
+  - id: player_bio_babe_ruth_team_followup
+    question: "what teams did he play for"
+    intent: player_biography
+    expected_answer_contains: ["Babe Ruth"]
+    required_sources: ["duckdb"]
+    conversation:
+      - question: "tell me about Babe Ruth"
+        answer:
+          answer: "Babe Ruth biography"
+          intent: player_biography
+          metadata:
+            context_player_name: "Babe Ruth"
+          sources:
+            - type: duckdb
+              label: "DuckDB biography resolution"
+              rows:
+                - {}
   - id: player_bio_ted_williams
     question: "tell me about Ted Williams"
     intent: player_biography

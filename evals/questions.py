@@ -46,6 +46,13 @@ class EvalCase:
     def ci_safe(self) -> bool:
         return bool(self.spec.get("ci_safe", False))
 
+    @property
+    def conversation(self) -> list[dict[str, Any]] | None:
+        conversation = self.spec.get("conversation")
+        if isinstance(conversation, list):
+            return conversation
+        return None
+
     def requires_live_services(self) -> bool:
         """Return True when the case is expected to need the local LLM."""
         if self.intent == "general_explanation" and "stat_definition" in self.required_sources:
@@ -156,17 +163,11 @@ def run_cases(
     include_live: bool = False,
 ) -> EvalRunResult:
     """Run selected cases through ``baseball_rag.service.answer`` and validate them."""
-    runner: AnswerFn
+    service_answer_fn: Callable[..., StructuredAnswer] | None = None
     if answer_fn is None:
-        from baseball_rag.service import answer as service_answer
+        from baseball_rag.service import answer as default_answer
 
-        def service_runner(value: str) -> StructuredAnswer:
-            return service_answer(value)
-
-        runner = service_runner
-
-    else:
-        runner = answer_fn
+        service_answer_fn = default_answer
 
     result = EvalRunResult()
     for case in cases:
@@ -177,7 +178,12 @@ def run_cases(
             continue
 
         try:
-            answer = runner(case.question)
+            if answer_fn is None:
+                if service_answer_fn is None:
+                    raise RuntimeError("service answer runner was not initialized")
+                answer = service_answer_fn(case.question, conversation=case.conversation)
+            else:
+                answer = answer_fn(case.question)
             failures = validate_case(case, answer)
         except Exception as exc:  # noqa: BLE001 - evals should report all case failures
             failures = [f"{type(exc).__name__}: {exc}"]
@@ -486,6 +492,14 @@ def validate_case(case: EvalCase, answer: StructuredAnswer) -> list[str]:
     for source_type in spec.get("required_sources", []) or []:
         if source_type not in source_types:
             failures.append(f"sources missing required type {source_type!r}")
+    if _requires_grounded_duckdb_contract(spec):
+        duckdb_sources = [source for source in answer.sources if source.type == "duckdb"]
+        if not duckdb_sources and "duckdb" not in (spec.get("required_sources", []) or []):
+            failures.append("sources missing required type 'duckdb'")
+        if duckdb_sources and not any(source.sql for source in duckdb_sources):
+            failures.append("duckdb source missing required field 'sql'")
+        if duckdb_sources and not any(source.rows for source in duckdb_sources):
+            failures.append("duckdb source missing required field 'rows'")
 
     row_count = _row_count(answer)
     min_rows = spec.get("expected_min_rows")
@@ -501,6 +515,19 @@ def validate_case(case: EvalCase, answer: StructuredAnswer) -> list[str]:
             source.data_manifest and field_name in source.data_manifest for source in answer.sources
         ):
             failures.append(f"source manifest missing field {field_name!r}")
+
+    for field_name in spec.get("required_source_fields", []) or []:
+        source_types = spec.get("required_sources", []) or []
+        candidate_sources = (
+            [source for source in answer.sources if source.type in source_types]
+            if source_types
+            else answer.sources
+        )
+        if not any(
+            _source_has_required_field(source, str(field_name)) for source in candidate_sources
+        ):
+            prefix = f"{source_types[0]} source" if len(source_types) == 1 else "source"
+            failures.append(f"{prefix} missing required field {field_name!r}")
 
     if spec.get("expected_sql_visible") and not any(source.sql for source in answer.sources):
         failures.append("expected visible SQL on at least one source")
@@ -553,6 +580,19 @@ def _satisfies_minimum_sample_size(answer: StructuredAnswer, expected: str) -> b
     if row_values:
         return sql_guard_found and all(_numeric_at_least(value, threshold) for value in row_values)
     return sql_guard_found
+
+
+def _requires_grounded_duckdb_contract(spec: dict[str, Any]) -> bool:
+    return spec.get("intent") in {"stat_query", "grounded_database_question"} and not bool(
+        spec.get("expected_unsupported", False)
+    )
+
+
+def _source_has_required_field(source: Any, field_name: str) -> bool:
+    value = getattr(source, field_name, None)
+    if field_name == "rows":
+        return bool(value)
+    return value is not None and value != "" and value != {}
 
 
 def _numeric_at_least(value: Any, threshold: int) -> bool:

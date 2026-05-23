@@ -126,6 +126,12 @@
       "status": "passed"
     },
     {
+      "case_id": "min_sample_avg_no_qualifier",
+      "failures": [],
+      "reason": null,
+      "status": "passed"
+    },
+    {
       "case_id": "stat_definition_ops",
       "failures": [],
       "reason": null,
@@ -204,12 +210,6 @@
       "status": "skipped"
     },
     {
-      "case_id": "min_sample_avg_no_qualifier",
-      "failures": [],
-      "reason": "not CI-safe",
-      "status": "skipped"
-    },
-    {
       "case_id": "ambiguous_player_williams",
       "failures": [],
       "reason": "not CI-safe",
@@ -229,6 +229,18 @@
     },
     {
       "case_id": "player_bio_babe_ruth",
+      "failures": [],
+      "reason": "not CI-safe",
+      "status": "skipped"
+    },
+    {
+      "case_id": "player_bio_babe_ruth_tell_me",
+      "failures": [],
+      "reason": "not CI-safe",
+      "status": "skipped"
+    },
+    {
+      "case_id": "player_bio_babe_ruth_team_followup",
       "failures": [],
       "reason": "not CI-safe",
       "status": "skipped"
@@ -415,20 +427,20 @@
     }
   ],
   "command": "python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-  "generated_at": "2026-05-22T18:34:01.519160+00:00",
+  "generated_at": "2026-05-23T18:28:16.020344+00:00",
   "include_live": false,
   "minimum_pass_rate": 0.85,
   "mode": "answer",
   "schema_version": 1,
   "summary": {
-    "attempted": 25,
-    "cases_loaded": 68,
+    "attempted": 26,
+    "cases_loaded": 70,
     "failed": 0,
     "pass_rate": 1.0,
-    "passed": 25,
+    "passed": 26,
     "recommendation": "PASS",
     "release_recommendation": "PASS - deterministic release gate is green",
-    "skipped": 43
+    "skipped": 44
   },
   "versions": {
     "dataset": {

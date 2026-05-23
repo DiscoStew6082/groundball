@@ -107,6 +107,31 @@ class TestApi:
         assert data["sources"][0]["type"] == "duckdb"
         assert data["sources"][0]["rows"]
 
+    def test_query_endpoint_llm_flavored_falls_back_to_verified_stats_when_llm_unavailable(
+        self, monkeypatch
+    ):
+        def unavailable_llm(_prompt, **_kwargs):
+            raise ConnectionError("socket closed")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", unavailable_llm)
+
+        response = client.post(
+            "/query",
+            json={
+                "question": "who had the most RBIs in 1962",
+                "answer_mode": "llm_flavored",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "Davis, Tommy: 153 RBI" in data["answer"]
+        assert "LLM unavailable" in data["answer"]
+        assert data["metadata"]["answer_mode"] == "llm_flavored"
+        assert data["sources"][0]["type"] == "duckdb"
+        assert data["sources"][0]["sql"]
+        assert data["sources"][0]["rows"]
+
     def test_query_endpoint_rejects_unknown_answer_mode(self):
         response = client.post(
             "/query",
@@ -406,7 +431,7 @@ class TestApi:
         data = response.json()
         assert data["ok"] is True
         assert data["include_live"] is False
-        assert data["summary"]["attempted"] == 25
+        assert data["summary"]["attempted"] == 26
         assert data["summary"]["recommendation"] in {"PASS", "WARN"}
         assert data["markdown"].startswith("# Baseball RAG Eval Report")
 
@@ -450,7 +475,7 @@ class TestApi:
         assert response.status_code == 200
         data = response.json()
         assert data["options"]["include_live"] is False
-        assert data["summary"]["attempted"] == 25
+        assert data["summary"]["attempted"] == 26
         assert data["results"]["failed"] == []
 
     def test_guardrails_coverage_endpoint_is_manifest_only(self):

@@ -93,6 +93,42 @@ def test_conversation_turn_preserves_grounded_database_name_for_followups():
     assert resolution.referenced_player_name == "Wally Berger"
 
 
+def test_conversation_turn_preserves_resolved_biography_player_for_pronoun_followups():
+    answer = StructuredAnswer(
+        answer="Babe Ruth hit 714 career home runs.",
+        intent="player_biography",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="DuckDB Lahman + Retrosheet biography stat consensus",
+                rows=[
+                    {
+                        "stat": "HR",
+                        "claimed_value": 714,
+                        "actual_value": 714,
+                    }
+                ],
+            )
+        ],
+        metadata={
+            "resolved_player": {
+                "player_id": "ruthba01",
+                "name": "Babe Ruth",
+                "debut": "1914-07-11",
+                "final_game": "1935-05-30",
+            }
+        },
+    )
+
+    turn = conversation_turn("tell me about Babe Ruth", answer)
+    resolution = resolve_followup("what teams did he play for", [turn])
+
+    assert turn["answer"]["metadata"]["context_player_name"] == "Babe Ruth"
+    assert turn["answer"]["sources"][0]["rows"] == [{}]
+    assert resolution.resolved_question == "what teams did Babe Ruth play for"
+    assert resolution.referenced_player_name == "Babe Ruth"
+
+
 def test_conversation_turn_requires_structured_answer():
     payload = {
         "answer": "All-time career HR leaders",
@@ -167,6 +203,30 @@ def test_pronoun_resolution_prefers_explicit_active_player_metadata():
     assert resolution.resolved_question == "what about Hank Aaron's RBI?"
     assert resolution.referenced_player_name == "Hank Aaron"
     assert resolution.reference_kind == "pronoun"
+
+
+def test_pronoun_resolution_rewrites_row_reference_without_active_player_metadata():
+    prior_turns = [
+        {
+            "question": "tell me about Babe Ruth",
+            "answer": {
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "label": "DuckDB biography resolution",
+                        "rows": [{"name": "Babe Ruth"}],
+                    }
+                ],
+            },
+        }
+    ]
+
+    resolution = resolve_followup("what teams did he play for", prior_turns)
+
+    assert resolution.resolved_question == "what teams did Babe Ruth play for"
+    assert resolution.referenced_player_name == "Babe Ruth"
+    assert resolution.reference_kind == "pronoun"
+    assert resolution.source_turn == "tell me about Babe Ruth"
 
 
 def test_malformed_transcript_entries_are_ignored_without_crashing():

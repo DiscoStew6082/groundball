@@ -120,6 +120,48 @@ The JSON report is compared to `evals/baseline.json`. Behavioral regressions blo
 
 CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporting, but it is non-blocking so releases do not depend on external coverage upload availability.
 
+## Regression Net
+
+Use this checklist for PRs touching `service.py`, routing, stat queries, grounded
+database templates/runtime, biography generation or verification, API payloads,
+or the Gradio UI:
+
+1. Run the full local gates:
+
+   ```bash
+   uv run ruff check src/ tests/ evals/
+   uv run mypy src/
+   uv run pytest tests/ -v
+   ```
+
+2. Run the product-critical focus suites:
+
+   ```bash
+   uv run pytest tests/test_service.py tests/test_player_bio_query.py tests/test_player_stat_claims_consensus.py tests/test_api.py -q
+   ```
+
+3. Run the deterministic eval release gate:
+
+   ```bash
+   uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json
+   ```
+
+4. Smoke the live UI in the Codex in-app Browser:
+
+   ```bash
+   uv run baseball-rag-ui
+   ```
+
+   Open `http://127.0.0.1:7861/`, run `who had the most RBIs in 1962`,
+   and verify the answer, DuckDB source, SQL, rows, and Ask-button lifecycle.
+
+5. Run a code review subagent and explicitly state whether intent names, API
+   payload fields, SQL/source visibility, or eval baselines changed.
+
+The product contract is authority-first: supported stat and grounded database
+answers must carry DuckDB provenance with visible SQL and rows, and LLM-flavored
+text must stay inside verified evidence.
+
 ## Governance Surfaces
 
 The API exposes release and review surfaces for local demos:

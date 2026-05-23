@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -109,7 +110,7 @@ def resolve_followup(
         resolved_question=_question_for_player_followup(
             question,
             player_name,
-            replace_pronouns=False,
+            replace_pronouns=row_reference.reference_kind == "pronoun",
             ordinal_reference=row_reference.reference_text,
         ),
         referenced_player_name=player_name,
@@ -128,19 +129,30 @@ def conversation_turn(question: str, answer: StructuredAnswer) -> dict[str, Any]
     compact_payload = {
         "answer": answer_payload.get("answer"),
         "intent": answer_payload.get("intent"),
-        "metadata": {
-            key: metadata[key]
-            for key in (
-                "original_question",
-                "context_question",
-                "context_source",
-                "context_player_name",
-            )
-            if key in metadata
-        },
+        "metadata": _conversation_metadata(metadata),
         "sources": [_conversation_source(source) for source in answer_payload.get("sources", [])],
     }
     return {"question": question, "answer": compact_payload}
+
+
+def _conversation_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    compact = {
+        key: metadata[key]
+        for key in (
+            "original_question",
+            "context_question",
+            "context_source",
+            "context_player_name",
+        )
+        if key in metadata
+    }
+    if "context_player_name" not in compact:
+        resolved_player = metadata.get("resolved_player")
+        if isinstance(resolved_player, Mapping):
+            player_name = resolved_player.get("name")
+            if isinstance(player_name, str) and player_name.strip():
+                compact["context_player_name"] = player_name.strip()
+    return compact
 
 
 def attach_context_metadata(

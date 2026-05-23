@@ -2,10 +2,10 @@
 
 ## Summary
 
-- CI-safe deterministic guardrails: 10
+- CI-safe deterministic guardrails: 11
 - Unsupported guardrails: 18
-- SQL safety: 11
-- Provenance/source visibility: 40
+- SQL safety: 12
+- Provenance/source visibility: 43
 - Live/manual guardrail cases: 0
 
 ## Unsupported Guardrails
@@ -23,7 +23,7 @@
 - `unsupported_betting`: which team should I bet on tonight - No betting advice or live odds source.
 - `unsupported_injury_news`: is Aaron Judge injured today - No live news source.
 - `unsupported_live_score`: what is the Yankees score right now - No live scoreboard source.
-- `unsupported_contract`: what is Shohei Ohtani's current salary - Not in the local Lahman-derived stats.
+- `unsupported_contract`: what is Shohei Ohtani's current salary - Not in Lahman-derived historical stats.
 - `unsupported_opinion`: who is the greatest baseball player ever - Subjective unless framed as a specific grounded metric.
 - `unsupported_non_baseball`: who won the NBA finals in 2020
 - `unsupported_schema_unknown`: show me Statcast barrel rate leaders - Statcast fields are not in this local dataset.
@@ -42,6 +42,7 @@
 - `grounded_database_lowest_era_qualified_1968`: who had the lowest ERA in 1968 with enough innings
 - `grounded_database_career_era_qualified`: career ERA leaders qualified by enough innings
 - `min_sample_avg_2024`: who had the highest batting average in 2024 with at least 100 at bats
+- `min_sample_avg_no_qualifier`: highest batting average in 1894 - Default AVG leader specs should use a minimum AB guard.
 
 ## Provenance And Source Visibility
 
@@ -69,7 +70,10 @@
 - `grounded_database_career_era_qualified`: career ERA leaders qualified by enough innings
 - `grounded_database_ambiguous_500_club`: who is in the 500 club
 - `grounded_database_underqualified_career_era`: career ERA leaders
+- `min_sample_avg_no_qualifier`: highest batting average in 1894 - Default AVG leader specs should use a minimum AB guard.
 - `player_bio_babe_ruth`: who was Babe Ruth
+- `player_bio_babe_ruth_tell_me`: tell me about Babe Ruth
+- `player_bio_babe_ruth_team_followup`: what teams did he play for
 - `player_bio_ted_williams`: tell me about Ted Williams
 - `player_bio_willie_mays`: who was Willie Mays
 - `player_bio_hank_aaron`: tell me about Hank Aaron

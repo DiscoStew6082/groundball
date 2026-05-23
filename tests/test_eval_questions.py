@@ -154,6 +154,49 @@ def test_validate_case_checks_expected_rows_and_parameterized_sql():
     assert failures == []
 
 
+def test_validate_case_checks_required_source_fields():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="source_contract",
+        question="who had the most RBIs in 1962",
+        spec={
+            "id": "source_contract",
+            "question": "who had the most RBIs in 1962",
+            "required_sources": ["duckdb"],
+            "required_source_fields": ["sql", "rows"],
+        },
+    )
+
+    assert validate_case(case, _answer(answer="Tommy Davis had 153 RBI")) == []
+
+    failures = validate_case(
+        case,
+        _answer(answer="Tommy Davis had 153 RBI", rows=[]),
+    )
+
+    assert "duckdb source missing required field 'rows'" in failures
+
+
+def test_validate_case_treats_supported_stat_questions_as_duckdb_provenance_contracts():
+    base = load_cases()[0]
+    case = base.__class__(
+        id="stat_contract",
+        question="who had the most RBIs in 1962",
+        spec={
+            "id": "stat_contract",
+            "question": "who had the most RBIs in 1962",
+            "intent": "stat_query",
+        },
+    )
+
+    failures = validate_case(
+        case,
+        _answer(answer="Tommy Davis had 153 RBI", rows=[]),
+    )
+
+    assert "duckdb source missing required field 'rows'" in failures
+
+
 def test_validate_case_checks_structured_reason_expectations():
     base = load_cases()[0]
     case = base.__class__(
@@ -277,6 +320,49 @@ def test_run_cases_uses_mocked_answer_for_selected_cases_only():
     assert result.attempted == 1
     assert len(result.skipped) == 1
     assert asked == ["who had the most RBIs in 1962"]
+
+
+def test_run_cases_passes_manifest_conversation_to_default_answer_runner(monkeypatch):
+    base = load_cases()[0]
+    case = base.__class__(
+        id="followup",
+        question="what teams did he play for",
+        spec={
+            "id": "followup",
+            "question": "what teams did he play for",
+            "intent": "player_biography",
+            "ci_safe": True,
+            "conversation": [
+                {
+                    "question": "tell me about Babe Ruth",
+                    "answer": {
+                        "answer": "Babe Ruth biography",
+                        "intent": "player_biography",
+                        "metadata": {"context_player_name": "Babe Ruth"},
+                        "sources": [
+                            {
+                                "type": "duckdb",
+                                "label": "DuckDB biography resolution",
+                                "rows": [{}],
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+    calls = []
+
+    def service_answer(question: str, *, conversation=None):
+        calls.append((question, conversation))
+        return _answer(answer="Babe Ruth played for the Yankees.", intent="player_biography")
+
+    monkeypatch.setattr("baseball_rag.service.answer", service_answer)
+
+    result = run_cases([case], include_live=True)
+
+    assert result.ok
+    assert calls == [(case.question, case.spec["conversation"])]
 
 
 def test_format_eval_report_includes_counts_coverage_and_live_note():
