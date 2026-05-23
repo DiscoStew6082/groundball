@@ -19,7 +19,7 @@ from baseball_rag.db.freeform_templates import (
 from baseball_rag.db.freeform_templates import (
     should_route_deterministic_grounded_database as _templates_should_route,
 )
-from baseball_rag.db.freeform_types import (
+from baseball_rag.db.grounded_database_types import (
     MAX_ROWS,
     SCHEMA_TIMEOUT_MS,
     FreeformResult,

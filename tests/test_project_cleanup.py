@@ -55,6 +55,22 @@ def _yaml_values_for_keys(value: object, keys: set[str]) -> list[str]:
     return []
 
 
+def _python_imports_module(source: str, module_name: str) -> bool:
+    parsed = ast.parse(source)
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Import):
+            if any(alias.name == module_name for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == module_name:
+                return True
+            if node.module == module_name.rsplit(".", 1)[0]:
+                imported_name = module_name.rsplit(".", 1)[1]
+                if any(alias.name == imported_name for alias in node.names):
+                    return True
+    return False
+
+
 def test_default_package_excludes_optional_mlb_api_mcp_surface() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -253,6 +269,23 @@ def test_freeform_tests_use_runtime_modules_directly() -> None:
     assert not re.search(r"^\s*import baseball_rag\.db\.freeform\b", freeform_tests, re.M)
 
 
+def test_grounded_database_types_module_replaces_legacy_types_module() -> None:
+    old_module = "free" + "form_types"
+    new_module = "grounded_database_types"
+    search_roots = [ROOT / "src", ROOT / "tests", ROOT / "evals"]
+
+    assert not (ROOT / "src" / "baseball_rag" / "db" / f"{old_module}.py").exists()
+    assert (ROOT / "src" / "baseball_rag" / "db" / f"{new_module}.py").exists()
+    for path in (
+        path
+        for root in search_roots
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")
@@ -415,9 +448,9 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     freeform_schema = (ROOT / "src" / "baseball_rag" / "db" / "freeform_schema.py").read_text(
         encoding="utf-8"
     )
-    freeform_types = (ROOT / "src" / "baseball_rag" / "db" / "freeform_types.py").read_text(
-        encoding="utf-8"
-    )
+    grounded_database_types = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_types.py"
+    ).read_text(encoding="utf-8")
     team_history = (ROOT / "src" / "baseball_rag" / "db" / "team_history.py").read_text(
         encoding="utf-8"
     )
@@ -430,7 +463,7 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
             freeform_runtime,
             freeform_templates,
             freeform_schema,
-            freeform_types,
+            grounded_database_types,
             team_history,
         )
         for item in _python_docstrings_and_comments(source)

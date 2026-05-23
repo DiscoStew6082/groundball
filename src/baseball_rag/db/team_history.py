@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from baseball_rag.db.freeform_types import TeamIdentity
+from baseball_rag.db.grounded_database_types import TeamIdentity
 
 # ---------------------------------------------------------------------------
 # Franchise history: {team_nickname} -> list of (start_year, end_year, team_id)

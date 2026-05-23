@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass
 
-from baseball_rag.db.freeform_types import AssembledSQL, QuerySpec, TeamIdentity
+from baseball_rag.db.grounded_database_types import AssembledSQL, QuerySpec, TeamIdentity
 from baseball_rag.db.stat_registry import StatDefinition, get_stat
 from baseball_rag.db.team_history import resolve_team_identity
 

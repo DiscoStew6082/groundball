@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from baseball_rag.db.freeform_assembler import _assemble_sql
-from baseball_rag.db.freeform_types import QuerySpec
+from baseball_rag.db.grounded_database_types import QuerySpec
 from baseball_rag.db.stat_registry import StatTable, get_stat, supported_stats, supported_tables
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
 from baseball_rag.generation.llm import make_request as default_make_request

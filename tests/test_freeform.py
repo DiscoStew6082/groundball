@@ -14,7 +14,7 @@ class TestAssembleSQL:
 
     def test_assembles_batting_only(self):
         from baseball_rag.db.freeform_assembler import _assemble_sql
-        from baseball_rag.db.freeform_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QueryIntent
 
         intent = QueryIntent(
             stat_tables=["batting"],
@@ -31,7 +31,7 @@ class TestAssembleSQL:
 
     def test_assembles_batting_and_pitching_union(self):
         from baseball_rag.db.freeform_assembler import _assemble_sql
-        from baseball_rag.db.freeform_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QueryIntent
 
         intent = QueryIntent(
             stat_tables=["batting", "pitching"],
@@ -46,7 +46,7 @@ class TestAssembleSQL:
 
     def test_assembles_without_year(self):
         from baseball_rag.db.freeform_assembler import _assemble_sql
-        from baseball_rag.db.freeform_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QueryIntent
 
         intent = QueryIntent(stat_tables=["batting"], team_name_pattern="Cubs")
         sql = _assemble_sql(intent)
@@ -57,7 +57,7 @@ class TestAssembleSQL:
 
     def test_always_distinct(self):
         from baseball_rag.db.freeform_assembler import _assemble_sql
-        from baseball_rag.db.freeform_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QueryIntent
 
         intent = QueryIntent(
             stat_tables=["batting", "pitching"],
@@ -716,7 +716,7 @@ class TestGroundedDatabaseProvenance:
         self,
         monkeypatch,
     ):
-        from baseball_rag.db.freeform_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import FreeformResult
         from baseball_rag.routing import GroundedDatabaseQuestionCase
         from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
         from baseball_rag.service import _answer_grounded_database_question
@@ -749,7 +749,7 @@ class TestGroundedDatabaseResultFormatting:
 
     def test_player_roster_result_formats_names_without_python_tuples(self):
         from baseball_rag.db.freeform_runtime import format_result
-        from baseball_rag.db.freeform_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import FreeformResult
 
         result = FreeformResult(
             sql="select distinct p.nameFirst, p.nameLast from people p",
@@ -773,7 +773,7 @@ class TestGroundedDatabaseResultFormatting:
 
     def test_generic_result_formats_rows_as_labeled_values(self):
         from baseball_rag.db.freeform_runtime import format_result
-        from baseball_rag.db.freeform_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import FreeformResult
 
         result = FreeformResult(
             sql="select nameFirst, nameLast, career_HR from leaders",
@@ -790,7 +790,7 @@ class TestGroundedDatabaseResultFormatting:
 
     def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
         from baseball_rag.db.freeform_runtime import format_result
-        from baseball_rag.db.freeform_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import FreeformResult
 
         result = FreeformResult(
             sql="select nameFirst, nameLast from people",
