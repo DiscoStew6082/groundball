@@ -9,7 +9,7 @@ SCHEMA_TIMEOUT_MS = 5000
 
 
 @dataclass
-class FreeformResult:
+class GroundedDatabaseResult:
     """Result of a grounded database natural language question."""
 
     sql: str
@@ -56,7 +56,7 @@ class AssembledSQL:
 
 
 @dataclass(frozen=True)
-class PlannedFreeformQuery:
+class GroundedDatabaseQueryPlan:
     """Executable grounded database query plan with provenance."""
 
     assembled: AssembledSQL

@@ -372,6 +372,23 @@ def test_grounded_database_runtime_module_replaces_legacy_module() -> None:
         assert f"baseball_rag.db.{old_module}" not in text
 
 
+def test_grounded_database_result_types_use_current_label() -> None:
+    grounded_database_types = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_types.py"
+    ).read_text(encoding="utf-8")
+    combined = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in (ROOT / "src", ROOT / "tests", ROOT / "evals")
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    )
+
+    assert "FreeformResult" not in combined
+    assert "PlannedFreeformQuery" not in combined
+    assert "GroundedDatabaseResult" in grounded_database_types
+    assert "GroundedDatabaseQueryPlan" in grounded_database_types
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")

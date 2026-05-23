@@ -22,8 +22,8 @@ from baseball_rag.db.grounded_database_templates import (
 from baseball_rag.db.grounded_database_types import (
     MAX_ROWS,
     SCHEMA_TIMEOUT_MS,
-    FreeformResult,
-    PlannedFreeformQuery,
+    GroundedDatabaseQueryPlan,
+    GroundedDatabaseResult,
 )
 from baseball_rag.db.team_history import get_contextual_hint, resolve_team_identity
 from baseball_rag.generation.llm import make_request as default_make_request
@@ -54,7 +54,7 @@ def query(
     *,
     year: int | None = None,
     request_fn: RequestFn = default_make_request,
-) -> FreeformResult:
+) -> GroundedDatabaseResult:
     """Convert a natural language question to SQL and execute it."""
     planned = plan_query(question, conn, year=year, request_fn=request_fn)
     return execute_plan(planned, conn)
@@ -66,14 +66,14 @@ def plan_query(
     *,
     year: int | None = None,
     request_fn: RequestFn = default_make_request,
-) -> PlannedFreeformQuery:
+) -> GroundedDatabaseQueryPlan:
     """Plan a natural language question as constrained SQL without executing it."""
     hint = get_contextual_hint(question, year)
     enriched_question = f"{question} {hint}".strip() if hint else question
 
     matched_template = match_template(enriched_question)
     if matched_template is not None:
-        return PlannedFreeformQuery(
+        return GroundedDatabaseQueryPlan(
             assembled=matched_template.assembled,
             planning_path="deterministic_template",
             source_label="Deterministic template query",
@@ -93,7 +93,7 @@ def plan_query(
     if team_identity is not None:
         spec = replace(spec, team_identity=team_identity)
     assembled = _assemble_sql(spec)
-    return PlannedFreeformQuery(
+    return GroundedDatabaseQueryPlan(
         assembled=assembled,
         planning_path="llm_intent",
         source_label="LLM-backed typed grounded database query",
@@ -105,9 +105,9 @@ def plan_query(
 
 
 def execute_plan(
-    planned: PlannedFreeformQuery,
+    planned: GroundedDatabaseQueryPlan,
     conn: duckdb.DuckDBPyConnection,
-) -> FreeformResult:
+) -> GroundedDatabaseResult:
     """Validate and execute a planned grounded database question."""
     assembled = planned.assembled
     sql = assembled.sql.strip().rstrip(";")
@@ -174,7 +174,7 @@ def _execute_safe(
         "LLM extracted a typed intent; Python assembled constrained SQL deterministically."
     ),
     unsupported_reason: str | None = None,
-) -> FreeformResult:
+) -> GroundedDatabaseResult:
     """Execute with timeout and row limit guardrails."""
     try:
         conn.execute(f"SET statement_timeout = '{SCHEMA_TIMEOUT_MS}ms'")
@@ -190,7 +190,7 @@ def _execute_safe(
         rows = conn.execute(safe_sql, safe_params).fetchall()
         columns = [d[0] for d in conn.description]
         truncated = len(rows) == MAX_ROWS
-        return FreeformResult(
+        return GroundedDatabaseResult(
             sql=safe_sql,
             rows=rows,
             columns=columns,
@@ -205,7 +205,7 @@ def _execute_safe(
         raise RuntimeError(f"Query failed: {e}\nSQL: {sql}") from e
 
 
-def format_result(result: FreeformResult, question: str) -> str:
+def format_result(result: GroundedDatabaseResult, question: str) -> str:
     """Convert result to readable string for terminal output."""
     if result.row_count == 0:
         return f"No results found for '{question}'."
@@ -215,11 +215,11 @@ def format_result(result: FreeformResult, question: str) -> str:
     return _format_labeled_result(result)
 
 
-def _is_player_name_result(result: FreeformResult) -> bool:
+def _is_player_name_result(result: GroundedDatabaseResult) -> bool:
     return result.columns == ["nameFirst", "nameLast"]
 
 
-def _result_count_line(result: FreeformResult, noun: str) -> str:
+def _result_count_line(result: GroundedDatabaseResult, noun: str) -> str:
     plural = noun if result.row_count == 1 else f"{noun}s"
     line = f"{result.row_count} {plural} matched"
     if result.truncated or result.row_count > 100:
@@ -227,7 +227,7 @@ def _result_count_line(result: FreeformResult, noun: str) -> str:
     return f"{line}:"
 
 
-def _format_player_name_result(result: FreeformResult) -> str:
+def _format_player_name_result(result: GroundedDatabaseResult) -> str:
     lines = [_result_count_line(result, "player")]
     for first_name, last_name in result.rows[:100]:
         full_name = " ".join(str(part) for part in (first_name, last_name) if part)
@@ -235,7 +235,7 @@ def _format_player_name_result(result: FreeformResult) -> str:
     return "\n".join(lines)
 
 
-def _format_labeled_result(result: FreeformResult) -> str:
+def _format_labeled_result(result: GroundedDatabaseResult) -> str:
     lines = [_result_count_line(result, "result")]
     for row in result.rows[:100]:
         values = [f"{column}: {value}" for column, value in zip(result.columns, row, strict=False)]

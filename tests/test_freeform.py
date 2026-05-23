@@ -724,7 +724,7 @@ class TestGroundedDatabaseProvenance:
         self,
         monkeypatch,
     ):
-        from baseball_rag.db.grounded_database_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
         from baseball_rag.routing import GroundedDatabaseQuestionCase
         from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
         from baseball_rag.service import _answer_grounded_database_question
@@ -737,7 +737,7 @@ class TestGroundedDatabaseProvenance:
                 value={"direction": "past", "unit": "year", "count": 1},
             ),
         )
-        result = FreeformResult(
+        result = GroundedDatabaseResult(
             sql="SELECT nameFirst FROM batting WHERE yearID = ?",
             rows=[("Hank",)],
             columns=["nameFirst"],
@@ -757,9 +757,9 @@ class TestGroundedDatabaseResultFormatting:
 
     def test_player_roster_result_formats_names_without_python_tuples(self):
         from baseball_rag.db.grounded_database_runtime import format_result
-        from baseball_rag.db.grounded_database_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
 
-        result = FreeformResult(
+        result = GroundedDatabaseResult(
             sql="select distinct p.nameFirst, p.nameLast from people p",
             rows=[
                 ("Wally", "Berger"),
@@ -781,9 +781,9 @@ class TestGroundedDatabaseResultFormatting:
 
     def test_generic_result_formats_rows_as_labeled_values(self):
         from baseball_rag.db.grounded_database_runtime import format_result
-        from baseball_rag.db.grounded_database_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
 
-        result = FreeformResult(
+        result = GroundedDatabaseResult(
             sql="select nameFirst, nameLast, career_HR from leaders",
             rows=[("Babe", "Ruth", 714)],
             columns=["nameFirst", "nameLast", "career_HR"],
@@ -798,9 +798,9 @@ class TestGroundedDatabaseResultFormatting:
 
     def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
         from baseball_rag.db.grounded_database_runtime import format_result
-        from baseball_rag.db.grounded_database_types import FreeformResult
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
 
-        result = FreeformResult(
+        result = GroundedDatabaseResult(
             sql="select nameFirst, nameLast from people",
             rows=[(f"First {index}", f"Last {index}") for index in range(150)],
             columns=["nameFirst", "nameLast"],
