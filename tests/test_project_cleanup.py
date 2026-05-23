@@ -61,6 +61,17 @@ def test_service_no_longer_exposes_biography_contract_patch_aliases() -> None:
     assert "_extract_supplied_stat_claims" not in service
 
 
+def test_player_biography_answerer_requires_routed_case() -> None:
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+    player_biography = (ROOT / "src" / "baseball_rag" / "player_biography.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'getattr(decision, "player_name"' not in player_biography
+    assert "def answer(self, question: str, decision: Any)" not in player_biography
+    assert "def _answer_player_biography(question: str, decision: Any)" not in service
+
+
 def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
         encoding="utf-8"

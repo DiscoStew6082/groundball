@@ -25,7 +25,7 @@ from baseball_rag.provenance import (
     compact_data_manifest,
 )
 from baseball_rag.request_dispatch import AnswerHandlers, RequestAnswerDispatcher
-from baseball_rag.routing import GroundedDatabaseQuestionCase, route
+from baseball_rag.routing import GroundedDatabaseQuestionCase, PlayerBiographyCase, route
 from baseball_rag.stat_query import answer_stat_query
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def render_text(result: StructuredAnswer) -> str:
     return "\n".join(lines)
 
 
-def _answer_player_biography(question: str, decision: Any) -> StructuredAnswer:
+def _answer_player_biography(question: str, decision: PlayerBiographyCase) -> StructuredAnswer:
     try:
         from baseball_rag.generation.llm import make_request
     except ImportError:  # pragma: no cover

@@ -16,6 +16,7 @@ from baseball_rag.db.player_stat_claims import (
 )
 from baseball_rag.outcomes import ambiguous_outcome, llm_unavailable_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
+from baseball_rag.routing import PlayerBiographyCase
 
 _db_verify_player_stat_claims_consensus: Any | None
 try:
@@ -54,9 +55,8 @@ class PlayerBiographyCaseAnswerer:
     extract_claims: Callable[[str], list[PlayerStatClaim]] | None = None
     request_biography: Callable[[Any, tuple[str, str]], dict[str, Any]] | None = None
 
-    def answer(self, question: str, decision: Any) -> StructuredAnswer:
-        player_name = getattr(decision, "player_name", None)
-        if not player_name:
+    def answer(self, question: str, decision: PlayerBiographyCase) -> StructuredAnswer:
+        if not decision.player_name:
             return ambiguous_outcome(
                 answer="I need a specific player name before I can generate a biography.",
                 intent=decision.intent,
@@ -66,6 +66,7 @@ class PlayerBiographyCaseAnswerer:
         from baseball_rag.corpus.player_bios import resolve_player_by_name
 
         conn = self.conn_factory()
+        player_name = decision.player_name
         resolution = resolve_player_by_name(player_name, conn)
         if resolution.ambiguous:
             choices = ", ".join(
