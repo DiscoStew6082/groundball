@@ -635,6 +635,15 @@ def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
     assert "static_doc_ids_for_query" not in static_vocab
 
 
+def test_duckdb_markdown_player_bio_builder_is_removed() -> None:
+    player_bios = (ROOT / "src" / "baseball_rag" / "corpus" / "player_bios.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def build_player_bio(" not in player_bios
+    assert "generated_player_profile_frontmatter" not in player_bios
+
+
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
     diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
     read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(
