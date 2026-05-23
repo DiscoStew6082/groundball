@@ -22,10 +22,11 @@ class PresentedAnswer:
     sql: str
     chat_message: str
     payload: dict[str, Any]
+    answer: StructuredAnswer
 
     def conversation_turn(self, question: str) -> dict[str, Any]:
         """Store only the answer fields needed to resolve future follow-ups."""
-        return conversation_turn(question, {**self.payload, "sources": self.sources})
+        return conversation_turn(question, self.answer)
 
 
 class AnswerPresenter:
@@ -42,6 +43,7 @@ class AnswerPresenter:
             sql=primary_source.get("sql") or "",
             chat_message=render_text(result),
             payload=payload,
+            answer=result,
         )
 
 

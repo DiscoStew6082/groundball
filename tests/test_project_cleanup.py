@@ -236,6 +236,17 @@ def test_conversation_followups_use_current_row_name_shapes_only() -> None:
     assert '"full_name"' not in transcript
 
 
+def test_conversation_turn_requires_structured_answer_payloads() -> None:
+    conversation = (ROOT / "src" / "baseball_rag" / "conversation.py").read_text(encoding="utf-8")
+    presentation = (ROOT / "src" / "baseball_rag" / "ui" / "presentation.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "StructuredAnswer | dict" not in conversation
+    assert "else dict(answer)" not in conversation
+    assert "{**self.payload" not in presentation
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"

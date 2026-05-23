@@ -119,9 +119,11 @@ def resolve_followup(
     )
 
 
-def conversation_turn(question: str, answer: StructuredAnswer | dict[str, Any]) -> dict[str, Any]:
+def conversation_turn(question: str, answer: StructuredAnswer) -> dict[str, Any]:
     """Build the compact turn shape used for future follow-up resolution."""
-    answer_payload = answer.to_dict() if isinstance(answer, StructuredAnswer) else dict(answer)
+    if not isinstance(answer, StructuredAnswer):
+        raise TypeError("conversation_turn requires a StructuredAnswer")
+    answer_payload = answer.to_dict()
     metadata = answer_payload.get("metadata") or {}
     compact_payload = {
         "answer": answer_payload.get("answer"),

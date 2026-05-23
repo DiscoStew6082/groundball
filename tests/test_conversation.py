@@ -1,3 +1,5 @@
+import pytest
+
 from baseball_rag.conversation import (
     ConversationResolution,
     attach_context_metadata,
@@ -92,7 +94,7 @@ def test_conversation_turn_preserves_grounded_database_name_first_last_for_follo
     assert resolution.referenced_player_name == "Wally Berger"
 
 
-def test_conversation_turn_accepts_raw_answer_payload_dict():
+def test_conversation_turn_requires_structured_answer():
     payload = {
         "answer": "All-time career HR leaders",
         "intent": "stat_query",
@@ -108,10 +110,8 @@ def test_conversation_turn_accepts_raw_answer_payload_dict():
         ],
     }
 
-    turn = conversation_turn("career home run leaders", payload)
-
-    assert turn["answer"]["metadata"] == {"context_player_name": "Barry Bonds"}
-    assert turn["answer"]["sources"][0]["rows"] == [{"name": "Bonds, Barry", "stat_value": 762}]
+    with pytest.raises(TypeError, match="StructuredAnswer"):
+        conversation_turn("career home run leaders", payload)
 
 
 def test_raw_api_transcript_resolves_fifth_player_followup():
