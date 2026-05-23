@@ -252,7 +252,7 @@ class TestDeterministicTemplates:
         assert result.unsupported_reason == "ambiguous"
 
     def test_matched_template_exposes_route_ownership_and_unsupported_policy(self):
-        from baseball_rag.db.freeform_templates import match_template
+        from baseball_rag.db.grounded_database_templates import match_template
 
         matched = match_template("who is in the 500 club")
 

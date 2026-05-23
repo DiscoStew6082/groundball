@@ -7,18 +7,18 @@ from typing import Any
 
 import duckdb
 
-from baseball_rag.db.freeform_templates import (
-    can_plan_deterministically as _templates_can_plan_deterministically,
-)
-from baseball_rag.db.freeform_templates import (
-    match_template,
-)
-from baseball_rag.db.freeform_templates import (
-    should_route_deterministic_grounded_database as _templates_should_route,
-)
 from baseball_rag.db.grounded_database_assembler import _assemble_sql
 from baseball_rag.db.grounded_database_intent import _generate_query_spec
 from baseball_rag.db.grounded_database_schema import _get_schema_cached
+from baseball_rag.db.grounded_database_templates import (
+    can_plan_deterministically as _templates_can_plan_deterministically,
+)
+from baseball_rag.db.grounded_database_templates import (
+    match_template,
+)
+from baseball_rag.db.grounded_database_templates import (
+    should_route_deterministic_grounded_database as _templates_should_route,
+)
 from baseball_rag.db.grounded_database_types import (
     MAX_ROWS,
     SCHEMA_TIMEOUT_MS,
