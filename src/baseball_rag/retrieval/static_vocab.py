@@ -27,25 +27,12 @@ STAT_DEFINITION_DOC_IDS: dict[str, str] = {
     "whip": "WHIP",
 }
 
-HOF_DOC_IDS: dict[str, str] = {
-    "babe ruth": "Babe_Ruth",
-    "hank aaron": "Hank_Aaron",
-    "mickey mantle": "Mickey_Mantle",
-    "ted williams": "Ted_Williams",
-    "willie mays": "Willie_Mays",
-}
-
 EXPLANATION_TERMS = ("what is", "what does", "explain", "mean", "definition")
 
 
 def stat_definition_doc_ids_for_query(query: str) -> list[str]:
     """Return static stat-definition document IDs mentioned by query text."""
     return _doc_ids_for_query(query, STAT_DEFINITION_DOC_IDS)
-
-
-def static_doc_ids_for_query(query: str) -> list[str]:
-    """Return known static corpus document IDs mentioned by query text."""
-    return _doc_ids_for_query(query, {**STAT_DEFINITION_DOC_IDS, **HOF_DOC_IDS})
 
 
 def query_mentions_stat_definition(query: str) -> bool:

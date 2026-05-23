@@ -626,6 +626,15 @@ def test_retrieved_document_generation_surface_is_removed() -> None:
     assert "PromptBundle" not in prompt
 
 
+def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
+    static_vocab = (ROOT / "src" / "baseball_rag" / "retrieval" / "static_vocab.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "HOF_DOC_IDS" not in static_vocab
+    assert "static_doc_ids_for_query" not in static_vocab
+
+
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
     diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
     read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(
