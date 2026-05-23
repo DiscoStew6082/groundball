@@ -170,6 +170,15 @@ def test_biography_stat_claim_payload_uses_current_text_field_only() -> None:
     assert 'payload.get("context")' not in player_stat_claims
 
 
+def test_biography_contract_requires_explicit_stat_claims_array() -> None:
+    biography_contract = (ROOT / "src" / "baseball_rag" / "biography_contract.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'data.get("stat_claims", [])' not in biography_contract
+    assert "raw_claims is None" not in biography_contract
+
+
 def test_request_dispatch_no_longer_normalizes_legacy_route_results() -> None:
     request_dispatch = (ROOT / "src" / "baseball_rag" / "request_dispatch.py").read_text(
         encoding="utf-8"

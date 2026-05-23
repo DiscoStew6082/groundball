@@ -78,6 +78,18 @@ def test_biography_contract_invalid_claim_payload_becomes_typed_failure():
         )
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"answer":"No claim array."}',
+        '{"answer":"Null claim array.","stat_claims":null}',
+    ],
+)
+def test_biography_contract_requires_stat_claims_array(content):
+    with pytest.raises(BiographyContractError, match="stat_claims must be a list"):
+        parse_biography_json(content)
+
+
 def test_biography_contract_does_not_accept_context_as_claim_text_alias():
     contract = parse_biography_json(
         '{"answer":"Nolan Ryan was a Hall of Fame pitcher.",'

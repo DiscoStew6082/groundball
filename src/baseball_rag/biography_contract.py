@@ -19,9 +19,7 @@ def parse_biography_json(content: str) -> dict[str, Any]:
     answer_text = data.get("answer")
     if not isinstance(answer_text, str) or not answer_text.strip():
         raise BiographyContractError("biography JSON requires a non-empty answer string")
-    raw_claims = data.get("stat_claims", [])
-    if raw_claims is None:
-        raw_claims = []
+    raw_claims = data.get("stat_claims")
     if not isinstance(raw_claims, list):
         raise BiographyContractError("biography JSON stat_claims must be a list")
     try:
