@@ -39,7 +39,7 @@ class TestStatQueryPipeline:
         assert "All-time career AVG leaders" not in result
 
     def test_career_hr_leaders_still_works(self):
-        """No time filter falls back to career leaders."""
+        """No time filter uses career leaders."""
         result = answer("career home run leaders")
         assert "Ruth" in result or "Babe" in result
 
