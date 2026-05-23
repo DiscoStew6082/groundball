@@ -286,6 +286,23 @@ def test_grounded_database_types_module_replaces_legacy_types_module() -> None:
         assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
 
 
+def test_grounded_database_assembler_module_replaces_legacy_module() -> None:
+    old_module = "free" + "form_assembler"
+    new_module = "grounded_database_assembler"
+    search_roots = [ROOT / "src", ROOT / "tests", ROOT / "evals"]
+
+    assert not (ROOT / "src" / "baseball_rag" / "db" / f"{old_module}.py").exists()
+    assert (ROOT / "src" / "baseball_rag" / "db" / f"{new_module}.py").exists()
+    for path in (
+        path
+        for root in search_roots
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")
@@ -436,9 +453,9 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     freeform_intent = (ROOT / "src" / "baseball_rag" / "db" / "freeform_intent.py").read_text(
         encoding="utf-8"
     )
-    freeform_assembler = (ROOT / "src" / "baseball_rag" / "db" / "freeform_assembler.py").read_text(
-        encoding="utf-8"
-    )
+    grounded_database_assembler = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_assembler.py"
+    ).read_text(encoding="utf-8")
     freeform_runtime = (ROOT / "src" / "baseball_rag" / "db" / "freeform_runtime.py").read_text(
         encoding="utf-8"
     )
@@ -459,7 +476,7 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
         item
         for source in (
             freeform_intent,
-            freeform_assembler,
+            grounded_database_assembler,
             freeform_runtime,
             freeform_templates,
             freeform_schema,
