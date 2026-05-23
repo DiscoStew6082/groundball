@@ -31,19 +31,6 @@ class PlayerResolution:
         return len(self.candidates) > 1
 
 
-def get_player_id_by_name(name: str, conn: duckdb.DuckDBPyConnection) -> str | None:
-    """Look up a player's ID by their name.
-
-    Args:
-        name: Full name or partial name to search for
-        conn: A DuckDB connection
-
-    Returns:
-        The playerID if found, or None
-    """
-    return resolve_player_by_name(name, conn).player_id
-
-
 def resolve_player_by_name(name: str, conn: duckdb.DuckDBPyConnection) -> PlayerResolution:
     """Resolve a player name without silently choosing among ambiguous matches."""
     normalized = _normalize_for_sql(name)

@@ -662,6 +662,14 @@ def test_duckdb_markdown_player_bio_builder_is_removed() -> None:
     assert "generated_player_profile_frontmatter" not in player_bios
 
 
+def test_player_bio_name_resolution_has_no_string_id_wrapper() -> None:
+    player_bios = (ROOT / "src" / "baseball_rag" / "corpus" / "player_bios.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def get_player_id_by_name(" not in player_bios
+
+
 def test_generated_player_profile_lifecycle_helpers_are_removed() -> None:
     assert not (ROOT / "src" / "baseball_rag" / "corpus" / "lifecycle.py").exists()
 
