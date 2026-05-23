@@ -49,7 +49,7 @@ def test_no_data_outcome_is_unsupported_but_reviews_as_unsupported():
     answer = no_data_outcome(
         answer="No results found.",
         intent="stat_query",
-        warnings=["No fallback was returned."],
+        warnings=["No alternate answer was returned."],
     )
 
     assert answer.unsupported is True
