@@ -20,8 +20,8 @@ end_year...). A discriminated union keeps the schema fixed as new time types
 are added — just a new "type" variant and one handler in the dispatch.
 
 The routing prompt teaches the LLM these types through examples. If a query
-doesn't match any type the LLM is unsure, it returns null for time_period,
-and the CLI falls back to career-level results (no time filter).
+doesn't match any type or the LLM is unsure, it returns null for time_period,
+and the CLI uses career-level results (no time filter).
 """
 
 import csv
@@ -299,7 +299,7 @@ def _parse_llm_json(raw: str) -> dict | None:
 def route(question: str) -> RoutedCase:
     """Classify a natural language question using the LLM.
 
-    Falls back to a simple heuristic if LM Studio is unavailable.
+    Uses a simple heuristic route if LM Studio is unavailable.
     """
     if _looks_like_player_bio_followup(question):
         return routed_case(
@@ -402,7 +402,7 @@ def route(question: str) -> RoutedCase:
     except (ConnectionError, LLMError, ValueError):
         pass  # Fall through to heuristic
 
-    # LM Studio unavailable or LLM returned garbled — use safe fallback
+    # LM Studio unavailable or LLM returned garbled — use the local heuristic route.
     return _heuristic_route(question)
 
 
@@ -445,7 +445,7 @@ def _build_time_period(data: dict | None) -> TimePeriod | None:
 
 
 def _heuristic_route(question: str) -> RoutedCase:
-    """Fallback routing when the LLM is unavailable.
+    """Heuristic routing when the LLM is unavailable.
 
     Only handles explicit leaderboard queries (who had most/least/top N).
     Player-specific stat lookups always go through the LLM path.
@@ -498,7 +498,7 @@ def _heuristic_route(question: str) -> RoutedCase:
                     decade = val
                     break
 
-    # Extract a 4-digit year as last resort (fallback only — prefer decade above)
+    # Extract a 4-digit year as a last resort after range and decade parsing.
     year: int | None = None
     m = re.search(r"\b(20\d{2}|19\d{2}|18\d{2})\b", question)
     if m:

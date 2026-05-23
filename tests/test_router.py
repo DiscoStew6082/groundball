@@ -261,7 +261,7 @@ class TestRouter:
         assert result.intent != "player_biography"
         assert not hasattr(result, "player_name")
 
-    def test_empty_llm_routing_response_falls_back_to_heuristic(self, monkeypatch):
+    def test_empty_llm_routing_response_uses_heuristic_route(self, monkeypatch):
         """Blank LLM routing output should not abort the whole request."""
 
         def empty_llm_response(*_args, **_kwargs):
@@ -274,7 +274,7 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
-    def test_malformed_llm_routing_json_falls_back_to_heuristic(self, monkeypatch):
+    def test_malformed_llm_routing_json_uses_heuristic_route(self, monkeypatch):
         """Routing JSON with the wrong shape should not abort the whole request."""
 
         def malformed_llm_response(*_args, **_kwargs):
@@ -287,7 +287,7 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
-    def test_malformed_llm_routing_time_period_falls_back_to_heuristic(self, monkeypatch):
+    def test_malformed_llm_routing_time_period_uses_heuristic_route(self, monkeypatch):
         """Malformed nested route fields should not abort the whole request."""
 
         def malformed_llm_response(*_args, **_kwargs):
@@ -307,7 +307,7 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
-    def test_malformed_llm_routing_stat_falls_back_to_heuristic(self, monkeypatch):
+    def test_malformed_llm_routing_stat_uses_heuristic_route(self, monkeypatch):
         """Malformed stat fields should not abort the whole request."""
 
         def malformed_llm_response(*_args, **_kwargs):
@@ -327,7 +327,7 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
-    def test_malformed_llm_routing_position_falls_back_to_heuristic(self, monkeypatch):
+    def test_malformed_llm_routing_position_uses_heuristic_route(self, monkeypatch):
         """Malformed position fields should not leak into routed cases."""
 
         def malformed_llm_response(*_args, **_kwargs):
@@ -347,7 +347,7 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
-    def test_malformed_llm_routing_player_name_falls_back_to_heuristic(self, monkeypatch):
+    def test_malformed_llm_routing_player_name_uses_heuristic_route(self, monkeypatch):
         """Malformed player name fields should not leak into routed cases."""
 
         def malformed_llm_response(*_args, **_kwargs):
@@ -367,7 +367,7 @@ class TestRouter:
         assert result.intent == "general_explanation"
         assert result.stat is None
 
-    def test_llm_routing_timeout_falls_back_to_heuristic(self, monkeypatch):
+    def test_llm_routing_timeout_uses_heuristic_route(self, monkeypatch):
         """Router LM timeouts should not abort the whole request."""
 
         def timed_out_llm_response(*_args, **_kwargs):

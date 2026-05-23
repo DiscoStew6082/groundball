@@ -330,6 +330,25 @@ def test_routing_no_longer_exports_legacy_route_result() -> None:
     assert "def year(" not in query_router
 
 
+def test_router_heuristic_path_is_not_named_fallback() -> None:
+    query_router = (ROOT / "src" / "baseball_rag" / "routing" / "query_router.py").read_text(
+        encoding="utf-8"
+    )
+    router_tests = (ROOT / "tests" / "test_router.py").read_text(encoding="utf-8")
+    names_and_prose = "\n".join(
+        (
+            *_python_definition_names(router_tests),
+            *_python_docstrings_and_comments(router_tests),
+            *_python_docstrings_and_comments(query_router),
+        )
+    )
+
+    assert "fallback" not in names_and_prose.lower()
+    assert "falls back" not in names_and_prose.lower()
+    assert "fall back" not in names_and_prose.lower()
+    assert "falls_back_to_heuristic" not in names_and_prose
+
+
 def test_legacy_database_compatibility_facade_is_removed() -> None:
     grounded_database_intent = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
