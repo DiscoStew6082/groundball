@@ -31,7 +31,7 @@ class GeneralExplanationPolicy:
 
     def _answer_local_stat_definition(self, question: str) -> StructuredAnswer | None:
         from baseball_rag.corpus import STAT_DEFS_DIR
-        from baseball_rag.retrieval.static_vocab import stat_definition_doc_ids_for_query
+        from baseball_rag.corpus.static_vocab import stat_definition_doc_ids_for_query
 
         doc_ids = stat_definition_doc_ids_for_query(question)
         if not doc_ids:

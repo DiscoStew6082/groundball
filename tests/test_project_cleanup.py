@@ -627,7 +627,7 @@ def test_retrieved_document_generation_surface_is_removed() -> None:
 
 
 def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
-    static_vocab = (ROOT / "src" / "baseball_rag" / "retrieval" / "static_vocab.py").read_text(
+    static_vocab = (ROOT / "src" / "baseball_rag" / "corpus" / "static_vocab.py").read_text(
         encoding="utf-8"
     )
 
@@ -636,13 +636,26 @@ def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
 
 
 def test_static_vocab_keeps_only_stat_definition_doc_id_lookup() -> None:
-    static_vocab = (ROOT / "src" / "baseball_rag" / "retrieval" / "static_vocab.py").read_text(
+    static_vocab = (ROOT / "src" / "baseball_rag" / "corpus" / "static_vocab.py").read_text(
         encoding="utf-8"
     )
 
     assert "def query_mentions_stat_definition(" not in static_vocab
     assert "def query_asks_for_explanation(" not in static_vocab
     assert "EXPLANATION_TERMS" not in static_vocab
+
+
+def test_stat_definition_vocab_no_longer_lives_in_retired_retrieval_package() -> None:
+    general_explanation = (ROOT / "src" / "baseball_rag" / "general_explanation.py").read_text(
+        encoding="utf-8"
+    )
+    static_vocab_tests = (ROOT / "tests" / "test_static_vocab.py").read_text(encoding="utf-8")
+
+    assert not (ROOT / "src" / "baseball_rag" / "retrieval" / "__init__.py").exists()
+    assert not (ROOT / "src" / "baseball_rag" / "retrieval" / "static_vocab.py").exists()
+    assert (ROOT / "src" / "baseball_rag" / "corpus" / "static_vocab.py").exists()
+    assert "baseball_rag.retrieval" not in general_explanation
+    assert "baseball_rag.retrieval" not in static_vocab_tests
 
 
 def test_hof_biography_corpus_is_removed() -> None:

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import importlib.util
+from pathlib import Path
 
 from baseball_rag import player_biography
 from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.routing import GeneralExplanationCase, PlayerBiographyCase
 from baseball_rag.service import answer
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _llm_json(answer_text: str, claims: list[dict] | None = None) -> LLMResponse:
@@ -923,4 +925,7 @@ def test_general_stat_explanation_uses_local_corpus_before_open_llm(monkeypatch)
 
 
 def test_chroma_runtime_module_is_removed():
-    assert importlib.util.find_spec("baseball_rag.retrieval.chroma_store") is None
+    retrieval_dir = ROOT / "src" / "baseball_rag" / "retrieval"
+
+    assert not (retrieval_dir / "chroma_store.py").exists()
+    assert not (retrieval_dir / "__init__.py").exists()
