@@ -88,11 +88,6 @@ def row_from_recent_turn(
 def player_name_from_row(row: Mapping[str, Any]) -> str | None:
     """Return a display player name from supported transcript row keys."""
     raw_name = row.get("name")
-    if raw_name is None:
-        first_name = row.get("nameFirst")
-        last_name = row.get("nameLast")
-        if isinstance(first_name, str) and isinstance(last_name, str):
-            raw_name = f"{first_name.strip()} {last_name.strip()}"
     if not isinstance(raw_name, str) or raw_name.strip() == "":
         return None
     name = raw_name.strip()

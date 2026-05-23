@@ -65,7 +65,7 @@ def test_conversation_turn_preserves_only_followup_relevant_answer_fields():
     }
 
 
-def test_conversation_turn_preserves_grounded_database_name_first_last_for_followups():
+def test_conversation_turn_preserves_grounded_database_name_for_followups():
     answer = StructuredAnswer(
         answer="1936 Braves roster",
         intent="grounded_database_question",
@@ -75,8 +75,7 @@ def test_conversation_turn_preserves_grounded_database_name_first_last_for_follo
                 label="Roster",
                 rows=[
                     {
-                        "nameFirst": "Wally",
-                        "nameLast": "Berger",
+                        "name": "Wally Berger",
                         "teamName": "Boston Braves",
                         "yearID": 1936,
                         "extra": "drop",
@@ -88,7 +87,7 @@ def test_conversation_turn_preserves_grounded_database_name_first_last_for_follo
 
     turn = conversation_turn("who played for the Braves in 1936", answer)
 
-    assert turn["answer"]["sources"][0]["rows"] == [{"nameFirst": "Wally", "nameLast": "Berger"}]
+    assert turn["answer"]["sources"][0]["rows"] == [{"name": "Wally Berger"}]
     resolution = resolve_followup("tell me about the first player", [turn])
     assert resolution.resolved_question == "tell me about Wally Berger"
     assert resolution.referenced_player_name == "Wally Berger"
@@ -218,7 +217,7 @@ def test_unsupported_row_shape_preserves_ordinal_position():
     assert second_resolution.referenced_player_name == "Hank Aaron"
 
 
-def test_raw_api_transcript_resolves_name_first_name_last_rows():
+def test_raw_api_transcript_resolves_name_rows():
     prior_turns = [
         {
             "question": "who played for the Braves in 1936",
@@ -228,8 +227,7 @@ def test_raw_api_transcript_resolves_name_first_name_last_rows():
                         "type": "duckdb",
                         "rows": [
                             {
-                                "nameFirst": "Wally",
-                                "nameLast": "Berger",
+                                "name": "Wally Berger",
                                 "teamName": "Boston Braves",
                             }
                         ],

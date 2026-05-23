@@ -232,8 +232,12 @@ def test_conversation_followups_use_current_row_name_shapes_only() -> None:
 
     assert '"player_name"' not in conversation
     assert '"full_name"' not in conversation
+    assert '"nameFirst"' not in conversation
+    assert '"nameLast"' not in conversation
     assert '"player_name"' not in transcript
     assert '"full_name"' not in transcript
+    assert '"nameFirst"' not in transcript
+    assert '"nameLast"' not in transcript
 
 
 def test_conversation_turn_requires_structured_answer_payloads() -> None:
