@@ -59,7 +59,7 @@ def test_service_general_explanation_uses_fallback_question_for_local_definition
     from baseball_rag.service import _answer_general
 
     def fail_llm(*_args, **_kwargs):
-        raise AssertionError("legacy stat definition fallback must not call the LLM")
+        raise AssertionError("local stat definition answers must not call the LLM")
 
     monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
 
@@ -73,7 +73,7 @@ def test_service_general_explanation_uses_fallback_question_for_local_definition
 
 def test_runtime_general_explanations_do_not_use_grounded_generation_helpers(monkeypatch):
     with patch("baseball_rag.generation.answer.answer") as grounded_answer:
-        grounded_answer.side_effect = AssertionError("grounded generation is legacy-only here")
+        grounded_answer.side_effect = AssertionError("general explanations use policy answers")
 
         result = GeneralExplanationPolicy(make_request=lambda *_args, **_kwargs: None).answer(
             GeneralExplanationCase(raw_question="what is RBI", stat="RBI")
