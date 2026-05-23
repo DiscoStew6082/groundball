@@ -127,16 +127,17 @@ class TestDiagramRendersAllLayers:
         assert diagram.registry is get_registry()
 
     def test_all_five_layers_render_in_order_api_to_generation(self):
-        """Layers appear in display order: API → Routing → Retrieval → Data → Generation."""
+        """Layers appear in display order: API -> Routing -> Verification -> Data -> Generation."""
         html = self.diagram._build_diagram_html()
 
         api_pos = html.find(">API<")
         routing_pos = html.find(">Routing<")
-        retrieval_pos = html.find(">Retrieval<")
+        verification_pos = html.find(">Verification<")
         data_pos = html.find(">Data<")
         generation_pos = html.find(">Generation<")
 
-        assert api_pos < routing_pos < retrieval_pos < data_pos < generation_pos, (
+        assert ">Retrieval<" not in html
+        assert api_pos < routing_pos < verification_pos < data_pos < generation_pos, (
             "Layers must appear top-to-bottom in the HTML in enum order"
         )
 

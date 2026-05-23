@@ -798,6 +798,18 @@ def test_arch_components_no_longer_exports_component_test_status_alias() -> None
     assert "ComponentTestStatus" not in arch_init
 
 
+def test_architecture_layer_no_longer_names_verification_as_retrieval() -> None:
+    components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
+        encoding="utf-8"
+    )
+    diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
+
+    assert "Layer.RETRIEVAL" not in components
+    assert 'RETRIEVAL = "retrieval"' not in components
+    assert 'Layer.VERIFICATION: "Verification"' in diagram
+    assert 'Layer.RETRIEVAL: "Retrieval"' not in diagram
+
+
 def test_retired_corpus_ingest_entrypoint_is_removed() -> None:
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")

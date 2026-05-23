@@ -31,7 +31,7 @@ _ANIMATION_HIGHLIGHT_MS = 400  # how long each stage stays highlighted
 _LAYER_LABELS: dict[Layer, str] = {
     Layer.API: "API",
     Layer.ROUTING: "Routing",
-    Layer.RETRIEVAL: "Retrieval",
+    Layer.VERIFICATION: "Verification",
     Layer.DATA: "Data",
     Layer.GENERATION: "Generation",
 }

@@ -29,9 +29,9 @@ class TestDiagramComponentDataclass:
 
     def test_layer_enum_has_five_layers(self):
         names = {layer.name for layer in Layer}
-        assert names == {"API", "ROUTING", "RETRIEVAL", "DATA", "GENERATION"}
+        assert names == {"API", "ROUTING", "VERIFICATION", "DATA", "GENERATION"}
         values = {layer.value for layer in Layer}
-        assert values == {"api", "routing", "retrieval", "data", "generation"}
+        assert values == {"api", "routing", "verification", "data", "generation"}
 
     def test_components_compare_by_id_equality(self):
         a = DiagramComponent(
@@ -191,7 +191,7 @@ class TestTestStatusFromLatestRun:
             id="claim-verifier",
             label="Biography Claim Verifier",
             description="Verifies extracted stat claims.",
-            layer=Layer.RETRIEVAL,
+            layer=Layer.VERIFICATION,
             file_path="src/baseball_rag/db/player_stat_claims.py",
             test_status=TestStatus.FAIL,
         )

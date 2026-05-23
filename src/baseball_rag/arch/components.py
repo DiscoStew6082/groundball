@@ -18,7 +18,7 @@ class Layer(Enum):
 
     API = "api"
     ROUTING = "routing"
-    RETRIEVAL = "retrieval"
+    VERIFICATION = "verification"
     DATA = "data"
     GENERATION = "generation"
 
@@ -222,7 +222,7 @@ class ComponentRegistry:
                 id="claim-verifier",
                 label="Biography Claim Verifier",
                 description="DuckDB-backed verifier for extracted biography stat claims.",
-                layer=Layer.RETRIEVAL,
+                layer=Layer.VERIFICATION,
                 file_path="src/baseball_rag/db/player_stat_claims.py",
             )
         )

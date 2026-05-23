@@ -60,12 +60,18 @@ class TestRegistryByLayerIntegration:
         assert all(c.layer == Layer.ROUTING for c in routing)
 
     def test_each_required_layer_has_at_least_one_component(self) -> None:
-        for layer in [Layer.API, Layer.ROUTING, Layer.RETRIEVAL, Layer.DATA, Layer.GENERATION]:
+        for layer in [
+            Layer.API,
+            Layer.ROUTING,
+            Layer.VERIFICATION,
+            Layer.DATA,
+            Layer.GENERATION,
+        ]:
             comps = get_components_by_layer(layer)
             assert len(comps) >= 1, f"Layer {layer.name} has no components"
 
     def test_all_five_layers_represented(self) -> None:
         reg = get_registry()
         layers_with_components = set(c.layer for c in reg.all())
-        expected = {Layer.API, Layer.ROUTING, Layer.RETRIEVAL, Layer.DATA, Layer.GENERATION}
+        expected = {Layer.API, Layer.ROUTING, Layer.VERIFICATION, Layer.DATA, Layer.GENERATION}
         assert layers_with_components == expected
