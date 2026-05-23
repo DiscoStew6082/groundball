@@ -151,7 +151,7 @@ def _answer_grounded_database_question(
 def _grounded_database_single_season_year(decision: Any) -> int | None:
     time_period = getattr(decision, "time_period", None)
     if time_period is None:
-        return getattr(decision, "year", None)
+        return None
 
     from baseball_rag.query_scope import QueryScope, resolve_query_scope
 

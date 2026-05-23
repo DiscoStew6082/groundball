@@ -92,6 +92,12 @@ def test_general_explanation_no_longer_uses_fallback_question_shape() -> None:
     assert "fallback_question" not in general_explanation
 
 
+def test_grounded_database_question_no_longer_uses_year_route_shape() -> None:
+    service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
+
+    assert 'getattr(decision, "year"' not in service
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"
