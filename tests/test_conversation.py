@@ -178,7 +178,7 @@ def test_malformed_transcript_entries_are_ignored_without_crashing():
             "question": "career home run leaders",
             "answer": {
                 "sources": [
-                    {"rows": [None, {"team": "NYA"}, {"full_name": "Babe Ruth"}]},
+                    {"rows": [None, {"name": "Ruth, Babe"}]},
                 ],
             },
         },
@@ -188,6 +188,34 @@ def test_malformed_transcript_entries_are_ignored_without_crashing():
 
     assert resolution.resolved_question == "tell me about Babe Ruth"
     assert resolution.referenced_player_name == "Babe Ruth"
+
+
+def test_unsupported_row_shape_preserves_ordinal_position():
+    prior_turns = [
+        {
+            "question": "mixed row shapes",
+            "answer": {
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "rows": [
+                            {"full_name": "Babe Ruth"},
+                            {"name": "Aaron, Hank"},
+                        ],
+                    }
+                ]
+            },
+        },
+    ]
+
+    first_resolution = resolve_followup("tell me about the first player", prior_turns)
+    second_resolution = resolve_followup("tell me about the second player", prior_turns)
+
+    assert first_resolution.resolved_question == "tell me about the first player"
+    assert first_resolution.referenced_player_name is None
+    assert first_resolution.unsupported_reason == "player_name_not_found"
+    assert second_resolution.resolved_question == "tell me about Hank Aaron"
+    assert second_resolution.referenced_player_name == "Hank Aaron"
 
 
 def test_raw_api_transcript_resolves_name_first_name_last_rows():
@@ -214,6 +242,77 @@ def test_raw_api_transcript_resolves_name_first_name_last_rows():
     resolution = resolve_followup("tell me about the first player", prior_turns)
 
     assert resolution.resolved_question == "tell me about Wally Berger"
+
+
+def test_recent_unsupported_row_shape_blocks_stale_followup_resolution():
+    prior_turns = [
+        {
+            "question": "career home run leaders",
+            "answer": {
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "rows": [{"name": "Bonds, Barry"}],
+                    }
+                ]
+            },
+        },
+        {
+            "question": "old client row shape",
+            "answer": {
+                "sources": [
+                    {
+                        "type": "duckdb",
+                        "rows": [{"full_name": "Babe Ruth"}],
+                    }
+                ]
+            },
+        },
+    ]
+
+    resolution = resolve_followup("tell me about the first player", prior_turns)
+
+    assert resolution.resolved_question == "tell me about the first player"
+    assert resolution.referenced_player_name is None
+    assert resolution.unsupported_reason == "player_name_not_found"
+
+
+def test_compact_turn_with_recent_unsupported_row_shape_blocks_stale_resolution():
+    older_turn = conversation_turn(
+        "career home run leaders",
+        StructuredAnswer(
+            answer="Career leaders",
+            intent="stat_query",
+            sources=[
+                SourceRecord(
+                    type="duckdb",
+                    label="Career HR leaders",
+                    rows=[{"name": "Bonds, Barry"}],
+                )
+            ],
+        ),
+    )
+    recent_turn = conversation_turn(
+        "old client answer shape",
+        StructuredAnswer(
+            answer="Legacy answer",
+            intent="stat_query",
+            sources=[
+                SourceRecord(
+                    type="duckdb",
+                    label="Legacy rows",
+                    rows=[{"full_name": "Babe Ruth"}],
+                )
+            ],
+        ),
+    )
+
+    resolution = resolve_followup("tell me about the first player", [older_turn, recent_turn])
+
+    assert recent_turn["answer"]["sources"][0]["rows"] == [{}]
+    assert resolution.resolved_question == "tell me about the first player"
+    assert resolution.referenced_player_name is None
+    assert resolution.unsupported_reason == "player_name_not_found"
 
 
 def test_attach_context_metadata_preserves_resolved_player_context():

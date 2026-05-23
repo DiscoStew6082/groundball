@@ -134,6 +134,18 @@ def test_low_confidence_review_queue_surface_is_removed() -> None:
     assert "low-confidence" not in api_docs
 
 
+def test_conversation_followups_use_current_row_name_shapes_only() -> None:
+    conversation = (ROOT / "src" / "baseball_rag" / "conversation.py").read_text(encoding="utf-8")
+    transcript = (ROOT / "src" / "baseball_rag" / "conversation_transcript.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"player_name"' not in conversation
+    assert '"full_name"' not in conversation
+    assert '"player_name"' not in transcript
+    assert '"full_name"' not in transcript
+
+
 def test_routing_no_longer_exports_legacy_route_result() -> None:
     routing_init = (ROOT / "src" / "baseball_rag" / "routing" / "__init__.py").read_text(
         encoding="utf-8"

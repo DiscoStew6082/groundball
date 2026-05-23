@@ -224,16 +224,13 @@ def _conversation_source(source: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(row, dict):
             continue
         compact_row = {
-            key: row[key]
-            for key in ("name", "player_name", "full_name", "year", "team", "stat_value")
-            if key in row
+            key: row[key] for key in ("name", "year", "team", "stat_value") if key in row
         }
         if "nameFirst" in row:
             compact_row["nameFirst"] = row["nameFirst"]
         if "nameLast" in row:
             compact_row["nameLast"] = row["nameLast"]
-        if compact_row:
-            compact_rows.append(compact_row)
+        compact_rows.append(compact_row)
     return {
         "type": source.get("type"),
         "label": source.get("label"),

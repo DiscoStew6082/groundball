@@ -14,7 +14,6 @@ class TranscriptRow:
     """A normalized source row that can identify a player."""
 
     facts: Mapping[str, Any]
-    player_name: str
 
 
 @dataclass(frozen=True)
@@ -77,18 +76,18 @@ def row_from_recent_turn(
 ) -> tuple[Mapping[str, Any] | None, str | None]:
     """Return the requested recent player row from normalized transcript facts."""
     for turn in reversed(transcript):
-        player_rows = [row for source in turn.sources for row in source.rows]
-        if player_rows and len(player_rows) <= row_index:
+        rows = [row for source in turn.sources for row in source.rows]
+        if rows and len(rows) <= row_index:
             return None, None
-        if not player_rows:
-            continue
-        return player_rows[row_index].facts, turn.question
+        if rows:
+            return rows[row_index].facts, turn.question
+        continue
     return None, None
 
 
 def player_name_from_row(row: Mapping[str, Any]) -> str | None:
     """Return a display player name from supported transcript row keys."""
-    raw_name = row.get("name") or row.get("player_name") or row.get("full_name")
+    raw_name = row.get("name")
     if raw_name is None:
         first_name = row.get("nameFirst")
         last_name = row.get("nameLast")
@@ -136,8 +135,5 @@ def _normalize_rows(raw_rows: object) -> tuple[TranscriptRow, ...]:
     for raw_row in raw_rows:
         if not isinstance(raw_row, Mapping):
             continue
-        player_name = player_name_from_row(raw_row)
-        if player_name is None:
-            continue
-        rows.append(TranscriptRow(facts=raw_row, player_name=player_name))
+        rows.append(TranscriptRow(facts=raw_row))
     return tuple(rows)
