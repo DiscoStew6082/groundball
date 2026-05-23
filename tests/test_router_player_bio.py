@@ -13,7 +13,7 @@ class TestPlayerBioRouting:
     def test_what_teams_did_he_play_for(self):
         """'what teams did he play for' → player_biography (when player context exists)."""
         # This tests that biography questions route correctly
-        # Note: without prior context, this might not extract player_name in fallback
+        # Note: without prior context, the heuristic route may omit player_name.
         result = route("what teams did he play for")
         assert result.intent == "player_biography"
 

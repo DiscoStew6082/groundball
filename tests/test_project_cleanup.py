@@ -335,10 +335,14 @@ def test_router_heuristic_path_is_not_named_fallback() -> None:
         encoding="utf-8"
     )
     router_tests = (ROOT / "tests" / "test_router.py").read_text(encoding="utf-8")
+    player_bio_router_tests = (ROOT / "tests" / "test_router_player_bio.py").read_text(
+        encoding="utf-8"
+    )
     names_and_prose = "\n".join(
         (
             *_python_definition_names(router_tests),
             *_python_docstrings_and_comments(router_tests),
+            *_python_docstrings_and_comments(player_bio_router_tests),
             *_python_docstrings_and_comments(query_router),
         )
     )
