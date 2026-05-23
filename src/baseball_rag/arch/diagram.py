@@ -306,9 +306,6 @@ class ArchitectureDiagram(gr.Blocks):
         self.trace_history: list[PipelineTrace] = []
         self._latest_run_store = LatestRunStore()
         self.latest_run: LatestRunReadModel | None = None
-        self.latest_runs_by_session: dict[str, LatestRunReadModel] = (
-            self._latest_run_store.latest_by_session
-        )
         self._animating = False
         self._anim_lock = threading.RLock()
 
@@ -484,6 +481,12 @@ class ArchitectureDiagram(gr.Blocks):
             self.show_latest_trace(session_key=session_key)
             footer = self.footer_html.value if hasattr(self, "footer_html") else ""
             return self.diagram_html.value, footer
+
+    def clear_latest_runs(self) -> ArchitectureDiagram:
+        """Clear retained latest-run read models."""
+        self.latest_run = None
+        self._latest_run_store.clear()
+        return self
 
     def _on_skip_animation(self) -> None:
         """Handle the Skip Animation button event registered during UI setup."""

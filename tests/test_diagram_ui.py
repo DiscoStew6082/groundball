@@ -845,7 +845,7 @@ class TestLatestRunExplorer:
         assert "career home run leaders" in html_b
 
     def test_clear_highlight_returns_to_inventory_after_latest_run(self):
-        """Legacy diagram controls are not stuck on the latest-run rendering."""
+        """Diagram controls are not stuck on the latest-run rendering."""
         now = datetime.now()
         trace = PipelineTrace(query="what is OPS", route_type="general_explanation")
         trace.add_stage(
@@ -865,10 +865,10 @@ class TestLatestRunExplorer:
         assert "what is OPS" not in html
         assert "API Server" in html
         assert "highlighted" not in html
-        assert self.diagram.latest_runs_by_session
+        assert "what is OPS" in self.diagram.show_latest_trace().diagram_html.value
 
-    def test_legacy_latest_run_reset_does_not_resurrect_stale_read_model(self):
-        """Clearing legacy public state clears the sessionless latest-run facade."""
+    def test_clear_latest_runs_does_not_resurrect_stale_read_model(self):
+        """Clearing latest-run state removes the sessionless read model."""
         now = datetime.now()
         trace = PipelineTrace(query="what is OPS", route_type="general_explanation")
         trace.add_stage(
@@ -883,8 +883,7 @@ class TestLatestRunExplorer:
         self.diagram.show_latest_trace()
 
         self.diagram.trace_history.clear()
-        self.diagram.latest_run = None
-        self.diagram.latest_runs_by_session.clear()
+        self.diagram.clear_latest_runs()
         html = self.diagram.show_latest_trace().diagram_html.value
 
         assert "what is OPS" not in html

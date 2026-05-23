@@ -55,11 +55,6 @@ class LatestRunStore:
             return self._latest
         return self._latest_by_session.get(session_latest_key(session_key))
 
-    @property
-    def latest_by_session(self) -> dict[str, LatestRunReadModel]:
-        """Mutable session map retained for existing adapter tests and diagnostics."""
-        return self._latest_by_session
-
     def clear(self) -> None:
         self._latest = None
         self._latest_by_session.clear()

@@ -174,6 +174,16 @@ def test_llm_prompt_string_compatibility_is_removed() -> None:
     assert "backward compat" not in llm
 
 
+def test_architecture_latest_run_session_map_alias_is_removed() -> None:
+    diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
+    read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "latest_runs_by_session" not in diagram
+    assert "def latest_by_session(" not in read_model
+
+
 def test_duckdb_schema_no_longer_exports_team_map_alias() -> None:
     duckdb_schema = (ROOT / "src" / "baseball_rag" / "db" / "duckdb_schema.py").read_text(
         encoding="utf-8"

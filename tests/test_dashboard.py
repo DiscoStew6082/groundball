@@ -515,8 +515,7 @@ class TestDashboardTabs:
     def test_architecture_refresh_uses_latest_answer_diagnostics(self):
         """Architecture combines the completed answer metadata with the latest trace."""
         self.dash.arch_diagram.trace_history.clear()
-        self.dash.arch_diagram.latest_run = None
-        self.dash.arch_diagram.latest_runs_by_session.clear()
+        self.dash.arch_diagram.clear_latest_runs()
 
         begin_fn = next(
             dependency.fn
@@ -564,8 +563,7 @@ class TestDashboardTabs:
     def test_architecture_refresh_is_scoped_to_browser_session(self):
         """A second browser session does not overwrite this session's Architecture view."""
         self.dash.arch_diagram.trace_history.clear()
-        self.dash.arch_diagram.latest_run = None
-        self.dash.arch_diagram.latest_runs_by_session.clear()
+        self.dash.arch_diagram.clear_latest_runs()
 
         begin_fn = next(
             dependency.fn
