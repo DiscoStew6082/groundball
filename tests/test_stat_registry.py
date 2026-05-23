@@ -88,7 +88,7 @@ def test_registry_renders_sample_guards_for_retrosheet_columns():
     )
 
 
-def test_registry_exposes_formula_notes_for_freeform_prompts():
+def test_registry_exposes_formula_notes_for_grounded_database_prompts():
     notes = stat_formula_notes()
 
     assert "batting: AVG =" in notes

@@ -63,7 +63,7 @@ def test_conversation_turn_preserves_only_followup_relevant_answer_fields():
     }
 
 
-def test_conversation_turn_preserves_freeform_name_first_last_for_followups():
+def test_conversation_turn_preserves_grounded_database_name_first_last_for_followups():
     answer = StructuredAnswer(
         answer="1936 Braves roster",
         intent="grounded_database_question",

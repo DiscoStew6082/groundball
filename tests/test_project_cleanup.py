@@ -31,6 +31,15 @@ def _python_docstrings_and_comments(source: str) -> list[str]:
     return docstrings + comments
 
 
+def _python_definition_names(source: str) -> list[str]:
+    module = ast.parse(source)
+    return [
+        node.name
+        for node in ast.walk(module)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+
+
 def test_default_package_excludes_optional_mlb_api_mcp_surface() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -412,6 +421,25 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
         for item in _python_docstrings_and_comments(source)
     )
     assert "freeform" not in prose.lower()
+
+
+def test_grounded_database_test_names_and_prose_use_current_label() -> None:
+    test_sources = [
+        (ROOT / "tests" / "test_api.py").read_text(encoding="utf-8"),
+        (ROOT / "tests" / "test_conversation.py").read_text(encoding="utf-8"),
+        (ROOT / "tests" / "test_freeform.py").read_text(encoding="utf-8"),
+        (ROOT / "tests" / "test_stat_registry.py").read_text(encoding="utf-8"),
+    ]
+
+    names_and_prose = "\n".join(
+        item
+        for source in test_sources
+        for item in (
+            *_python_definition_names(source),
+            *_python_docstrings_and_comments(source),
+        )
+    )
+    assert "freeform" not in names_and_prose.lower()
 
 
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:

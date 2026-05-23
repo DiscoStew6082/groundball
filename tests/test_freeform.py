@@ -1,4 +1,4 @@
-"""Tests for freeform query -- intent-based SQL generation (deterministic by design)."""
+"""Tests for grounded database questions with deterministic SQL generation."""
 
 from unittest.mock import MagicMock, patch
 
@@ -71,7 +71,7 @@ class TestAssembleSQL:
 
 
 class TestDeterministicTemplates:
-    """Tests for common freeform patterns that should bypass the LLM."""
+    """Tests for common grounded database patterns that should bypass the LLM."""
 
     def _run_query(self, question: str, *, request_fn=None):
         from baseball_rag.db.duckdb_schema import get_duckdb
@@ -181,7 +181,7 @@ class TestDeterministicTemplates:
             ("Pete", "Alexander", 373),
         ]
 
-    def test_freeform_runtime_planning_surface_exposes_deterministic_queries(self):
+    def test_grounded_database_runtime_planning_surface_exposes_deterministic_queries(self):
         import baseball_rag.db.freeform_runtime as freeform_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
 
@@ -622,8 +622,8 @@ class TestGenerateSQLDeterminism:
         assert result.row_count > 0
 
 
-class TestFreeformProvenance:
-    """Focused tests for source labels on freeform query paths."""
+class TestGroundedDatabaseProvenance:
+    """Focused tests for source labels on grounded database query paths."""
 
     @pytest.mark.parametrize(
         ("question", "detail"),
@@ -651,7 +651,7 @@ class TestFreeformProvenance:
         assert result.sources[0].label == "Deterministic template query"
         assert detail in (result.sources[0].detail or "")
 
-    def test_llm_backed_freeform_source_label(self):
+    def test_llm_backed_grounded_database_source_label(self):
         from baseball_rag.routing import GroundedDatabaseQuestionCase
         from baseball_rag.service import _answer_grounded_database_question
 
@@ -712,7 +712,7 @@ class TestFreeformProvenance:
         assert "Hornsby" in str(seen_prompts[0])
         assert "152" in str(seen_prompts[0])
 
-    def test_freeform_answer_uses_query_scope_for_relative_single_season_year(
+    def test_grounded_database_answer_uses_query_scope_for_relative_single_season_year(
         self,
         monkeypatch,
     ):
@@ -744,8 +744,8 @@ class TestFreeformProvenance:
         assert query.call_args.kwargs["year"] == 1936
 
 
-class TestFreeformResultFormatting:
-    """Tests for display-quality freeform answer formatting."""
+class TestGroundedDatabaseResultFormatting:
+    """Tests for display-quality grounded database answer formatting."""
 
     def test_player_roster_result_formats_names_without_python_tuples(self):
         from baseball_rag.db.freeform_runtime import format_result

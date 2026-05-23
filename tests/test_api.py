@@ -181,7 +181,7 @@ class TestApi:
         assert queue["count"] == 1
         assert queue["items"][0]["id"] == data["review"]["item_id"]
 
-    def test_query_endpoint_preserves_ambiguous_freeform_unsupported_reason(
+    def test_query_endpoint_preserves_ambiguous_grounded_database_unsupported_reason(
         self, tmp_path, monkeypatch
     ):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
