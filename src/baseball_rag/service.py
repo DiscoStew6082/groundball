@@ -177,16 +177,6 @@ def _answer_general(question: str, decision: GeneralExplanationCase) -> Structur
     return GeneralExplanationPolicy(make_request=make_request).answer(decision)
 
 
-def _answer_local_stat_definition(question: str) -> StructuredAnswer | None:
-    return GeneralExplanationPolicy()._answer_local_stat_definition(question)
-
-
-def _markdown_body(text: str) -> str:
-    from baseball_rag.general_explanation import _markdown_body as markdown_body
-
-    return markdown_body(text)
-
-
 def _apply_llm_flavor(question: str, result: StructuredAnswer) -> None:
     if result.unsupported:
         return
