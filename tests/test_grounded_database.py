@@ -475,14 +475,14 @@ class TestDeterminismSmokeSuite:
         )
 
 
-class TestGenerateSQLDeterminism:
-    """Integration-style tests verifying deterministic output for the same inputs."""
+class TestGenerateQuerySpecDeterminism:
+    """Integration-style tests verifying deterministic planning for the same inputs."""
 
-    def test_same_prompt_produces_same_sql_twice(self):
-        """Identical calls with same intent should produce byte-for-byte identical SQL."""
+    def test_same_prompt_produces_same_query_spec_twice(self):
+        """Identical calls with same intent should produce the same typed query spec."""
         import json
 
-        from baseball_rag.db.grounded_database_intent import _generate_sql
+        from baseball_rag.db.grounded_database_intent import _generate_query_spec
 
         # Mock the LLM to return a known intent JSON
         raw_response = json.dumps(
@@ -499,18 +499,18 @@ class TestGenerateSQLDeterminism:
         def fake_request(*_args, **_kwargs):
             return mock_resp
 
-        sql1 = _generate_sql(
+        spec1 = _generate_query_spec(
             "Who played for the Braves in 1936?", "schema", request_fn=fake_request
         )
-        sql2 = _generate_sql(
+        spec2 = _generate_query_spec(
             "Who played for the Braves in 1936?", "schema", request_fn=fake_request
         )
 
-        assert sql1 == sql2, f"Non-deterministic SQL: {sql1!r} != {sql2!r}"
+        assert spec1 == spec2, f"Non-deterministic query spec: {spec1!r} != {spec2!r}"
 
-    def test_generate_sql_calls_llm_once(self):
-        """_generate_sql should make exactly one LLM call per invocation."""
-        from baseball_rag.db.grounded_database_intent import _generate_sql
+    def test_generate_query_spec_calls_llm_once(self):
+        """_generate_query_spec should make exactly one LLM call per invocation."""
+        from baseball_rag.db.grounded_database_intent import _generate_query_spec
 
         mock_resp = MagicMock()
         mock_resp.content = (
@@ -519,7 +519,7 @@ class TestGenerateSQLDeterminism:
 
         mock_call = MagicMock(return_value=mock_resp)
 
-        _generate_sql("Who played for the Braves in 1936?", "schema", request_fn=mock_call)
+        _generate_query_spec("Who played for the Braves in 1936?", "schema", request_fn=mock_call)
 
         assert mock_call.call_count == 1
 

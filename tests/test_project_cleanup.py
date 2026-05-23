@@ -439,6 +439,18 @@ def test_grounded_database_query_spec_has_no_legacy_intent_alias() -> None:
     assert "class QuerySpec" in grounded_database_types
 
 
+def test_grounded_database_intent_no_longer_exposes_sql_string_helper() -> None:
+    grounded_database_intent = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
+    ).read_text(encoding="utf-8")
+    grounded_database_tests = (ROOT / "tests" / "test_grounded_database.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def _generate_sql(" not in grounded_database_intent
+    assert "_generate_sql" not in grounded_database_tests
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")

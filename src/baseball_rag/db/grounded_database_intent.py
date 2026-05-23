@@ -4,7 +4,6 @@ import json
 from collections.abc import Callable
 from typing import Any, cast
 
-from baseball_rag.db.grounded_database_assembler import _assemble_sql
 from baseball_rag.db.grounded_database_types import QuerySpec
 from baseball_rag.db.stat_registry import StatTable, get_stat, supported_stats, supported_tables
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
@@ -99,16 +98,6 @@ def _parse_intent(raw: str) -> QuerySpec:
             continue
 
     raise ValueError(f"Could not determine stat_tables from LLM response: {raw[:200]}")
-
-
-def _generate_sql(
-    question: str,
-    schema: str,
-    *,
-    request_fn: RequestFn = default_make_request,
-) -> str:
-    """Convert question to SQL via structured intent extraction."""
-    return _assemble_sql(_generate_query_spec(question, schema, request_fn=request_fn)).sql
 
 
 def _generate_query_spec(
