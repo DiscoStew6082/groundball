@@ -138,7 +138,7 @@ def test_validate_case_checks_expected_rows_and_parameterized_sql():
             "question": "500 home run club",
             "intent": "grounded_database_question",
             "expected_sql_parameterized": True,
-            "expected_rows": [{"nameFirst": "Babe", "nameLast": "Ruth", "career_HR": 714}],
+            "expected_rows": [{"name": "Babe Ruth", "career_HR": 714}],
         },
     )
 
@@ -147,7 +147,7 @@ def test_validate_case_checks_expected_rows_and_parameterized_sql():
         _answer(
             answer="Babe Ruth had 714 career HR",
             intent="grounded_database_question",
-            rows=[{"nameFirst": "Babe", "nameLast": "Ruth", "career_HR": 714}],
+            rows=[{"name": "Babe Ruth", "career_HR": 714}],
         ),
     )
 
@@ -230,7 +230,7 @@ def test_validate_case_checks_minimum_sample_size_expectation():
         case,
         _answer(
             intent="grounded_database_question",
-            rows=[{"nameFirst": "Tiny", "nameLast": "Sample", "AB": 42}],
+            rows=[{"name": "Tiny Sample", "AB": 42}],
         ),
     )
 

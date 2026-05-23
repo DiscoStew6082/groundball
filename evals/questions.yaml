@@ -110,8 +110,7 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Rogers", "Hornsby", "1922"]
     expected_rows:
-      - nameFirst: "Rogers"
-        nameLast: "Hornsby"
+      - name: "Rogers Hornsby"
         yearID: 1922
         lgID: "NL"
         HR: 42
@@ -126,8 +125,7 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Hank", "Aaron", "1963"]
     expected_rows:
-      - nameFirst: "Hank"
-        nameLast: "Aaron"
+      - name: "Hank Aaron"
         yearID: 1963
         HR: 44
         SB: 31
@@ -140,11 +138,9 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Barry", "Bonds", "Babe", "Ruth"]
     expected_rows:
-      - nameFirst: "Barry"
-        nameLast: "Bonds"
+      - name: "Barry Bonds"
         career_HR: 762
-      - nameFirst: "Babe"
-        nameLast: "Ruth"
+      - name: "Babe Ruth"
         career_HR: 714
   - id: grounded_database_pitchers_300_wins
     question: "list all pitchers with over 300 wins"
@@ -155,8 +151,7 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Cy", "Young"]
     expected_rows:
-      - nameFirst: "Cy"
-        nameLast: "Young"
+      - name: "Cy Young"
         career_W: 511
   - id: grounded_database_pitching_wins_leaders
     question: "career pitching wins leaders"
@@ -167,11 +162,9 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Cy", "Young", "Walter", "Johnson"]
     expected_rows:
-      - nameFirst: "Cy"
-        nameLast: "Young"
+      - name: "Cy Young"
         career_W: 511
-      - nameFirst: "Walter"
-        nameLast: "Johnson"
+      - name: "Walter Johnson"
         career_W: 417
   - id: grounded_database_pitchers_500_wins
     question: "career pitching wins leaders with at least 500 wins"
@@ -182,8 +175,7 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Cy", "Young", "511"]
     expected_rows:
-      - nameFirst: "Cy"
-        nameLast: "Young"
+      - name: "Cy Young"
         career_W: 511
   - id: grounded_database_lowest_era_qualified_1968
     question: "who had the lowest ERA in 1968 with enough innings"
@@ -194,13 +186,11 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Luis", "Tiant", "Bob", "Gibson"]
     expected_rows:
-      - nameFirst: "Luis"
-        nameLast: "Tiant"
+      - name: "Luis Tiant"
         yearID: 1968
         lgID: "AL"
         ERA: 1.6
-      - nameFirst: "Bob"
-        nameLast: "Gibson"
+      - name: "Bob Gibson"
         yearID: 1968
         lgID: "NL"
         ERA: 1.12
@@ -214,8 +204,7 @@ questions:
     required_sources: ["duckdb"]
     expected_answer_contains: ["Ed", "Walsh"]
     expected_rows:
-      - nameFirst: "Ed"
-        nameLast: "Walsh"
+      - name: "Ed Walsh"
         career_ERA: 1.82
         IPouts: 8893
   - id: grounded_database_ambiguous_500_club

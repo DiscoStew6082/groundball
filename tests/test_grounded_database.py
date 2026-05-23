@@ -85,9 +85,9 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [300]
-        assert {"nameFirst", "nameLast", "yearID", "HR", "RBI", "AVG"} <= set(result.columns)
-        assert ("Rogers", "Hornsby", 1922, "NL", 42, 152, 0.401) in result.rows
-        assert all(row[3] in ("AL", "NL") for row in result.rows)
+        assert {"name", "yearID", "HR", "RBI", "AVG"} <= set(result.columns)
+        assert ("Rogers Hornsby", 1922, "NL", 42, 152, 0.401) in result.rows
+        assert all(row[2] in ("AL", "NL") for row in result.rows)
 
     def test_thirty_thirty_template_bypasses_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -95,7 +95,7 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [30, 30]
-        assert ("Hank", "Aaron", 1963, 44, 31) in result.rows
+        assert ("Hank Aaron", 1963, 44, 31) in result.rows
 
     def test_500_home_run_club_template_bypasses_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -103,8 +103,8 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [500]
-        assert result.rows[0] == ("Barry", "Bonds", 762)
-        assert ("Babe", "Ruth", 714) in result.rows
+        assert result.rows[0] == ("Barry Bonds", 762)
+        assert ("Babe Ruth", 714) in result.rows
 
     def test_career_pitching_wins_template_bypasses_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -114,7 +114,7 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [500]
-        assert result.rows == [("Cy", "Young", 511)]
+        assert result.rows == [("Cy Young", 511)]
 
     def test_career_pitching_wins_leaders_without_threshold(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -123,9 +123,9 @@ class TestDeterministicTemplates:
         assert mock_call.call_count == 0
         assert result.params == [25]
         assert result.rows[:3] == [
-            ("Cy", "Young", 511),
-            ("Walter", "Johnson", 417),
-            ("Pete", "Alexander", 373),
+            ("Cy Young", 511),
+            ("Walter Johnson", 417),
+            ("Pete Alexander", 373),
         ]
 
     def test_career_pitching_wins_template_is_planned_before_execution(self):
@@ -179,9 +179,9 @@ class TestDeterministicTemplates:
         assert planned_result.params == [25]
         assert planned_result.source_label == "Deterministic template query"
         assert planned_result.rows[:3] == [
-            ("Cy", "Young", 511),
-            ("Walter", "Johnson", 417),
-            ("Pete", "Alexander", 373),
+            ("Cy Young", 511),
+            ("Walter Johnson", 417),
+            ("Pete Alexander", 373),
         ]
 
     def test_grounded_database_runtime_planning_surface_exposes_deterministic_queries(self):
@@ -214,9 +214,9 @@ class TestDeterministicTemplates:
         assert planned.params == [25]
         assert result.params == planned.params
         assert result.rows[:3] == [
-            ("Cy", "Young", 511),
-            ("Walter", "Johnson", 417),
-            ("Pete", "Alexander", 373),
+            ("Cy Young", 511),
+            ("Walter Johnson", 417),
+            ("Pete Alexander", 373),
         ]
 
     def test_qualified_season_era_template_bypasses_llm(self):
@@ -227,8 +227,8 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [1968, 300, 300]
-        assert ("Luis", "Tiant", 1968, "AL", 1.6, 775) in result.rows
-        assert ("Bob", "Gibson", 1968, "NL", 1.12, 914) in result.rows
+        assert ("Luis Tiant", 1968, "AL", 1.6, 775) in result.rows
+        assert ("Bob Gibson", 1968, "NL", 1.12, 914) in result.rows
 
     def test_qualified_career_era_template_bypasses_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -238,7 +238,7 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [3000]
-        assert result.rows[0] == ("Ed", "Walsh", 1.82, 8893)
+        assert result.rows[0] == ("Ed Walsh", 1.82, 8893)
 
     def test_career_era_accepts_explicit_innings_guard(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -248,7 +248,7 @@ class TestDeterministicTemplates:
 
         assert mock_call.call_count == 0
         assert result.params == [3000]
-        assert result.rows[0] == ("Ed", "Walsh", 1.82, 8893)
+        assert result.rows[0] == ("Ed Walsh", 1.82, 8893)
 
     def test_ambiguous_500_club_is_unsupported_without_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -292,7 +292,7 @@ class TestDeterministicTemplates:
         assert result.row_count >= 10
         assert "?" in result.sql
         assert "OR 1=1" not in result.sql
-        assert expected_team in {row[2] for row in result.rows}
+        assert expected_team in {row[1] for row in result.rows}
 
     def test_qualified_batting_average_template_bypasses_llm_with_ab_guard(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -301,7 +301,7 @@ class TestDeterministicTemplates:
         assert mock_call.call_count == 0
         assert result.params == [1894, 100, 100]
         assert "AB >= ?" in result.sql
-        assert result.columns == ["nameFirst", "nameLast", "yearID", "lgID", "AVG", "AB"]
+        assert result.columns == ["name", "yearID", "lgID", "AVG", "AB"]
         assert "batting average" in result.source_detail
         assert "ERA" not in result.source_detail
 
@@ -313,7 +313,7 @@ class TestDeterministicTemplates:
         assert result.unsupported_reason is None
         assert result.params == [100]
         assert "AB >= ?" in result.sql
-        assert result.rows[0] == ("Levi", "Meyerle", 1871, "NA", 0.492, 130)
+        assert result.rows[0] == ("Levi Meyerle", 1871, "NA", 0.492, 130)
 
     def test_qualified_era_seasons_template_does_not_require_year(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -323,7 +323,7 @@ class TestDeterministicTemplates:
         assert result.unsupported_reason is None
         assert result.params == [300]
         assert "IPouts >= ?" in result.sql
-        assert result.rows[0] == ("Dick", "Redding", 1917, "WES", 0.82, 461)
+        assert result.rows[0] == ("Dick Redding", 1917, "WES", 0.82, 461)
 
     def test_underqualified_era_is_unsupported_without_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
@@ -707,6 +707,10 @@ class TestGroundedDatabaseProvenance:
         assert result.intent == "grounded_database_question"
         assert "Braves" in result.answer
         assert result.sources[0].rows
+        assert result.sources[0].columns == ["name", "teamName", "yearID"]
+        assert "name" in result.sources[0].rows[0]
+        assert "nameFirst" not in result.sources[0].rows[0]
+        assert "nameLast" not in result.sources[0].rows[0]
         assert result.sources[0].sql and "?" in result.sources[0].sql
 
     def test_llm_flavored_grounded_database_answer_uses_verified_stats(self, monkeypatch):
@@ -780,11 +784,11 @@ class TestGroundedDatabaseResultFormatting:
         result = GroundedDatabaseResult(
             sql="select distinct p.nameFirst, p.nameLast from people p",
             rows=[
-                ("Wally", "Berger"),
-                ("Rabbit", "Warstler"),
-                ("Mickey", "Haslin"),
+                ("Wally Berger",),
+                ("Rabbit Warstler",),
+                ("Mickey Haslin",),
             ],
-            columns=["nameFirst", "nameLast"],
+            columns=["name"],
             row_count=37,
             truncated=False,
         )
@@ -794,34 +798,34 @@ class TestGroundedDatabaseResultFormatting:
         assert text.startswith("37 players matched:")
         assert "- Wally Berger" in text
         assert "- Rabbit Warstler" in text
-        assert "['nameFirst', 'nameLast']" not in text
-        assert "('Wally', 'Berger')" not in text
+        assert "['name']" not in text
+        assert "('Wally Berger',)" not in text
 
     def test_generic_result_formats_rows_as_labeled_values(self):
         from baseball_rag.db.grounded_database_runtime import format_result
         from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
 
         result = GroundedDatabaseResult(
-            sql="select nameFirst, nameLast, career_HR from leaders",
-            rows=[("Babe", "Ruth", 714)],
-            columns=["nameFirst", "nameLast", "career_HR"],
+            sql="select name, career_HR from leaders",
+            rows=[("Babe Ruth", 714)],
+            columns=["name", "career_HR"],
             row_count=1,
             truncated=False,
         )
 
         text = format_result(result, "500 home run club")
 
-        assert text == "1 result matched:\n- nameFirst: Babe; nameLast: Ruth; career_HR: 714"
-        assert "('Babe', 'Ruth', 714)" not in text
+        assert text == "1 result matched:\n- name: Babe Ruth; career_HR: 714"
+        assert "('Babe Ruth', 714)" not in text
 
     def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
         from baseball_rag.db.grounded_database_runtime import format_result
         from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
 
         result = GroundedDatabaseResult(
-            sql="select nameFirst, nameLast from people",
-            rows=[(f"First {index}", f"Last {index}") for index in range(150)],
-            columns=["nameFirst", "nameLast"],
+            sql="select name from people",
+            rows=[(f"First {index} Last {index}",) for index in range(150)],
+            columns=["name"],
             row_count=150,
             truncated=False,
         )

@@ -189,6 +189,7 @@ def _execute_safe(
         safe_params = params or []
         rows = conn.execute(safe_sql, safe_params).fetchall()
         columns = [d[0] for d in conn.description]
+        columns, rows = _normalize_player_name_columns(columns, rows)
         truncated = len(rows) == MAX_ROWS
         return GroundedDatabaseResult(
             sql=safe_sql,
@@ -205,6 +206,35 @@ def _execute_safe(
         raise RuntimeError(f"Query failed: {e}\nSQL: {sql}") from e
 
 
+def _normalize_player_name_columns(
+    columns: list[str],
+    rows: list[tuple],
+) -> tuple[list[str], list[tuple]]:
+    if "nameFirst" not in columns or "nameLast" not in columns:
+        return columns, rows
+
+    first_index = columns.index("nameFirst")
+    last_index = columns.index("nameLast")
+    normalized_columns = [
+        "name" if index == first_index else column
+        for index, column in enumerate(columns)
+        if index != last_index
+    ]
+    normalized_rows = []
+    for row in rows:
+        full_name = " ".join(
+            str(part).strip() for part in (row[first_index], row[last_index]) if part
+        )
+        normalized_rows.append(
+            tuple(
+                full_name if index == first_index else value
+                for index, value in enumerate(row)
+                if index != last_index
+            )
+        )
+    return normalized_columns, normalized_rows
+
+
 def format_result(result: GroundedDatabaseResult, question: str) -> str:
     """Convert result to readable string for terminal output."""
     if result.row_count == 0:
@@ -216,7 +246,7 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
 
 
 def _is_player_name_result(result: GroundedDatabaseResult) -> bool:
-    return result.columns == ["nameFirst", "nameLast"]
+    return result.columns == ["name"]
 
 
 def _result_count_line(result: GroundedDatabaseResult, noun: str) -> str:
@@ -229,8 +259,7 @@ def _result_count_line(result: GroundedDatabaseResult, noun: str) -> str:
 
 def _format_player_name_result(result: GroundedDatabaseResult) -> str:
     lines = [_result_count_line(result, "player")]
-    for first_name, last_name in result.rows[:100]:
-        full_name = " ".join(str(part) for part in (first_name, last_name) if part)
+    for (full_name,) in result.rows[:100]:
         lines.append(f"- {full_name}")
     return "\n".join(lines)
 
