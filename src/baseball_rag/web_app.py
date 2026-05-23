@@ -201,8 +201,7 @@ def respond(
 ) -> str:
     """Handle a single user message.
 
-    When *diagram* is provided the query is traced through the Architecture
-    Explorer.  Otherwise falls back to plain answer().
+    When *diagram* is provided the query records an Architecture Explorer trace.
     """
     execution = _execute_for_gradio(message)
     recorder = _diagram_execution_recorder(diagram, animate_diagram=True)

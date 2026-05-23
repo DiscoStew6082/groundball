@@ -349,6 +349,14 @@ def test_router_heuristic_path_is_not_named_fallback() -> None:
     assert "falls_back_to_heuristic" not in names_and_prose
 
 
+def test_gradio_response_path_is_not_described_as_plain_answer_fallback() -> None:
+    web_app = (ROOT / "src" / "baseball_rag" / "web_app.py").read_text(encoding="utf-8")
+    prose = "\n".join(_python_docstrings_and_comments(web_app))
+
+    assert "falls back to plain answer" not in prose
+    assert "fall back to plain answer" not in prose
+
+
 def test_legacy_database_compatibility_facade_is_removed() -> None:
     grounded_database_intent = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
