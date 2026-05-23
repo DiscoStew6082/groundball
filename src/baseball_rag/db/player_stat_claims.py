@@ -18,7 +18,7 @@ from baseball_rag.db.stat_registry import (
     normalize_stat,
     quote_identifier,
 )
-from baseball_rag.provenance import compact_data_manifest
+from baseball_rag.provenance import compact_consensus_data_manifest
 
 ClaimScope = Literal["career", "season"]
 ClaimStatus = Literal["verified", "contradicted", "unsupported_stat", "invalid_value", "no_data"]
@@ -176,19 +176,42 @@ class PlayerStatConsensusVerification:
 
     def to_row(self) -> dict[str, Any]:
         row = self.primary.to_row()
-        row["sql"] = self.primary.sql
+        visible_sql, visible_params = _visible_consensus_query(self.primary, self.secondary)
+        row["sql"] = visible_sql
+        row["params"] = visible_params
         row.update(
             {
                 "consensus_status": self.consensus_status,
                 "primary_status": self.primary.status,
                 "primary_actual_value": self.primary.actual_value,
+                "primary_sql": self.primary.sql,
+                "primary_params": self.primary.params,
                 "secondary_status": self.secondary.status,
                 "secondary_actual_value": self.secondary.actual_value,
                 "secondary_table": self.secondary.table,
                 "secondary_warning": self.secondary.warning,
+                "secondary_sql": self.secondary.sql,
+                "secondary_params": self.secondary.params,
+                "primary_source": "Lahman",
+                "secondary_source": "Retrosheet",
+                "source_label": "Lahman and Retrosheet consensus",
+                "source_detail": "Lahman primary evidence with Retrosheet consensus evidence",
             }
         )
         return row
+
+
+def _visible_consensus_query(
+    primary: PlayerStatVerification,
+    secondary: RetrosheetStatVerification,
+) -> tuple[str | None, list[object]]:
+    if secondary.status == "verified" and primary.status in {
+        "contradicted",
+        "no_data",
+        "unsupported_stat",
+    }:
+        return secondary.sql, secondary.params
+    return primary.sql, primary.params
 
 
 @dataclass(frozen=True)
@@ -361,11 +384,29 @@ def verification_tables(verifications: list[Any]) -> list[str]:
 
 def single_verification_sql(verifications: list[Any]) -> str | None:
     sql_values = {
-        sql for verification in verifications if (sql := _verification_row(verification).get("sql"))
+        sql
+        for verification in verifications
+        if (sql := _visible_verification_sql(_verification_row(verification)))
     }
     if len(sql_values) == 1:
         return str(next(iter(sql_values)))
     return None
+
+
+def _visible_verification_sql(row: dict[str, Any]) -> str | None:
+    consensus_status = str(row.get("consensus_status") or "").casefold()
+    primary_status = str(row.get("primary_status") or "").casefold()
+    secondary_status = str(row.get("secondary_status") or "").casefold()
+    if (
+        row.get("secondary_sql")
+        and secondary_status == "verified"
+        and (
+            consensus_status in {"verified_secondary_only", "secondary_only", "conflict"}
+            or primary_status in {"", "no_data", "unsupported", "unsupported_stat"}
+        )
+    ):
+        return str(row["secondary_sql"])
+    return cast(str | None, row.get("sql") or row.get("primary_sql") or row.get("secondary_sql"))
 
 
 def consensus_source_detail(tables: list[str]) -> str:
@@ -377,22 +418,7 @@ def consensus_source_detail(tables: list[str]) -> str:
 
 
 def consensus_data_manifest() -> dict[str, Any]:
-    manifest = compact_data_manifest()
-    manifest["consensus_sources"] = [
-        {
-            "name": "Lahman",
-            "role": "primary",
-            "dataset": manifest.get("dataset", {}).get("name"),
-            "upstream": manifest.get("dataset", {}).get("upstream"),
-        },
-        {
-            "name": "Retrosheet",
-            "role": "secondary",
-            "dataset": "Retrosheet event/stat consensus",
-            "upstream": "Retrosheet",
-        },
-    ]
-    return manifest
+    return compact_consensus_data_manifest()
 
 
 def _verification_scorecard(summary: dict[str, Any]) -> str:

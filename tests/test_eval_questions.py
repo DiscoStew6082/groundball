@@ -9,6 +9,7 @@ from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from evals.questions import (
     EvalReport,
     build_eval_artifact,
+    build_eval_report_payload,
     compare_to_baseline,
     format_eval_report,
     format_guardrail_report,
@@ -499,6 +500,41 @@ def test_build_eval_artifact_includes_summary_versions_and_cases():
     assert artifact["versions"]["prompt"]["version"]
     assert artifact["cases"][0]["case_id"] == "stat_rbi_1962"
     assert artifact["cases"][0]["status"] == "passed"
+
+
+def test_shared_eval_report_payload_drives_cli_artifact_and_api_shape():
+    cases = load_cases()
+    result = run_cases(
+        cases[:1],
+        answer_fn=lambda _question: _answer(answer="Tommy Davis finished with 153 RBI"),
+    )
+    report = EvalReport(
+        command="api:/evals/report",
+        cases=cases,
+        include_live=False,
+        result=result,
+        mode="answer",
+    )
+
+    payload = build_eval_report_payload(
+        report,
+        generated_at="2026-04-28T00:00:00+00:00",
+    )
+
+    assert payload["ok"] is True
+    assert (
+        payload["summary"]
+        == build_eval_artifact(
+            report,
+            generated_at="2026-04-28T00:00:00+00:00",
+        )["summary"]
+    )
+    assert payload["results"]["passed"] == [
+        {"case_id": "stat_rbi_1962", "status": "passed", "failures": [], "reason": None}
+    ]
+    assert payload["failed"] == []
+    assert payload["skipped"] == payload["results"]["skipped"]
+    assert payload["markdown"] == format_eval_report(report)
 
 
 def test_compare_to_baseline_pass_warn_and_block():

@@ -114,7 +114,7 @@ def guardrails_coverage():
 def _run_eval_payload(*, include_live: bool) -> dict[str, Any]:
     from evals.questions import (
         EvalReport,
-        build_eval_artifact,
+        build_eval_report_payload,
         format_eval_report,
         load_cases,
         run_cases,
@@ -129,23 +129,9 @@ def _run_eval_payload(*, include_live: bool) -> dict[str, Any]:
         result=result,
         mode="answer",
     )
-    artifact = build_eval_artifact(report)
-    return {
-        "ok": artifact["summary"]["recommendation"] != "BLOCK",
-        "mode": artifact["mode"],
-        "include_live": include_live,
-        "minimum_pass_rate": artifact["minimum_pass_rate"],
-        "summary": artifact["summary"],
-        "results": {
-            "passed": [case for case in artifact["cases"] if case["status"] == "passed"],
-            "failed": [case for case in artifact["cases"] if case["status"] == "failed"],
-            "skipped": [case for case in artifact["cases"] if case["status"] == "skipped"],
-        },
-        "failed": [case for case in artifact["cases"] if case["status"] == "failed"],
-        "skipped": [case for case in artifact["cases"] if case["status"] == "skipped"],
-        "markdown": format_eval_report(report),
-        "warnings": [],
-    }
+    payload = build_eval_report_payload(report)
+    payload["markdown"] = format_eval_report(report)
+    return payload
 
 
 @app.get("/sources")

@@ -57,3 +57,44 @@ def test_presenter_builds_gradio_payload_and_compact_conversation_turn():
             ],
         },
     }
+
+
+def test_presenter_uses_biography_verification_rows_when_first_source_is_identity():
+    """Biography answers show consensus evidence even when identity is the first source."""
+    answer = StructuredAnswer(
+        answer="Babe Ruth biography.",
+        intent="player_biography",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="DuckDB biography resolution",
+                columns=["player_id", "name"],
+                rows=[{"player_id": "ruthba01", "name": "Babe Ruth"}],
+            ),
+            SourceRecord(
+                type="duckdb",
+                label="DuckDB Lahman + Retrosheet biography stat consensus",
+                sql="select consensus evidence",
+                columns=["stat", "claimed_value", "consensus_status"],
+                rows=[
+                    {
+                        "stat": "HR",
+                        "claimed_value": 714,
+                        "consensus_status": "verified_by_all",
+                    }
+                ],
+            ),
+        ],
+    )
+
+    presentation = AnswerPresenter().present(answer)
+
+    assert presentation.rows == {
+        "headers": ["stat", "claimed_value", "consensus_status"],
+        "data": [["HR", 714, "verified_by_all"]],
+    }
+    assert presentation.sql == "select consensus evidence"
+    assert [source["label"] for source in presentation.sources] == [
+        "DuckDB biography resolution",
+        "DuckDB Lahman + Retrosheet biography stat consensus",
+    ]

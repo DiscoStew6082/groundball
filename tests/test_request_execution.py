@@ -5,8 +5,9 @@ from unittest.mock import patch
 import pytest
 
 from baseball_rag.arch.tracing import finish_trace, get_current_trace, traced
-from baseball_rag.conversation import conversation_turn
+from baseball_rag.conversation import ConversationResolution, conversation_turn
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
+from baseball_rag.request_dispatch import AnswerHandlers, RequestAnswerDispatcher
 from baseball_rag.request_execution import execute_request
 from baseball_rag.routing import (
     GeneralExplanationCase,
@@ -14,6 +15,50 @@ from baseball_rag.routing import (
     PlayerBiographyCase,
     StatQueryCase,
 )
+from baseball_rag.service import answer
+
+
+def test_answer_and_execute_request_expose_same_answer_mode_metadata():
+    direct = answer("who had the most RBIs in 1962", answer_mode="stats_only")
+    executed = execute_request(
+        "who had the most RBIs in 1962",
+        answer_mode="stats_only",
+        adapter_component_id="api",
+    ).answer
+
+    assert direct.metadata["answer_mode"] == "stats_only"
+    assert executed.metadata["answer_mode"] == direct.metadata["answer_mode"]
+
+
+def test_dispatcher_applies_unsupported_policy_to_resolved_followup_before_route():
+    calls = []
+    dispatcher = RequestAnswerDispatcher(
+        resolve_followup=lambda _question, _conversation: ConversationResolution(
+            resolved_question="who won the NBA finals in 2020",
+        ),
+        route_question=lambda question: calls.append(("route", question)) or StatQueryCase("HR"),
+        handlers=AnswerHandlers(
+            stat_query=lambda _decision: StructuredAnswer(answer="stat", intent="stat_query"),
+            player_biography=lambda _question, _decision: StructuredAnswer(
+                answer="bio",
+                intent="player_biography",
+            ),
+            grounded_database_question=lambda _question, _decision: StructuredAnswer(
+                answer="grounded",
+                intent="grounded_database_question",
+            ),
+            general_explanation=lambda _question, _decision: StructuredAnswer(
+                answer="general",
+                intent="general_explanation",
+            ),
+        ),
+    )
+
+    result = dispatcher.answer("what about that game", conversation=[{}])
+
+    assert result.unsupported is True
+    assert result.unsupported_reason == "unsupported"
+    assert calls == []
 
 
 def test_execute_request_rejects_policy_unsupported_question_before_routing(

@@ -336,6 +336,32 @@ def build_eval_artifact(
     }
 
 
+def build_eval_report_payload(
+    report: EvalReport,
+    *,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Build the API/report payload from the same artifact used by CLI JSON output."""
+    artifact = build_eval_artifact(report, generated_at=generated_at)
+    cases = artifact["cases"]
+    return {
+        "ok": artifact["summary"]["recommendation"] != "BLOCK",
+        "mode": artifact["mode"],
+        "include_live": artifact["include_live"],
+        "minimum_pass_rate": artifact["minimum_pass_rate"],
+        "summary": artifact["summary"],
+        "results": {
+            "passed": [case for case in cases if case["status"] == "passed"],
+            "failed": [case for case in cases if case["status"] == "failed"],
+            "skipped": [case for case in cases if case["status"] == "skipped"],
+        },
+        "failed": [case for case in cases if case["status"] == "failed"],
+        "skipped": [case for case in cases if case["status"] == "skipped"],
+        "markdown": format_eval_report(report),
+        "warnings": [],
+    }
+
+
 def write_json_report(path: Path, artifact: dict[str, Any]) -> None:
     """Write a JSON eval artifact."""
     path.parent.mkdir(parents=True, exist_ok=True)

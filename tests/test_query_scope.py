@@ -1,6 +1,6 @@
 from baseball_rag.provenance import StructuredAnswer
 from baseball_rag.query_scope import QueryScope, resolve_query_scope
-from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+from baseball_rag.routing import TimePeriod, TimePeriodType
 
 
 def test_bare_current_century_decade_is_ambiguous_with_configured_current_year():

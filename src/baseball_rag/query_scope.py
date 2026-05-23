@@ -10,7 +10,7 @@ from typing import Any
 
 from baseball_rag.outcomes import ambiguous_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
-from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
+from baseball_rag.routing import TimePeriod, TimePeriodType
 
 
 @dataclass(frozen=True)

@@ -28,11 +28,9 @@ import csv
 import json
 import re
 import unicodedata
-from dataclasses import dataclass, field
-from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from unidecode import unidecode
 
@@ -43,6 +41,18 @@ from baseball_rag.db.stat_registry import (
     supported_stat_prompt_list,
 )
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
+from baseball_rag.routing.contracts import (
+    GeneralExplanationCase,
+    GroundedDatabaseQuestionCase,
+    Intent,
+    PlayerBiographyCase,
+    RoutedCase,
+    StatQueryCase,
+    TimePeriod,
+    TimePeriodType,
+    routed_case,
+)
+from baseball_rag.routing.decisions import RouteDecisionChain
 from baseball_rag.routing.grounded_database_ownership import (
     deterministic_grounded_database_owns,
 )
@@ -51,153 +61,18 @@ from baseball_rag.year_parsing import extract_spelled_year
 _NAME_TOKEN_RE = r"[^\W\d_](?:[^\W\d_]|[.'-])*"
 _NAME_RE = rf"{_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})*"
 
-
-class TimePeriodType(str, Enum):
-    """Discriminated union tag for time period extraction.
-
-    Each variant represents a structurally distinct way users express time:
-      single    - A specific year: "1972", "last year" (resolved to an integer)
-      decade    - A named decade: "seventies", "the 1980s"
-      range     - An explicit span: "1960-1980", "from 1990 to 2000"
-      relative  - Relative offset: "past 5 years", "next 3 seasons"
-
-    Using an Enum (rather than a bare str) enforces exhaustive matching in
-    downstream dispatch logic — adding a new variant forces all `match`
-    statements to handle it or raise a compile/runtime error.
-    """
-
-    SINGLE = "single"
-    DECADE = "decade"
-    RANGE = "range"
-    RELATIVE = "relative"
-
-
-@dataclass
-class TimePeriod:
-    """Extracted time filter from a natural language query.
-
-    Attributes
-    ----------
-    type : TimePeriodType
-        Discriminant that determines which field holds the actual value.
-    value : int | list[int] | dict
-        The payload — interpretation depends on ``type``:
-
-        - single    → int year (e.g. 1972)
-        - decade    → int decade number, 0-99 (e.g. 70 for 1970s)
-        - range     → [start_year, end_year] list of two ints
-        - relative  → {"direction": "past"|"future", "unit": str, "count": int}
-                      e.g. {"direction": "past", "unit": "year", "count": 5} for
-                      "past 5 years".  Unit may be "year", "season", "decade".
-
-    resolved_start : int | None
-        After resolution: the concrete start year. Populated by cli.py when
-        handling the route, not extracted from the LLM directly (the LLM only
-        provides ``value``). This avoids forcing the model to do calendar math.
-
-    resolved_end : int | None
-        After resolution: the concrete end year (inclusive).
-
-    Examples
-    --------
-    >>> tp = TimePeriod(type=TimePeriodType.DECADE, value=70)
-    >>> tp.resolved_start, tp.resolved_end
-    (None, None)          # not yet resolved — cli.py fills these
-
-    A fully-resolved range:
-    >>> tp = TimePeriod(
-    ...     type=TimePeriodType.RANGE,
-    ...     value=[1960, 1980],
-    ...     resolved_start=1960,
-    ...     resolved_end=1980
-    ... )
-    """
-
-    type: TimePeriodType = TimePeriodType.SINGLE
-    # int | list[int] | dict — typed more precisely via discriminated union below
-    value: int | list[int] | dict = field(default_factory=lambda: 0)
-    # Concrete years filled in by cli.py after extraction
-    resolved_start: int | None = None
-    resolved_end: int | None = None
-
-
-@dataclass(frozen=True)
-class StatQueryCase:
-    """Validated route facts for deterministic stat answers."""
-
-    stat: str
-    time_period: TimePeriod | None = None
-    position: str | None = None
-    player_name: str | None = None
-    raw_question: str = ""
-    intent: Literal["stat_query"] = "stat_query"
-
-
-@dataclass(frozen=True)
-class PlayerBiographyCase:
-    """Validated route facts for player biography answers."""
-
-    player_name: str | None = None
-    raw_question: str = ""
-    intent: Literal["player_biography"] = "player_biography"
-
-
-@dataclass(frozen=True)
-class GroundedDatabaseQuestionCase:
-    """Validated route facts for grounded database answers."""
-
-    raw_question: str = ""
-    time_period: TimePeriod | None = None
-    intent: Literal["grounded_database_question"] = "grounded_database_question"
-
-
-@dataclass(frozen=True)
-class GeneralExplanationCase:
-    """Validated route facts for grounded general explanations."""
-
-    raw_question: str = ""
-    stat: str | None = None
-    intent: Literal["general_explanation"] = "general_explanation"
-
-
-RoutedCase = (
-    StatQueryCase | PlayerBiographyCase | GroundedDatabaseQuestionCase | GeneralExplanationCase
-)
-Intent = Literal[
-    "stat_query",
-    "player_biography",
-    "grounded_database_question",
-    "general_explanation",
+__all__ = [
+    "GeneralExplanationCase",
+    "GroundedDatabaseQuestionCase",
+    "Intent",
+    "PlayerBiographyCase",
+    "RoutedCase",
+    "StatQueryCase",
+    "TimePeriod",
+    "TimePeriodType",
+    "route",
+    "routed_case",
 ]
-
-
-def routed_case(
-    *,
-    intent: Intent,
-    raw_question: str,
-    stat: str | None = None,
-    time_period: TimePeriod | None = None,
-    position: str | None = None,
-    player_name: str | None = None,
-) -> RoutedCase:
-    """Build the narrow route case for an intent."""
-    if intent == "stat_query":
-        if stat is None:
-            raise ValueError("stat_query routes require a stat")
-        return StatQueryCase(
-            stat=stat,
-            time_period=time_period,
-            position=position,
-            player_name=player_name,
-            raw_question=raw_question,
-        )
-    if intent == "player_biography":
-        return PlayerBiographyCase(player_name=player_name, raw_question=raw_question)
-    if intent == "grounded_database_question":
-        return GroundedDatabaseQuestionCase(raw_question=raw_question, time_period=time_period)
-    if intent == "general_explanation":
-        return GeneralExplanationCase(raw_question=raw_question, stat=stat)
-    raise ValueError(f"Unsupported routed intent: {intent}")
 
 
 _ROUTING_PROMPT = (
@@ -302,12 +177,29 @@ def route(question: str) -> RoutedCase:
 
     Uses a simple heuristic route if LM Studio is unavailable.
     """
+    deterministic = _heuristic_route(question)
+    return RouteDecisionChain(
+        decisions=(
+            lambda: _player_bio_followup_route(question),
+            lambda: _claim_verification_route(question),
+            lambda: _player_bio_name_route(question),
+            lambda: _deterministic_route_decision(question, deterministic),
+            lambda: _grounded_database_route(question),
+        ),
+        fallback=lambda: _llm_route_or_heuristic(question, deterministic),
+    ).decide()
+
+
+def _player_bio_followup_route(question: str) -> RoutedCase | None:
     if _looks_like_player_bio_followup(question):
         return routed_case(
             intent="player_biography",
             raw_question=question,
         )
+    return None
 
+
+def _claim_verification_route(question: str) -> RoutedCase | None:
     claim_verification_name = _extract_claim_verification_player_name(question)
     if claim_verification_name is not None:
         return routed_case(
@@ -315,7 +207,10 @@ def route(question: str) -> RoutedCase:
             player_name=claim_verification_name,
             raw_question=question,
         )
+    return None
 
+
+def _player_bio_name_route(question: str) -> RoutedCase | None:
     player_bio_name = _extract_player_bio_name_heuristic(question)
     if player_bio_name is not None:
         return routed_case(
@@ -323,8 +218,13 @@ def route(question: str) -> RoutedCase:
             player_name=player_bio_name,
             raw_question=question,
         )
+    return None
 
-    deterministic = _heuristic_route(question)
+
+def _deterministic_route_decision(
+    question: str,
+    deterministic: RoutedCase,
+) -> RoutedCase | None:
     if (
         deterministic.intent == "stat_query"
         and deterministic.stat is not None
@@ -353,13 +253,19 @@ def route(question: str) -> RoutedCase:
                 raw_question=question,
             )
         return deterministic
+    return None
 
+
+def _grounded_database_route(question: str) -> RoutedCase | None:
     if deterministic_grounded_database_owns(question):
         return routed_case(
             intent="grounded_database_question",
             raw_question=question,
         )
+    return None
 
+
+def _llm_route_or_heuristic(question: str, deterministic: RoutedCase) -> RoutedCase:
     try:
         from baseball_rag.generation.llm import LLMError, LLMRoutingOutputError, make_request
 
@@ -404,7 +310,7 @@ def route(question: str) -> RoutedCase:
         pass  # Fall through to heuristic
 
     # LM Studio unavailable or LLM returned garbled — use the local heuristic route.
-    return _heuristic_route(question)
+    return deterministic
 
 
 def _build_time_period(data: dict | None) -> TimePeriod | None:

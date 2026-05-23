@@ -35,12 +35,13 @@ class AnswerPresenter:
     def present(self, result: StructuredAnswer) -> PresentedAnswer:
         payload = result.to_dict()
         sources = _json_safe_for_gradio(payload["sources"])
-        primary_source = sources[0] if sources else {}
+        visible_rows_source = _source_for_visible_rows(sources)
+        visible_sql_source = _source_for_visible_sql(sources, preferred=visible_rows_source)
         return PresentedAnswer(
             answer_text=payload["answer"],
-            rows=_rows_for_dataframe(primary_source),
+            rows=_rows_for_dataframe(visible_rows_source),
             sources=sources,
-            sql=primary_source.get("sql") or "",
+            sql=visible_sql_source.get("sql") or "",
             chat_message=render_text(result),
             payload=payload,
             answer=result,
@@ -70,3 +71,47 @@ def _rows_for_dataframe(source: dict[str, Any]) -> RowsPayload:
         "headers": columns,
         "data": [[row.get(column) for column in columns] for row in rows],
     }
+
+
+def _source_for_visible_rows(sources: list[dict[str, Any]]) -> dict[str, Any]:
+    verification_source = _first_source_matching(sources, _has_verification_rows)
+    if verification_source is not None:
+        return verification_source
+    rows_source = _first_source_matching(sources, lambda source: bool(source.get("rows")))
+    return rows_source or (sources[0] if sources else {})
+
+
+def _source_for_visible_sql(
+    sources: list[dict[str, Any]],
+    *,
+    preferred: dict[str, Any],
+) -> dict[str, Any]:
+    if preferred.get("sql"):
+        return preferred
+    return _first_source_matching(sources, lambda source: bool(source.get("sql"))) or preferred
+
+
+def _first_source_matching(
+    sources: list[dict[str, Any]],
+    predicate: Any,
+) -> dict[str, Any] | None:
+    for source in sources:
+        if predicate(source):
+            return source
+    return None
+
+
+def _has_verification_rows(source: dict[str, Any]) -> bool:
+    rows = source.get("rows") or []
+    return any(
+        isinstance(row, dict)
+        and any(
+            key in row
+            for key in (
+                "consensus_status",
+                "primary_status",
+                "secondary_status",
+            )
+        )
+        for row in rows
+    )

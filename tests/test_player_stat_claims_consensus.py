@@ -169,6 +169,65 @@ def test_consensus_verifies_primary_only_when_retrosheet_table_is_missing():
     assert "retrosheet_biofile is not available" in row["secondary_warning"]
 
 
+@pytest.mark.parametrize(
+    ("lahman_hr", "retro_hr", "claim_value", "expected_status"),
+    [
+        (60, 60, 60, "verified_by_all"),
+        (60, None, 60, "verified_primary_only"),
+        (None, 60, 60, "verified_secondary_only"),
+        (61, 61, 60, "contradicted_by_all"),
+        (60, 61, 60, "conflict"),
+    ],
+)
+def test_consensus_public_rows_preserve_status_shape_for_all_source_outcomes(
+    lahman_hr: int | None,
+    retro_hr: int | None,
+    claim_value: int,
+    expected_status: str,
+):
+    conn = _conn()
+    _add_player(conn)
+    _add_batting(conn, lahman_hr=lahman_hr, retro_hr=retro_hr)
+
+    row = _row(conn, PlayerStatClaim(stat="HR", value=claim_value, year=1927))
+
+    assert row["consensus_status"] == expected_status
+    assert {
+        "stat",
+        "claimed_value",
+        "actual_value",
+        "status",
+        "sql",
+        "consensus_status",
+        "primary_status",
+        "primary_actual_value",
+        "secondary_status",
+        "secondary_actual_value",
+        "secondary_table",
+        "secondary_warning",
+        "source_label",
+    }.issubset(row)
+
+
+def test_consensus_preserves_primary_result_when_retrosheet_stat_table_has_no_player_column():
+    conn = _conn(retrosheet=False)
+    conn.execute("INSERT INTO people VALUES ('player01', 'retro001')")
+    conn.execute("CREATE TABLE retrosheet_biofile (retroID TEXT)")
+    conn.execute("INSERT INTO retrosheet_biofile VALUES ('retro001')")
+    conn.execute(
+        "CREATE TABLE retrosheet_batting (unknown_player TEXT, yearID INTEGER, HR INTEGER)"
+    )
+    _add_batting(conn, retro_hr=None)
+
+    row = _row(conn, PlayerStatClaim(stat="HR", value=60, year=1927))
+
+    assert row["consensus_status"] == "verified_primary_only"
+    assert row["primary_status"] == "verified"
+    assert row["secondary_status"] == "unsupported"
+    assert row["secondary_table"] == "retrosheet_batting"
+    assert "has no player id column" in row["secondary_warning"]
+
+
 def test_consensus_combines_internal_source_evidence_adapters(monkeypatch):
     from baseball_rag.db import player_stat_claims
     from baseball_rag.db.player_stat_claims import (
@@ -543,6 +602,16 @@ def test_consensus_verifies_real_retrosheet_daily_log_headers():
     assert rows["SO"]["secondary_status"] == "verified"
     assert rows["PO"]["secondary_status"] == "verified"
 
+    result = verify_player_stat_claims_consensus(
+        "ruthba01",
+        [PlayerStatClaim(stat="HR", value=60, year=1927)],
+        conn=conn,
+    )[0]
+    assert "LOWER(CAST(rb.\"stattype\" AS VARCHAR)) = 'value'" in result.secondary.sql
+    assert (
+        "LOWER(CAST(rb.\"gametype\" AS VARCHAR)) IN ('regular', 'playoff')" in result.secondary.sql
+    )
+
 
 @pytest.mark.parametrize("stat", supported_stats())
 def test_consensus_has_retrosheet_mapping_for_every_default_registry_stat(stat: str):
@@ -654,3 +723,61 @@ def test_consensus_retrosheet_sql_filters_by_retroid_and_year():
     assert 'rb."retroID" = ?' in result.secondary.sql
     assert 'rb."yearID" = ?' in result.secondary.sql
     assert result.secondary.params == ["retro001", 1927]
+
+
+def test_consensus_provenance_marks_placeholder_retrosheet_manifest_optional():
+    conn = _conn()
+    _add_player(conn)
+    _add_batting(conn)
+    verification = verify_player_stat_claims_consensus(
+        "player01",
+        [PlayerStatClaim(stat="HR", value=60, year=1927)],
+        conn=conn,
+    )[0]
+
+    presentation = shape_biography_stat_claim_consensus([verification])
+
+    assert presentation.data_manifest["dataset"]["name"] == "NeuML/baseballdata"
+    retrosheet = presentation.data_manifest["secondary_manifests"]["retrosheet"]
+    assert retrosheet["available"] is False
+    assert retrosheet["dataset"]["name"] == "Retrosheet CSV daily logs and biographical data"
+
+
+def test_consensus_presentation_surfaces_retrosheet_sql_for_secondary_only_evidence():
+    conn = _conn()
+    _add_player(conn)
+    _add_batting(conn, lahman_hr=None, retro_hr=60)
+    verification = verify_player_stat_claims_consensus(
+        "player01",
+        [PlayerStatClaim(stat="HR", value=60, year=1927)],
+        conn=conn,
+    )[0]
+
+    presentation = shape_biography_stat_claim_consensus([verification])
+
+    assert presentation.rows[0]["consensus_status"] == "verified_secondary_only"
+    assert "FROM batting b" in presentation.rows[0]["primary_sql"]
+    assert "FROM retrosheet_batting rb" in presentation.rows[0]["secondary_sql"]
+    assert presentation.rows[0]["sql"] == presentation.rows[0]["secondary_sql"]
+    assert presentation.rows[0]["params"] == presentation.rows[0]["secondary_params"]
+    assert presentation.sql == presentation.rows[0]["secondary_sql"]
+
+
+def test_consensus_presentation_surfaces_retrosheet_sql_for_verified_secondary_conflict():
+    conn = _conn()
+    _add_player(conn)
+    _add_batting(conn, lahman_hr=61, retro_hr=60)
+    verification = verify_player_stat_claims_consensus(
+        "player01",
+        [PlayerStatClaim(stat="HR", value=60, year=1927)],
+        conn=conn,
+    )[0]
+
+    presentation = shape_biography_stat_claim_consensus([verification])
+
+    assert presentation.rows[0]["consensus_status"] == "conflict"
+    assert presentation.rows[0]["primary_status"] == "contradicted"
+    assert presentation.rows[0]["secondary_status"] == "verified"
+    assert presentation.rows[0]["sql"] == presentation.rows[0]["secondary_sql"]
+    assert presentation.rows[0]["params"] == presentation.rows[0]["secondary_params"]
+    assert presentation.sql == presentation.rows[0]["secondary_sql"]

@@ -76,15 +76,81 @@ def manifest_path() -> Path:
     return Path(__file__).resolve().parents[2] / "data" / "manifest.json"
 
 
+def secondary_manifest_path(source: str) -> Path:
+    """Return the project data manifest path for an optional secondary source."""
+    return (
+        Path(__file__).resolve().parents[2]
+        / "data"
+        / "secondary_sources"
+        / source
+        / "manifest.json"
+    )
+
+
 def load_data_manifest() -> dict[str, Any]:
     """Load the local dataset provenance manifest."""
     with manifest_path().open(encoding="utf-8") as f:
         return json.load(f)
 
 
+def load_secondary_data_manifest(source: str) -> dict[str, Any]:
+    """Load a local secondary-source provenance manifest."""
+    with secondary_manifest_path(source).open(encoding="utf-8") as f:
+        return json.load(f)
+
+
 def compact_data_manifest() -> dict[str, Any]:
     """Return the manifest fields most useful inside an answer source."""
     manifest = load_data_manifest()
+    return _compact_manifest(manifest)
+
+
+def compact_secondary_data_manifest(source: str) -> dict[str, Any]:
+    """Return compact provenance for an optional secondary source."""
+    try:
+        manifest = load_secondary_data_manifest(source)
+    except FileNotFoundError:
+        return {
+            "available": False,
+            "unavailable_reason": f"{source} manifest is not available",
+            "dataset": {},
+            "download": {},
+            "coverage": {},
+            "files": [],
+        }
+
+    compact = _compact_manifest(manifest)
+    available = bool(compact["files"]) and bool(compact["download"].get("downloaded_at"))
+    compact["available"] = available
+    if not available:
+        compact["unavailable_reason"] = f"{source} manifest has no available local files"
+    return compact
+
+
+def compact_consensus_data_manifest() -> dict[str, Any]:
+    """Return answer provenance for Lahman primary plus optional Retrosheet consensus."""
+    manifest = compact_data_manifest()
+    manifest["consensus_sources"] = [
+        {
+            "name": "Lahman",
+            "role": "primary",
+            "dataset": manifest.get("dataset", {}).get("name"),
+            "upstream": manifest.get("dataset", {}).get("upstream"),
+        },
+        {
+            "name": "Retrosheet",
+            "role": "secondary",
+            "dataset": "Retrosheet event/stat consensus",
+            "upstream": "Retrosheet",
+        },
+    ]
+    manifest["secondary_manifests"] = {
+        "retrosheet": compact_secondary_data_manifest("retrosheet"),
+    }
+    return manifest
+
+
+def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "dataset": manifest.get("dataset", {}),
         "download": manifest.get("download", {}),

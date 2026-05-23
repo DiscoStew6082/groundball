@@ -10,6 +10,43 @@ from baseball_rag.routing import (
 from baseball_rag.routing.query_router import TimePeriodType
 
 
+def test_route_facts_are_available_from_stable_contract_module():
+    """Downstream callers can import route facts without the router implementation."""
+    from baseball_rag.routing import (
+        GeneralExplanationCase as ContractGeneralExplanationCase,
+    )
+    from baseball_rag.routing import (
+        RoutedCase,
+        TimePeriod,
+        routed_case,
+    )
+    from baseball_rag.routing import (
+        TimePeriodType as ContractTimePeriodType,
+    )
+
+    period = TimePeriod(type=ContractTimePeriodType.SINGLE, value=1962)
+    routed = routed_case(
+        intent="general_explanation",
+        raw_question="what is OPS",
+        stat="OPS",
+        time_period=period,
+    )
+
+    assert isinstance(routed, ContractGeneralExplanationCase)
+    assert routed.raw_question == "what is OPS"
+    assert routed.stat == "OPS"
+    assert isinstance(routed, RoutedCase)
+
+
+def test_claim_verification_route_precedes_stat_and_grounded_routes():
+    """Supplied DuckDB claim verification remains a biography route even with stat words."""
+    result = route("Can DuckDB verify this claim? Babe Ruth hit 60 HR in 1927 and led everyone.")
+
+    assert isinstance(result, PlayerBiographyCase)
+    assert result.intent == "player_biography"
+    assert result.player_name == "Babe Ruth"
+
+
 def _assert_single_year(result, year):
     assert result.time_period is not None
     assert result.time_period.type == TimePeriodType.SINGLE

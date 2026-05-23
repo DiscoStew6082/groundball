@@ -1,5 +1,8 @@
 """Tests for structured answer provenance payloads."""
 
+import json
+from pathlib import Path
+
 from baseball_rag.audit import unsupported_reason
 from baseball_rag.outcomes import (
     ambiguous_outcome,
@@ -7,8 +10,126 @@ from baseball_rag.outcomes import (
     no_data_outcome,
     timeout_outcome,
 )
-from baseball_rag.provenance import StructuredAnswer
+from baseball_rag.provenance import (
+    StructuredAnswer,
+    compact_consensus_data_manifest,
+    compact_data_manifest,
+)
 from baseball_rag.review_queue import build_review_item
+
+
+def _write_manifest(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_compact_data_manifest_preserves_primary_fields(tmp_path, monkeypatch):
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(
+        manifest,
+        {
+            "dataset": {"name": "NeuML/baseballdata", "upstream": "Lahman"},
+            "download": {"downloaded_at": "2026-04-20"},
+            "coverage": {"structured_stat_years": {"min": 1871, "max": 2025}},
+            "files": [
+                {
+                    "path": "data/Batting.csv",
+                    "table": "batting",
+                    "rows": 123,
+                    "year_coverage": {"min": 1871, "max": 2025},
+                    "sha256": "abc",
+                    "source_url": "ignored",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr("baseball_rag.provenance.manifest_path", lambda: manifest)
+
+    compact = compact_data_manifest()
+
+    assert compact == {
+        "dataset": {"name": "NeuML/baseballdata", "upstream": "Lahman"},
+        "download": {"downloaded_at": "2026-04-20"},
+        "coverage": {"structured_stat_years": {"min": 1871, "max": 2025}},
+        "files": [
+            {
+                "path": "data/Batting.csv",
+                "table": "batting",
+                "rows": 123,
+                "year_coverage": {"min": 1871, "max": 2025},
+                "sha256": "abc",
+            }
+        ],
+    }
+
+
+def test_consensus_manifest_includes_available_retrosheet_manifest(tmp_path, monkeypatch):
+    primary = tmp_path / "manifest.json"
+    secondary = tmp_path / "secondary_sources" / "retrosheet" / "manifest.json"
+    _write_manifest(
+        primary,
+        {
+            "dataset": {"name": "NeuML/baseballdata", "upstream": "Lahman Baseball Database"},
+            "download": {},
+            "coverage": {},
+            "files": [],
+        },
+    )
+    _write_manifest(
+        secondary,
+        {
+            "dataset": {
+                "name": "Retrosheet CSV daily logs",
+                "source_url": "https://www.retrosheet.org/downloads/csvdownloads.html",
+            },
+            "download": {"downloaded_at": "2026-05-22"},
+            "coverage": {"year_coverage": {"min": 1901, "max": 2025}},
+            "files": [
+                {
+                    "path": "data/secondary_sources/retrosheet/batting.csv",
+                    "table": "retrosheet_batting",
+                    "rows": 10,
+                    "year_coverage": {"min": 1901, "max": 2025},
+                    "sha256": "def",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr("baseball_rag.provenance.manifest_path", lambda: primary)
+    monkeypatch.setattr(
+        "baseball_rag.provenance.secondary_manifest_path",
+        lambda source: secondary,
+    )
+
+    compact = compact_consensus_data_manifest()
+
+    assert compact["dataset"]["name"] == "NeuML/baseballdata"
+    assert compact["consensus_sources"] == [
+        {
+            "name": "Lahman",
+            "role": "primary",
+            "dataset": "NeuML/baseballdata",
+            "upstream": "Lahman Baseball Database",
+        },
+        {
+            "name": "Retrosheet",
+            "role": "secondary",
+            "dataset": "Retrosheet event/stat consensus",
+            "upstream": "Retrosheet",
+        },
+    ]
+    retrosheet = compact["secondary_manifests"]["retrosheet"]
+    assert retrosheet["available"] is True
+    assert retrosheet["dataset"]["name"] == "Retrosheet CSV daily logs"
+    assert retrosheet["files"] == [
+        {
+            "path": "data/secondary_sources/retrosheet/batting.csv",
+            "table": "retrosheet_batting",
+            "rows": 10,
+            "year_coverage": {"min": 1901, "max": 2025},
+            "sha256": "def",
+        }
+    ]
 
 
 def test_structured_answer_serializes_metadata():

@@ -214,6 +214,54 @@ def test_llm_biography_uses_consensus_verifier_and_labels_evidence(monkeypatch):
     }
 
 
+def test_llm_biography_surfaces_secondary_consensus_sql(monkeypatch):
+    def fake_consensus(_player_id, _claims, *, conn):
+        verification = _ConsensusVerification(
+            stat="HR",
+            claimed_value=714,
+            actual_value=714,
+            status="secondary_only",
+        )
+        verification.row.update(
+            {
+                "consensus_status": "verified_secondary_only",
+                "primary_status": "no_data",
+                "secondary_status": "verified",
+                "sql": "select lahman evidence",
+                "primary_sql": "select lahman evidence",
+                "secondary_sql": "select retrosheet evidence",
+                "secondary_params": ["ruthb101"],
+            }
+        )
+        return [verification]
+
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Babe Ruth",
+            raw_question="who was Babe Ruth",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: _llm_json(
+            "Babe Ruth hit 714 career home runs.",
+            [{"stat": "HR", "value": 714, "scope": "career", "text": "714 career home runs"}],
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.service.verify_player_stat_claims_consensus",
+        fake_consensus,
+        raising=False,
+    )
+
+    result = answer("who was Babe Ruth")
+
+    assert result.sources[0].sql == "select retrosheet evidence"
+    assert result.sources[0].rows[0]["secondary_sql"] == "select retrosheet evidence"
+    assert result.sources[0].rows[0]["secondary_params"] == ["ruthb101"]
+
+
 def test_llm_biography_with_verified_career_stat_claim_adds_duckdb_provenance(monkeypatch):
     monkeypatch.setattr(
         "baseball_rag.service.route",
