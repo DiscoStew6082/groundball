@@ -45,9 +45,6 @@ class QuerySpec:
     team_identity: TeamIdentity | None = None
 
 
-QueryIntent = QuerySpec
-
-
 @dataclass(frozen=True)
 class AssembledSQL:
     sql: str

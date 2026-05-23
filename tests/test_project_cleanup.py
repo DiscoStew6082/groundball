@@ -389,6 +389,21 @@ def test_grounded_database_result_types_use_current_label() -> None:
     assert "GroundedDatabaseQueryPlan" in grounded_database_types
 
 
+def test_grounded_database_query_spec_has_no_legacy_intent_alias() -> None:
+    grounded_database_types = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_types.py"
+    ).read_text(encoding="utf-8")
+    combined = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in (ROOT / "src", ROOT / "tests", ROOT / "evals")
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    )
+
+    assert "QueryIntent" not in combined
+    assert "class QuerySpec" in grounded_database_types
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")

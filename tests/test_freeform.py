@@ -14,9 +14,9 @@ class TestAssembleSQL:
 
     def test_assembles_batting_only(self):
         from baseball_rag.db.grounded_database_assembler import _assemble_sql
-        from baseball_rag.db.grounded_database_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QuerySpec
 
-        intent = QueryIntent(
+        intent = QuerySpec(
             stat_tables=["batting"],
             team_name_pattern="Braves",
             year_value=1936,
@@ -31,9 +31,9 @@ class TestAssembleSQL:
 
     def test_assembles_batting_and_pitching_union(self):
         from baseball_rag.db.grounded_database_assembler import _assemble_sql
-        from baseball_rag.db.grounded_database_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QuerySpec
 
-        intent = QueryIntent(
+        intent = QuerySpec(
             stat_tables=["batting", "pitching"],
             team_name_pattern="Yankees",
             year_value=1950,
@@ -46,9 +46,9 @@ class TestAssembleSQL:
 
     def test_assembles_without_year(self):
         from baseball_rag.db.grounded_database_assembler import _assemble_sql
-        from baseball_rag.db.grounded_database_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QuerySpec
 
-        intent = QueryIntent(stat_tables=["batting"], team_name_pattern="Cubs")
+        intent = QuerySpec(stat_tables=["batting"], team_name_pattern="Cubs")
         sql = _assemble_sql(intent)
 
         assert sql.params == ["%Cubs%"]
@@ -57,9 +57,9 @@ class TestAssembleSQL:
 
     def test_always_distinct(self):
         from baseball_rag.db.grounded_database_assembler import _assemble_sql
-        from baseball_rag.db.grounded_database_types import QueryIntent
+        from baseball_rag.db.grounded_database_types import QuerySpec
 
-        intent = QueryIntent(
+        intent = QuerySpec(
             stat_tables=["batting", "pitching"],
             team_name_pattern="Dodgers",
             year_value=1955,
