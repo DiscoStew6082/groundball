@@ -118,6 +118,17 @@ class TestApi:
 
         assert response.status_code == 422
 
+    def test_query_endpoint_rejects_removed_retrieval_options(self):
+        response = client.post(
+            "/query",
+            json={
+                "question": "who had the most RBIs in 1962",
+                "retrieval_only": True,
+            },
+        )
+
+        assert response.status_code == 422
+
     def test_query_endpoint_accepts_conversation_context(self):
         """API callers can continue a grounded conversation across turns."""
         prior_turns = [

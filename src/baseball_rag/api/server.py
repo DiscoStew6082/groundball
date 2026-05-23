@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class QueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     question: str
     conversation: list[dict[str, Any]] | None = None
     answer_mode: AnswerMode = "stats_only"

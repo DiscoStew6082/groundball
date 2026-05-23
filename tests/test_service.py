@@ -40,6 +40,405 @@ def test_llm_flavored_stat_query_uses_verified_stats(monkeypatch):
     assert "153" in str(seen_prompts[0])
 
 
+def test_llm_flavored_stat_query_rejects_unverified_numbers(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 RBI in 1962 and also hit 300 home runs.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "300 home runs" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_reused_number_wrong_stat(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 home runs in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "153 home runs" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_spelled_out_numeric_claims(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with one hundred fifty three RBI.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "one hundred fifty three RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_unit_before_reused_number(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB in home runs with 153 in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "home runs with 153" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_stat_total_wrong_stat(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB; his home run total was 153 in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "home run total was 153" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_row_misattributed_claim(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Frank Robinson led MLB with 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Frank Robinson led MLB with 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_unitless_row_misattribution(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Frank Robinson led MLB with 153 in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Frank Robinson led MLB with 153" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_unknown_name_stat_claim(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Mickey Mantle led MLB with 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Mickey Mantle led MLB with 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_unknown_single_name_stat_claim(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Mantle led MLB with 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Mantle led MLB with 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_same_surname_wrong_player(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Jackie Robinson had 136 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Jackie Robinson had 136 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_last_name_misattributed_claim(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Robinson led MLB with 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Robinson led MLB with 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_bad_clause_after_good_clause(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 RBI; Frank Robinson had 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Frank Robinson had 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_bad_clause_without_semicolon_space(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 RBI;Mickey Mantle had 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Mickey Mantle had 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_bad_and_clause_after_good_clause(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content=("Tommy Davis led MLB with 153 RBI and Mickey Mantle had 153 RBI in 1962."),
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Mickey Mantle had 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_lowercase_bad_and_clause(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 RBI and mickey mantle had 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "mickey mantle had 153 RBI" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_number_before_punctuated_wrong_stat(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153-HR in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "153-HR" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_supported_stat_unit_swap(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Earl Webb led MLB with 67 triples in 1931.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most 2B in 1931", answer_mode="llm_flavored")
+
+    assert "Webb, Earl: 67 2B" in result.answer
+    assert "67 triples" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_does_not_verify_number_inside_stat_unit(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Earl Webb led MLB with 2 triples in 1931.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most 2B in 1931", answer_mode="llm_flavored")
+
+    assert "Webb, Earl: 67 2B" in result.answer
+    assert "2 triples" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_punctuated_unit_before_reused_number(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB in home runs, with 153 in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "home runs, with 153" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_rejects_spelled_unit_before_number(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB in home runs with one hundred fifty three.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "home runs with one hundred fifty three" not in result.answer
+    assert "unverified numbers" in result.answer
+
+
+def test_llm_flavored_stat_query_accepts_verified_unit_before_number(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB in RBI with 153 in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert result.answer == "Tommy Davis led MLB in RBI with 153 in 1962."
+
+
+def test_llm_flavored_grounded_template_accepts_verified_stat_claims(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Rogers Hornsby won in 1922 with 42 HR, 152 RBI, and a .401 AVG.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who won the Triple Crown and which years", answer_mode="llm_flavored")
+
+    assert result.answer == ("Rogers Hornsby won in 1922 with 42 HR, 152 RBI, and a .401 AVG.")
+
+
+def test_llm_flavored_grounded_template_rejects_cross_row_year_stat_claim(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Rogers Hornsby won in 1942 with 42 HR, 152 RBI, and a .401 AVG.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who won the Triple Crown and which years", answer_mode="llm_flavored")
+
+    assert "Rogers Hornsby won in 1942" not in result.answer
+    assert "Rogers Hornsby; yearID: 1922; lgID: NL; HR: 42; RBI: 152; AVG: 0.401" in result.answer
+    assert "unverified numbers" in result.answer
+
+
 def test_llm_flavored_unsupported_answer_skips_final_narration(monkeypatch):
     def fail_narration(**_kwargs):
         raise AssertionError("unsupported answers must not call final narration")

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from baseball_rag.db.grounded_database_types import AssembledSQL, QuerySpec, TeamIdentity
 from baseball_rag.db.stat_registry import StatDefinition, get_stat
 from baseball_rag.db.team_history import resolve_team_identity
+from baseball_rag.year_parsing import extract_spelled_year
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ def _extract_explicit_wins_threshold(text: str) -> int | None:
 
 def _extract_year(text: str) -> int | None:
     match = re.search(r"\b(18\d{2}|19\d{2}|20\d{2})\b", text)
-    return int(match.group(1)) if match else None
+    return int(match.group(1)) if match else extract_spelled_year(text)
 
 
 def _extract_min_ipouts(text: str, *, default: int) -> int:

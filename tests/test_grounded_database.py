@@ -294,6 +294,25 @@ class TestDeterministicTemplates:
         assert "OR 1=1" not in result.sql
         assert expected_team in {row[1] for row in result.rows}
 
+    @pytest.mark.parametrize(
+        ("question", "expected_team", "expected_year"),
+        [
+            ("Braves roster nineteen thirty six", "Boston Braves", 1936),
+            ("Yankees roster nineteen fifty", "New York Yankees", 1950),
+            ("Braves roster twenty twenty two", "Atlanta Braves", 2022),
+        ],
+    )
+    def test_roster_template_bypasses_llm_with_spoken_year(
+        self, question: str, expected_team: str, expected_year: int
+    ):
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        result = self._run_query(question, request_fn=mock_call)
+
+        assert mock_call.call_count == 0
+        assert result.row_count >= 10
+        assert result.params[-1] == expected_year
+        assert expected_team in {row[1] for row in result.rows}
+
     def test_qualified_batting_average_template_bypasses_llm_with_ab_guard(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
         result = self._run_query("highest batting average in 1894", request_fn=mock_call)

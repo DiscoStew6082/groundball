@@ -46,6 +46,7 @@ from baseball_rag.generation.json_parsing import extract_json_blocks, strip_mark
 from baseball_rag.routing.grounded_database_ownership import (
     deterministic_grounded_database_owns,
 )
+from baseball_rag.year_parsing import extract_spelled_year
 
 _NAME_TOKEN_RE = r"[^\W\d_](?:[^\W\d_]|[.'-])*"
 _NAME_RE = rf"{_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})*"
@@ -504,7 +505,7 @@ def _heuristic_route(question: str) -> RoutedCase:
     if m:
         year = int(m.group(1))
     else:
-        year = _extract_spelled_year(lower_q)
+        year = extract_spelled_year(lower_q)
 
     stat = find_stat_in_text(question)
 
@@ -543,69 +544,6 @@ def _heuristic_route(question: str) -> RoutedCase:
 
 def _looks_like_last_year(lower_q: str) -> bool:
     return "last year" in lower_q or "last season" in lower_q
-
-
-def _extract_spelled_year(lower_q: str) -> int | None:
-    """Extract common spoken years such as ``nineteen twenty-five``."""
-    normalized = lower_q.replace("-", " ")
-    century_prefixes = {
-        "eighteen": 1800,
-        "nineteen": 1900,
-        "twenty": 2000,
-    }
-    tens = {
-        "twenty": 20,
-        "thirty": 30,
-        "forty": 40,
-        "fifty": 50,
-        "sixty": 60,
-        "seventy": 70,
-        "eighty": 80,
-        "ninety": 90,
-    }
-    units = {
-        "one": 1,
-        "two": 2,
-        "three": 3,
-        "four": 4,
-        "five": 5,
-        "six": 6,
-        "seven": 7,
-        "eight": 8,
-        "nine": 9,
-    }
-    digit_units = {"0": 0} | {str(value): value for value in units.values()}
-    unit_tokens = units | digit_units
-    teens = {
-        "ten": 10,
-        "eleven": 11,
-        "twelve": 12,
-        "thirteen": 13,
-        "fourteen": 14,
-        "fifteen": 15,
-        "sixteen": 16,
-        "seventeen": 17,
-        "eighteen": 18,
-        "nineteen": 19,
-    }
-    suffix_words = set(tens) | set(unit_tokens) | set(teens) | {"oh", "zero"}
-    pattern = re.compile(
-        rf"\b({'|'.join(century_prefixes)})\s+"
-        rf"({'|'.join(suffix_words)})(?:\s+({'|'.join(unit_tokens)}))?\b"
-    )
-    for match in pattern.finditer(normalized):
-        century = century_prefixes[match.group(1)]
-        first = match.group(2)
-        second = match.group(3)
-        if first in digit_units and second in unit_tokens:
-            return century + (digit_units[first] * 10) + unit_tokens[second]
-        if first in {"oh", "zero"} and second is not None:
-            return century + unit_tokens[second]
-        if first in teens and second is None:
-            return century + teens[first]
-        if first in tens:
-            return century + tens[first] + (unit_tokens.get(second or "", 0))
-    return None
 
 
 def _extract_position_heuristic(lower_q: str) -> str | None:
@@ -709,6 +647,8 @@ def _extract_player_bio_name_heuristic(question: str) -> str | None:
     patterns = (
         rf"^\s*who\s+was\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+)\??\s*$",
         rf"^\s*tell\s+me\s+about\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+)\.?\s*$",
+        rf"^\s*(?:what|which)\s+teams?\s+did\s+({_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})+)"
+        r"\s+play\s+for\??\s*$",
     )
     for pattern in patterns:
         match = re.search(pattern, question, flags=re.IGNORECASE)

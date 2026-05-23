@@ -17,6 +17,13 @@ class TestPlayerBioRouting:
         result = route("what teams did he play for")
         assert result.intent == "player_biography"
 
+    def test_what_teams_did_named_player_play_for(self):
+        """Context-expanded team-history follow-ups should not depend on LLM routing."""
+        result = route("what teams did Babe Ruth play for")
+
+        assert result.intent == "player_biography"
+        assert result.player_name == "Babe Ruth"
+
     def test_tell_me_about_player(self):
         """'tell me about this player' → player_biography."""
         result = route("tell me about this player")
