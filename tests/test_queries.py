@@ -6,7 +6,6 @@ from baseball_rag.db.queries import (
     StatQueryPlan,
     execute_stat_query,
     execute_stat_query_plan,
-    get_fielding_leaders,
 )
 from baseball_rag.routing import StatQueryCase
 from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
@@ -93,12 +92,21 @@ def test_range_ops_leaders_use_weighted_rate_not_summed_seasons():
 
 def test_outfield_putouts_1983():
     """Test outfield putouts leaders for 1983."""
-    result = get_fielding_leaders(1983, position="OF")
-    assert isinstance(result, list)
-    assert result[0] == {"player": "Manning, Rick", "stat_value": 471}
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="PO",
+            table="fielding",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1983,
+            end_year=1983,
+            position="OF",
+        )
+    )
+    assert result.rows[0] == {"name": "Manning, Rick", "team": "OF", "stat_value": 471}
 
 
-def test_get_fielding_leaders_position_parameterization():
+def test_fielding_leaderboard_position_parameterization():
     """Verify position values are parameterized by checking results reflect correct filtering.
 
     When 'OF' is passed, we expect the Lahman aggregate OF position.
@@ -106,11 +114,21 @@ def test_get_fielding_leaders_position_parameterization():
     interpolated as a literal string instead of bound as a parameter, the query
     would either fail or return wrong results.
     """
-    result = get_fielding_leaders(1983, position="OF")
-    assert isinstance(result, list)
-    row = result[0]
-    assert "player" in row, f"Expected 'player' key, got: {row}"
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="PO",
+            table="fielding",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1983,
+            end_year=1983,
+            position="OF",
+        )
+    )
+    row = result.rows[0]
+    assert "name" in row, f"Expected 'name' key, got: {row}"
     assert "stat_value" in row, f"Expected 'stat_value' key, got: {row}"
+    assert "f.POS = ?" in result.sql
 
 
 def test_unknown_stat_is_rejected_before_sql_execution():

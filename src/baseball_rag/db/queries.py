@@ -163,27 +163,6 @@ def _execute_stat_query_plan(
     return _execute_batting_career(stat, limit=limit, conn=conn)
 
 
-def get_fielding_leaders(year: int, position: str) -> list[dict]:
-    """Compatibility adapter for fielding putouts leaders for a given year and position.
-
-    Args:
-        year: The season year
-        position: 'OF' for all outfield, or specific 'LF'/'CF'/'RF'
-
-    Returns:
-        List of dicts with keys: player (name), stat_value (putouts)
-    """
-    result = execute_stat_query(
-        "PO",
-        table="fielding",
-        start_year=year,
-        end_year=year,
-        position=position,
-        limit=20,
-    )
-    return [{"player": row["name"], "stat_value": row["stat_value"]} for row in result.rows]
-
-
 def _execute_batting_range(
     stat: str,
     *,
