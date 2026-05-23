@@ -59,7 +59,7 @@ class TestArchitectureReadModel:
             sources=[
                 SourceRecord(
                     type="duckdb",
-                    label="freeform",
+                    label="grounded_database",
                     rows=[{"player": "Nobody"}, {"player": "Still nobody"}],
                 )
             ],

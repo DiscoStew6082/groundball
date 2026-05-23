@@ -614,6 +614,14 @@ def test_grounded_database_test_names_and_prose_use_current_label() -> None:
     assert "freeform" not in names_and_prose.lower()
 
 
+def test_architecture_fixtures_use_grounded_database_source_labels() -> None:
+    diagram_tests = (ROOT / "tests" / "test_diagram_ui.py").read_text(encoding="utf-8")
+    old_label = "free" + "form"
+
+    assert f'label="{old_label}"' not in diagram_tests
+    assert 'label="grounded_database"' in diagram_tests
+
+
 def test_active_eval_prose_uses_grounded_database_label() -> None:
     eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
 
