@@ -656,6 +656,35 @@ def test_cli_no_year_leaderboard_tests_use_current_career_leader_language() -> N
     assert "latest_year_should_be_determined_from_db" not in names_and_prose
 
 
+def test_stat_definition_sources_do_not_use_generic_corpus_provenance() -> None:
+    provenance = (ROOT / "src" / "baseball_rag" / "provenance.py").read_text(encoding="utf-8")
+    general_explanation = (ROOT / "src" / "baseball_rag" / "general_explanation.py").read_text(
+        encoding="utf-8"
+    )
+    player_bio_tests = (ROOT / "tests" / "test_player_bio_query.py").read_text(encoding="utf-8")
+    player_bio_names_and_prose = "\n".join(
+        (
+            *_python_definition_names(player_bio_tests),
+            *_python_docstrings_and_comments(player_bio_tests),
+        )
+    )
+    docs = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            ROOT / "README.md",
+            ROOT / "docs" / "architecture.md",
+            ROOT / "docs" / "guardrail-coverage.md",
+        )
+    )
+
+    assert 'SourceType = Literal["duckdb", "system", "stat_definition"]' in provenance
+    assert 'type="stat_definition"' in general_explanation
+    assert 'type="corpus"' not in general_explanation
+    assert "corpus provenance" not in docs
+    assert "local Markdown corpus provenance" not in docs
+    assert "local corpus" not in player_bio_names_and_prose
+
+
 def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
     static_vocab = (ROOT / "src" / "baseball_rag" / "corpus" / "static_vocab.py").read_text(
         encoding="utf-8"

@@ -13,7 +13,7 @@ def test_general_explanation_policy_answers_local_stat_definition_without_llm():
 
     assert result.intent == "general_explanation"
     assert result.answer.startswith("OPS means OPS.")
-    assert result.sources[0].type == "corpus"
+    assert result.sources[0].type == "stat_definition"
     assert result.sources[0].label == "Local stat definition: OPS"
 
 

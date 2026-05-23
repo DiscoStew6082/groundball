@@ -53,7 +53,7 @@ class GeneralExplanationPolicy:
             intent="general_explanation",
             sources=[
                 SourceRecord(
-                    type="corpus",
+                    type="stat_definition",
                     label=f"Local stat definition: {doc_id}",
                     detail=f"baseball_rag/corpus/stat_definitions/{doc_id}.md",
                     rows=[{"doc_id": doc_id}],

@@ -144,7 +144,7 @@ These make a compact demo script for the CLI, API, or Gradio UI:
 - "who played for the Braves in 1936" - typed grounded database question using parameterized SQL.
 - "who played for the Dodgers in 1947" - historical roster query with old team names handled through the database.
 - "who was Babe Ruth" - LLM-generated player biography with DuckDB identity and stat-claim verification.
-- "what is OPS" - local stat-definition explanation with corpus provenance.
+- "what is OPS" - local stat-definition explanation with stat-definition provenance.
 - "how many home runs did Williams have in 1941" - ambiguity should fail closed instead of guessing Ted Williams.
 - "who played for the Yankees in 1950" - inspect the returned SQL, rows, source manifest, and checksums.
 - "what is the Yankees score right now" - unsupported because this is historical data, not a live scoreboard.
