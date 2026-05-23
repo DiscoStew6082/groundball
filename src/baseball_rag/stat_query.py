@@ -124,7 +124,7 @@ def _answer_player_stat_result(
             ),
             intent=plan.intent,
             sources=[_source_from_result(query_result)],
-            warnings=["No fallback leaderboard was returned because the question named a player."],
+            warnings=["No alternate leaderboard was returned because the question named a player."],
         )
 
     result = query_result.rows[0]
@@ -150,7 +150,7 @@ def _answer_leaderboard_result(
             intent=plan.intent,
             sources=[_source_from_result(query_result)],
             warnings=[
-                "No fallback leaderboard was returned because the question specified a year."
+                "No alternate leaderboard was returned because the question specified a year."
             ],
         )
 

@@ -379,7 +379,45 @@ def test_answer_stat_query_player_no_data_is_structured_unsupported(monkeypatch)
     assert answer.unsupported is True
     assert answer.unsupported_reason == "no_data"
     assert "No HR result found for Missing Player" in answer.answer
+    assert answer.warnings == [
+        "No alternate leaderboard was returned because the question named a player."
+    ]
     assert answer.sources[0].sql == "SELECT player_hr WHERE name = ?"
+
+
+def test_answer_stat_query_leaderboard_no_data_is_structured_unsupported(monkeypatch):
+    """Season leaderboard misses stay unsupported without alternate career results."""
+
+    def fake_execute(_plan):
+        from baseball_rag.db.queries import StatQueryResult
+
+        return StatQueryResult(
+            stat="HR",
+            label="HR leaderboard for 1871-1871",
+            tables=["batting", "people"],
+            rows=[],
+            sql="SELECT leaderboard_hr WHERE yearID = ?",
+            executed_sql="SELECT leaderboard_hr WHERE yearID = ?",
+            params=[1871],
+        )
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fake_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="HR",
+            raw_question="who led HR in 1871",
+            time_period=TimePeriod(type=TimePeriodType.SINGLE, value=1871),
+        )
+    )
+
+    assert answer.unsupported is True
+    assert answer.unsupported_reason == "no_data"
+    assert "No HR results found for 1871-1871" in answer.answer
+    assert answer.warnings == [
+        "No alternate leaderboard was returned because the question specified a year."
+    ]
+    assert answer.sources[0].sql == "SELECT leaderboard_hr WHERE yearID = ?"
 
 
 def test_answer_stat_query_rejects_partial_player_before_coverage_and_execution(monkeypatch):

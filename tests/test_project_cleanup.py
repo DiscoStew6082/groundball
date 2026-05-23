@@ -199,6 +199,12 @@ def test_general_explanation_no_longer_uses_fallback_question_shape() -> None:
     assert "fallback_question" not in general_explanation
 
 
+def test_stat_query_no_data_warnings_do_not_reference_fallback_leaderboards() -> None:
+    stat_query = (ROOT / "src" / "baseball_rag" / "stat_query.py").read_text(encoding="utf-8")
+
+    assert "fallback leaderboard" not in stat_query
+
+
 def test_grounded_database_question_no_longer_uses_year_route_shape() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
 
