@@ -3,7 +3,7 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import Iterator, cast
+from typing import cast
 
 import requests
 
@@ -64,15 +64,13 @@ def _build_payload(
     messages: list[dict],
     max_tokens: int,
     temperature: float,
-    stream: bool = False,
 ) -> dict:
-    """Build the common request payload for both streaming and non-streaming."""
+    """Build the chat completion request payload."""
     return {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        "stream": stream,
     }
 
 
@@ -217,35 +215,3 @@ def make_request(
         raise LLMEmptyOutputError("LM Studio returned an empty response.")
 
     return LLMResponse(content=content, model=data.get("model", model), done=True)
-
-
-def make_request_stream(
-    prompt: Prompt,
-    base_url: str | None = None,
-    model: str | None = None,
-    max_tokens: int = 512,
-    temperature: float = 0.3,
-) -> Iterator[str]:
-    """Streaming version — yields content tokens as they arrive."""
-    base_url, model = _resolve_config(base_url, model)
-
-    payload = _build_payload(
-        model,
-        _messages_from_prompt(prompt),
-        max_tokens,
-        temperature,
-        stream=True,
-    )
-    resp = _post(base_url, payload)
-
-    for line in resp.iter_lines(decode_unicode=True):
-        if not line or line == "data: [DONE]":
-            break
-        if line.startswith("data: "):
-            import json as _json
-
-            chunk = _json.loads(line[6:])
-            delta = chunk.get("choices", [{}])[0].get("delta", {})
-            token = delta.get("content")
-            if isinstance(token, str) and token:
-                yield token

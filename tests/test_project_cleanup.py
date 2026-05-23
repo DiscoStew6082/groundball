@@ -529,6 +529,19 @@ def test_llm_prompt_string_compatibility_is_removed() -> None:
     assert "reasoning_content" not in llm
 
 
+def test_llm_streaming_compatibility_api_is_removed() -> None:
+    llm = (ROOT / "src" / "baseball_rag" / "generation" / "llm.py").read_text(encoding="utf-8")
+    generation_init = (ROOT / "src" / "baseball_rag" / "generation" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    llm_tests = (ROOT / "tests" / "test_llm.py").read_text(encoding="utf-8")
+
+    stream_api = "make_request_" + "stream"
+    assert stream_api not in llm
+    assert stream_api not in generation_init
+    assert stream_api not in llm_tests
+
+
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
     diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
     read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(

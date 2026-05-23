@@ -10,7 +10,6 @@ from baseball_rag.generation.llm import (
     LLMTimeoutError,
     LLMUnavailableError,
     make_request,
-    make_request_stream,
 )
 
 
@@ -151,56 +150,3 @@ class TestLLMClient:
         assert messages[1]["role"] == "user"
         assert messages[1]["content"] == "Who was Babe Ruth?"
         assert result.content == "Answer."
-
-    def test_stream_yields_chunks(self):
-        """make_request_stream yields tokens as they arrive."""
-        lines = [
-            'data: {"choices":[{"delta":{"content":"Mickey"}}]}',
-            'data: {"choices":[{"delta":{"content":" Mantle"}}]}',
-            "data: [DONE]",
-        ]
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.iter_lines.return_value = iter(lines)
-
-        with patch("requests.post", return_value=mock_resp):
-            tokens = list(make_request_stream(_prompt("who had most RBIs")))
-
-        assert "Mickey" in tokens
-        # Note: token may include leading space from SSE delta
-        assert any("Mantle" in t for t in tokens)
-
-    def test_stream_ignores_non_string_content(self):
-        """Streaming yields only plain string content deltas."""
-        lines = [
-            (
-                'data: {"choices":[{"delta":{"content":'
-                '[{"type":"text","text":"Babe Ruth"}],'
-                '"reasoning_content":" played baseball"}}]}'
-            ),
-            "data: [DONE]",
-        ]
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.iter_lines.return_value = iter(lines)
-
-        with patch("requests.post", return_value=mock_resp):
-            tokens = list(make_request_stream(_prompt("who was Babe Ruth")))
-
-        assert tokens == []
-
-    def test_stream_with_tuple_prompt(self):
-        """make_request_stream also supports (system, user) tuple prompts."""
-        lines = ['data: {"choices":[{"delta":{"content":"Answer."}}]}', "data: [DONE]"]
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.iter_lines.return_value = iter(lines)
-
-        with patch("requests.post", return_value=mock_resp) as mock_post:
-            tokens = list(make_request_stream(("You are a historian.", "Who was Babe Ruth?")))
-
-        call_kwargs = mock_post.call_args[1]
-        messages = call_kwargs["json"]["messages"]
-        assert len(messages) == 2
-        assert messages[0]["role"] == "system"
-        assert "".join(tokens) == "Answer."
