@@ -167,6 +167,13 @@ def test_execute_stat_query_compatibility_adapter_is_removed() -> None:
     assert "execute_stat_query" not in db_init
 
 
+def test_llm_prompt_string_compatibility_is_removed() -> None:
+    llm = (ROOT / "src" / "baseball_rag" / "generation" / "llm.py").read_text(encoding="utf-8")
+
+    assert "str | tuple" not in llm
+    assert "backward compat" not in llm
+
+
 def test_duckdb_schema_no_longer_exports_team_map_alias() -> None:
     duckdb_schema = (ROOT / "src" / "baseball_rag" / "db" / "duckdb_schema.py").read_text(
         encoding="utf-8"

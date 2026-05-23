@@ -360,7 +360,10 @@ def route(question: str) -> RoutedCase:
     try:
         from baseball_rag.generation.llm import LLMError, LLMRoutingOutputError, make_request
 
-        prompt = _ROUTING_PROMPT.format(question=question)
+        prompt = (
+            "You are a baseball query classifier. Return only valid JSON.",
+            _ROUTING_PROMPT.format(question=question),
+        )
         response = make_request(prompt, max_tokens=500, temperature=0.1)
         data = _parse_llm_json(response.content)
 

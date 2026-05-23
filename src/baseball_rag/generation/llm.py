@@ -9,6 +9,8 @@ import requests
 
 from baseball_rag.arch.tracing import traced
 
+Prompt = tuple[str, str]
+
 
 class LLMError(Exception):
     """Base class for local LM integration failures."""
@@ -177,9 +179,23 @@ def _message_content(choice: dict) -> str:
     return _content_to_text(choice.get("reasoning_content"))
 
 
+def _messages_from_prompt(prompt: Prompt) -> list[dict[str, str]]:
+    if (
+        not isinstance(prompt, tuple)
+        or len(prompt) != 2
+        or not all(isinstance(part, str) for part in prompt)
+    ):
+        raise TypeError("prompt must be a (system_prompt, user_prompt) tuple")
+    system_prompt, user_prompt = prompt
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
 @traced(component_id="llm", label="Generate Answer")
 def make_request(
-    prompt: str | tuple[str, str],
+    prompt: Prompt,
     base_url: str | None = None,
     model: str | None = None,
     max_tokens: int = 512,
@@ -188,8 +204,7 @@ def make_request(
     """Send a chat-style prompt to LM Studio and return the response.
 
     Args:
-        prompt: Either a plain string (backward compat — treated as user message only)
-            or a (system_prompt, user_prompt) tuple for proper system+user structure.
+        prompt: A (system_prompt, user_prompt) tuple for chat message structure.
         base_url: LM Studio server URL. Defaults to localhost:1234.
         model: Model name to specify in request.
         max_tokens: Max new tokens to generate.
@@ -203,16 +218,7 @@ def make_request(
     """
     base_url, model = _resolve_config(base_url, model)
 
-    if isinstance(prompt, tuple):
-        system_prompt, user_prompt = prompt
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-    else:
-        messages = [{"role": "user", "content": prompt}]
-
-    payload = _build_payload(model, messages, max_tokens, temperature)
+    payload = _build_payload(model, _messages_from_prompt(prompt), max_tokens, temperature)
     resp = _post(base_url, payload)
 
     try:
@@ -235,7 +241,7 @@ def make_request(
 
 
 def make_request_stream(
-    prompt: str | tuple[str, str],
+    prompt: Prompt,
     base_url: str | None = None,
     model: str | None = None,
     max_tokens: int = 512,
@@ -244,16 +250,13 @@ def make_request_stream(
     """Streaming version — yields content tokens as they arrive."""
     base_url, model = _resolve_config(base_url, model)
 
-    if isinstance(prompt, tuple):
-        system_prompt, user_prompt = prompt
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-    else:
-        messages = [{"role": "user", "content": prompt}]
-
-    payload = _build_payload(model, messages, max_tokens, temperature, stream=True)
+    payload = _build_payload(
+        model,
+        _messages_from_prompt(prompt),
+        max_tokens,
+        temperature,
+        stream=True,
+    )
     resp = _post(base_url, payload)
 
     for line in resp.iter_lines(decode_unicode=True):
