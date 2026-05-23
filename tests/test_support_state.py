@@ -74,7 +74,7 @@ def test_support_state_regression_for_governance_reviewability():
         assert state.reviewable is True
 
 
-def test_support_state_ignores_legacy_reason_payloads_without_structured_reason():
+def test_support_state_ignores_unstructured_reason_payloads_without_structured_reason():
     answer = StructuredAnswer(
         answer="No result.",
         intent="grounded_database_question",
@@ -82,10 +82,10 @@ def test_support_state_ignores_legacy_reason_payloads_without_structured_reason(
             SourceRecord(
                 type="duckdb",
                 label="Unsupported template",
-                rows=[{"unsupported_reason": "legacy row reason"}],
+                rows=[{"unsupported_reason": "unstructured row reason"}],
             )
         ],
-        warnings=["legacy warning reason"],
+        warnings=["unstructured warning reason"],
         unsupported=True,
     )
 

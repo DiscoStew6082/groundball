@@ -221,6 +221,14 @@ def test_request_dispatch_no_longer_has_noop_initialize_hook() -> None:
     assert "initialize=lambda: None" not in service
 
 
+def test_support_state_tests_do_not_describe_unstructured_reasons_as_legacy() -> None:
+    support_state_tests = (ROOT / "tests" / "test_support_state.py").read_text(encoding="utf-8")
+
+    assert "legacy reason" not in support_state_tests
+    assert "legacy row reason" not in support_state_tests
+    assert "legacy warning reason" not in support_state_tests
+
+
 def test_general_explanation_no_longer_uses_fallback_question_shape() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
     general_explanation = (ROOT / "src" / "baseball_rag" / "general_explanation.py").read_text(
