@@ -641,6 +641,21 @@ def test_open_prose_prompt_is_not_described_as_retrieval_fallback() -> None:
     assert "retrieved context" not in combined.lower()
 
 
+def test_cli_no_year_leaderboard_tests_use_current_career_leader_language() -> None:
+    cli_tests = (ROOT / "tests" / "test_cli_player_query.py").read_text(encoding="utf-8")
+    names_and_prose = "\n".join(
+        (
+            *_python_definition_names(cli_tests),
+            *_python_docstrings_and_comments(cli_tests),
+        )
+    )
+
+    assert "Bug 2b" not in names_and_prose
+    assert "latest-year" not in names_and_prose
+    assert "MOST RECENT available data" not in names_and_prose
+    assert "latest_year_should_be_determined_from_db" not in names_and_prose
+
+
 def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
     static_vocab = (ROOT / "src" / "baseball_rag" / "corpus" / "static_vocab.py").read_text(
         encoding="utf-8"
