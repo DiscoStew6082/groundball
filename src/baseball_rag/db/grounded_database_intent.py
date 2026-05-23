@@ -130,40 +130,6 @@ def _generate_query_spec(
             question,
         )
         response = request_fn(retry_prompt, max_tokens=1000, temperature=0.1)
-        try:
-            intent = _parse_intent(response.content.strip())
-        except ValueError:
-            recovered = _recover_roster_intent(question, response.content.strip())
-            if recovered is None:
-                raise
-            intent = recovered
+        intent = _parse_intent(response.content.strip())
 
     return intent
-
-
-def _recover_roster_intent(question: str, raw: str) -> QuerySpec | None:
-    """Recover from LLM roster intents that omit stat_tables."""
-    q = question.lower()
-    if not any(token in q for token in ("played", "players", "roster")):
-        return None
-
-    for candidate in (raw, strip_markdown_fence(raw)):
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        team_name_pattern = data.get("team_name_pattern")
-        year_value = data.get("year_value")
-        if not isinstance(team_name_pattern, str):
-            continue
-        if not isinstance(year_value, int):
-            year_value = None
-        return QuerySpec(
-            stat_tables=cast(list[StatTable], ["batting", "pitching", "fielding"]),
-            team_name_pattern=team_name_pattern,
-            year_value=year_value,
-        )
-
-    return None

@@ -523,6 +523,24 @@ class TestGenerateQuerySpecDeterminism:
 
         assert mock_call.call_count == 1
 
+    def test_missing_stat_tables_after_retry_is_not_recovered_from_roster_shape(self):
+        from baseball_rag.db.grounded_database_intent import _generate_query_spec
+
+        first_response = MagicMock()
+        first_response.content = '{"team_name_pattern": "Braves", "year_value": 1936}'
+        retry_response = MagicMock()
+        retry_response.content = '{"team_name_pattern": "Braves", "year_value": 1936}'
+        mock_call = MagicMock(side_effect=[first_response, retry_response])
+
+        with pytest.raises(ValueError, match="stat_tables"):
+            _generate_query_spec(
+                "Who played for the Braves in 1936?",
+                "schema",
+                request_fn=mock_call,
+            )
+
+        assert mock_call.call_count == 2
+
     def test_roster_intent_is_planned_before_execution_without_llm(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
         from baseball_rag.db.grounded_database_runtime import can_plan_deterministically, plan_query

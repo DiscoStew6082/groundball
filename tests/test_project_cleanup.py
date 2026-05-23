@@ -451,6 +451,15 @@ def test_grounded_database_intent_no_longer_exposes_sql_string_helper() -> None:
     assert "_generate_sql" not in grounded_database_tests
 
 
+def test_grounded_database_intent_requires_explicit_stat_tables_after_retry() -> None:
+    grounded_database_intent = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_intent.py"
+    ).read_text(encoding="utf-8")
+
+    assert "_recover_roster_intent" not in grounded_database_intent
+    assert "Recover from LLM roster intents" not in grounded_database_intent
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")
