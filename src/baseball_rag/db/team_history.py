@@ -2,7 +2,8 @@
 
 The LLM doesn't reliably know that e.g. "the Braves in 1936" means the Boston Braves
 (BSN), not the Atlanta Braves (ATL). This module provides plain-English hints that get
-appended to freeform questions before SQL generation so the LLM can reason correctly.
+appended to grounded database questions before SQL generation so the LLM can reason
+correctly.
 """
 
 from __future__ import annotations

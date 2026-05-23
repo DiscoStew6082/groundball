@@ -376,6 +376,12 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
 
 
 def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
+    freeform_intent = (ROOT / "src" / "baseball_rag" / "db" / "freeform_intent.py").read_text(
+        encoding="utf-8"
+    )
+    freeform_assembler = (ROOT / "src" / "baseball_rag" / "db" / "freeform_assembler.py").read_text(
+        encoding="utf-8"
+    )
     freeform_runtime = (ROOT / "src" / "baseball_rag" / "db" / "freeform_runtime.py").read_text(
         encoding="utf-8"
     )
@@ -388,10 +394,21 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     freeform_types = (ROOT / "src" / "baseball_rag" / "db" / "freeform_types.py").read_text(
         encoding="utf-8"
     )
+    team_history = (ROOT / "src" / "baseball_rag" / "db" / "team_history.py").read_text(
+        encoding="utf-8"
+    )
 
     prose = "\n".join(
         item
-        for source in (freeform_runtime, freeform_templates, freeform_schema, freeform_types)
+        for source in (
+            freeform_intent,
+            freeform_assembler,
+            freeform_runtime,
+            freeform_templates,
+            freeform_schema,
+            freeform_types,
+            team_history,
+        )
         for item in _python_docstrings_and_comments(source)
     )
     assert "freeform" not in prose.lower()

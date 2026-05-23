@@ -1,4 +1,4 @@
-"""Deterministic SQL assembly from typed freeform intents."""
+"""Deterministic SQL assembly from typed grounded database intents."""
 
 from baseball_rag.db.freeform_types import AssembledSQL, QuerySpec
 from baseball_rag.db.stat_registry import StatTable, get_stat, supported_tables

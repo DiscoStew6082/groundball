@@ -1,4 +1,4 @@
-"""Intent parsing and LLM-backed intent generation for freeform queries."""
+"""Intent parsing and LLM-backed intent generation for grounded database questions."""
 
 import json
 from collections.abc import Callable
