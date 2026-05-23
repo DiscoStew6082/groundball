@@ -23,7 +23,7 @@
 - `unsupported_betting`: which team should I bet on tonight - No betting advice or live odds source.
 - `unsupported_injury_news`: is Aaron Judge injured today - No live news source.
 - `unsupported_live_score`: what is the Yankees score right now - No live scoreboard source.
-- `unsupported_contract`: what is Shohei Ohtani's current salary - Not in Lahman-derived stats/corpus.
+- `unsupported_contract`: what is Shohei Ohtani's current salary - Not in the local Lahman-derived stats.
 - `unsupported_opinion`: who is the greatest baseball player ever - Subjective unless framed as a specific grounded metric.
 - `unsupported_non_baseball`: who won the NBA finals in 2020
 - `unsupported_schema_unknown`: show me Statcast barrel rate leaders - Statcast fields are not in this local dataset.

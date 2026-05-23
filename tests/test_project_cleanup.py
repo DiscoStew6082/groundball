@@ -1001,12 +1001,14 @@ def test_docs_match_current_eval_and_corpus_runtime() -> None:
     demo = (ROOT / "docs" / "demo-governance.md").read_text(encoding="utf-8")
     corpus = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     development = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+    guardrail_coverage = (ROOT / "docs" / "guardrail-coverage.md").read_text(encoding="utf-8")
 
     assert "evals: 25 passed, 0 failed, 43 skipped" in demo
     assert "evals: 20 passed, 0 failed, 48 skipped" not in demo
     assert "local stat-definition Markdown" in corpus
     assert "stat-definition Markdown remains" in development
     assert "runtime grounding for supported stat-definition explanations" in development
+    assert "stats/corpus" not in guardrail_coverage
     assert (
         'General explanations such as "what is OPS?" are answered by the LLM directly' not in corpus
     )
