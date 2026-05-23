@@ -218,7 +218,7 @@ def _llm_flavored_grounded_database_answer(
             max_tokens=700,
             temperature=0.2,
         )
-    except LLMError:
+    except (ConnectionError, TimeoutError, LLMError):
         return (
             f"{formatted_answer}\n\n"
             "Note: LLM unavailable, so this response is the verified DuckDB stats only."

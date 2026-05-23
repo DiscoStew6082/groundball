@@ -56,9 +56,25 @@ def test_llm_flavored_unsupported_answer_skips_final_narration(monkeypatch):
     assert result.metadata["answer_mode"] == "llm_flavored"
 
 
-def test_llm_flavored_falls_back_to_stats_when_llm_unavailable(monkeypatch):
+def test_llm_flavored_returns_stats_when_llm_unavailable(monkeypatch):
     def unavailable_llm(_prompt, **_kwargs):
         raise LLMUnavailableError("local LLM unavailable")
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", unavailable_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "LLM unavailable" in result.answer
+    assert result.metadata["answer_mode"] == "llm_flavored"
+    assert result.sources[0].type == "duckdb"
+
+
+def test_llm_flavored_returns_stats_when_connection_error_marks_llm_unavailable(
+    monkeypatch,
+):
+    def unavailable_llm(_prompt, **_kwargs):
+        raise ConnectionError("socket closed")
 
     monkeypatch.setattr("baseball_rag.generation.llm.make_request", unavailable_llm)
 

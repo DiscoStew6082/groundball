@@ -712,6 +712,7 @@ def test_stat_definition_sources_do_not_use_generic_corpus_provenance() -> None:
         encoding="utf-8"
     )
     player_bio_tests = (ROOT / "tests" / "test_player_bio_query.py").read_text(encoding="utf-8")
+    eval_questions = (ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8")
     player_bio_names_and_prose = "\n".join(
         (
             *_python_definition_names(player_bio_tests),
@@ -730,7 +731,9 @@ def test_stat_definition_sources_do_not_use_generic_corpus_provenance() -> None:
     assert 'SourceType = Literal["duckdb", "system", "stat_definition"]' in provenance
     assert 'type="stat_definition"' in general_explanation
     assert 'type="corpus"' not in general_explanation
+    assert 'required_sources: ["corpus"]' not in eval_questions
     assert "corpus provenance" not in docs
+    assert "local Markdown corpus provenance" not in eval_questions
     assert "local Markdown corpus provenance" not in docs
     assert "local corpus" not in player_bio_names_and_prose
 

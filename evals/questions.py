@@ -48,7 +48,7 @@ class EvalCase:
 
     def requires_live_services(self) -> bool:
         """Return True when the case is expected to need the local LLM."""
-        if self.intent == "general_explanation" and "corpus" in self.required_sources:
+        if self.intent == "general_explanation" and "stat_definition" in self.required_sources:
             return False
         return self.intent in LIVE_INTENTS
 
