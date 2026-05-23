@@ -320,6 +320,23 @@ def test_grounded_database_intent_module_replaces_legacy_module() -> None:
         assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
 
 
+def test_grounded_database_schema_module_replaces_legacy_module() -> None:
+    old_module = "free" + "form_schema"
+    new_module = "grounded_database_schema"
+    search_roots = [ROOT / "src", ROOT / "tests", ROOT / "evals"]
+
+    assert not (ROOT / "src" / "baseball_rag" / "db" / f"{old_module}.py").exists()
+    assert (ROOT / "src" / "baseball_rag" / "db" / f"{new_module}.py").exists()
+    for path in (
+        path
+        for root in search_roots
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
+
+
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
     queries = (ROOT / "src" / "baseball_rag" / "db" / "queries.py").read_text(encoding="utf-8")
     db_init = (ROOT / "src" / "baseball_rag" / "db" / "__init__.py").read_text(encoding="utf-8")
@@ -479,9 +496,9 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     freeform_templates = (ROOT / "src" / "baseball_rag" / "db" / "freeform_templates.py").read_text(
         encoding="utf-8"
     )
-    freeform_schema = (ROOT / "src" / "baseball_rag" / "db" / "freeform_schema.py").read_text(
-        encoding="utf-8"
-    )
+    freeform_schema = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_schema.py"
+    ).read_text(encoding="utf-8")
     grounded_database_types = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_types.py"
     ).read_text(encoding="utf-8")

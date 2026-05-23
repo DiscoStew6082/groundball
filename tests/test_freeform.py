@@ -327,7 +327,7 @@ class TestDeterministicTemplates:
         assert result.unsupported_reason == "unsupported"
 
     def test_schema_uses_registry_formula_notes(self):
-        import baseball_rag.db.freeform_schema as schema
+        import baseball_rag.db.grounded_database_schema as schema
         from baseball_rag.db.duckdb_schema import get_duckdb
 
         schema._cached_schema = None
