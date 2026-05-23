@@ -251,6 +251,14 @@ def test_provenance_no_data_warning_fixture_is_not_named_fallback() -> None:
     assert "No fallback was returned." not in provenance_tests
 
 
+def test_retrosheet_missing_mapping_test_is_not_named_chadwick_fallback() -> None:
+    consensus_tests = (ROOT / "tests" / "test_player_stat_claims_consensus.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "chadwick_fallback" not in consensus_tests
+
+
 def test_grounded_database_question_no_longer_uses_year_route_shape() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
 

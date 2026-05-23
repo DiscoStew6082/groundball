@@ -299,7 +299,7 @@ def test_consensus_conflicts_when_sources_have_different_values(
     assert row["secondary_status"] == expected_secondary
 
 
-def test_consensus_reports_missing_retroid_without_chadwick_fallback():
+def test_consensus_reports_missing_retroid_without_chadwick_lookup():
     conn = _conn()
     conn.execute("INSERT INTO people VALUES ('player01', NULL)")
     _add_batting(conn)
