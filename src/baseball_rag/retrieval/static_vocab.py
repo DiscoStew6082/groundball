@@ -27,24 +27,10 @@ STAT_DEFINITION_DOC_IDS: dict[str, str] = {
     "whip": "WHIP",
 }
 
-EXPLANATION_TERMS = ("what is", "what does", "explain", "mean", "definition")
-
 
 def stat_definition_doc_ids_for_query(query: str) -> list[str]:
     """Return static stat-definition document IDs mentioned by query text."""
     return _doc_ids_for_query(query, STAT_DEFINITION_DOC_IDS)
-
-
-def query_mentions_stat_definition(query: str) -> bool:
-    """Return whether query mentions a known stat-definition phrase."""
-    lower_query = query.lower()
-    return any(phrase in lower_query for phrase in STAT_DEFINITION_DOC_IDS)
-
-
-def query_asks_for_explanation(query: str) -> bool:
-    """Return whether query phrasing asks for an explanatory corpus answer."""
-    lower_query = query.lower()
-    return any(phrase in lower_query for phrase in EXPLANATION_TERMS)
 
 
 def _doc_ids_for_query(query: str, phrase_map: dict[str, str]) -> list[str]:

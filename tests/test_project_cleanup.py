@@ -635,6 +635,16 @@ def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
     assert "static_doc_ids_for_query" not in static_vocab
 
 
+def test_static_vocab_keeps_only_stat_definition_doc_id_lookup() -> None:
+    static_vocab = (ROOT / "src" / "baseball_rag" / "retrieval" / "static_vocab.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def query_mentions_stat_definition(" not in static_vocab
+    assert "def query_asks_for_explanation(" not in static_vocab
+    assert "EXPLANATION_TERMS" not in static_vocab
+
+
 def test_hof_biography_corpus_is_removed() -> None:
     corpus_init = (ROOT / "src" / "baseball_rag" / "corpus" / "__init__.py").read_text(
         encoding="utf-8"
