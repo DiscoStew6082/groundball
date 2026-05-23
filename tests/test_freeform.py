@@ -196,7 +196,7 @@ class TestDeterministicTemplates:
         assert mock_call.call_count == 0
         assert freeform_runtime.can_plan_deterministically("career pitching wins leaders") is True
         assert (
-            freeform_runtime.should_route_deterministic_freeform(
+            freeform_runtime.should_route_deterministic_grounded_database(
                 "career pitching wins leaders",
                 competing_stat="W",
             )

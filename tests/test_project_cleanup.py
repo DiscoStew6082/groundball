@@ -340,11 +340,20 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
     grounded_ownership = (
         ROOT / "src" / "baseball_rag" / "routing" / "grounded_database_ownership.py"
     ).read_text(encoding="utf-8")
+    freeform_runtime = (ROOT / "src" / "baseball_rag" / "db" / "freeform_runtime.py").read_text(
+        encoding="utf-8"
+    )
+    freeform_templates = (ROOT / "src" / "baseball_rag" / "db" / "freeform_templates.py").read_text(
+        encoding="utf-8"
+    )
 
     assert not (ROOT / "src" / "baseball_rag" / "routing" / "freeform_ownership.py").exists()
     assert "freeform_ownership" not in query_router
     assert "deterministic_freeform_owns" not in query_router
     assert "deterministic freeform" not in grounded_ownership.lower()
+    assert "should_route_deterministic_freeform" not in grounded_ownership
+    assert "def should_route_deterministic_freeform(" not in freeform_runtime
+    assert "def should_route_deterministic_freeform(" not in freeform_templates
 
 
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:

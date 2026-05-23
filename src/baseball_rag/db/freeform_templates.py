@@ -195,12 +195,12 @@ def can_plan_deterministically(question: str) -> bool:
     return match_template(question) is not None
 
 
-def should_route_deterministic_freeform(
+def should_route_deterministic_grounded_database(
     question: str,
     *,
     competing_stat: str | None = None,
 ) -> bool:
-    """Return whether deterministic freeform should win routing precedence."""
+    """Return whether deterministic grounded database planning should win routing precedence."""
     matched = match_template(question)
     if matched is None:
         return False

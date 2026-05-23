@@ -9,10 +9,10 @@ def deterministic_grounded_database_owns(
     """Return whether deterministic grounded database planning should own this route."""
     from baseball_rag.db.freeform_runtime import (
         can_plan_deterministically,
-        should_route_deterministic_freeform,
+        should_route_deterministic_grounded_database,
     )
 
-    return can_plan_deterministically(question) and should_route_deterministic_freeform(
+    return can_plan_deterministically(question) and should_route_deterministic_grounded_database(
         question,
         competing_stat=competing_stat,
     )

@@ -17,7 +17,7 @@ from baseball_rag.db.freeform_templates import (
     match_template,
 )
 from baseball_rag.db.freeform_templates import (
-    should_route_deterministic_freeform as _templates_should_route_deterministic_freeform,
+    should_route_deterministic_grounded_database as _templates_should_route,
 )
 from baseball_rag.db.freeform_types import (
     MAX_ROWS,
@@ -36,13 +36,13 @@ def can_plan_deterministically(question: str) -> bool:
     return _templates_can_plan_deterministically(question)
 
 
-def should_route_deterministic_freeform(
+def should_route_deterministic_grounded_database(
     question: str,
     *,
     competing_stat: str | None = None,
 ) -> bool:
-    """Return whether deterministic freeform should win over a competing route."""
-    return _templates_should_route_deterministic_freeform(
+    """Return whether deterministic grounded database planning should win over a competing route."""
+    return _templates_should_route(
         question,
         competing_stat=competing_stat,
     )
