@@ -1,4 +1,4 @@
-"""Runtime validation, execution, and formatting for freeform queries."""
+"""Runtime validation, execution, and formatting for grounded database questions."""
 
 import re
 from collections.abc import Callable
@@ -108,7 +108,7 @@ def execute_plan(
     planned: PlannedFreeformQuery,
     conn: duckdb.DuckDBPyConnection,
 ) -> FreeformResult:
-    """Validate and execute a planned freeform query."""
+    """Validate and execute a planned grounded database question."""
     assembled = planned.assembled
     sql = assembled.sql.strip().rstrip(";")
 

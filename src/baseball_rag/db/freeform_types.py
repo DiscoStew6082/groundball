@@ -1,4 +1,4 @@
-"""Shared types and constants for freeform query handling."""
+"""Shared types and constants for grounded database question handling."""
 
 from dataclasses import dataclass, field
 
@@ -10,7 +10,7 @@ SCHEMA_TIMEOUT_MS = 5000
 
 @dataclass
 class FreeformResult:
-    """Result of a freeform natural language query."""
+    """Result of a grounded database natural language question."""
 
     sql: str
     rows: list[tuple]

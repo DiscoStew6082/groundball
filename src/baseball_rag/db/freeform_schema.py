@@ -1,4 +1,4 @@
-"""Schema introspection for LLM-backed freeform planning."""
+"""Schema introspection for LLM-backed grounded database planning."""
 
 import duckdb
 

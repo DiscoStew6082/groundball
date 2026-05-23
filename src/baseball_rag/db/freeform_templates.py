@@ -10,7 +10,7 @@ from baseball_rag.db.team_history import resolve_team_identity
 
 @dataclass(frozen=True)
 class MatchedTemplate:
-    """Read model for one deterministic freeform template match."""
+    """Read model for one deterministic grounded database template match."""
 
     assembled: AssembledSQL
     source_detail: str
@@ -185,13 +185,13 @@ def _match_roster_template(q: str) -> MatchedTemplate | None:
 
 
 def _detect_template(question: str) -> AssembledSQL | None:
-    """Return deterministic SQL for high-value freeform baseball-history patterns."""
+    """Return deterministic SQL for high-value grounded database baseball-history patterns."""
     matched = match_template(question)
     return matched.assembled if matched is not None else None
 
 
 def can_plan_deterministically(question: str) -> bool:
-    """Return whether a question is owned by a deterministic freeform template."""
+    """Return whether a question is owned by a deterministic grounded database template."""
     return match_template(question) is not None
 
 

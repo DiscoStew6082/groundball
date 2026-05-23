@@ -1,6 +1,9 @@
 """Repository cleanup policies for retired and optional surfaces."""
 
+import ast
+import io
 import re
+import tokenize
 import tomllib
 from pathlib import Path
 
@@ -10,6 +13,22 @@ ROOT = Path(__file__).resolve().parents[1]
 def _dependency_name(requirement: str) -> str:
     head = requirement.split(";", 1)[0].strip()
     return head.split("[", 1)[0].split("<", 1)[0].split(">", 1)[0].split("=", 1)[0].strip()
+
+
+def _python_docstrings_and_comments(source: str) -> list[str]:
+    module = ast.parse(source)
+    docstrings = [
+        docstring
+        for node in ast.walk(module)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        if (docstring := ast.get_docstring(node)) is not None
+    ]
+    comments = [
+        token.string
+        for token in tokenize.generate_tokens(io.StringIO(source).readline)
+        if token.type == tokenize.COMMENT
+    ]
+    return docstrings + comments
 
 
 def test_default_package_excludes_optional_mlb_api_mcp_surface() -> None:
@@ -354,6 +373,28 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
     assert "should_route_deterministic_freeform" not in grounded_ownership
     assert "def should_route_deterministic_freeform(" not in freeform_runtime
     assert "def should_route_deterministic_freeform(" not in freeform_templates
+
+
+def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
+    freeform_runtime = (ROOT / "src" / "baseball_rag" / "db" / "freeform_runtime.py").read_text(
+        encoding="utf-8"
+    )
+    freeform_templates = (ROOT / "src" / "baseball_rag" / "db" / "freeform_templates.py").read_text(
+        encoding="utf-8"
+    )
+    freeform_schema = (ROOT / "src" / "baseball_rag" / "db" / "freeform_schema.py").read_text(
+        encoding="utf-8"
+    )
+    freeform_types = (ROOT / "src" / "baseball_rag" / "db" / "freeform_types.py").read_text(
+        encoding="utf-8"
+    )
+
+    prose = "\n".join(
+        item
+        for source in (freeform_runtime, freeform_templates, freeform_schema, freeform_types)
+        for item in _python_docstrings_and_comments(source)
+    )
+    assert "freeform" not in prose.lower()
 
 
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
