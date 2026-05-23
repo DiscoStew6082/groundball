@@ -66,3 +66,19 @@ def test_corpus_diagnostics_cli_rejects_retired_persist_dir_option(tmp_path):
 
     assert result.returncode != 0
     assert "--persist-dir" in result.stderr
+
+
+def test_corpus_diagnostics_cli_rejects_short_diag_alias():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "baseball_rag.corpus",
+            "diag",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "invalid choice" in result.stderr

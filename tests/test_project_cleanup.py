@@ -713,6 +713,7 @@ def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
 
     assert "corpus_manifest.json" not in diagnostics
     assert "persist-dir" not in corpus_main
+    assert '"diag"' not in corpus_main
     assert "manifest_section_count" not in lifecycle
     assert "write_corpus_manifest" not in lifecycle
     assert "new_manifest" not in lifecycle
