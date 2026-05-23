@@ -234,6 +234,8 @@ def test_conversation_unsupported_shape_tests_are_not_named_old_client() -> None
 
     assert "old client row shape" not in conversation_tests
     assert "old client answer shape" not in conversation_tests
+    assert "Legacy answer" not in conversation_tests
+    assert "Legacy rows" not in conversation_tests
 
 
 def test_general_explanation_no_longer_uses_fallback_question_shape() -> None:

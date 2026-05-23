@@ -293,12 +293,12 @@ def test_compact_turn_with_recent_unsupported_row_shape_blocks_stale_resolution(
     recent_turn = conversation_turn(
         "unsupported answer shape",
         StructuredAnswer(
-            answer="Legacy answer",
+            answer="Unsupported-shape answer",
             intent="stat_query",
             sources=[
                 SourceRecord(
                     type="duckdb",
-                    label="Legacy rows",
+                    label="Unsupported-shape rows",
                     rows=[{"full_name": "Babe Ruth"}],
                 )
             ],
