@@ -333,6 +333,20 @@ def test_public_docs_use_grounded_database_question_naming() -> None:
     assert "grounded database question" in corpus_docs.lower()
 
 
+def test_routing_ownership_uses_grounded_database_question_naming() -> None:
+    query_router = (ROOT / "src" / "baseball_rag" / "routing" / "query_router.py").read_text(
+        encoding="utf-8"
+    )
+    grounded_ownership = (
+        ROOT / "src" / "baseball_rag" / "routing" / "grounded_database_ownership.py"
+    ).read_text(encoding="utf-8")
+
+    assert not (ROOT / "src" / "baseball_rag" / "routing" / "freeform_ownership.py").exists()
+    assert "freeform_ownership" not in query_router
+    assert "deterministic_freeform_owns" not in query_router
+    assert "deterministic freeform" not in grounded_ownership.lower()
+
+
 def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
     corpus_main = (ROOT / "src" / "baseball_rag" / "corpus" / "__main__.py").read_text(
         encoding="utf-8"

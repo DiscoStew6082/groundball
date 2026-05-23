@@ -43,7 +43,9 @@ from baseball_rag.db.stat_registry import (
     supported_stat_prompt_list,
 )
 from baseball_rag.generation.json_parsing import extract_json_blocks, strip_markdown_fence
-from baseball_rag.routing.freeform_ownership import deterministic_freeform_owns
+from baseball_rag.routing.grounded_database_ownership import (
+    deterministic_grounded_database_owns,
+)
 
 _NAME_TOKEN_RE = r"[^\W\d_](?:[^\W\d_]|[.'-])*"
 _NAME_RE = rf"{_NAME_TOKEN_RE}(?:\s+{_NAME_TOKEN_RE})*"
@@ -327,7 +329,7 @@ def route(question: str) -> RoutedCase:
         and deterministic.stat is not None
         and (_should_use_deterministic_stat_route(question) or deterministic.player_name)
     ):
-        if deterministic_freeform_owns(
+        if deterministic_grounded_database_owns(
             question,
             competing_stat=deterministic.stat,
         ):
@@ -341,7 +343,7 @@ def route(question: str) -> RoutedCase:
         and deterministic.stat is not None
         and not _should_use_deterministic_stat_route(question)
     ):
-        if deterministic_freeform_owns(
+        if deterministic_grounded_database_owns(
             question,
             competing_stat=deterministic.stat,
         ):
@@ -351,7 +353,7 @@ def route(question: str) -> RoutedCase:
             )
         return deterministic
 
-    if deterministic_freeform_owns(question):
+    if deterministic_grounded_database_owns(question):
         return routed_case(
             intent="grounded_database_question",
             raw_question=question,
