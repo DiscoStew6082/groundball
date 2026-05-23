@@ -261,12 +261,18 @@ def test_service_uses_grounded_database_runtime_directly() -> None:
     assert "baseball_rag.db.grounded_database_runtime import" in service
 
 
-def test_freeform_tests_use_runtime_modules_directly() -> None:
-    freeform_tests = (ROOT / "tests" / "test_freeform.py").read_text(encoding="utf-8")
+def test_grounded_database_tests_use_runtime_modules_directly() -> None:
+    old_test_file = ROOT / "tests" / ("test_" + "freeform.py")
+    grounded_database_tests = (ROOT / "tests" / "test_grounded_database.py").read_text(
+        encoding="utf-8"
+    )
 
-    assert "baseball_rag.db.freeform import" not in freeform_tests
-    assert not re.search(r"^\s*from baseball_rag\.db import freeform\b", freeform_tests, re.M)
-    assert not re.search(r"^\s*import baseball_rag\.db\.freeform\b", freeform_tests, re.M)
+    assert not old_test_file.exists()
+    assert "baseball_rag.db.freeform import" not in grounded_database_tests
+    assert not re.search(
+        r"^\s*from baseball_rag\.db import freeform\b", grounded_database_tests, re.M
+    )
+    assert not re.search(r"^\s*import baseball_rag\.db\.freeform\b", grounded_database_tests, re.M)
 
 
 def test_grounded_database_types_module_replaces_legacy_types_module() -> None:
@@ -593,7 +599,7 @@ def test_grounded_database_test_names_and_prose_use_current_label() -> None:
     test_sources = [
         (ROOT / "tests" / "test_api.py").read_text(encoding="utf-8"),
         (ROOT / "tests" / "test_conversation.py").read_text(encoding="utf-8"),
-        (ROOT / "tests" / "test_freeform.py").read_text(encoding="utf-8"),
+        (ROOT / "tests" / "test_grounded_database.py").read_text(encoding="utf-8"),
         (ROOT / "tests" / "test_stat_registry.py").read_text(encoding="utf-8"),
     ]
 
