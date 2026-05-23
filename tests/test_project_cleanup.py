@@ -712,9 +712,11 @@ def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
     corpus_docs = (ROOT / "docs" / "corpus.md").read_text(encoding="utf-8")
     development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
     architecture_docs = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "corpus_manifest.json" not in diagnostics
     assert "persist-dir" not in corpus_main
+    assert "persist-dir" not in readme
     assert '"diag"' not in corpus_main
     assert "manifest_section_count" not in lifecycle
     assert "write_corpus_manifest" not in lifecycle
@@ -724,6 +726,7 @@ def test_retired_corpus_manifest_lifecycle_is_removed() -> None:
     assert "old ignored manifest" not in corpus_docs
     assert "old ignored manifest" not in development_docs
     assert "old ignored manifest" not in architecture_docs
+    assert "old ignored manifest" not in readme
 
 
 def test_stale_space_deploy_surface_is_not_active() -> None:

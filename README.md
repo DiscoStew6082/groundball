@@ -175,10 +175,10 @@ Populate structured data and regenerate the manifest:
 uv run python -m baseball_rag.db.download
 ```
 
-Inspect checked-in corpus material and any old ignored manifest state:
+Inspect checked-in corpus material:
 
 ```bash
-uv run python -m baseball_rag.corpus diagnostics --persist-dir data
+uv run python -m baseball_rag.corpus diagnostics
 ```
 
 ## Evaluation
