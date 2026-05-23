@@ -7,7 +7,7 @@ from baseball_rag.generation.prompt import (
 
 
 class TestBuildOpenPrompt:
-    """Tests for build_open_prompt — used when no relevant docs are retrieved."""
+    """Tests for build_open_prompt — used for ungrounded open prose."""
 
     def test_system_prompt_forbids_structured_reasoning(self):
         """System prompt tells the model not to output planning notes or bullet points."""

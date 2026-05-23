@@ -626,6 +626,21 @@ def test_retrieved_document_generation_surface_is_removed() -> None:
     assert "PromptBundle" not in prompt
 
 
+def test_open_prose_prompt_is_not_described_as_retrieval_fallback() -> None:
+    combined = "\n".join(
+        item
+        for path in (
+            ROOT / "src" / "baseball_rag" / "generation" / "prompt.py",
+            ROOT / "tests" / "test_generation.py",
+        )
+        for item in _python_docstrings_and_comments(path.read_text(encoding="utf-8"))
+    )
+
+    assert "corpus returned no relevant documents" not in combined
+    assert "no relevant docs are retrieved" not in combined
+    assert "retrieved context" not in combined.lower()
+
+
 def test_static_vocab_no_longer_indexes_hof_biographies() -> None:
     static_vocab = (ROOT / "src" / "baseball_rag" / "corpus" / "static_vocab.py").read_text(
         encoding="utf-8"

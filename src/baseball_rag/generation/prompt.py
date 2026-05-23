@@ -43,9 +43,9 @@ def build_player_biography_json_prompt(
 
 
 def build_open_prompt(question: str) -> tuple[str, str]:
-    """Render a prompt with NO retrieved context — LLM answers from its own knowledge.
+    """Render a prompt for ungrounded open prose from the LLM's own knowledge.
 
-    Use when the corpus returned no relevant documents.
+    Use for open prose questions that are not grounded database questions.
     The LLM should answer directly and honestly note if stats/data are involved.
     """
     return (
