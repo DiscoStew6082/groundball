@@ -75,7 +75,7 @@ class TestDeterministicTemplates:
 
     def _run_query(self, question: str, *, request_fn=None):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import query
+        from baseball_rag.db.grounded_database_runtime import query
 
         return query(question, get_duckdb(), request_fn=request_fn or MagicMock())
 
@@ -129,17 +129,20 @@ class TestDeterministicTemplates:
         ]
 
     def test_career_pitching_wins_template_is_planned_before_execution(self):
-        from baseball_rag.db import freeform_runtime
+        import baseball_rag.db.grounded_database_runtime as grounded_database_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
         from baseball_rag.routing import GroundedDatabaseQuestionCase, route
 
-        assert not hasattr(freeform_runtime, "_template_source_detail")
+        assert not hasattr(grounded_database_runtime, "_template_source_detail")
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
-        planned = freeform_runtime.plan_query(
+        planned = grounded_database_runtime.plan_query(
             "career pitching wins leaders", get_duckdb(), request_fn=mock_call
         )
 
-        assert freeform_runtime.can_plan_deterministically("career pitching wins leaders") is True
+        assert (
+            grounded_database_runtime.can_plan_deterministically("career pitching wins leaders")
+            is True
+        )
         assert isinstance(route("career pitching wins leaders"), GroundedDatabaseQuestionCase)
         assert mock_call.call_count == 0
         assert planned.planning_path == "deterministic_template"
@@ -149,14 +152,14 @@ class TestDeterministicTemplates:
         assert "SUM(pi.W) AS career_W" in planned.sql
 
     def test_plain_batting_leaderboard_stays_on_stat_route(self):
-        from baseball_rag.db.freeform_runtime import can_plan_deterministically
+        from baseball_rag.db.grounded_database_runtime import can_plan_deterministically
         from baseball_rag.routing import StatQueryCase, route
 
         assert can_plan_deterministically("career home run leaders") is True
         assert isinstance(route("career home run leaders"), StatQueryCase)
 
     def test_plain_season_era_leaderboard_stays_on_stat_route(self):
-        from baseball_rag.db.freeform_runtime import can_plan_deterministically
+        from baseball_rag.db.grounded_database_runtime import can_plan_deterministically
         from baseball_rag.routing import StatQueryCase, route
 
         assert can_plan_deterministically("who had the best ERA in 1968") is True
@@ -165,7 +168,7 @@ class TestDeterministicTemplates:
 
     def test_runtime_executes_planned_query_without_result_shape_changes(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import execute_plan, plan_query, query
+        from baseball_rag.db.grounded_database_runtime import execute_plan, plan_query, query
 
         conn = get_duckdb()
         planned = plan_query("career pitching wins leaders", conn)
@@ -182,21 +185,26 @@ class TestDeterministicTemplates:
         ]
 
     def test_grounded_database_runtime_planning_surface_exposes_deterministic_queries(self):
-        import baseball_rag.db.freeform_runtime as freeform_runtime
+        import baseball_rag.db.grounded_database_runtime as grounded_database_runtime
         from baseball_rag.db.duckdb_schema import get_duckdb
 
         conn = get_duckdb()
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
 
-        planned = freeform_runtime.plan_query(
+        planned = grounded_database_runtime.plan_query(
             "career pitching wins leaders", conn, request_fn=mock_call
         )
-        result = freeform_runtime.query("career pitching wins leaders", conn, request_fn=mock_call)
+        result = grounded_database_runtime.query(
+            "career pitching wins leaders", conn, request_fn=mock_call
+        )
 
         assert mock_call.call_count == 0
-        assert freeform_runtime.can_plan_deterministically("career pitching wins leaders") is True
         assert (
-            freeform_runtime.should_route_deterministic_grounded_database(
+            grounded_database_runtime.can_plan_deterministically("career pitching wins leaders")
+            is True
+        )
+        assert (
+            grounded_database_runtime.should_route_deterministic_grounded_database(
                 "career pitching wins leaders",
                 competing_stat="W",
             )
@@ -339,7 +347,7 @@ class TestDeterministicTemplates:
 
     def test_avg_and_era_templates_use_registry_stat_semantics(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import query
+        from baseball_rag.db.grounded_database_runtime import query
         from baseball_rag.db.stat_registry import get_stat
 
         conn = get_duckdb()
@@ -411,7 +419,7 @@ class TestDeterminismSmokeSuite:
     """
 
     def _run_query(self, question: str) -> tuple[int, list[tuple]]:
-        from baseball_rag.db.freeform_runtime import query
+        from baseball_rag.db.grounded_database_runtime import query
 
         conn = __import__(
             "baseball_rag.db.duckdb_schema",
@@ -517,7 +525,7 @@ class TestGenerateSQLDeterminism:
 
     def test_roster_intent_is_planned_before_execution_without_llm(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import can_plan_deterministically, plan_query
+        from baseball_rag.db.grounded_database_runtime import can_plan_deterministically, plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = (
@@ -541,7 +549,7 @@ class TestGenerateSQLDeterminism:
 
     def test_historical_team_identity_is_typed_before_sql_assembly(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import plan_query
+        from baseball_rag.db.grounded_database_runtime import plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = (
@@ -566,7 +574,7 @@ class TestGenerateSQLDeterminism:
 
     def test_router_year_can_feed_historical_team_identity_when_llm_omits_year(self):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import plan_query
+        from baseball_rag.db.grounded_database_runtime import plan_query
 
         mock_resp = MagicMock()
         mock_resp.content = '{"stat_tables": ["batting"], "team_name_pattern": "Braves"}'
@@ -600,7 +608,7 @@ class TestGenerateSQLDeterminism:
         self, question: str, team_pattern: str, year: int, team_id: str
     ):
         from baseball_rag.db.duckdb_schema import get_duckdb
-        from baseball_rag.db.freeform_runtime import execute_plan, plan_query
+        from baseball_rag.db.grounded_database_runtime import execute_plan, plan_query
 
         conn = get_duckdb()
         mock_resp = MagicMock()
@@ -737,7 +745,7 @@ class TestGroundedDatabaseProvenance:
             truncated=False,
         )
 
-        with patch("baseball_rag.db.freeform_runtime.query", return_value=result) as query:
+        with patch("baseball_rag.db.grounded_database_runtime.query", return_value=result) as query:
             _answer_grounded_database_question(decision.raw_question, decision)
 
         assert decision.time_period.type == TimePeriodType.RELATIVE
@@ -748,7 +756,7 @@ class TestGroundedDatabaseResultFormatting:
     """Tests for display-quality grounded database answer formatting."""
 
     def test_player_roster_result_formats_names_without_python_tuples(self):
-        from baseball_rag.db.freeform_runtime import format_result
+        from baseball_rag.db.grounded_database_runtime import format_result
         from baseball_rag.db.grounded_database_types import FreeformResult
 
         result = FreeformResult(
@@ -772,7 +780,7 @@ class TestGroundedDatabaseResultFormatting:
         assert "('Wally', 'Berger')" not in text
 
     def test_generic_result_formats_rows_as_labeled_values(self):
-        from baseball_rag.db.freeform_runtime import format_result
+        from baseball_rag.db.grounded_database_runtime import format_result
         from baseball_rag.db.grounded_database_types import FreeformResult
 
         result = FreeformResult(
@@ -789,7 +797,7 @@ class TestGroundedDatabaseResultFormatting:
         assert "('Babe', 'Ruth', 714)" not in text
 
     def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
-        from baseball_rag.db.freeform_runtime import format_result
+        from baseball_rag.db.grounded_database_runtime import format_result
         from baseball_rag.db.grounded_database_types import FreeformResult
 
         result = FreeformResult(

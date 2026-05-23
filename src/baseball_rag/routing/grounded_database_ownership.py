@@ -7,7 +7,7 @@ def deterministic_grounded_database_owns(
     competing_stat: str | None = None,
 ) -> bool:
     """Return whether deterministic grounded database planning should own this route."""
-    from baseball_rag.db.freeform_runtime import (
+    from baseball_rag.db.grounded_database_runtime import (
         can_plan_deterministically,
         should_route_deterministic_grounded_database,
     )

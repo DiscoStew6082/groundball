@@ -254,11 +254,11 @@ def test_freeform_compatibility_facade_is_removed() -> None:
     assert "Backward-compatible wrapper" not in grounded_database_intent
 
 
-def test_service_uses_freeform_runtime_directly() -> None:
+def test_service_uses_grounded_database_runtime_directly() -> None:
     service = (ROOT / "src" / "baseball_rag" / "service.py").read_text(encoding="utf-8")
 
     assert "baseball_rag.db.freeform import" not in service
-    assert "baseball_rag.db.freeform_runtime import" in service
+    assert "baseball_rag.db.grounded_database_runtime import" in service
 
 
 def test_freeform_tests_use_runtime_modules_directly() -> None:
@@ -352,6 +352,24 @@ def test_grounded_database_templates_module_replaces_legacy_module() -> None:
     ):
         text = path.read_text(encoding="utf-8")
         assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
+
+
+def test_grounded_database_runtime_module_replaces_legacy_module() -> None:
+    old_module = "free" + "form_runtime"
+    new_module = "grounded_database_runtime"
+    search_roots = [ROOT / "src", ROOT / "tests", ROOT / "evals"]
+
+    assert not (ROOT / "src" / "baseball_rag" / "db" / f"{old_module}.py").exists()
+    assert (ROOT / "src" / "baseball_rag" / "db" / f"{new_module}.py").exists()
+    for path in (
+        path
+        for root in search_roots
+        for path in root.rglob("*.py")
+        if path.name != "test_project_cleanup.py"
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert not _python_imports_module(text, f"baseball_rag.db.{old_module}")
+        assert f"baseball_rag.db.{old_module}" not in text
 
 
 def test_batting_player_stat_compatibility_adapter_is_removed() -> None:
@@ -484,9 +502,9 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
     grounded_ownership = (
         ROOT / "src" / "baseball_rag" / "routing" / "grounded_database_ownership.py"
     ).read_text(encoding="utf-8")
-    freeform_runtime = (ROOT / "src" / "baseball_rag" / "db" / "freeform_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    grounded_database_runtime = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_runtime.py"
+    ).read_text(encoding="utf-8")
     grounded_database_templates = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_templates.py"
     ).read_text(encoding="utf-8")
@@ -496,7 +514,7 @@ def test_routing_ownership_uses_grounded_database_question_naming() -> None:
     assert "deterministic_freeform_owns" not in query_router
     assert "deterministic freeform" not in grounded_ownership.lower()
     assert "should_route_deterministic_freeform" not in grounded_ownership
-    assert "def should_route_deterministic_freeform(" not in freeform_runtime
+    assert "def should_route_deterministic_freeform(" not in grounded_database_runtime
     assert "def should_route_deterministic_freeform(" not in grounded_database_templates
 
 
@@ -507,9 +525,9 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
     grounded_database_assembler = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_assembler.py"
     ).read_text(encoding="utf-8")
-    freeform_runtime = (ROOT / "src" / "baseball_rag" / "db" / "freeform_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    grounded_database_runtime = (
+        ROOT / "src" / "baseball_rag" / "db" / "grounded_database_runtime.py"
+    ).read_text(encoding="utf-8")
     grounded_database_templates = (
         ROOT / "src" / "baseball_rag" / "db" / "grounded_database_templates.py"
     ).read_text(encoding="utf-8")
@@ -528,7 +546,7 @@ def test_grounded_database_runtime_docs_do_not_use_freeform_label() -> None:
         for source in (
             grounded_database_intent,
             grounded_database_assembler,
-            freeform_runtime,
+            grounded_database_runtime,
             grounded_database_templates,
             freeform_schema,
             grounded_database_types,

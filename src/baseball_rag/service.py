@@ -107,7 +107,7 @@ def _answer_grounded_database_question(
     _question: str,
     decision: GroundedDatabaseQuestionCase,
 ) -> StructuredAnswer:
-    from baseball_rag.db.freeform_runtime import format_result, query
+    from baseball_rag.db.grounded_database_runtime import format_result, query
     from baseball_rag.generation.llm import make_request
 
     conn = get_duckdb()
