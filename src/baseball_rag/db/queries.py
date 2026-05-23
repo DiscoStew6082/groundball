@@ -164,32 +164,6 @@ def _execute_stat_query_plan(
 
 
 @traced(component_id="duckdb", label="DB Query")
-def get_stat_leaders_range(stat: str, start_year: int, end_year: int) -> list[dict]:
-    """Compatibility adapter for top 10 batting stat leaders over a year range.
-
-    Aggregates the named stat across all seasons in [start_year, end_year]
-    (inclusive), then ranks by total. This handles decade queries
-    ("seventies") and explicit ranges ("1960-1980").
-
-    Parameters
-    ----------
-    stat : str
-        The statistic to rank by (HR, RBI, H, AB, R, 2B, 3B)
-    start_year : int
-        First season in the range (inclusive).
-    end_year : int
-        Last season in the range (inclusive). Must be >= start_year.
-
-    Returns
-    -------
-    list[dict]
-        List of dicts with keys: name, team ("Range"), stat_value
-    """
-    result = execute_stat_query(stat, table="batting", start_year=start_year, end_year=end_year)
-    return result.rows
-
-
-@traced(component_id="duckdb", label="DB Query")
 def get_career_stat_leaders(stat: str, limit: int = 10) -> list[dict]:
     """Compatibility adapter for career batting stat leaders.
 

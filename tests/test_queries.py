@@ -8,7 +8,6 @@ from baseball_rag.db.queries import (
     execute_stat_query_plan,
     get_career_stat_leaders,
     get_fielding_leaders,
-    get_stat_leaders_range,
 )
 from baseball_rag.routing import StatQueryCase
 from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
@@ -74,7 +73,16 @@ def test_career_ops_leaders_use_weighted_rate_not_summed_seasons():
 
 def test_range_ops_leaders_use_weighted_rate_not_summed_seasons():
     """Range OPS must be calculated from aggregate components, not summed yearly OPS."""
-    result = get_stat_leaders_range("OPS", 1970, 1979)
+    result = execute_stat_query_plan(
+        StatQueryPlan(
+            stat="OPS",
+            table="batting",
+            kind="leaderboard",
+            intent="stat_query",
+            start_year=1970,
+            end_year=1979,
+        )
+    ).rows
 
     assert len(result) > 0
     assert 0 < result[0]["stat_value"] < 2
