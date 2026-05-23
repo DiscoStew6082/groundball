@@ -923,6 +923,21 @@ def test_public_docs_use_grounded_database_question_naming() -> None:
     assert "grounded database question" in corpus_docs.lower()
 
 
+def test_docs_do_not_describe_llm_unavailable_as_biography_fallback() -> None:
+    docs = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            ROOT / "README.md",
+            ROOT / "docs" / "cli.md",
+            ROOT / "docs" / "corpus.md",
+        )
+    )
+
+    assert "fallback biography" not in docs
+    assert "DuckDB biography fallback" not in docs
+    assert "biography fallback" not in docs
+
+
 def test_routing_ownership_uses_grounded_database_question_naming() -> None:
     query_router = (ROOT / "src" / "baseball_rag" / "routing" / "query_router.py").read_text(
         encoding="utf-8"

@@ -234,7 +234,7 @@ Grounding is enforced in several places:
 - DuckDB sources include rows and dataset manifest metadata.
 - Player biographies fail closed before generation when the player name is ambiguous or unresolved.
 - Biography stat claims that can be extracted and matched to registered stats are verified against DuckDB; mismatches return the prose plus structured and visible warnings.
-- If LM Studio is unavailable for player biographies or open explanations, the system returns `llm_unavailable` instead of synthesizing a fallback biography.
+- If LM Studio is unavailable for player biographies or open explanations, the system returns `llm_unavailable` without inventing LLM prose or DuckDB-only biography text.
 
 ## Limitations
 

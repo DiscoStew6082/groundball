@@ -20,7 +20,7 @@ corpus/
 - Player biographies resolve the player identity through DuckDB, then ask the LLM for JSON containing `answer` and `stat_claims`.
 - Supported career and season stat claims extracted from biographies are verified against DuckDB.
 - Supported stat-definition explanations such as "what is OPS?" use local stat-definition Markdown before the open LLM path.
-- If LM Studio is unavailable for open prose, the system returns `llm_unavailable`; it does not synthesize a DuckDB biography fallback.
+- If LM Studio is unavailable for open prose, the system returns `llm_unavailable`; it does not synthesize DuckDB-only biography text.
 
 ## Document Format
 
