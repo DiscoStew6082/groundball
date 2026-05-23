@@ -6,14 +6,8 @@ def test_support_state_exposes_unsupported_review_and_audit_reason():
     answer = StructuredAnswer(
         answer="Multiple matching players were found.",
         intent="player_biography",
-        sources=[
-            SourceRecord(
-                type="duckdb",
-                label="Unsupported template",
-                rows=[{"unsupported_reason": "old row reason"}],
-            )
-        ],
-        warnings=["old warning reason"],
+        sources=[SourceRecord(type="duckdb", label="Unsupported template")],
+        warnings=["Multiple players matched the requested name."],
         unsupported=True,
         unsupported_reason="ambiguous",
         review_reason="ambiguous",
@@ -78,3 +72,25 @@ def test_support_state_regression_for_governance_reviewability():
         assert state.audit_reason == audit_reason
         assert state.review_reason == review_reason
         assert state.reviewable is True
+
+
+def test_support_state_ignores_legacy_reason_payloads_without_structured_reason():
+    answer = StructuredAnswer(
+        answer="No result.",
+        intent="grounded_database_question",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="Unsupported template",
+                rows=[{"unsupported_reason": "legacy row reason"}],
+            )
+        ],
+        warnings=["legacy warning reason"],
+        unsupported=True,
+    )
+
+    state = answer_support_state(answer)
+
+    assert state.audit_reason == "unsupported"
+    assert state.structured_unsupported_reason is None
+    assert state.review_reason == "unsupported"

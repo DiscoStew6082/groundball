@@ -11,12 +11,12 @@ from baseball_rag.provenance import ReviewReason, StructuredAnswer, UnsupportedR
 class AnswerSupportState:
     """One read model for answer support, audit, and review policy."""
 
-    unsupported_reason: UnsupportedReason | str | None
+    unsupported_reason: UnsupportedReason | None
     review_reason: ReviewReason | None
     structured_unsupported_reason: UnsupportedReason | None
 
     @property
-    def audit_reason(self) -> UnsupportedReason | str | None:
+    def audit_reason(self) -> UnsupportedReason | None:
         return self.unsupported_reason
 
     @property
@@ -34,18 +34,11 @@ def answer_support_state(answer: StructuredAnswer) -> AnswerSupportState:
     )
 
 
-def _unsupported_reason(answer: StructuredAnswer) -> UnsupportedReason | str | None:
+def _unsupported_reason(answer: StructuredAnswer) -> UnsupportedReason | None:
     if not answer.unsupported:
         return None
     if answer.unsupported_reason is not None:
         return answer.unsupported_reason
-    for source in answer.sources:
-        for row in source.rows:
-            reason = row.get("unsupported_reason")
-            if reason:
-                return str(reason)
-    if answer.warnings:
-        return answer.warnings[0]
     return "unsupported"
 
 
