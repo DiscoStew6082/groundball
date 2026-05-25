@@ -1,6 +1,6 @@
 # Baseball RAG Context
 
-This file is the current architecture and domain context for Baseball RAG. Use it with `README.md`, `docs/architecture.md`, and the completed architecture ledgers under `docs/` when doing architecture review or worker handoff planning.
+This file is the canonical current architecture and domain context for Baseball RAG. Start here for architecture review or worker handoff planning; open `README.md`, `docs/architecture.md`, or the completed architecture ledgers under `docs/` only when you need supporting detail.
 
 ## Architecture Vocabulary
 
@@ -27,47 +27,80 @@ Use these words consistently:
 
 ## Current Decision Sources
 
-There is no `docs/adr/` directory in this repo yet. Treat these as the current decision record:
+There is no `docs/adr/` directory in this repo yet. Treat this file as the current decision record and use these sources only for supporting detail:
 
-- `README.md` for the product contract and demo vocabulary.
-- `docs/architecture.md` for the active architecture overview.
-- `docs/architecture-followup-worker-handoff-plan.md`, `docs/architecture-next-deepening-plan.md`, and `docs/architecture-fresh-deepening-handoff-plan.md` as completed implementation ledgers.
+- `README.md` for expanded product contract and demo vocabulary.
+- `docs/architecture.md` for the fuller architecture overview.
+- `docs/architecture-followup-worker-handoff-plan.md`, `docs/architecture-next-deepening-plan.md`, and `docs/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
 Do not reopen completed Modules without fresh public-behavior evidence. Prior ledgers mark routing decision order, request lifecycle ordering, visible evidence presentation, eval reporting, Grounded Database Planning, DuckDB Result Answer Assembly, Biography Stat Claim Vocabulary, LLM Narration Guard, Player Identity Authority, Query Output Contract, and Verified Evidence Read Model as landed.
 
-## Current Deepening Findings
+## Architecture Ledger Registry
 
-### Routing Decision Evidence Module
+Audience: future Codex sessions.
+Authority: canonical current truth for architecture-deepening context.
+Purpose: lower startup context by listing all active opportunities, completed Modules, and frozen Seams in one small front door.
 
-Fresh friction: `route(question)` is a stable public Interface, but the current Implementation discards which routing Adapter won and why. `RouteDecisionChain` and deterministic grounded database ownership are Shallow because deleting them mostly moves a loop and thin import wrapper back into `query_router.py`.
+### Current Opportunities
 
-Deepening direction: keep route precedence and `route(question)` stable, but make routing decisions preserve labeled evidence that tests and traces can inspect.
+#### Routing and Request Lifecycle
 
-Expected benefits: Locality for route-precedence bugs and Leverage for router tests, Architecture Explorer traces, and future route-miss debugging.
+- 2026-05-25: Routing Decision Evidence Module. `route(question)` is a stable public Interface, but the current Implementation discards which routing Adapter won and why. Smallest next slice: preserve route precedence and `route(question)` caller behavior while returning or tracing labeled decision evidence that tests can inspect. Verify with focused router tests and the existing cleanup guard.
 
-### Grounded Database Template Catalog Module
+#### Grounded Database and Query Templates
 
-Fresh friction: deterministic template matching, route ownership, unsupported/ambiguous policy, source detail, and SQL templates live together in the grounded database template file. Each new template increases the caller-facing knowledge needed to reason about the Module.
+- 2026-05-25: Grounded Database Template Catalog Module. Deterministic template matching, route ownership, unsupported/ambiguous policy, source detail, and SQL templates live together in the grounded database template file. Smallest next slice: keep the completed Grounded Database Planning Module stable while making each template own match facts, route ownership, provenance detail, and SQL assembly locally. Verify with focused grounded database template tests.
 
-Deepening direction: keep the completed Grounded Database Planning Module stable, but deepen the template catalog so each template owns match facts, route ownership, provenance detail, and SQL assembly locally.
+#### Stat Vocabulary and Narration Safety
 
-Expected benefits: Locality for template additions and Leverage from focused tests that target one template's behavior.
+- 2026-05-25: Context-Aware Stat Mention Vocabulary Module. Stat aliases and mention grammar are repeated across stat routing, biography claim vocabulary, LLM narration verification, and static stat-definition lookup. Smallest next slice: expose tailored vocabulary views for routing, biography claims, narration verification, and stat-definition document lookup instead of flattening policy into one alias table. Verify with focused routing, claim extraction, and narration safety tests.
 
-### Context-Aware Stat Mention Vocabulary Module
+### Completed Modules
 
-Fresh friction: stat aliases and mention grammar are repeated across stat routing, biography claim vocabulary, LLM narration verification, and static stat-definition lookup. A single flat alias table would be too blunt because each Seam needs different policy, but the current duplication invites drift.
+Completed entries must not ask future agents to finish anything. If future work remains, the item belongs under Current Opportunities instead.
 
-Deepening direction: create a context-aware vocabulary Module that exposes tailored views for routing, biography claims, narration verification, and stat-definition document lookup.
+#### Claim Verification and Source Provenance
 
-Expected benefits: Locality for alias changes and Leverage across tests for routing, claim extraction, and narration safety.
+- 2026-05-23, commit `148ddd3`: Claim Verification Evidence Module and Source Provenance Module. Public contract: keep the consensus verifier stable, preserve Lahman plus optional Retrosheet evidence rows, SQL, params, warnings, compatibility payloads, and source authority catalog shaping. Verification is recorded in `docs/architecture-followup-worker-handoff-plan.md`.
+- 2026-05-24, commits `fee989d` and `8f569f1`: Biography Contract Completeness Guard Module and Verified Evidence Read Model Module. Public contract: generated biography JSON must include supported stat claims, unsupported prose still passes, and narration checks consume verified evidence instead of rendered answer text. Verification is recorded in `docs/architecture-fresh-deepening-handoff-plan.md`.
 
-### Architecture Ledger Registry
+#### Routing and Request Lifecycle
 
-Fresh friction: the completed architecture ledgers are valuable, but the current status of landed Modules and fresh-delta rules is spread across several documents.
+- 2026-05-23, commit `148ddd3`: Routing Decision Module and Request Lifecycle Ordering Module. Public contract: deterministic route precedence stays stable, compatibility exports remain available from `query_router.py`, and `execute_request(...)` remains the public request Adapter over `request_lifecycle.py`.
+- 2026-05-24, commits `fee989d` and `8f569f1`: LLM Router Adapter Module. Public contract: `route(question)` stays stable while malformed LLM output and deterministic precedence stay local to the router Adapter.
 
-Deepening direction: add a small current registry that names completed Modules, active vocabulary sources, fresh-delta rules, verification commands, and Browser smoke expectations while leaving historical handoffs intact.
+#### Grounded Database and Stat Answers
 
-Expected benefits: Locality for future architecture review context and Leverage for worker handoffs.
+- 2026-05-23, commit `d86086c`: LLM-Flavored Narration Guard Module, Grounded Database Planning Module, DuckDB Result Answer Assembly Module, and Biography Stat Claim Vocabulary Module. Public contract: DuckDB-backed stat and grounded database answers keep verified SQL/row/source behavior; LLM prose is fallback or narration only after structured facts are verified. Verification is recorded in `docs/architecture-next-deepening-plan.md`.
+- 2026-05-24, commits `fee989d` and `8f569f1`: Player Identity Authority Module. Public contract: Lahman player resolution, display metadata, ambiguity policy, suffix handling, and optional Retrosheet ID mapping live behind one authority while compatibility facades remain.
+
+#### UI and Output Presentation
+
+- 2026-05-23, commit `148ddd3`: Visible Evidence Presentation Module. Public contract: `AnswerPresenter` owns useful verification rows and SQL selection for multi-source answers while preserving common DuckDB stat display.
+- 2026-05-24, commits `fee989d` and `8f569f1`: Query Output Contract Module. Public contract: Gradio pending, completed, and stale callback payload order lives behind a named output Adapter and the Browser smoke remains the visible proof.
+
+#### Eval and Operational Verification
+
+- 2026-05-23, commit `148ddd3`: Eval Reporting Module. Public contract: CLI artifacts and API governance payloads share `build_eval_report_payload` for summary and case-list data without claiming identical top-level schemas.
+- 2026-05-24, commits `fee989d` and `8f569f1`: Operational verification health checks. Public contract: `GET /health/verification` reports data manifest, DuckDB core tables, guardrail manifest readiness, and the verification command set.
+
+#### Architecture Context
+
+- 2026-05-25, commit `f9eeef2`: Baseball RAG Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
+
+### Frozen Seams
+
+- Preserve `route(question)` caller behavior and deterministic route precedence unless a fresh public-behavior test or explicit product decision requires a change.
+- Preserve DuckDB/Lahman as the primary factual/stat authority.
+- Preserve Retrosheet as optional secondary consensus evidence, not a replacement authority for all query paths.
+- Preserve CLI, FastAPI, Gradio, source JSON, SQL, metadata, review, and eval payload shapes unless a public-behavior test proves intentional alignment.
+- Preserve `execute_request(...)` as the public request Adapter over the shared request lifecycle.
+- Do not add a stored corpus, vector index, or Chroma replacement unless the product contract changes explicitly.
+- Preserve the Browser smoke at `http://127.0.0.1:7861/` with `who had the most RBIs in 1962` for UI-affecting changes.
+
+### Update Rule
+
+Move a landed opportunity from Current Opportunities to Completed Modules in the same domain area, sorted by date, and include the commit hash. Keep the entry to the smallest useful contract summary plus a pointer to the detailed ledger. Do not leave future-worker instructions in completed entries. Add a new active opportunity only when fresh public-behavior evidence or an explicit product decision shows a real delta.
 
 ## Filtered Findings
 

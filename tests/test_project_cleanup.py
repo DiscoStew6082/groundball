@@ -1209,9 +1209,16 @@ def test_context_file_captures_current_architecture_findings() -> None:
     context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
     assert "Baseball RAG Context" in context
+    assert "canonical current architecture and domain context" in context
+    assert (
+        "open `README.md`, `docs/architecture.md`, or the completed architecture ledgers" in context
+    )
+    assert "only when you need supporting detail" in context
     assert "DuckDB/Lahman remains the primary factual/stat authority" in context
     assert "Retrosheet remains optional secondary consensus evidence" in context
     assert "Do not reopen completed Modules without fresh public-behavior evidence" in context
+    assert "Treat this file as the current decision record" in context
+    assert "for completed implementation evidence" in context
 
     for definition in (
         "Module: anything with an Interface and Implementation.",
@@ -1230,9 +1237,35 @@ def test_context_file_captures_current_architecture_findings() -> None:
         "Routing Decision Evidence Module",
         "Grounded Database Template Catalog Module",
         "Context-Aware Stat Mention Vocabulary Module",
-        "Architecture Ledger Registry",
     ):
         assert candidate in context
+
+    registry = context.split("## Architecture Ledger Registry", 1)[1]
+    current_opportunities = registry.split("### Completed Modules", 1)[0]
+
+    assert "Audience: future Codex sessions." in registry
+    assert "Authority: canonical current truth for architecture-deepening context." in registry
+    assert "### Current Opportunities" in registry
+    assert "### Completed Modules" in registry
+    assert "### Frozen Seams" in registry
+    assert "### Update Rule" in registry
+    assert registry.index("### Current Opportunities") < registry.index("### Completed Modules")
+    assert registry.index("### Completed Modules") < registry.index("### Frozen Seams")
+    assert registry.index("### Frozen Seams") < registry.index("### Update Rule")
+    assert "Architecture Ledger Registry" not in current_opportunities
+
+    for domain_area in (
+        "Routing and Request Lifecycle",
+        "Grounded Database and Query Templates",
+        "Stat Vocabulary and Narration Safety",
+    ):
+        assert domain_area in current_opportunities
+
+    for commit_hash in ("148ddd3", "d86086c", "fee989d", "8f569f1", "f9eeef2"):
+        assert f"`{commit_hash}`" in registry
+
+    assert "Completed entries must not ask future agents to finish anything." in registry
+    assert "Move a landed opportunity from Current Opportunities to Completed Modules" in registry
 
     for filtered_candidate in (
         "Biography Claim Consensus Presentation Module",
