@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from baseball_rag import player_biography
+from baseball_rag.db.duckdb_schema import get_duckdb
+from baseball_rag.db.player_identity import resolve_player_by_name
 from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.routing import GeneralExplanationCase, PlayerBiographyCase
 from baseball_rag.service import answer
@@ -141,6 +143,40 @@ def test_llm_biography_with_no_stat_claims_returns_normally(monkeypatch):
     assert result.metadata["stat_claims"] == []
 
 
+def test_player_identity_authority_resolves_display_metadata_with_retrosheet_id():
+    resolution = resolve_player_by_name("Babe Ruth", get_duckdb())
+
+    assert resolution.ambiguous is False
+    assert resolution.player is not None
+    assert resolution.player.player_id == "ruthba01"
+    assert resolution.player.full_name == "Babe Ruth"
+    assert resolution.player.debut == "1914-07-11"
+    assert resolution.player.final_game == "1935-05-30"
+    assert resolution.player.retro_id == "ruthb101"
+
+
+def test_player_identity_authority_uses_explicit_suffix_to_disambiguate():
+    jr_resolution = resolve_player_by_name("Fernando Tatis Jr.", get_duckdb())
+    sr_resolution = resolve_player_by_name("Fernando Tatis Sr.", get_duckdb())
+
+    assert jr_resolution.ambiguous is False
+    assert jr_resolution.player is not None
+    assert jr_resolution.player.player_id == "tatisfe02"
+    assert sr_resolution.ambiguous is False
+    assert sr_resolution.player is not None
+    assert sr_resolution.player.player_id == "tatisfe01"
+
+
+def test_player_identity_authority_fails_closed_for_unmatched_explicit_suffix():
+    wrong_suffix = resolve_player_by_name("Babe Ruth Jr.", get_duckdb())
+    active_wrong_suffix = resolve_player_by_name("Shohei Ohtani Jr.", get_duckdb())
+    active_jr = resolve_player_by_name("Ronald Acuna Jr.", get_duckdb())
+
+    assert wrong_suffix.candidates == []
+    assert active_wrong_suffix.candidates == []
+    assert active_jr.player_id == "acunaro01"
+
+
 def test_llm_biography_uses_consensus_verifier_and_labels_evidence(monkeypatch):
     calls = []
 
@@ -212,6 +248,41 @@ def test_llm_biography_uses_consensus_verifier_and_labels_evidence(monkeypatch):
         "unsupported": 0,
         "score": "passing",
     }
+
+
+def test_llm_biography_missing_supported_stat_claim_fails_contract(monkeypatch):
+    calls = []
+
+    def fake_consensus(player_id, claims, *, conn):
+        calls.append((player_id, claims, conn))
+        return []
+
+    monkeypatch.setattr(
+        "baseball_rag.service.route",
+        lambda _question: PlayerBiographyCase(
+            player_name="Babe Ruth",
+            raw_question="who was Babe Ruth",
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.generation.llm.make_request",
+        lambda *_args, **_kwargs: _llm_json(
+            "Babe Ruth hit 714 career home runs.",
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        "baseball_rag.service.verify_player_stat_claims_consensus",
+        fake_consensus,
+        raising=False,
+    )
+
+    result = answer("who was Babe Ruth")
+
+    assert result.unsupported is True
+    assert result.unsupported_reason == "llm_unavailable"
+    assert "structured biography JSON contract" in result.answer
+    assert calls == []
 
 
 def test_llm_biography_surfaces_secondary_consensus_sql(monkeypatch):

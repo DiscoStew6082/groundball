@@ -1,5 +1,7 @@
 """Tests for query routing."""
 
+import pytest
+
 from baseball_rag.generation.llm import LLMResponse, LLMTimeoutError
 from baseball_rag.routing import (
     GroundedDatabaseQuestionCase,
@@ -51,6 +53,13 @@ def _assert_single_year(result, year):
     assert result.time_period is not None
     assert result.time_period.type == TimePeriodType.SINGLE
     assert result.time_period.value == year
+
+
+def _fake_llm_route(monkeypatch, content):
+    def llm_response(*_args, **_kwargs):
+        return LLMResponse(content=content, model="test", done=True)
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", llm_response)
 
 
 class TestRouter:
@@ -314,15 +323,53 @@ class TestRouter:
     def test_malformed_llm_routing_json_uses_heuristic_route(self, monkeypatch):
         """Routing JSON with the wrong shape should not abort the whole request."""
 
-        def malformed_llm_response(*_args, **_kwargs):
-            return LLMResponse(content='["not", "a", "route"]', model="test", done=True)
-
-        monkeypatch.setattr("baseball_rag.generation.llm.make_request", malformed_llm_response)
+        _fake_llm_route(monkeypatch, '["not", "a", "route"]')
 
         result = route("tell me something interesting about baseball")
 
         assert result.intent == "general_explanation"
         assert result.stat is None
+
+    @pytest.mark.parametrize(
+        ("time_period_json", "expected_type", "expected_value"),
+        (
+            ('{"type":"single","value":2022}', TimePeriodType.SINGLE, 2022),
+            ('{"type":"range","value":[1960,1980]}', TimePeriodType.RANGE, [1960, 1980]),
+            ('{"type":"decade","value":70}', TimePeriodType.DECADE, 70),
+            (
+                '{"type":"relative","value":{"direction":"past","unit":"year","count":1}}',
+                TimePeriodType.RELATIVE,
+                {"direction": "past", "unit": "year", "count": 1},
+            ),
+        ),
+    )
+    def test_llm_routing_payload_preserves_time_period_conversion(
+        self,
+        monkeypatch,
+        time_period_json,
+        expected_type,
+        expected_value,
+    ):
+        """Valid LLM route payloads should expose typed route facts."""
+
+        _fake_llm_route(
+            monkeypatch,
+            (
+                '{"intent":"stat_query","stat":"RBI",'
+                f'"time_period":{time_period_json},'
+                '"position":null,"player_name":"Hank Aaron"}'
+            ),
+        )
+
+        result = route("compare this player across the middle years")
+
+        assert isinstance(result, StatQueryCase)
+        assert result.intent == "stat_query"
+        assert result.stat == "RBI"
+        assert result.player_name == "Hank Aaron"
+        assert result.time_period is not None
+        assert result.time_period.type == expected_type
+        assert result.time_period.value == expected_value
 
     def test_malformed_llm_routing_time_period_uses_heuristic_route(self, monkeypatch):
         """Malformed nested route fields should not abort the whole request."""

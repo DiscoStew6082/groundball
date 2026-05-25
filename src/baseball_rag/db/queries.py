@@ -22,6 +22,8 @@ class StatQueryPlan:
     intent: str
     position: str | None = None
     player_name: str | None = None
+    player_id: str | None = None
+    resolved_player_name: str | None = None
     year: int | None = None
     start_year: int | None = None
     end_year: int | None = None
@@ -81,6 +83,7 @@ def _execute_stat_query_plan(
             stat,
             table=table,
             player_name=plan.player_name,
+            player_id=plan.player_id,
             year=plan.year,
             position=plan.position,
             conn=conn,
@@ -380,6 +383,7 @@ def _execute_player_stat(
     *,
     table: StatTable,
     player_name: str,
+    player_id: str | None,
     year: int | None,
     position: str | None,
     conn: duckdb.DuckDBPyConnection | None,
@@ -391,13 +395,38 @@ def _execute_player_stat(
         stat_def.min_sample_clause.format(alias=alias) if stat_def.min_sample_clause else None
     )
 
-    parts = [p for p in player_name.strip().split() if not _is_suffix(p)]
-    if len(parts) >= 2:
-        first, last = parts[0], " ".join(parts[1:])
-    elif len(parts) == 1:
-        first = None
-        last = parts[0]
+    if player_id:
+        where_parts = ["p.playerID = ?"]
+        params: list[object] = [player_id]
     else:
+        parts = [p for p in player_name.strip().split() if not _is_suffix(p)]
+        if len(parts) >= 2:
+            first, last = parts[0], " ".join(parts[1:])
+        elif len(parts) == 1:
+            first = None
+            last = parts[0]
+        else:
+            return StatQueryResult(
+                stat=stat_def.canonical,
+                label="Player stat lookup",
+                tables=[table, "people"],
+                rows=[],
+                sql="Player stat lookup skipped because no player name was supplied",
+                executed_sql="Player stat lookup skipped because no player name was supplied",
+                params=[],
+            )
+
+        if first:
+            where_parts = [
+                "strip_accents(LOWER(p.nameFirst)) = ?",
+                "strip_accents(LOWER(p.nameLast)) = ?",
+            ]
+            params = [_normalize(first), _normalize(last)]
+        else:
+            where_parts = ["strip_accents(LOWER(p.nameLast)) = ?"]
+            params = [_normalize(last)]
+
+    if not where_parts:
         return StatQueryResult(
             stat=stat_def.canonical,
             label="Player stat lookup",
@@ -407,16 +436,6 @@ def _execute_player_stat(
             executed_sql="Player stat lookup skipped because no player name was supplied",
             params=[],
         )
-
-    if first:
-        where_parts = [
-            "strip_accents(LOWER(p.nameFirst)) = ?",
-            "strip_accents(LOWER(p.nameLast)) = ?",
-        ]
-        params: list[object] = [_normalize(first), _normalize(last)]
-    else:
-        where_parts = ["strip_accents(LOWER(p.nameLast)) = ?"]
-        params = [_normalize(last)]
 
     if year is not None:
         where_parts.append(f"{alias}.yearID = ?")

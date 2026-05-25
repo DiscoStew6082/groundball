@@ -15,8 +15,12 @@ deepening opportunities:
 
 Status: Completed. The six follow-up Modules were implemented and integrated in
 commit `148ddd3` (`Deepen architecture follow-up modules`). The sections below
-are historical handoff instructions, not current open work. Use this status
-ledger as the source for what landed before starting any new follow-up work.
+are historical handoff instructions, not current open work. Later fresh-plan
+backlog items that touched this record's vocabulary, including claim evidence
+Adapters, source authority provenance, browser-session trace, and operational
+verification health checks, are also represented in current code and documented
+in `docs/architecture-fresh-deepening-handoff-plan.md`. Use this status ledger
+as the source for what landed before starting any new follow-up work.
 
 Completion summary:
 
@@ -24,7 +28,9 @@ Completion summary:
   preserved Lahman plus optional Retrosheet evidence rows, SQL, params, warning
   behavior, and compatibility payloads.
 - Source provenance now centralizes compact primary and secondary manifest
-  shaping in `src/baseball_rag/provenance.py`.
+  shaping in `src/baseball_rag/provenance.py`, including the public
+  `source_authorities` catalog that names Lahman as primary and Retrosheet as
+  optional secondary consensus evidence.
 - Routing decisions now use stable route facts from
   `src/baseball_rag/routing/contracts.py` and an ordered decision chain in
   `src/baseball_rag/routing/decisions.py`, with compatibility exports preserved

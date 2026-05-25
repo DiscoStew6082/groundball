@@ -23,6 +23,43 @@ Health check. No authentication required.
 
 ---
 
+### `GET /health/verification`
+
+Operational verification readiness. No authentication required. This endpoint is
+deterministic and does not call the LLM.
+
+**Response**
+```json
+{
+  "status": "ok",
+  "checks": [
+    {
+      "name": "data_manifest",
+      "status": "ok",
+      "detail": "Primary manifest loaded for NeuML/baseballdata."
+    },
+    {
+      "name": "duckdb_core_tables",
+      "status": "ok",
+      "detail": "DuckDB core tables are queryable."
+    },
+    {
+      "name": "guardrail_manifest",
+      "status": "ok",
+      "detail": "Guardrail manifest loaded with deterministic and unsupported cases."
+    }
+  ],
+  "commands": {
+    "focused": "uv run pytest tests/test_api.py -q",
+    "full": "uv run pytest -q",
+    "eval_gate": "uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
+    "browser_smoke": "uv run baseball-rag-ui"
+  }
+}
+```
+
+---
+
 ### `POST /query`
 
 Ask a baseball question and get a grounded answer with provenance metadata.
@@ -139,7 +176,13 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
 | `review` | object/null | Human review queue hint for unsupported or ambiguous answers |
 | `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match, latency, and trace stages |
-| `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, license notes, and optional `consensus_sources` plus `secondary_manifests.retrosheet` availability details for biography stat-claim evidence |
+| `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, license notes, `source_authorities`, and optional `consensus_sources` plus `secondary_manifests.retrosheet` availability details for biography stat-claim evidence |
+
+`sources[].data_manifest.source_authorities` is the authority catalog used by
+answer payloads. Lahman/DuckDB is the primary factual/stat authority for
+structured stat answers, grounded database answers, player identity, and primary
+biography stat-claim verification. Retrosheet is optional secondary consensus
+evidence and appears only on biography stat-claim consensus payloads.
 
 ---
 

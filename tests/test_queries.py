@@ -8,7 +8,7 @@ from baseball_rag.db.queries import (
 )
 from baseball_rag.routing import StatQueryCase
 from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
-from baseball_rag.stat_query import answer_stat_query
+from baseball_rag.stat_query import answer_stat_query, plan_stat_query
 
 
 def test_execute_stat_query_plan_season_batting_leaderboard_returns_rows():
@@ -447,6 +447,48 @@ def test_answer_stat_query_rejects_partial_player_before_coverage_and_execution(
     assert answer.unsupported_reason == "ambiguous"
     assert answer.review_reason == "ambiguous"
     assert "'Ruth' is ambiguous" in answer.answer
+
+
+def test_answer_stat_query_rejects_unmatched_explicit_suffix_before_execution(
+    monkeypatch,
+):
+    """Wrong explicit suffixes should not fall back to the base player lookup."""
+
+    def fail_execute(_plan):
+        raise AssertionError("unmatched explicit suffixes should not execute")
+
+    monkeypatch.setattr("baseball_rag.stat_query.execute_stat_query_plan", fail_execute)
+
+    answer = answer_stat_query(
+        StatQueryCase(
+            stat="HR",
+            player_name="Babe Ruth Jr.",
+            raw_question="how many HR did Babe Ruth Jr. have in 1927",
+            time_period=TimePeriod(type=TimePeriodType.SINGLE, value=1927),
+        )
+    )
+
+    assert answer.unsupported is True
+    assert answer.unsupported_reason == "no_data"
+    assert "No player named 'Babe Ruth Jr.'" in answer.answer
+    assert "Ruth, Babe" not in answer.answer
+
+
+def test_plan_stat_query_returns_explicit_unsupported_outcome_for_partial_player():
+    """Planning exposes unsupported outcomes without pretending they are query plans."""
+    outcome = plan_stat_query(
+        StatQueryCase(
+            stat="HR",
+            player_name="Ruth",
+            raw_question="Ruth HR in 2026",
+            time_period=TimePeriod(type=TimePeriodType.SINGLE, value=2026),
+        )
+    )
+
+    assert outcome.plan is None
+    assert outcome.answer is not None
+    assert outcome.answer.unsupported is True
+    assert outcome.answer.unsupported_reason == "ambiguous"
 
 
 def test_answer_stat_query_rejects_player_range_before_coverage(monkeypatch):

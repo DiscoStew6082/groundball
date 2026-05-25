@@ -2,7 +2,11 @@
 
 Status: Completed locally. This document is the handoff record for the four fresh
 deepening opportunities identified after the completed 2026-05-23 architecture
-follow-up in `docs/architecture-followup-worker-handoff-plan.md`.
+follow-up in `docs/architecture-followup-worker-handoff-plan.md`. Later
+fresh-plan backlog items that reused this vocabulary, including stat query
+planning outcomes and operational verification health checks, are documented in
+`docs/architecture-fresh-deepening-handoff-plan.md` and current architecture
+docs; this file is not an open backlog.
 
 No `CONTEXT.md` or `docs/adr/` exists in this repo. Workers should use
 `README.md`, `docs/architecture.md`, and this file as the active vocabulary and

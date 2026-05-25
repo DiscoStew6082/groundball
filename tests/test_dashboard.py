@@ -199,6 +199,32 @@ class TestDashboardTabs:
         ]
         assert len(state_inputs) == 2
 
+    def test_query_output_contract_matches_dashboard_callback_outputs(self):
+        """The named adapter contract owns the Query tab callback output order."""
+        from baseball_rag.ui.gradio_adapter import GradioQueryAdapter
+
+        config = self.dash.get_config_file()
+        adapter = GradioQueryAdapter()
+        component_ids = self.dash.query_output_component_ids
+        begin_dependency = next(
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["api_name"] == "begin_query"
+        )
+        query_dependency = next(
+            dependency
+            for dependency in config["dependencies"]
+            if dependency["api_name"] == "on_query"
+        )
+
+        assert begin_dependency["outputs"] == [
+            component_ids[name] for name in adapter.pending_output_names
+        ]
+        assert query_dependency["outputs"] == [
+            component_ids[name] for name in adapter.completed_output_names
+        ]
+        assert len(query_dependency["outputs"]) == len(adapter.stale_output_names)
+
     def test_query_adapter_clears_then_completes_transaction(self):
         """The dashboard adapter exposes the query transaction pending/completed contract."""
         begin_fn = next(

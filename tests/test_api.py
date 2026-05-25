@@ -19,6 +19,36 @@ class TestApi:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
+    def test_verification_health_endpoint_reports_operational_checks(self):
+        """GET /health/verification reports deterministic runtime readiness."""
+        response = client.get("/health/verification")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        checks = {check["name"]: check for check in data["checks"]}
+        assert checks["data_manifest"]["status"] == "ok"
+        assert checks["duckdb_core_tables"]["status"] == "ok"
+        assert checks["guardrail_manifest"]["status"] == "ok"
+        assert data["commands"]["focused"] == "uv run pytest tests/test_api.py -q"
+
+    def test_verification_health_handles_package_only_runtime(self, monkeypatch, tmp_path):
+        """The runtime health endpoint should not depend on repo-root eval imports."""
+        from baseball_rag import verification_health
+
+        monkeypatch.setattr(
+            verification_health,
+            "_guardrail_manifest_path",
+            lambda: tmp_path / "missing-questions.yaml",
+        )
+
+        data = verification_health.operational_verification_health()
+
+        checks = {check["name"]: check for check in data["checks"]}
+        assert data["status"] == "ok"
+        assert checks["guardrail_manifest"]["status"] == "ok"
+        assert "package-only runtime" in checks["guardrail_manifest"]["detail"]
+
     def test_query_endpoint_returns_answer(self, caplog):
         """POST /query with JSON body returns {answer: str, sources: list}."""
         # Note: This calls the real answer path, so we check response structure.
@@ -35,6 +65,22 @@ class TestApi:
         assert data["sources"]
         assert data["sources"][0]["type"] == "duckdb"
         assert data["sources"][0]["data_manifest"]["dataset"]["name"] == "NeuML/baseballdata"
+        assert data["sources"][0]["data_manifest"]["source_authorities"] == [
+            {
+                "name": "Lahman",
+                "role": "primary",
+                "authority": "factual_stat_authority",
+                "dataset": "NeuML/baseballdata",
+                "upstream": "Lahman Baseball Database",
+                "optional": False,
+                "scopes": [
+                    "structured_stat_answers",
+                    "grounded_database_answers",
+                    "player_identity",
+                    "biography_stat_claim_primary_verification",
+                ],
+            }
+        ]
         assert "warnings" in data
         assert data["unsupported"] is False
         assert data["unsupported_reason"] is None

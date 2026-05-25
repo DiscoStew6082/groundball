@@ -925,6 +925,15 @@ def test_public_docs_use_grounded_database_question_naming() -> None:
     assert "grounded database question" in corpus_docs.lower()
 
 
+def test_eval_baseline_docs_explain_manifest_provenance_hash_drift() -> None:
+    development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+
+    assert "source_authorities" in development_docs
+    assert "data/manifest.json" in development_docs
+    assert "file hashes still match NeuML/baseballdata" in development_docs
+    assert "provenance payload" in development_docs
+
+
 def test_docs_do_not_describe_llm_unavailable_as_biography_fallback() -> None:
     docs = "\n".join(
         path.read_text(encoding="utf-8")
@@ -1140,6 +1149,8 @@ def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
         in api_docs
     )
     assert "without claiming identical top-level\nschemas" in api_docs
+    assert "sources[].data_manifest.source_authorities" in api_docs
+    assert "Lahman/DuckDB is the primary factual/stat authority" in api_docs
     assert "secondary_manifests.retrosheet" in api_docs
     assert '"release_recommendation": "PASS - deterministic release gate is green"' in api_docs
     assert "follow-up resolution,\nunsupported policy" not in architecture
@@ -1148,3 +1159,47 @@ def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
     assert "share one report shape" not in architecture
     assert "share one report shape" not in handoff
     assert "Retrosheet consensus evidence for biography stat claims" in readme
+    assert "GET /health/verification" in api_docs
+    assert "GET /health/verification" in readme
+    assert "StatQueryPlanningOutcome" in architecture
+    assert "verification_health.py" in architecture
+
+
+def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
+    handoff = (ROOT / "docs" / "architecture-fresh-deepening-handoff-plan.md").read_text(
+        encoding="utf-8"
+    )
+
+    expected_sections = [
+        "Status: Completed implementation",
+        "## Implementation Ledger",
+        "## Fresh Deepening Opportunities",
+        "## Worker A: Biography Contract Completeness Guard Module",
+        "## Worker B: LLM Router Adapter Module",
+        "## Worker C: Player Identity Authority Module",
+        "## Worker D: Query Output Contract Module",
+        "## Worker E: Verified Evidence Read Model Module",
+        "## Coordinator Handoff Prompt",
+    ]
+    for section in expected_sections:
+        assert section in handoff
+
+    for term in ("Module", "Interface", "Seam", "Adapter", "Depth", "Leverage", "Locality"):
+        assert term in handoff
+
+    assert "Do not reopen completed Modules" in handoff
+    assert "fresh public-behavior test" in handoff
+    assert "DuckDB/Lahman remains the primary factual/stat authority" in handoff
+    assert "Do not add a stored corpus, vector index, or Chroma replacement" in handoff
+    assert "Run a code-review subagent after every worker task" in handoff
+    assert "Backlog resolution ledger:" in handoff
+    assert "No backlog candidate from this review remains open" in handoff
+    assert "StatQueryPlanningOutcome" in handoff
+    assert "GET /health/verification" in handoff
+    assert "uv run pytest tests/test_project_cleanup.py -q" in handoff
+    assert "http://127.0.0.1:7861/" in handoff
+
+    documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
+    assert documented_test_paths
+    for documented_path in documented_test_paths:
+        assert (ROOT / documented_path).exists(), documented_path

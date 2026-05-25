@@ -117,6 +117,11 @@ This command skips cases that require LM Studio or other live model services.
 Live LLM evals remain local/manual opt-ins via `--include-live`.
 
 The JSON report is compared to `evals/baseline.json`. Behavioral regressions block CI; dataset/model/prompt drift is reported as `WARN` so the baseline can be reviewed and refreshed deliberately.
+The dataset audit hash is computed from the compact provenance payload that
+answers expose, not from the CSV bytes alone. Refresh the baseline deliberately
+when `data/manifest.json` file hashes still match NeuML/baseballdata but the
+provenance payload changes, such as adding `source_authorities` metadata that
+clarifies Lahman/DuckDB source roles.
 
 CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporting, but it is non-blocking so releases do not depend on external coverage upload availability.
 

@@ -303,6 +303,23 @@ def build_dashboard() -> gr.Blocks:
                 ),
             )
             query_adapter = GradioQueryAdapter()
+            query_output_components = {
+                "chat": chat,
+                "question": question,
+                "answer": answer_box,
+                "rows": table,
+                "sources": sources,
+                "sql": sql,
+                "pending_query": query_turn_state,
+                "turn_registry": query_turn_registry,
+                "chat_state": chat_state,
+                "conversation_state": conversation_state,
+                "ask_button": submit,
+            }
+            dashboard_metadata = dashboard
+            dashboard_metadata.query_output_component_ids = {  # type: ignore[attr-defined]
+                name: component._id for name, component in query_output_components.items()
+            }
 
             def _request_session_key(request: gr.Request | None) -> str | None:
                 if request is not None and request.session_hash:
@@ -348,15 +365,7 @@ def build_dashboard() -> gr.Blocks:
                 triggers=[submit.click, question.submit],
                 fn=begin_query,
                 inputs=[question, chat_state, conversation_state, query_turn_registry],
-                outputs=[
-                    answer_box,
-                    table,
-                    sources,
-                    sql,
-                    query_turn_state,
-                    query_turn_registry,
-                    submit,
-                ],
+                outputs=query_adapter.pending_components(query_output_components),
                 trigger_mode="always_last",
                 show_progress="hidden",
                 queue=False,
@@ -365,17 +374,7 @@ def build_dashboard() -> gr.Blocks:
             begin_query_outputs.then(
                 fn=on_query,
                 inputs=[query_turn_state, query_turn_registry],
-                outputs=[
-                    chat,
-                    question,
-                    answer_box,
-                    table,
-                    sources,
-                    sql,
-                    chat_state,
-                    conversation_state,
-                    submit,
-                ],
+                outputs=query_adapter.completed_components(query_output_components),
                 trigger_mode="always_last",
                 show_progress="minimal",
                 queue=False,

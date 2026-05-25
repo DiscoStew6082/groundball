@@ -49,6 +49,14 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/health/verification")
+def verification_health():
+    """Return operational readiness for deterministic verification surfaces."""
+    from baseball_rag.verification_health import operational_verification_health
+
+    return operational_verification_health()
+
+
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
     from baseball_rag.request_execution import execute_request

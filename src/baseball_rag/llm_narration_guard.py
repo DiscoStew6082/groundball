@@ -228,12 +228,23 @@ _SPELLED_UNIT_STAT_CLAIM_RE = re.compile(
 
 
 @dataclass(frozen=True)
-class _NameClaimEvidence:
+class VerifiedEvidenceClaim:
+    """A verified fact bundle associated with one result row."""
+
     name_variants: frozenset[str]
     claims: frozenset[tuple[str, str]]
     numbers: frozenset[str]
     years: frozenset[str]
     rank: int
+
+
+@dataclass(frozen=True)
+class VerifiedEvidence:
+    """Read model used to verify LLM narration claims."""
+
+    claims: frozenset[tuple[str, str]]
+    numbers: frozenset[str]
+    name_claims: tuple[VerifiedEvidenceClaim, ...]
 
 
 def apply_llm_flavored_narration(question: str, result: StructuredAnswer) -> StructuredAnswer:
@@ -285,7 +296,8 @@ def _llm_flavored_grounded_database_answer(
             "Note: LLM unavailable, so this response is the verified DuckDB stats only."
         )
     answer = response.content.strip()
-    if not _uses_only_verified_numbers(answer, formatted_answer=formatted_answer, source=source):
+    evidence = _verified_evidence(formatted_answer=formatted_answer, source=source)
+    if not _uses_only_verified_numbers(answer, evidence=evidence):
         return (
             f"{formatted_answer}\n\n"
             "Note: LLM-flavored text included unverified numbers, so this response is the "
@@ -326,35 +338,18 @@ def _grounded_database_flavor_prompt(
 def _uses_only_verified_numbers(
     answer: str,
     *,
-    formatted_answer: str,
-    source: SourceRecord,
+    evidence: VerifiedEvidence,
 ) -> bool:
     if _SPELLED_STAT_CLAIM_RE.search(answer) or _SPELLED_UNIT_STAT_CLAIM_RE.search(answer):
         return False
     answer_numbers = _numeric_tokens(answer)
     if not answer_numbers:
-        return _uses_verified_name_stat_claims(
-            answer,
-            formatted_answer=formatted_answer,
-            source=source,
-        )
-    verified_context = " ".join(
-        [
-            formatted_answer,
-            json.dumps(source.rows, default=str),
-            json.dumps(source.columns, default=str),
-        ]
-    )
+        return _uses_verified_name_stat_claims(answer, evidence=evidence)
     answer_claims = _digit_stat_claims(answer)
-    verified_claims = _digit_stat_claims(verified_context)
     return (
-        answer_numbers <= _numeric_tokens(verified_context)
-        and answer_claims <= verified_claims
-        and _uses_verified_name_stat_claims(
-            answer,
-            formatted_answer=formatted_answer,
-            source=source,
-        )
+        answer_numbers <= evidence.numbers
+        and answer_claims <= evidence.claims
+        and _uses_verified_name_stat_claims(answer, evidence=evidence)
     )
 
 
@@ -395,11 +390,9 @@ def _normalize_stat_unit(value: str) -> str | None:
 def _uses_verified_name_stat_claims(
     answer: str,
     *,
-    formatted_answer: str,
-    source: SourceRecord,
+    evidence: VerifiedEvidence,
 ) -> bool:
-    evidence = _name_claim_evidence(formatted_answer=formatted_answer, source=source)
-    if not evidence:
+    if not evidence.name_claims:
         return True
     for segment in _stat_claim_segments(answer):
         segment_claims = _digit_stat_claims(segment)
@@ -417,7 +410,7 @@ def _uses_verified_name_stat_claims(
         normalized_segment = _normalize_claim_text(segment)
         matched_items = [
             item
-            for item in evidence
+            for item in evidence.name_claims
             if any(variant in normalized_segment for variant in item.name_variants)
         ]
         if matched_items:
@@ -455,19 +448,31 @@ def _uses_verified_name_stat_claims(
     return True
 
 
-def _name_claim_evidence(
+def _verified_evidence(
     *,
     formatted_answer: str,
     source: SourceRecord,
-) -> list[_NameClaimEvidence]:
+) -> VerifiedEvidence:
     lines = formatted_answer.splitlines()
+    source_stat = _source_stat(source)
     evidence = []
+    all_claims = _digit_stat_claims(formatted_answer)
+    all_numbers = _numeric_tokens(formatted_answer)
+    all_numbers |= _numeric_tokens(json.dumps(source.columns, default=str))
     for rank, row in enumerate(source.rows, 1):
+        if not isinstance(row, dict):
+            continue
+        row_claims = _row_stat_claims(row, source_stat=source_stat)
+        row_numbers = _non_year_numbers(_row_numbers(row))
+        row_years = _row_years(row)
+        all_claims |= row_claims
+        all_numbers |= row_numbers
+        all_numbers |= row_years
         raw_name = row.get("name") if isinstance(row, dict) else None
         if not isinstance(raw_name, str) or not raw_name.strip():
             continue
         variants = _name_variants(raw_name)
-        claims = _row_stat_claims(row)
+        claims = set(row_claims)
 
         def line_mentions_name(line: str) -> bool:
             normalized_line = _normalize_claim_text(line)
@@ -483,19 +488,29 @@ def _name_claim_evidence(
         for line in normalized_lines:
             years |= _year_numbers(_numeric_tokens(line))
         if variants:
+            all_claims |= claims
+            all_numbers |= years
             evidence.append(
-                _NameClaimEvidence(
+                VerifiedEvidenceClaim(
                     name_variants=frozenset(variants),
                     claims=frozenset(claims),
-                    numbers=frozenset(_non_year_numbers(numbers)),
+                    numbers=frozenset(row_numbers),
                     years=frozenset(years),
                     rank=rank,
                 )
             )
-    return evidence
+    return VerifiedEvidence(
+        claims=frozenset(all_claims),
+        numbers=frozenset(all_numbers),
+        name_claims=tuple(evidence),
+    )
 
 
-def _row_stat_claims(row: dict[str, Any]) -> set[tuple[str, str]]:
+def _row_stat_claims(
+    row: dict[str, Any],
+    *,
+    source_stat: str | None,
+) -> set[tuple[str, str]]:
     claims: set[tuple[str, str]] = set()
     for key, value in row.items():
         stat = _normalize_stat_unit(key)
@@ -504,7 +519,29 @@ def _row_stat_claims(row: dict[str, Any]) -> set[tuple[str, str]]:
         normalized = _normalize_numeric_token(str(value))
         if normalized is not None:
             claims.add((normalized, stat))
+    if source_stat is not None and "stat_value" in row:
+        normalized = _normalize_numeric_token(str(row["stat_value"]))
+        if normalized is not None:
+            claims.add((normalized, source_stat))
     return claims
+
+
+def _source_stat(source: SourceRecord) -> str | None:
+    label_stat = _unique_source_stat(source.label)
+    if label_stat is not None:
+        return label_stat
+    return _unique_source_stat(source.detail or "")
+
+
+def _unique_source_stat(text: str) -> str | None:
+    normalized_text = _normalize_claim_text(text)
+    aliases = sorted(_STAT_UNIT_ALIASES.items(), key=lambda item: len(item[0]), reverse=True)
+    stats: set[str] = set()
+    for alias, stat in aliases:
+        normalized_alias = _normalize_claim_text(alias)
+        if re.search(rf"(?<![a-z0-9]){re.escape(normalized_alias)}(?![a-z0-9])", normalized_text):
+            stats.add(stat)
+    return next(iter(stats)) if len(stats) == 1 else None
 
 
 def _row_numbers(row: dict[str, Any]) -> set[str]:
@@ -528,7 +565,7 @@ def _row_years(row: dict[str, Any]) -> set[str]:
     return years
 
 
-def _matched_items_share_name(items: list[_NameClaimEvidence]) -> bool:
+def _matched_items_share_name(items: list[VerifiedEvidenceClaim]) -> bool:
     if not items:
         return False
     shared = set(items[0].name_variants)
@@ -547,7 +584,7 @@ def _year_numbers(numbers: set[str]) -> set[str]:
 
 def _years_match_segment(
     segment_years: set[str],
-    items: list[_NameClaimEvidence],
+    items: list[VerifiedEvidenceClaim],
     *,
     require_single_item: bool,
 ) -> bool:
@@ -611,7 +648,7 @@ def _mentions_leadership_claim(text: str) -> bool:
 
 def _mentions_unmatched_name(
     text: str,
-    matched_items: list[_NameClaimEvidence],
+    matched_items: list[VerifiedEvidenceClaim],
     *,
     scan_lowercase_names: bool,
 ) -> bool:
