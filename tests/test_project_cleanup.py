@@ -925,6 +925,15 @@ def test_public_docs_use_grounded_database_question_naming() -> None:
     assert "grounded database question" in corpus_docs.lower()
 
 
+def test_eval_baseline_docs_explain_manifest_provenance_hash_drift() -> None:
+    development_docs = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+
+    assert "source_authorities" in development_docs
+    assert "data/manifest.json" in development_docs
+    assert "file hashes still match NeuML/baseballdata" in development_docs
+    assert "provenance payload" in development_docs
+
+
 def test_docs_do_not_describe_llm_unavailable_as_biography_fallback() -> None:
     docs = "\n".join(
         path.read_text(encoding="utf-8")

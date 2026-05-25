@@ -1,10 +1,8 @@
 {
   "baseline_comparison": {
     "blockers": [],
-    "recommendation": "WARN",
-    "warnings": [
-      "dataset version changed"
-    ]
+    "recommendation": "PASS",
+    "warnings": []
   },
   "cases": [
     {
@@ -429,7 +427,7 @@
     }
   ],
   "command": "python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-  "generated_at": "2026-05-25T03:37:58.837555+00:00",
+  "generated_at": "2026-05-25T04:32:52.650090+00:00",
   "include_live": false,
   "minimum_pass_rate": 0.85,
   "mode": "answer",
@@ -440,8 +438,8 @@
     "failed": 0,
     "pass_rate": 1.0,
     "passed": 26,
-    "recommendation": "WARN",
-    "release_recommendation": "WARN - deterministic gate is green with baseline drift",
+    "recommendation": "PASS",
+    "release_recommendation": "PASS - deterministic release gate is green",
     "skipped": 44
   },
   "versions": {
