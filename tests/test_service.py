@@ -1,6 +1,8 @@
 import pytest
 
 from baseball_rag.generation.llm import LLMResponse, LLMUnavailableError
+from baseball_rag.llm_narration_guard import apply_llm_flavored_narration
+from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.service import answer
 
 
@@ -38,6 +40,66 @@ def test_llm_flavored_stat_query_uses_verified_stats(monkeypatch):
     assert result.sources[0].type == "duckdb"
     assert "Davis, Tommy" in str(seen_prompts[0])
     assert "153" in str(seen_prompts[0])
+
+
+def test_llm_flavored_stat_query_uses_source_evidence_not_rendered_stat_text(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 RBI in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    result = StructuredAnswer(
+        answer="Top result: Davis, Tommy had 153 in 1962.",
+        intent="stat_query",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="RBI leaderboard for 1962-1962",
+                rows=[{"name": "Davis, Tommy", "team": "LAN", "stat_value": 153, "year": 1962}],
+            )
+        ],
+    )
+
+    flavored = apply_llm_flavored_narration(
+        "who had the most RBIs in 1962",
+        result,
+    )
+
+    assert flavored.answer == "Tommy Davis led MLB with 153 RBI in 1962."
+
+
+def test_llm_flavored_stat_value_rejects_ambiguous_source_stat(monkeypatch):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis led MLB with 153 home runs in 1962.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+    result = StructuredAnswer(
+        answer="Top result: Davis, Tommy had 153 in 1962.",
+        intent="stat_query",
+        sources=[
+            SourceRecord(
+                type="duckdb",
+                label="Leaderboard for 1962-1962",
+                detail="Available columns mention home runs, RBI, and AVG.",
+                rows=[{"name": "Davis, Tommy", "team": "LAN", "stat_value": 153, "year": 1962}],
+            )
+        ],
+    )
+
+    flavored = apply_llm_flavored_narration(
+        "who had the most RBIs in 1962",
+        result,
+    )
+
+    assert "153 home runs" not in flavored.answer
+    assert "unverified numbers" in flavored.answer
 
 
 def test_llm_flavored_stat_query_rejects_unverified_numbers(monkeypatch):

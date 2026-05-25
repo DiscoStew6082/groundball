@@ -28,6 +28,7 @@ import csv
 import json
 import re
 import unicodedata
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
@@ -143,32 +144,91 @@ _ROUTING_PROMPT = (
 )
 
 
-def _parse_llm_json(raw: str) -> dict | None:
-    """Parse LLM JSON response.
+@dataclass(frozen=True)
+class _LLMRouterFailure:
+    """Typed marker for model I/O or payload failures that use heuristics."""
 
-    Gemma 4 often wraps its output in a reasoning/thinking block even when
-    instructed to return only JSON. We find the {...} block that actually
-    parses as valid route JSON.
-    """
-    text = strip_markdown_fence(raw)
+    reason: str
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
 
-    # Find all {...} blocks and try each one
-    for start, end in extract_json_blocks(text):
-        candidate = text[start:end]
+class _LLMRouterAdapter:
+    """Own prompt construction, model I/O, and route payload coercion."""
+
+    def route(self, question: str) -> RoutedCase | _LLMRouterFailure:
         try:
-            data = json.loads(candidate)
-            # Sanity-check: must have 'intent' field
-            if isinstance(data, dict) and "intent" in data:
-                return data
-        except json.JSONDecodeError:
-            continue
+            from baseball_rag.generation.llm import (
+                LLMError,
+                LLMRoutingOutputError,
+                make_request,
+            )
 
-    return None
+            prompt = (
+                "You are a baseball query classifier. Return only valid JSON.",
+                _ROUTING_PROMPT.format(question=question),
+            )
+            response = make_request(prompt, max_tokens=500, temperature=0.1)
+            data = self._parse_json(response.content)
+
+            if not isinstance(data, dict):
+                raise LLMRoutingOutputError("LLM router output was not a JSON object.")
+
+            return self._coerce_payload(question, data)
+        except (ConnectionError, LLMError, ValueError) as exc:
+            return _LLMRouterFailure(reason=str(exc))
+
+    @staticmethod
+    def _parse_json(raw: str) -> dict | None:
+        """Parse route JSON from raw model output."""
+        text = strip_markdown_fence(raw)
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Some models wrap JSON in reasoning text; use the block with an intent.
+        for start, end in extract_json_blocks(text):
+            candidate = text[start:end]
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict) and "intent" in data:
+                    return data
+            except json.JSONDecodeError:
+                continue
+
+        return None
+
+    def _coerce_payload(self, question: str, data: dict) -> RoutedCase:
+        from baseball_rag.generation.llm import LLMRoutingOutputError
+
+        if data.get("intent") not in (
+            "stat_query",
+            "player_biography",
+            "grounded_database_question",
+            "general_explanation",
+        ):
+            raise LLMRoutingOutputError("LLM router output did not contain a supported intent.")
+
+        time_period_data = data.get("time_period")
+        time_period: TimePeriod | None = _build_time_period(time_period_data)
+        raw_stat = data.get("stat")
+        if raw_stat is not None and not isinstance(raw_stat, str):
+            raise LLMRoutingOutputError("LLM router stat must be a string or null.")
+        raw_position = data.get("position")
+        if raw_position is not None and not isinstance(raw_position, str):
+            raise LLMRoutingOutputError("LLM router position must be a string or null.")
+        raw_player_name = data.get("player_name")
+        if raw_player_name is not None and not isinstance(raw_player_name, str):
+            raise LLMRoutingOutputError("LLM router player_name must be a string or null.")
+
+        return routed_case(
+            intent=cast(Intent, data["intent"]),
+            stat=normalize_stat(raw_stat) if raw_stat else None,
+            time_period=time_period,
+            position=raw_position,
+            player_name=raw_player_name,
+            raw_question=question,
+        )
 
 
 @traced(component_id="query-router", label="Route Query")
@@ -266,48 +326,9 @@ def _grounded_database_route(question: str) -> RoutedCase | None:
 
 
 def _llm_route_or_heuristic(question: str, deterministic: RoutedCase) -> RoutedCase:
-    try:
-        from baseball_rag.generation.llm import LLMError, LLMRoutingOutputError, make_request
-
-        prompt = (
-            "You are a baseball query classifier. Return only valid JSON.",
-            _ROUTING_PROMPT.format(question=question),
-        )
-        response = make_request(prompt, max_tokens=500, temperature=0.1)
-        data = _parse_llm_json(response.content)
-
-        if not isinstance(data, dict):
-            raise LLMRoutingOutputError("LLM router output was not a JSON object.")
-
-        if data.get("intent") in (
-            "stat_query",
-            "player_biography",
-            "grounded_database_question",
-            "general_explanation",
-        ):
-            time_period_data = data.get("time_period")
-            time_period: TimePeriod | None = _build_time_period(time_period_data)
-            raw_stat = data.get("stat")
-            if raw_stat is not None and not isinstance(raw_stat, str):
-                raise LLMRoutingOutputError("LLM router stat must be a string or null.")
-            raw_position = data.get("position")
-            if raw_position is not None and not isinstance(raw_position, str):
-                raise LLMRoutingOutputError("LLM router position must be a string or null.")
-            raw_player_name = data.get("player_name")
-            if raw_player_name is not None and not isinstance(raw_player_name, str):
-                raise LLMRoutingOutputError("LLM router player_name must be a string or null.")
-
-            return routed_case(
-                intent=cast(Intent, data["intent"]),
-                stat=normalize_stat(raw_stat) if raw_stat else None,
-                time_period=time_period,
-                position=raw_position,
-                player_name=raw_player_name,
-                raw_question=question,
-            )
-        raise LLMRoutingOutputError("LLM router output did not contain a supported intent.")
-    except (ConnectionError, LLMError, ValueError):
-        pass  # Fall through to heuristic
+    adapter_route = _LLMRouterAdapter().route(question)
+    if not isinstance(adapter_route, _LLMRouterFailure):
+        return adapter_route
 
     # LM Studio unavailable or LLM returned garbled — use the local heuristic route.
     return deterministic

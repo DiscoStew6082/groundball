@@ -14,6 +14,7 @@ from baseball_rag.db.biography_stat_vocabulary import (
     retrosheet_stat_column_candidates,
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
+from baseball_rag.db.player_identity import resolve_retrosheet_id
 from baseball_rag.db.stat_registry import (
     StatDefinition,
     StatSqlAdapter,
@@ -735,7 +736,7 @@ def _verify_one_retrosheet_claim(
         )
 
     stat_def = stat_defs[0]
-    retro_id, warning = _lookup_retro_id(conn, player_id)
+    retro_id, warning = resolve_retrosheet_id(conn, player_id)
     if retro_id is None:
         return RetrosheetStatVerification(
             status="unsupported",
@@ -811,24 +812,6 @@ def _consensus_status(
     if secondary_verified:
         return "verified_secondary_only"
     return "unsupported"
-
-
-def _lookup_retro_id(
-    conn: duckdb.DuckDBPyConnection,
-    player_id: str,
-) -> tuple[str | None, str | None]:
-    if not _table_exists(conn, "people"):
-        return None, "Retrosheet verification requires people.retroID mapping."
-    if "retroid" not in _table_columns(conn, "people"):
-        return None, "Retrosheet verification requires people.retroID mapping."
-
-    row = conn.execute(
-        "SELECT retroID FROM people WHERE playerID = ?",
-        [player_id],
-    ).fetchone()
-    if row is None or row[0] is None or str(row[0]).strip() == "":
-        return None, f"No people.retroID mapping exists for Lahman playerID {player_id!r}."
-    return str(row[0]), None
 
 
 def _validate_retrosheet_biofile(

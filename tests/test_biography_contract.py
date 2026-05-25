@@ -87,6 +87,87 @@ def test_biography_contract_invalid_claim_payload_becomes_typed_failure():
         )
 
 
+def test_biography_contract_rejects_missing_supported_stat_claim():
+    with pytest.raises(BiographyContractError, match="missing from stat_claims"):
+        parse_biography_json('{"answer":"Babe Ruth hit 714 career home runs.","stat_claims":[]}')
+
+
+def test_biography_contract_rejects_stat_before_value_supported_claim():
+    with pytest.raises(BiographyContractError, match="missing from stat_claims"):
+        parse_biography_json(
+            '{"answer":"Ted Williams had a batting average of .406 in 1941.","stat_claims":[]}'
+        )
+
+
+def test_biography_contract_requires_matching_season_claim_year():
+    with pytest.raises(BiographyContractError, match="missing from stat_claims"):
+        parse_biography_json(
+            '{"answer":"Babe Ruth hit 60 home runs in 1927.",'
+            '"stat_claims":[{"stat":"HR","value":60,"scope":"career",'
+            '"text":"60 home runs"}]}'
+        )
+
+
+def test_biography_contract_detects_capitalized_year_before_claim():
+    with pytest.raises(BiographyContractError, match="missing from stat_claims"):
+        parse_biography_json(
+            '{"answer":"In 1927, Babe Ruth hit 60 home runs.",'
+            '"stat_claims":[{"stat":"HR","value":60,"scope":"career",'
+            '"text":"60 home runs"}]}'
+        )
+
+
+def test_biography_contract_requires_matching_career_claim_scope():
+    with pytest.raises(BiographyContractError, match="missing from stat_claims"):
+        parse_biography_json(
+            '{"answer":"Babe Ruth hit 60 career home runs.",'
+            '"stat_claims":[{"stat":"HR","value":60,"scope":"season","year":1927,'
+            '"text":"60 home runs"}]}'
+        )
+
+
+def test_biography_contract_does_not_use_next_sentence_year_for_career_claim():
+    contract = parse_biography_json(
+        '{"answer":"Babe Ruth hit 714 career home runs. In 1927, he hit 60.",'
+        '"stat_claims":[{"stat":"HR","value":714.0,"scope":"career",'
+        '"text":"714 career home runs"}]}'
+    )
+
+    assert contract["claims"][0].value == 714.0
+
+
+def test_biography_contract_does_not_treat_context_year_as_season_for_career_claim():
+    contract = parse_biography_json(
+        '{"answer":"By 1935, Babe Ruth had 714 career home runs.",'
+        '"stat_claims":[{"stat":"HR","value":714,"scope":"career",'
+        '"text":"714 career home runs"}]}'
+    )
+
+    assert contract["claims"][0].resolved_scope == "career"
+
+
+def test_biography_contract_ignores_unsupported_stat_like_prose():
+    contract = parse_biography_json(
+        '{"answer":"Babe Ruth wore number 3 and won seven World Series titles.","stat_claims":[]}'
+    )
+
+    assert contract == {
+        "answer": "Babe Ruth wore number 3 and won seven World Series titles.",
+        "claims": [],
+    }
+
+
+def test_biography_contract_ignores_dates_without_supported_stat_claims():
+    contract = parse_biography_json(
+        '{"answer":"Babe Ruth debuted in 1914 and last played in 1935.","stat_claims":[]}'
+    )
+
+    assert contract == {
+        "answer": "Babe Ruth debuted in 1914 and last played in 1935.",
+        "claims": [],
+    }
+
+
 @pytest.mark.parametrize(
     "content",
     [

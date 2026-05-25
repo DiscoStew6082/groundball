@@ -1156,7 +1156,8 @@ def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
     )
 
     expected_sections = [
-        "Status: Proposed handoff",
+        "Status: Completed implementation",
+        "## Implementation Ledger",
         "## Fresh Deepening Opportunities",
         "## Worker A: Biography Contract Completeness Guard Module",
         "## Worker B: LLM Router Adapter Module",

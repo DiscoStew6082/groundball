@@ -4,6 +4,7 @@ import duckdb
 import pytest
 
 from baseball_rag.db.biography_stat_vocabulary import supported_biography_claim_stats
+from baseball_rag.db.player_identity import resolve_retrosheet_id
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
     shape_biography_stat_claim_consensus,
@@ -370,6 +371,16 @@ def test_consensus_reports_missing_retroid_without_chadwick_lookup():
     assert row["secondary_status"] == "unsupported"
     assert "people.retroID mapping" in row["secondary_warning"]
     assert "Chadwick" not in row["secondary_warning"]
+
+
+def test_player_identity_authority_explains_missing_retrosheet_mapping():
+    conn = _conn()
+    conn.execute("INSERT INTO people VALUES ('player01', NULL)")
+
+    retro_id, warning = resolve_retrosheet_id(conn, "player01")
+
+    assert retro_id is None
+    assert warning == "No people.retroID mapping exists for Lahman playerID 'player01'."
 
 
 def test_consensus_unsupported_for_unsupported_stats():

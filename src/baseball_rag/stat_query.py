@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from baseball_rag.db.answer_assembly import answer_stat_result
+from baseball_rag.db.duckdb_schema import get_duckdb
+from baseball_rag.db.player_identity import resolve_player_by_name
 from baseball_rag.db.queries import StatQueryPlan, StatQueryResult, execute_stat_query_plan
 from baseball_rag.db.stat_registry import get_stat
 from baseball_rag.outcomes import ambiguous_outcome
@@ -26,7 +28,9 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
     stat = stat_def.canonical
 
     if decision.player_name:
-        if _is_partial_player_name(decision.player_name):
+        conn = get_duckdb()
+        player_resolution = resolve_player_by_name(decision.player_name, conn)
+        if player_resolution.ambiguous or _is_partial_player_name(decision.player_name):
             return ambiguous_outcome(
                 answer=(
                     f"'{decision.player_name}' is ambiguous for a player-specific {stat} lookup. "
@@ -69,6 +73,10 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlan | StructuredAnswer
             intent=decision.intent,
             position=decision.position,
             player_name=decision.player_name,
+            player_id=player_resolution.player_id,
+            resolved_player_name=(
+                player_resolution.player.full_name if player_resolution.player is not None else None
+            ),
             year=year,
         )
     scope = resolve_query_scope(

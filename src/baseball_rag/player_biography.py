@@ -13,6 +13,7 @@ from baseball_rag.db.biography_stat_vocabulary import (
     normalize_biography_claim_stat,
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
+from baseball_rag.db.player_identity import resolve_player_by_name
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
     shape_biography_stat_claim_consensus,
@@ -40,8 +41,6 @@ class PlayerBiographyCaseAnswerer:
                 intent=decision.intent,
                 warnings=["No biography was generated because no player name was resolved."],
             )
-
-        from baseball_rag.corpus.player_bios import resolve_player_by_name
 
         conn = self.conn_factory()
         player_name = decision.player_name
@@ -95,6 +94,10 @@ class PlayerBiographyCaseAnswerer:
             )
             request_biography = self.request_biography or biography_contract.request_biography_json
             biography = request_biography(request, prompt)
+            biography_contract.validate_biography_claim_completeness(
+                biography["answer"],
+                biography["claims"],
+            )
         except (ConnectionError, TimeoutError) as exc:
             return llm_unavailable_outcome(
                 answer=(

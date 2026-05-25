@@ -1,7 +1,9 @@
 # Fresh Architecture Deepening Handoff Plan
 
-Status: Proposed handoff. This document turns the 2026-05-24 architecture review
+Status: Completed implementation. This document turns the 2026-05-24 architecture review
 into worker-ready implementation slices for `/Volumes/Envoy/projects/baseball-rag`.
+It began as a proposed handoff and now serves as the completion ledger for the
+implemented Modules.
 
 No `CONTEXT.md` or `docs/adr/` exists in this repo. Use `README.md`,
 `docs/architecture.md`, `docs/architecture-followup-worker-handoff-plan.md`,
@@ -25,6 +27,32 @@ Primary worker scope:
 3. Player Identity Authority Module.
 4. Query Output Contract Module.
 5. Verified Evidence Read Model Module.
+
+## Implementation Ledger
+
+Completed in the documented worker order with TDD slices and code-review
+subagents:
+
+- Worker A added a Biography Contract completeness guard at the generated LLM
+  JSON Seam. It rejects supported stat facts missing from `stat_claims`, accepts
+  unsupported stat-like prose and generic dates, preserves `llm_unavailable`,
+  and handles stat-before-value, season-year, career-scope, same-sentence, and
+  numeric normalization cases.
+- Worker D added a named Query Output Contract around the Gradio adapter so
+  pending, completed, and stale callback payload order is owned in one Adapter.
+- Worker B extracted the LLM Router Adapter behind `route(question)`, keeping
+  deterministic precedence and malformed-output fallback stable.
+- Worker E introduced a Verified Evidence read model for LLM narration checks,
+  including unambiguous `stat_value` evidence adaptation without relying on
+  rendered answer text.
+- Worker C introduced the Player Identity Authority for Lahman player
+  resolution, display metadata, suffix-aware ambiguity policy, and optional
+  Retrosheet ID mapping while keeping `corpus/player_bios.py` as a compatibility
+  facade.
+
+Preserved project rules: DuckDB/Lahman remains the primary factual/stat
+authority, Retrosheet remains optional secondary consensus evidence, and no
+stored corpus, vector index, or Chroma replacement was added.
 
 Backlog candidates from the review, not primary scope for this pass: claim
 evidence adapter extraction, pre-routing unsupported guard, stat query planning
