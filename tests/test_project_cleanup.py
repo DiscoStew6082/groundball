@@ -1242,6 +1242,9 @@ def test_context_file_captures_current_architecture_findings() -> None:
 
     registry = context.split("## Architecture Ledger Registry", 1)[1]
     current_opportunities = registry.split("### Completed Modules", 1)[0]
+    completed_modules = registry.split("### Completed Modules", 1)[1].split("### Frozen Seams", 1)[
+        0
+    ]
 
     assert "Audience: future Codex sessions." in registry
     assert "Authority: canonical current truth for architecture-deepening context." in registry
@@ -1265,6 +1268,7 @@ def test_context_file_captures_current_architecture_findings() -> None:
         assert f"`{commit_hash}`" in registry
 
     assert "Completed entries must not ask future agents to finish anything." in registry
+    assert "commit `5417b46`: Architecture Ledger Registry" in completed_modules
     assert "Move a landed opportunity from Current Opportunities to Completed Modules" in registry
 
     for filtered_candidate in (

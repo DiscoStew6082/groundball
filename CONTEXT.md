@@ -87,6 +87,7 @@ Completed entries must not ask future agents to finish anything. If future work 
 #### Architecture Context
 
 - 2026-05-25, commit `f9eeef2`: Baseball RAG Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
+- 2026-05-25, commit `5417b46`: Architecture Ledger Registry. Public contract: Current Opportunities list all active opportunities by domain area and date; Completed Modules record completed work by domain area, date, and commit hash; Frozen Seams and the Update Rule keep future context ingestion small.
 
 ### Frozen Seams
 
