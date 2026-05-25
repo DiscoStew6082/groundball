@@ -1148,3 +1148,38 @@ def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
     assert "share one report shape" not in architecture
     assert "share one report shape" not in handoff
     assert "Retrosheet consensus evidence for biography stat claims" in readme
+
+
+def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
+    handoff = (ROOT / "docs" / "architecture-fresh-deepening-handoff-plan.md").read_text(
+        encoding="utf-8"
+    )
+
+    expected_sections = [
+        "Status: Proposed handoff",
+        "## Fresh Deepening Opportunities",
+        "## Worker A: Biography Contract Completeness Guard Module",
+        "## Worker B: LLM Router Adapter Module",
+        "## Worker C: Player Identity Authority Module",
+        "## Worker D: Query Output Contract Module",
+        "## Worker E: Verified Evidence Read Model Module",
+        "## Coordinator Handoff Prompt",
+    ]
+    for section in expected_sections:
+        assert section in handoff
+
+    for term in ("Module", "Interface", "Seam", "Adapter", "Depth", "Leverage", "Locality"):
+        assert term in handoff
+
+    assert "Do not reopen completed Modules" in handoff
+    assert "fresh public-behavior test" in handoff
+    assert "DuckDB/Lahman remains the primary factual/stat authority" in handoff
+    assert "Do not add a stored corpus, vector index, or Chroma replacement" in handoff
+    assert "Run a code-review subagent after every worker task" in handoff
+    assert "uv run pytest tests/test_project_cleanup.py -q" in handoff
+    assert "http://127.0.0.1:7861/" in handoff
+
+    documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
+    assert documented_test_paths
+    for documented_path in documented_test_paths:
+        assert (ROOT / documented_path).exists(), documented_path
