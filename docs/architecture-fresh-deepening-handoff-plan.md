@@ -54,7 +54,8 @@ Preserved project rules: DuckDB/Lahman remains the primary factual/stat
 authority, Retrosheet remains optional secondary consensus evidence, and no
 stored corpus, vector index, or Chroma replacement was added.
 
-Final verification for commit `fee989d`:
+Final verification for implementation commit `fee989d` and documentation audit
+commit `8f569f1`:
 
 - `uv run pytest tests/test_project_cleanup.py -q` passed with 84 tests.
 - `uv run ruff check src/ tests/ evals/` passed.
