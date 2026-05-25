@@ -31,6 +31,7 @@ There is no `docs/adr/` directory in this repo yet. Treat this file as the curre
 
 - `README.md` for expanded product contract and demo vocabulary.
 - `docs/architecture.md` for the fuller architecture overview.
+- `docs/architecture-active-opportunities-handoff-plan.md` for the detailed active worker handoff covering the current opportunities below.
 - `docs/architecture-followup-worker-handoff-plan.md`, `docs/architecture-next-deepening-plan.md`, and `docs/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
 Do not reopen completed Modules without fresh public-behavior evidence. Prior ledgers mark routing decision order, request lifecycle ordering, visible evidence presentation, eval reporting, Grounded Database Planning, DuckDB Result Answer Assembly, Biography Stat Claim Vocabulary, LLM Narration Guard, Player Identity Authority, Query Output Contract, and Verified Evidence Read Model as landed.

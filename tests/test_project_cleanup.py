@@ -1205,6 +1205,49 @@ def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
         assert (ROOT / documented_path).exists(), documented_path
 
 
+def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
+    handoff = (ROOT / "docs" / "architecture-active-opportunities-handoff-plan.md").read_text(
+        encoding="utf-8"
+    )
+    context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
+
+    expected_sections = [
+        "Status: Active handoff",
+        "## Scope",
+        "## Global Working Rules",
+        "## Work Order",
+        "## Worker A: Routing Decision Evidence Module",
+        "## Worker B: Grounded Database Template Catalog Module",
+        "## Worker C: Context-Aware Stat Mention Vocabulary Module",
+        "## Coordinator Handoff Prompt",
+    ]
+    for section in expected_sections:
+        assert section in handoff
+
+    for discussion_answer in (
+        "new inspectable helper",
+        "attached to trace metadata",
+        "small objects",
+        "30-30 club",
+        "routing, biography claims, narration verification, and stat-definition lookup",
+        "strikeouts",
+    ):
+        assert discussion_answer in handoff
+
+    assert "route(question)" in handoff
+    assert "malformed LLM fallback" in handoff
+    assert "DuckDB/Lahman remains the primary factual/stat authority" in handoff
+    assert "Use the TDD skill" in handoff
+    assert "Run a code-review subagent after every worker task" in handoff
+    assert "http://127.0.0.1:7861/" in handoff
+    assert "architecture-active-opportunities-handoff-plan.md" in context
+
+    documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
+    assert documented_test_paths
+    for documented_path in documented_test_paths:
+        assert (ROOT / documented_path).exists(), documented_path
+
+
 def test_context_file_captures_current_architecture_findings() -> None:
     context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
