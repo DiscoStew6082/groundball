@@ -428,6 +428,8 @@ Before commit:
 
 Implemented in the documented order with TDD slices and review passes:
 
+Implementation commit: `0270a05`.
+
 - Worker A added inspectable routing evidence behind `RouteDecisionChain` and
   exported `route_with_evidence(...)` while keeping `route(question)` as the
   stable public route Interface. Query-router traces now include a compact
