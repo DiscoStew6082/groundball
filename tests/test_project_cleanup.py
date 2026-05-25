@@ -1212,14 +1212,15 @@ def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
     expected_sections = [
-        "Status: Active handoff",
+        "Status: Completed implementation",
         "## Scope",
         "## Global Working Rules",
         "## Work Order",
         "## Worker A: Routing Decision Evidence Module",
         "## Worker B: Grounded Database Template Catalog Module",
         "## Worker C: Context-Aware Stat Mention Vocabulary Module",
-        "## Coordinator Handoff Prompt",
+        "## Implementation Ledger",
+        "## Historical Coordinator Handoff Prompt",
     ]
     for section in expected_sections:
         assert section in handoff
@@ -1240,7 +1241,12 @@ def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     assert "Use the TDD skill" in handoff
     assert "Run a code-review subagent after every worker task" in handoff
     assert "http://127.0.0.1:7861/" in handoff
+    assert "Review found and fixed" in handoff
     assert "architecture-active-opportunities-handoff-plan.md" in context
+    assert "detailed active worker handoff covering the current opportunities below" not in context
+    assert "This plan covers three active Modules" not in handoff
+    assert "active architecture opportunities" not in handoff
+    assert "\nImplement the active architecture opportunities" not in handoff
 
     documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
     assert documented_test_paths
@@ -1300,12 +1306,15 @@ def test_context_file_captures_current_architecture_findings() -> None:
     assert registry.index("### Frozen Seams") < registry.index("### Update Rule")
     assert "Architecture Ledger Registry" not in current_opportunities
 
-    for domain_area in (
-        "Routing and Request Lifecycle",
-        "Grounded Database and Query Templates",
-        "Stat Vocabulary and Narration Safety",
+    assert "No active architecture-deepening opportunities are open" in current_opportunities
+
+    for completed_candidate in (
+        "Routing Decision Evidence Module",
+        "Grounded Database Template Catalog Module",
+        "Context-Aware Stat Mention Vocabulary Module",
     ):
-        assert domain_area in current_opportunities
+        assert completed_candidate not in current_opportunities
+        assert completed_candidate in completed_modules
 
     for commit_hash in ("148ddd3", "d86086c", "fee989d", "8f569f1", "f9eeef2"):
         assert f"`{commit_hash}`" in registry

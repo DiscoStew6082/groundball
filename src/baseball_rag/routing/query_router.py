@@ -53,7 +53,12 @@ from baseball_rag.routing.contracts import (
     TimePeriodType,
     routed_case,
 )
-from baseball_rag.routing.decisions import RouteDecisionChain
+from baseball_rag.routing.decisions import (
+    RouteDecisionAttempt,
+    RouteDecisionChain,
+    RouteDecisionOutcome,
+    RouteDecisionStep,
+)
 from baseball_rag.routing.grounded_database_ownership import (
     deterministic_grounded_database_owns,
 )
@@ -72,6 +77,7 @@ __all__ = [
     "TimePeriod",
     "TimePeriodType",
     "route",
+    "route_with_evidence",
     "routed_case",
 ]
 
@@ -231,23 +237,50 @@ class _LLMRouterAdapter:
         )
 
 
-@traced(component_id="query-router", label="Route Query")
 def route(question: str) -> RoutedCase:
     """Classify a natural language question using the LLM.
 
     Uses a simple heuristic route if LM Studio is unavailable.
     """
+    with traced(component_id="query-router", label="Route Query") as route_stage:
+        outcome = route_with_evidence(question)
+        route_stage.set_output_summary(
+            f"routed to {outcome.routed_case.intent} via {outcome.winner}"
+        )
+        return outcome.routed_case
+
+
+def route_with_evidence(question: str) -> RouteDecisionOutcome:
+    """Classify a question and return ordered decision evidence."""
     deterministic = _heuristic_route(question)
     return RouteDecisionChain(
         decisions=(
-            lambda: _player_bio_followup_route(question),
-            lambda: _claim_verification_route(question),
-            lambda: _player_bio_name_route(question),
-            lambda: _deterministic_route_decision(question, deterministic),
-            lambda: _grounded_database_route(question),
+            RouteDecisionStep(
+                "player_bio_followup",
+                lambda: _player_bio_followup_route(question),
+            ),
+            RouteDecisionStep(
+                "claim_verification",
+                lambda: _claim_verification_route(question),
+            ),
+            RouteDecisionStep(
+                "player_bio_name",
+                lambda: _player_bio_name_route(question),
+            ),
+            RouteDecisionStep(
+                "deterministic_stat_or_grounded",
+                lambda: _deterministic_route_decision(question, deterministic),
+            ),
+            RouteDecisionStep(
+                "grounded_database",
+                lambda: _grounded_database_route(question),
+            ),
         ),
-        fallback=lambda: _llm_route_or_heuristic(question, deterministic),
-    ).decide()
+        fallback=RouteDecisionStep(
+            "llm_router_or_heuristic",
+            lambda: _llm_route_or_heuristic_attempt(question, deterministic),
+        ),
+    ).decide_with_evidence()
 
 
 def _player_bio_followup_route(question: str) -> RoutedCase | None:
@@ -326,12 +359,22 @@ def _grounded_database_route(question: str) -> RoutedCase | None:
 
 
 def _llm_route_or_heuristic(question: str, deterministic: RoutedCase) -> RoutedCase:
+    return _llm_route_or_heuristic_attempt(question, deterministic).route or deterministic
+
+
+def _llm_route_or_heuristic_attempt(
+    question: str,
+    deterministic: RoutedCase,
+) -> RouteDecisionAttempt:
     adapter_route = _LLMRouterAdapter().route(question)
     if not isinstance(adapter_route, _LLMRouterFailure):
-        return adapter_route
+        return RouteDecisionAttempt(route=adapter_route, reason="llm_router")
 
-    # LM Studio unavailable or LLM returned garbled — use the local heuristic route.
-    return deterministic
+    return RouteDecisionAttempt(
+        route=deterministic,
+        reason=adapter_route.reason,
+        fallback_reason=adapter_route.reason,
+    )
 
 
 def _build_time_period(data: dict | None) -> TimePeriod | None:

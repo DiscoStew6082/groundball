@@ -31,7 +31,7 @@ There is no `docs/adr/` directory in this repo yet. Treat this file as the curre
 
 - `README.md` for expanded product contract and demo vocabulary.
 - `docs/architecture.md` for the fuller architecture overview.
-- `docs/architecture-active-opportunities-handoff-plan.md` for the detailed active worker handoff covering the current opportunities below.
+- `docs/architecture-active-opportunities-handoff-plan.md` for the completed implementation ledger covering the 2026-05-25 active-opportunity set.
 - `docs/architecture-followup-worker-handoff-plan.md`, `docs/architecture-next-deepening-plan.md`, and `docs/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
 Do not reopen completed Modules without fresh public-behavior evidence. Prior ledgers mark routing decision order, request lifecycle ordering, visible evidence presentation, eval reporting, Grounded Database Planning, DuckDB Result Answer Assembly, Biography Stat Claim Vocabulary, LLM Narration Guard, Player Identity Authority, Query Output Contract, and Verified Evidence Read Model as landed.
@@ -44,17 +44,9 @@ Purpose: lower startup context by listing all active opportunities, completed Mo
 
 ### Current Opportunities
 
-#### Routing and Request Lifecycle
-
-- 2026-05-25: Routing Decision Evidence Module. `route(question)` is a stable public Interface, but the current Implementation discards which routing Adapter won and why. Smallest next slice: preserve route precedence and `route(question)` caller behavior while returning or tracing labeled decision evidence that tests can inspect. Verify with focused router tests and the existing cleanup guard.
-
-#### Grounded Database and Query Templates
-
-- 2026-05-25: Grounded Database Template Catalog Module. Deterministic template matching, route ownership, unsupported/ambiguous policy, source detail, and SQL templates live together in the grounded database template file. Smallest next slice: keep the completed Grounded Database Planning Module stable while making each template own match facts, route ownership, provenance detail, and SQL assembly locally. Verify with focused grounded database template tests.
-
-#### Stat Vocabulary and Narration Safety
-
-- 2026-05-25: Context-Aware Stat Mention Vocabulary Module. Stat aliases and mention grammar are repeated across stat routing, biography claim vocabulary, LLM narration verification, and static stat-definition lookup. Smallest next slice: expose tailored vocabulary views for routing, biography claims, narration verification, and stat-definition document lookup instead of flattening policy into one alias table. Verify with focused routing, claim extraction, and narration safety tests.
+- No active architecture-deepening opportunities are open from the 2026-05-25
+  active-opportunities handoff. Add a new opportunity only when fresh
+  public-behavior evidence or an explicit product decision shows a real delta.
 
 ### Completed Modules
 
@@ -67,13 +59,19 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Routing and Request Lifecycle
 
+- 2026-05-25, commit `pending`: Routing Decision Evidence Module. Public contract: `route(question)` caller behavior, deterministic route precedence, valid LLM routes, malformed LLM heuristic handling, and query-router tracing stay stable while `route_with_evidence(...)` and `RouteDecisionChain.decide_with_evidence()` expose inspectable ordered Adapter evidence.
 - 2026-05-23, commit `148ddd3`: Routing Decision Module and Request Lifecycle Ordering Module. Public contract: deterministic route precedence stays stable, compatibility exports remain available from `query_router.py`, and `execute_request(...)` remains the public request Adapter over `request_lifecycle.py`.
 - 2026-05-24, commits `fee989d` and `8f569f1`: LLM Router Adapter Module. Public contract: `route(question)` stays stable while malformed LLM output and deterministic precedence stay local to the router Adapter.
 
 #### Grounded Database and Stat Answers
 
+- 2026-05-25, commit `pending`: Grounded Database Template Catalog Module. Public contract: deterministic template SQL text, params, source detail, route ownership, unsupported policy, and user-facing grounded answers stay stable while each template owns stable `template_id`, match facts, route ownership, SQL assembly, source detail, and optional `QuerySpec` locally.
 - 2026-05-23, commit `d86086c`: LLM-Flavored Narration Guard Module, Grounded Database Planning Module, DuckDB Result Answer Assembly Module, and Biography Stat Claim Vocabulary Module. Public contract: DuckDB-backed stat and grounded database answers keep verified SQL/row/source behavior; LLM prose is fallback or narration only after structured facts are verified. Verification is recorded in `docs/architecture-next-deepening-plan.md`.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Player Identity Authority Module. Public contract: Lahman player resolution, display metadata, ambiguity policy, suffix handling, and optional Retrosheet ID mapping live behind one authority while compatibility facades remain.
+
+#### Stat Vocabulary and Narration Safety
+
+- 2026-05-25, commit `pending`: Context-Aware Stat Mention Vocabulary Module. Public contract: stat routing, biography claim extraction and verification, narration verification, and static stat-definition lookup keep existing behavior while `stat_mentions` exposes context-specific vocabulary views and ambiguous strikeouts remain represented as canonical `SO` plus contextual table hints.
 
 #### UI and Output Presentation
 

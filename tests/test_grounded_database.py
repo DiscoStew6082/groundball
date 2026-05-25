@@ -97,6 +97,21 @@ class TestDeterministicTemplates:
         assert result.params == [30, 30]
         assert ("Hank Aaron", 1963, 44, 31) in result.rows
 
+    def test_thirty_thirty_template_exposes_catalog_metadata(self):
+        from baseball_rag.db.grounded_database_templates import match_template
+
+        matched = match_template("show me 30-30 club seasons")
+
+        assert matched is not None
+        assert matched.template_id == "thirty_thirty_club"
+        assert matched.match_facts == {"pattern": "30-30 club"}
+        assert matched.route_owner is True
+        assert matched.query_spec is None
+        assert matched.assembled.params == [30, 30]
+        assert matched.source_detail == (
+            "Matched local 30-30 club template: player seasons with at least 30 HR and 30 SB."
+        )
+
     def test_500_home_run_club_template_bypasses_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
         result = self._run_query("500 home run club", request_fn=mock_call)
@@ -153,8 +168,15 @@ class TestDeterministicTemplates:
 
     def test_plain_batting_leaderboard_stays_on_stat_route(self):
         from baseball_rag.db.grounded_database_runtime import can_plan_deterministically
+        from baseball_rag.db.grounded_database_templates import match_template
         from baseball_rag.routing import StatQueryCase, route
 
+        matched = match_template("career home run leaders")
+
+        assert matched is not None
+        assert matched.template_id == "career_home_runs"
+        assert matched.should_route(competing_stat="HR") is False
+        assert matched.should_route(competing_stat=None) is True
         assert can_plan_deterministically("career home run leaders") is True
         assert isinstance(route("career home run leaders"), StatQueryCase)
 
@@ -295,6 +317,19 @@ class TestDeterministicTemplates:
         assert "?" in result.sql
         assert "OR 1=1" not in result.sql
         assert expected_team in {row[1] for row in result.rows}
+
+    def test_roster_template_exposes_local_match_facts_and_query_spec(self):
+        from baseball_rag.db.grounded_database_templates import match_template
+
+        matched = match_template("who played for the Braves in 1936")
+
+        assert matched is not None
+        assert matched.template_id == "team_season_roster"
+        assert matched.match_facts["team_nickname"] == "braves"
+        assert matched.match_facts["year"] == 1936
+        assert matched.query_spec is not None
+        assert matched.query_spec.team_name_pattern == "Braves"
+        assert matched.query_spec.year_value == 1936
 
     @pytest.mark.parametrize(
         ("question", "expected_team", "expected_year"),

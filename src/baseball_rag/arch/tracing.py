@@ -146,6 +146,10 @@ class traced:
         if active_stack:
             active_stack[-1].stage.output_summary = output_summary
 
+    def set_output_summary(self, output_summary: str) -> None:
+        """Set output summary for the currently active traced stage."""
+        self._set_current_output_summary(output_summary)
+
     def __enter__(self) -> "traced":
         if _TRACING_DISABLED:
             return self

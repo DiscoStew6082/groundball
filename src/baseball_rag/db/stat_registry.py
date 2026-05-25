@@ -7,6 +7,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from baseball_rag.stat_mentions import (
+    for_routing,
+    infer_stat_table_hint,
+    stat_normalization_aliases,
+)
+
 StatTable = Literal["batting", "pitching", "fielding"]
 
 
@@ -289,84 +295,8 @@ _REGISTRY: dict[str, StatDefinition] = {
     "PO": StatDefinition("PO", "fielding", "PO"),
 }
 
-_ALIASES = {
-    "K": "SO",
-    "STRIKEOUTS": "SO",
-    "HITS": "H",
-    "HOMER": "HR",
-    "HOMERS": "HR",
-    "HOME_RUNS": "HR",
-    "RBI": "RBI",
-    "RBIS": "RBI",
-    "RUNS_BATTED_IN": "RBI",
-    "RUN_BATTED_IN": "RBI",
-    "BAT_AVG": "AVG",
-    "BATTING_AVERAGE": "AVG",
-    "ON_BASE_PLUS_SLUGGING": "OPS",
-    "PUTOUT": "PO",
-    "PUTOUTS": "PO",
-    "STOLEN_BASE": "SB",
-    "STOLEN_BASES": "SB",
-    "WINS": "W",
-    "LOSSES": "L",
-}
-
-_TEXT_ALIASES: dict[str, str] = {
-    "2b": "2B",
-    "3b": "3B",
-    "ab": "AB",
-    "avg": "AVG",
-    "bat avg": "AVG",
-    "batting average": "AVG",
-    "bb": "BB",
-    "base on balls": "BB",
-    "bases on balls": "BB",
-    "era": "ERA",
-    "earned run average": "ERA",
-    "h": "H",
-    "hits": "H",
-    "home run": "HR",
-    "home runs": "HR",
-    "homer": "HR",
-    "homers": "HR",
-    "hr": "HR",
-    "hrs": "HR",
-    "k": "SO",
-    "losses": "L",
-    "on-base plus slugging": "OPS",
-    "ops": "OPS",
-    "po": "PO",
-    "putout": "PO",
-    "putouts": "PO",
-    "rbi": "RBI",
-    "rbis": "RBI",
-    "run batted in": "RBI",
-    "runs": "R",
-    "runs batted in": "RBI",
-    "sb": "SB",
-    "so": "SO",
-    "stolen base": "SB",
-    "stolen bases": "SB",
-    "strikeouts": "SO",
-    "whip": "WHIP",
-    "wins": "W",
-}
-
-_PITCHING_SO_TERMS = (
-    "as a pitcher",
-    "batters",
-    "on the mound",
-    "pitched",
-    "pitcher",
-    "pitching",
-)
-_BATTING_SO_TERMS = (
-    "as a batter",
-    "as a hitter",
-    "at the plate",
-    "batting strikeout",
-    "batting strikeouts",
-)
+_ALIASES = dict(stat_normalization_aliases())
+_TEXT_ALIASES = dict(for_routing().aliases)
 
 
 def get_stat(stat: str, *, table: StatTable | None = None) -> StatDefinition:
@@ -394,23 +324,12 @@ def stat_aliases() -> Mapping[str, str]:
 
 def find_stat_in_text(text: str) -> str | None:
     """Return the first supported stat alias mentioned in free text."""
-    lower_text = text.lower()
-    for phrase, canonical in sorted(_TEXT_ALIASES.items(), key=lambda item: -len(item[0])):
-        if re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", lower_text):
-            return canonical
-    return None
+    return for_routing().find_stat(text)
 
 
 def infer_stat_table(stat: str, *, text: str | None = None) -> StatTable | None:
     """Infer a contextual stat table from surrounding natural-language text."""
-    if normalize_stat(stat) != "SO" or not text:
-        return None
-    normalized_text = text.casefold()
-    if any(term in normalized_text for term in _BATTING_SO_TERMS):
-        return "batting"
-    if any(term in normalized_text for term in _PITCHING_SO_TERMS):
-        return "pitching"
-    return None
+    return infer_stat_table_hint(normalize_stat(stat), text=text)
 
 
 def supported_stat_prompt_list() -> list[str]:

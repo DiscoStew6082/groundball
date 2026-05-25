@@ -1,7 +1,9 @@
 """Deterministic SQL templates for common baseball-history questions."""
 
 import re
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 from baseball_rag.db.grounded_database_types import AssembledSQL, QuerySpec, TeamIdentity
 from baseball_rag.db.stat_registry import StatDefinition, get_stat
@@ -17,10 +19,62 @@ class MatchedTemplate:
     source_detail: str
     route_owner: bool = True
     query_spec: QuerySpec | None = None
+    template_id: str = ""
+    description: str = ""
+    match_facts: Mapping[str, Any] = field(default_factory=dict)
+    _route_owner_policy: Callable[[str | None], bool] = field(
+        default=lambda _competing_stat: True,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def unsupported_reason(self) -> str | None:
         return self.assembled.unsupported_reason
+
+    def should_route(self, *, competing_stat: str | None = None) -> bool:
+        """Return whether this matched template should own routing."""
+        return self.route_owner and self._route_owner_policy(competing_stat)
+
+
+TemplateMatcher = Callable[[str], Mapping[str, Any] | None]
+TemplateAssembler = Callable[[Mapping[str, Any], str], AssembledSQL]
+TemplateSourceDetail = Callable[[Mapping[str, Any], str], str]
+TemplateQuerySpec = Callable[[Mapping[str, Any], str], QuerySpec | None]
+TemplateRouteOwner = Callable[[Mapping[str, Any], str, str | None], bool]
+
+
+@dataclass(frozen=True)
+class GroundedDatabaseTemplate:
+    """Local owner for one deterministic grounded database template."""
+
+    template_id: str
+    description: str
+    matcher: TemplateMatcher
+    assemble: TemplateAssembler
+    source_detail: TemplateSourceDetail
+    route_owner: TemplateRouteOwner = lambda _facts, _question, _stat: True
+    query_spec: TemplateQuerySpec = lambda _facts, _question: None
+
+    def match(self, question: str) -> MatchedTemplate | None:
+        facts = self.matcher(question)
+        if facts is None:
+            return None
+
+        return MatchedTemplate(
+            assembled=self.assemble(facts, question),
+            source_detail=self.source_detail(facts, question),
+            route_owner=self.route_owner(facts, question, None),
+            query_spec=self.query_spec(facts, question),
+            template_id=self.template_id,
+            description=self.description,
+            match_facts=dict(facts),
+            _route_owner_policy=lambda competing_stat: self.route_owner(
+                facts,
+                question,
+                competing_stat,
+            ),
+        )
 
 
 def _normalize_question(question: str) -> str:
@@ -71,118 +125,12 @@ def _unsupported_sql(reason: str, *, code: str = "unsupported") -> AssembledSQL:
 def match_template(question: str) -> MatchedTemplate | None:
     """Return the matched deterministic template spec for a question."""
     q = _normalize_question(question)
-
-    if "500 club" in q and "home run" not in q and "hr" not in q:
-        return MatchedTemplate(
-            assembled=_unsupported_sql(
-                "The question says 500 club but does not specify home runs or pitching wins.",
-                code="ambiguous",
-            ),
-            source_detail=_template_source_detail(q),
-        )
-
-    if "triple crown" in q:
-        return MatchedTemplate(_triple_crown_sql(), _template_source_detail(q))
-
-    if re.search(r"\b30\s*30\b", q) or "30 30 club" in q or "thirty thirty" in q:
-        return MatchedTemplate(_thirty_thirty_sql(), _template_source_detail(q))
-
-    roster_template = _match_roster_template(q)
-    if roster_template is not None:
-        return roster_template
-
-    if _looks_like_batting_average_leader(q):
-        year = _extract_year(q)
-        if year is None and "qualified" not in q:
-            return MatchedTemplate(
-                _unsupported_sql("Batting average leader questions need a specific year."),
-                _template_source_detail(q),
-            )
-        return MatchedTemplate(
-            _qualified_season_avg_sql(year, _extract_min_ab(q, default=100)),
-            _template_source_detail(q),
-        )
-
-    if (
-        ("home run" in q or "homer" in q or re.search(r"\bhrs?\b", q))
-        and ("500" in q or "club" in q or "career" in q)
-        and not _looks_like_single_season(q)
-    ):
-        return MatchedTemplate(
-            _career_home_run_sql(_extract_threshold(q, default=500)),
-            _template_source_detail(q),
-        )
-
-    if (
-        ("wins" in q or re.search(r"\bw\b", q))
-        and ("pitcher" in q or "pitching" in q or "career" in q or "500" in q)
-        and not _looks_like_single_season(q)
-    ):
-        return MatchedTemplate(
-            _career_pitching_wins_sql(_extract_explicit_wins_threshold(q)),
-            _template_source_detail(q),
-        )
-
-    if "era" in q and "career" in q:
-        if not _has_era_qualification_guard(q):
-            return MatchedTemplate(
-                _unsupported_sql(
-                    "Career ERA leader questions need an explicit qualification guard."
-                ),
-                _template_source_detail(q),
-            )
-        return MatchedTemplate(
-            _career_era_sql(_extract_min_ipouts(q, default=3000)),
-            _template_source_detail(q),
-        )
-
-    if "era" in q and ("lowest" in q or "best" in q or "leader" in q or "leaders" in q):
-        year = _extract_year(q)
-        if year is None and not _has_era_qualification_guard(q):
-            return MatchedTemplate(
-                _unsupported_sql(
-                    "Season ERA leader questions need a specific year and innings qualification."
-                ),
-                _template_source_detail(q),
-            )
-        if not _has_era_qualification_guard(q):
-            return MatchedTemplate(
-                _unsupported_sql(
-                    "Season ERA leader questions need an innings qualification guard."
-                ),
-                _template_source_detail(q),
-            )
-        return MatchedTemplate(
-            _qualified_season_era_sql(year, _extract_min_ipouts(q, default=300)),
-            _template_source_detail(q),
-        )
+    for template in _TEMPLATES:
+        matched = template.match(q)
+        if matched is not None:
+            return matched
 
     return None
-
-
-def _match_roster_template(q: str) -> MatchedTemplate | None:
-    if not _looks_like_roster_question(q):
-        return None
-    year = _extract_year(q)
-    if year is None:
-        return MatchedTemplate(
-            _unsupported_sql("Roster questions need a specific year."),
-            _template_source_detail(q),
-        )
-    nickname = _extract_team_nickname(q)
-    if nickname is None:
-        return None
-    identity = resolve_team_identity(q, team_name_pattern=nickname, year=year)
-    return MatchedTemplate(
-        _roster_sql(nickname, year, q, identity=identity),
-        _template_source_detail(q),
-        query_spec=QuerySpec(
-            stat_tables=["batting"],
-            team_name_pattern=nickname.title(),
-            year_value=year,
-            team_identity=identity,
-        ),
-    )
 
 
 def _detect_template(question: str) -> AssembledSQL | None:
@@ -205,17 +153,7 @@ def should_route_deterministic_grounded_database(
     matched = match_template(question)
     if matched is None:
         return False
-    if not matched.route_owner:
-        return False
-    if competing_stat is None:
-        return True
-
-    q = _normalize_question(question)
-    if competing_stat == "HR" and _is_plain_career_home_run_leaderboard(q):
-        return False
-    if competing_stat == "ERA" and _is_plain_season_era_leaderboard(q):
-        return False
-    return True
+    return matched.should_route(competing_stat=competing_stat)
 
 
 def _is_plain_career_home_run_leaderboard(q: str) -> bool:
@@ -234,31 +172,6 @@ def _is_plain_season_era_leaderboard(q: str) -> bool:
         and "career" not in q
         and not _has_era_qualification_guard(q)
     )
-
-
-def _template_source_detail(question: str) -> str:
-    """Return portfolio-facing provenance detail for matched templates."""
-    q = _normalize_question(question)
-    if "triple crown" in q:
-        return (
-            "Matched local Triple Crown template: batting HR, RBI, and AVG "
-            "league leaders by season."
-        )
-    if re.search(r"\b30\s*30\b", q) or "30 30 club" in q or "thirty thirty" in q:
-        return "Matched local 30-30 club template: player seasons with at least 30 HR and 30 SB."
-    if _looks_like_batting_average_leader(q):
-        return "Matched local qualified season batting average leader template with an AB guard."
-    if "era" in q:
-        if "career" in q:
-            return "Matched local career ERA leaders template with an innings qualification guard."
-        return "Matched local qualified season ERA leader template with an innings guard."
-    if _looks_like_roster_question(q):
-        return "Matched local team-season roster template."
-    if "home run" in q or "homer" in q or re.search(r"\bhrs?\b", q):
-        return "Matched local 500 HR club template: career batting home run totals."
-    if "wins" in q or re.search(r"\bw\b", q):
-        return "Matched local career pitching wins leaders template: career pitching W totals."
-    return "Matched local deterministic grounded database SQL template."
 
 
 def _has_era_qualification_guard(q: str) -> bool:
@@ -313,6 +226,289 @@ def _extract_team_nickname(q: str) -> str | None:
         if re.search(rf"\b{re.escape(nickname)}\b", q):
             return nickname
     return None
+
+
+def _source_detail(text: str) -> TemplateSourceDetail:
+    return lambda _facts, _question: text
+
+
+def _match_ambiguous_500_club(q: str) -> Mapping[str, Any] | None:
+    if "500 club" in q and "home run" not in q and "hr" not in q:
+        return {"pattern": "500 club"}
+    return None
+
+
+def _assemble_ambiguous_500_club(
+    _facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    return _unsupported_sql(
+        "The question says 500 club but does not specify home runs or pitching wins.",
+        code="ambiguous",
+    )
+
+
+def _match_triple_crown(q: str) -> Mapping[str, Any] | None:
+    if "triple crown" in q:
+        return {"pattern": "triple crown"}
+    return None
+
+
+def _match_thirty_thirty(q: str) -> Mapping[str, Any] | None:
+    if re.search(r"\b30\s*30\b", q) or "30 30 club" in q or "thirty thirty" in q:
+        return {"pattern": "30-30 club"}
+    return None
+
+
+def _match_roster(q: str) -> Mapping[str, Any] | None:
+    if not _looks_like_roster_question(q):
+        return None
+    year = _extract_year(q)
+    nickname = _extract_team_nickname(q)
+    if year is None or nickname is None:
+        return None
+    identity = resolve_team_identity(q, team_name_pattern=nickname, year=year)
+    return {
+        "pattern": "team-season roster",
+        "team_nickname": nickname,
+        "year": year,
+        "team_identity": identity,
+    }
+
+
+def _assemble_roster(facts: Mapping[str, Any], question: str) -> AssembledSQL:
+    nickname = str(facts["team_nickname"])
+    year = int(facts["year"])
+    identity = facts.get("team_identity")
+    return _roster_sql(
+        nickname,
+        year,
+        question,
+        identity=identity if isinstance(identity, TeamIdentity) else None,
+    )
+
+
+def _roster_query_spec(facts: Mapping[str, Any], _question: str) -> QuerySpec:
+    nickname = str(facts["team_nickname"])
+    identity = facts.get("team_identity")
+    return QuerySpec(
+        stat_tables=["batting"],
+        team_name_pattern=nickname.title(),
+        year_value=int(facts["year"]),
+        team_identity=identity if isinstance(identity, TeamIdentity) else None,
+    )
+
+
+def _match_batting_average_leader(q: str) -> Mapping[str, Any] | None:
+    if not _looks_like_batting_average_leader(q):
+        return None
+    return {
+        "pattern": "qualified batting average leader",
+        "year": _extract_year(q),
+        "qualified": "qualified" in q,
+        "min_ab": _extract_min_ab(q, default=100),
+    }
+
+
+def _assemble_batting_average_leader(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    year = facts["year"]
+    if year is None and not bool(facts["qualified"]):
+        return _unsupported_sql("Batting average leader questions need a specific year.")
+    return _qualified_season_avg_sql(
+        int(year) if year is not None else None,
+        int(facts["min_ab"]),
+    )
+
+
+def _match_career_home_runs(q: str) -> Mapping[str, Any] | None:
+    if (
+        ("home run" in q or "homer" in q or re.search(r"\bhrs?\b", q))
+        and ("500" in q or "club" in q or "career" in q)
+        and not _looks_like_single_season(q)
+    ):
+        return {
+            "pattern": "career home run totals",
+            "threshold": _extract_threshold(q, default=500),
+            "plain_leaderboard": _is_plain_career_home_run_leaderboard(q),
+        }
+    return None
+
+
+def _assemble_career_home_runs(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    return _career_home_run_sql(int(facts["threshold"]))
+
+
+def _career_home_run_route_owner(
+    facts: Mapping[str, Any],
+    _question: str,
+    competing_stat: str | None,
+) -> bool:
+    return not (competing_stat == "HR" and bool(facts["plain_leaderboard"]))
+
+
+def _match_career_pitching_wins(q: str) -> Mapping[str, Any] | None:
+    if (
+        ("wins" in q or re.search(r"\bw\b", q))
+        and ("pitcher" in q or "pitching" in q or "career" in q or "500" in q)
+        and not _looks_like_single_season(q)
+    ):
+        return {
+            "pattern": "career pitching wins",
+            "threshold": _extract_explicit_wins_threshold(q),
+        }
+    return None
+
+
+def _assemble_career_pitching_wins(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    threshold = facts["threshold"]
+    return _career_pitching_wins_sql(int(threshold) if threshold is not None else None)
+
+
+def _match_career_era(q: str) -> Mapping[str, Any] | None:
+    if "era" in q and "career" in q:
+        return {
+            "pattern": "career ERA leaders",
+            "has_qualification_guard": _has_era_qualification_guard(q),
+            "min_ipouts": _extract_min_ipouts(q, default=3000),
+        }
+    return None
+
+
+def _assemble_career_era(facts: Mapping[str, Any], _question: str) -> AssembledSQL:
+    if not bool(facts["has_qualification_guard"]):
+        return _unsupported_sql("Career ERA leader questions need an explicit qualification guard.")
+    return _career_era_sql(int(facts["min_ipouts"]))
+
+
+def _match_qualified_season_era(q: str) -> Mapping[str, Any] | None:
+    if "era" in q and ("lowest" in q or "best" in q or "leader" in q or "leaders" in q):
+        return {
+            "pattern": "qualified season ERA leader",
+            "year": _extract_year(q),
+            "has_qualification_guard": _has_era_qualification_guard(q),
+            "min_ipouts": _extract_min_ipouts(q, default=300),
+            "plain_leaderboard": _is_plain_season_era_leaderboard(q),
+        }
+    return None
+
+
+def _assemble_qualified_season_era(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    year = facts["year"]
+    if year is None and not bool(facts["has_qualification_guard"]):
+        return _unsupported_sql(
+            "Season ERA leader questions need a specific year and innings qualification."
+        )
+    if not bool(facts["has_qualification_guard"]):
+        return _unsupported_sql("Season ERA leader questions need an innings qualification guard.")
+    return _qualified_season_era_sql(
+        int(year) if year is not None else None,
+        int(facts["min_ipouts"]),
+    )
+
+
+def _qualified_season_era_route_owner(
+    facts: Mapping[str, Any],
+    _question: str,
+    competing_stat: str | None,
+) -> bool:
+    return not (competing_stat == "ERA" and bool(facts["plain_leaderboard"]))
+
+
+_TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
+    GroundedDatabaseTemplate(
+        template_id="ambiguous_500_club",
+        description="Ambiguous 500 club unsupported policy",
+        matcher=_match_ambiguous_500_club,
+        assemble=_assemble_ambiguous_500_club,
+        source_detail=_source_detail("Matched local deterministic grounded database SQL template."),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="triple_crown",
+        description="Triple Crown batting leaders by league and season",
+        matcher=_match_triple_crown,
+        assemble=lambda _facts, _question: _triple_crown_sql(),
+        source_detail=_source_detail(
+            "Matched local Triple Crown template: batting HR, RBI, and AVG "
+            "league leaders by season."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="thirty_thirty_club",
+        description="Player seasons with at least 30 HR and 30 SB",
+        matcher=_match_thirty_thirty,
+        assemble=lambda _facts, _question: _thirty_thirty_sql(),
+        source_detail=_source_detail(
+            "Matched local 30-30 club template: player seasons with at least 30 HR and 30 SB."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="team_season_roster",
+        description="Team-season roster resolved through historical team identity",
+        matcher=_match_roster,
+        assemble=_assemble_roster,
+        source_detail=_source_detail("Matched local team-season roster template."),
+        query_spec=_roster_query_spec,
+    ),
+    GroundedDatabaseTemplate(
+        template_id="qualified_batting_average_leader",
+        description="Qualified season batting average leaders",
+        matcher=_match_batting_average_leader,
+        assemble=_assemble_batting_average_leader,
+        source_detail=_source_detail(
+            "Matched local qualified season batting average leader template with an AB guard."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="career_home_runs",
+        description="Career batting home run totals",
+        matcher=_match_career_home_runs,
+        assemble=_assemble_career_home_runs,
+        source_detail=_source_detail(
+            "Matched local 500 HR club template: career batting home run totals."
+        ),
+        route_owner=_career_home_run_route_owner,
+    ),
+    GroundedDatabaseTemplate(
+        template_id="career_pitching_wins",
+        description="Career pitching wins totals",
+        matcher=_match_career_pitching_wins,
+        assemble=_assemble_career_pitching_wins,
+        source_detail=_source_detail(
+            "Matched local career pitching wins leaders template: career pitching W totals."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="career_era",
+        description="Career ERA leaders with innings qualification",
+        matcher=_match_career_era,
+        assemble=_assemble_career_era,
+        source_detail=_source_detail(
+            "Matched local career ERA leaders template with an innings qualification guard."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="qualified_season_era",
+        description="Qualified season ERA leaders",
+        matcher=_match_qualified_season_era,
+        assemble=_assemble_qualified_season_era,
+        source_detail=_source_detail(
+            "Matched local qualified season ERA leader template with an innings guard."
+        ),
+        route_owner=_qualified_season_era_route_owner,
+    ),
+)
 
 
 def _triple_crown_sql() -> AssembledSQL:

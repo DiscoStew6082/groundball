@@ -115,6 +115,37 @@ def test_registry_infers_contextual_pitching_strikeouts():
     assert infer_stat_table("SO", text="89 strikeouts") is None
 
 
+def test_stat_mention_vocabulary_exposes_context_specific_views():
+    from baseball_rag.stat_mentions import (
+        for_biography_claims,
+        for_narration_verification,
+        for_routing,
+        for_stat_definition_lookup,
+    )
+
+    routing = for_routing()
+    biography_claims = for_biography_claims()
+    narration = for_narration_verification()
+    stat_definitions = for_stat_definition_lookup()
+
+    assert routing.find_stat("who had the most RBIs in 1962") == "RBI"
+    assert "walks" not in routing.aliases
+    assert biography_claims.aliases["strikeouts"] == "SO"
+    assert narration.aliases["walks"] == "BB"
+    assert "walks" not in stat_definitions.aliases
+    assert stat_definitions.find_stat("what is OPS") == "OPS"
+
+
+def test_stat_mention_vocabulary_represents_contextual_strikeouts():
+    from baseball_rag.stat_mentions import for_biography_claims
+
+    vocabulary = for_biography_claims()
+
+    assert vocabulary.infer_table("SO", text="struck out 200 batters as a pitcher") == "pitching"
+    assert vocabulary.infer_table("strikeouts", text="89 batting strikeouts") == "batting"
+    assert vocabulary.infer_table("SO", text="89 strikeouts") is None
+
+
 def test_biography_claim_vocabulary_is_explicit_subset_of_sql_registry():
     claim_stats = supported_biography_claim_stats()
 

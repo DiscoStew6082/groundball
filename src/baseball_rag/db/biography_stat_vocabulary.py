@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 
 from baseball_rag.db.stat_registry import (
@@ -12,20 +11,10 @@ from baseball_rag.db.stat_registry import (
     infer_stat_table,
     normalize_stat,
 )
+from baseball_rag.stat_mentions import for_biography_claims
 
-_SUPPORTED_BIOGRAPHY_CLAIM_STATS = (
-    "H",
-    "HR",
-    "RBI",
-    "SB",
-    "AVG",
-    "OPS",
-    "W",
-    "ERA",
-    "WHIP",
-    "SO",
-    "PO",
-)
+_BIOGRAPHY_CLAIM_VOCABULARY = for_biography_claims()
+_SUPPORTED_BIOGRAPHY_CLAIM_STATS = _BIOGRAPHY_CLAIM_VOCABULARY.supported_stats
 
 _CONTEXTUAL_STAT_DEFINITIONS: dict[tuple[str, StatTable], StatDefinition] = {
     ("SO", "pitching"): StatDefinition("SO", "pitching", "SO"),
@@ -62,35 +51,7 @@ _RETROSHEET_COLUMN_CANDIDATES: dict[StatTable, dict[str, tuple[str, ...]]] = {
     },
 }
 
-_BIOGRAPHY_CLAIM_STAT_ALIASES: dict[str, str] = {
-    "AVG": "AVG",
-    "batting average": "AVG",
-    "ERA": "ERA",
-    "H": "H",
-    "hit": "H",
-    "hits": "H",
-    "home run": "HR",
-    "home runs": "HR",
-    "HR": "HR",
-    "HRS": "HR",
-    "OPS": "OPS",
-    "PO": "PO",
-    "putout": "PO",
-    "putouts": "PO",
-    "RBI": "RBI",
-    "RBIs": "RBI",
-    "runs batted in": "RBI",
-    "SB": "SB",
-    "SO": "SO",
-    "stolen base": "SB",
-    "stolen bases": "SB",
-    "strikeout": "SO",
-    "strikeouts": "SO",
-    "W": "W",
-    "WHIP": "WHIP",
-    "win": "W",
-    "wins": "W",
-}
+_BIOGRAPHY_CLAIM_STAT_ALIASES = dict(_BIOGRAPHY_CLAIM_VOCABULARY.aliases)
 
 
 def supported_biography_claim_stats() -> list[str]:
@@ -100,13 +61,8 @@ def supported_biography_claim_stats() -> list[str]:
 
 def normalize_biography_claim_stat(stat: str) -> str:
     """Normalize biography claim stat aliases to the contract's canonical stats."""
-    alias = _BIOGRAPHY_CLAIM_STAT_ALIASES.get(stat.strip())
-    if alias is not None:
-        return alias
-    alias = _BIOGRAPHY_CLAIM_STAT_ALIASES.get(stat.strip().casefold())
-    if alias is not None:
-        return alias
-    return normalize_stat(stat)
+    canonical = _BIOGRAPHY_CLAIM_VOCABULARY.normalize(stat)
+    return normalize_stat(canonical)
 
 
 def is_supported_biography_claim_stat(stat: str) -> bool:
@@ -161,9 +117,7 @@ def biography_claim_stat_aliases() -> Mapping[str, str]:
 
 def biography_claim_stat_regex_source() -> str:
     """Return a regex alternation for supplied biography claim stat aliases."""
-    return "|".join(
-        re.escape(alias) for alias in sorted(_BIOGRAPHY_CLAIM_STAT_ALIASES, key=len, reverse=True)
-    )
+    return _BIOGRAPHY_CLAIM_VOCABULARY.regex_source()
 
 
 def retrosheet_stat_column_candidates(table: StatTable, stat: str) -> tuple[str, ...]:

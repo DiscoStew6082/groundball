@@ -1,17 +1,15 @@
 # Active Architecture Opportunities Handoff Plan
 
-Status: Active handoff. This document turns the 2026-05-25 current
-architecture opportunities in `CONTEXT.md` into worker-ready implementation
-slices for `/Volumes/Envoy/projects/baseball-rag`.
+Status: Completed implementation. This document turns the 2026-05-25 current
+architecture opportunities in `CONTEXT.md` into the implementation ledger for
+`/Volumes/Envoy/projects/baseball-rag`.
 
-`CONTEXT.md` remains the canonical front door. Use this plan for detailed
-handoff instructions only while these opportunities are active. When a slice
-lands, update this ledger, move the landed opportunity in `CONTEXT.md` from
-Current Opportunities to Completed Modules, and record the commit hash.
+`CONTEXT.md` remains the canonical front door. Use this ledger for completion
+evidence only when details are needed.
 
 ## Scope
 
-This plan covers three active Modules, in the recommended order:
+This completed ledger covers three Modules, implemented in this order:
 
 1. Routing Decision Evidence Module.
 2. Grounded Database Template Catalog Module.
@@ -65,7 +63,7 @@ Suggested branch names:
 
 ## Worker A: Routing Decision Evidence Module
 
-Status: Planned.
+Status: Implemented and reviewed locally.
 
 ### Decision
 
@@ -168,8 +166,7 @@ uv run pytest tests/test_project_cleanup.py -q
 
 ## Worker B: Grounded Database Template Catalog Module
 
-Status: Planned. Start after Worker A lands or after the integration lead
-explicitly freezes routing evidence expectations.
+Status: Implemented and reviewed locally.
 
 ### Decision
 
@@ -268,8 +265,7 @@ uv run pytest tests/test_project_cleanup.py -q
 
 ## Worker C: Context-Aware Stat Mention Vocabulary Module
 
-Status: Planned. Start after Worker A and Worker B evidence makes route and
-template ownership drift easy to inspect.
+Status: Implemented and reviewed locally.
 
 ### Decision
 
@@ -430,12 +426,39 @@ Before commit:
 
 ## Implementation Ledger
 
-No implementation has landed for these active opportunities yet. This document
-is the starting handoff ledger.
+Implemented in the documented order with TDD slices and review passes:
 
-## Coordinator Handoff Prompt
+- Worker A added inspectable routing evidence behind `RouteDecisionChain` and
+  exported `route_with_evidence(...)` while keeping `route(question)` as the
+  stable public route Interface. Query-router traces now include a compact
+  decision winner summary. Review found and fixed a valid-LLM evidence bug so
+  `fallback_reason` is reserved for degraded heuristic use.
+- Worker B converted deterministic grounded database templates into small
+  catalog records with stable template ids, match facts, route ownership
+  policy, source detail, SQL assembly, and optional `QuerySpec` builders. SQL
+  text, params, source details, unsupported policy, and route ownership behavior
+  were preserved for existing templates.
+- Worker C added `stat_mentions` context-specific vocabulary views for routing,
+  biography claims, narration verification, and static stat-definition lookup.
+  Review found and fixed static lookup overclaiming from substring matching,
+  while preserving supported plural abbreviations such as HRs and RBIs.
 
-Implement the active architecture opportunities in
+Focused verification during implementation:
+
+- `uv run pytest tests/test_router.py tests/test_router_player_bio.py tests/test_routing_decisions.py -q`
+- `uv run pytest tests/test_pipeline_tracing.py tests/test_pipeline_tracing_integration.py -q`
+- `uv run pytest tests/test_grounded_database.py -q`
+- `uv run pytest tests/test_router.py tests/test_routing_decisions.py tests/test_audit.py -q`
+- `uv run pytest tests/test_stat_registry.py tests/test_static_vocab.py tests/test_router.py tests/test_service.py tests/test_player_bio_query.py tests/test_biography_contract.py tests/test_player_stat_claims_consensus.py -q`
+- `uv run pytest tests/test_grounded_database.py tests/test_router.py tests/test_routing_decisions.py tests/test_stat_registry.py tests/test_static_vocab.py tests/test_service.py tests/test_player_bio_query.py tests/test_biography_contract.py tests/test_player_stat_claims_consensus.py tests/test_project_cleanup.py -q`
+- `uv run ruff check` on touched source and test files passed.
+- `uv run mypy src/` passed.
+- `git diff --check` passed.
+
+## Historical Coordinator Handoff Prompt
+
+This was the coordinator prompt used for the completed 2026-05-25 architecture
+opportunity implementation recorded in
 `docs/architecture-active-opportunities-handoff-plan.md` for
 `/Volumes/Envoy/projects/baseball-rag`.
 
