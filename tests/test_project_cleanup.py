@@ -1203,3 +1203,47 @@ def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
     assert documented_test_paths
     for documented_path in documented_test_paths:
         assert (ROOT / documented_path).exists(), documented_path
+
+
+def test_context_file_captures_current_architecture_findings() -> None:
+    context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
+
+    assert "Baseball RAG Context" in context
+    assert "DuckDB/Lahman remains the primary factual/stat authority" in context
+    assert "Retrosheet remains optional secondary consensus evidence" in context
+    assert "Do not reopen completed Modules without fresh public-behavior evidence" in context
+
+    for definition in (
+        "Module: anything with an Interface and Implementation.",
+        "Interface: everything a caller must know to use the Module correctly",
+        "Implementation: the code inside a Module.",
+        "Depth: Leverage at the Interface.",
+        "Shallow Modules expose an Interface nearly as complex as their Implementation.",
+        "Seam: where an Interface lives",
+        "Adapter: a concrete thing satisfying an Interface at a Seam.",
+        "Leverage: what callers get from Depth.",
+        "Locality: what maintainers get from Depth.",
+    ):
+        assert definition in context
+
+    for candidate in (
+        "Routing Decision Evidence Module",
+        "Grounded Database Template Catalog Module",
+        "Context-Aware Stat Mention Vocabulary Module",
+        "Architecture Ledger Registry",
+    ):
+        assert candidate in context
+
+    for filtered_candidate in (
+        "Biography Claim Consensus Presentation Module",
+        "Eval Gate Runner Module",
+        "Verification Readiness Ledger Module",
+    ):
+        assert filtered_candidate in context
+
+    assert "http://127.0.0.1:7861/" in context
+    assert "uv run baseball-rag-ui" in context
+    assert "keep the dev server running" in context
+    assert "Use TDD for code-changing slices" in context
+    assert "run a code-review subagent after every task" in context
+    assert "complete only after review, commit" in context
