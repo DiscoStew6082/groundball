@@ -54,6 +54,18 @@ Preserved project rules: DuckDB/Lahman remains the primary factual/stat
 authority, Retrosheet remains optional secondary consensus evidence, and no
 stored corpus, vector index, or Chroma replacement was added.
 
+Final verification for commit `fee989d`:
+
+- `uv run pytest tests/test_project_cleanup.py -q` passed with 84 tests.
+- `uv run ruff check src/ tests/ evals/` passed.
+- `uv run mypy src/` passed.
+- `uv run pytest -q` passed with 747 tests.
+- `uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
+  passed with 26 deterministic cases and 44 live/manual cases skipped.
+- Browser smoke at `http://127.0.0.1:7861/` passed for
+  `who had the most RBIs in 1962`: the UI showed Davis, Tommy, result rows,
+  source JSON, SQL, and an enabled Ask button. The dev server was left running.
+
 Backlog candidates from the review, not primary scope for this pass: claim
 evidence adapter extraction, pre-routing unsupported guard, stat query planning
 outcome, source authority provenance catalog, browser-session trace, and
