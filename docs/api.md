@@ -23,6 +23,43 @@ Health check. No authentication required.
 
 ---
 
+### `GET /health/verification`
+
+Operational verification readiness. No authentication required. This endpoint is
+deterministic and does not call the LLM.
+
+**Response**
+```json
+{
+  "status": "ok",
+  "checks": [
+    {
+      "name": "data_manifest",
+      "status": "ok",
+      "detail": "Primary manifest loaded for NeuML/baseballdata."
+    },
+    {
+      "name": "duckdb_core_tables",
+      "status": "ok",
+      "detail": "DuckDB core tables are queryable."
+    },
+    {
+      "name": "guardrail_manifest",
+      "status": "ok",
+      "detail": "Guardrail manifest loaded with deterministic and unsupported cases."
+    }
+  ],
+  "commands": {
+    "focused": "uv run pytest tests/test_api.py -q",
+    "full": "uv run pytest -q",
+    "eval_gate": "uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
+    "browser_smoke": "uv run baseball-rag-ui"
+  }
+}
+```
+
+---
+
 ### `POST /query`
 
 Ask a baseball question and get a grounded answer with provenance metadata.

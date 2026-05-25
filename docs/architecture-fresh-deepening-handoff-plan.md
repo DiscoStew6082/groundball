@@ -67,11 +67,26 @@ commit `8f569f1`:
   `who had the most RBIs in 1962`: the UI showed Davis, Tommy, result rows,
   source JSON, SQL, and an enabled Ask button. The dev server was left running.
 
-Backlog candidates from the review, not primary scope for this pass: claim
-evidence adapter extraction, pre-routing unsupported guard, stat query planning
-outcome, source authority provenance catalog, browser-session trace, and
-operational verification health checks. Promote one only if it blocks a primary
-worker.
+Backlog resolution ledger:
+
+- Claim evidence adapter extraction is represented by the Lahman and Retrosheet
+  claim-evidence Adapters inside `src/baseball_rag/db/player_stat_claims.py`.
+- Pre-routing unsupported guard is represented by
+  `src/baseball_rag/unsupported_policy.py`, which runs before route ownership in
+  `RequestAnswerDispatcher`.
+- Stat query planning outcome is represented by
+  `StatQueryPlanningOutcome`, so planning returns an explicit plan-or-answer
+  result instead of a mixed raw return type.
+- Source authority provenance catalog is represented by
+  `source_authority_catalog(...)` and public `source_authorities` payloads.
+- Browser-session trace is represented by session-scoped latest-run trace
+  recording in the Gradio Query and Architecture tabs.
+- Operational verification health checks are represented by
+  `GET /health/verification`, covering data manifest, DuckDB core tables, and
+  guardrail manifest readiness plus the verification command set.
+
+No backlog candidate from this review remains open. Any further work should be
+opened as a new plan with a fresh public-behavior test or product decision.
 
 ## Global Rules
 

@@ -1150,6 +1150,10 @@ def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
     assert "share one report shape" not in architecture
     assert "share one report shape" not in handoff
     assert "Retrosheet consensus evidence for biography stat claims" in readme
+    assert "GET /health/verification" in api_docs
+    assert "GET /health/verification" in readme
+    assert "StatQueryPlanningOutcome" in architecture
+    assert "verification_health.py" in architecture
 
 
 def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
@@ -1179,6 +1183,10 @@ def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
     assert "DuckDB/Lahman remains the primary factual/stat authority" in handoff
     assert "Do not add a stored corpus, vector index, or Chroma replacement" in handoff
     assert "Run a code-review subagent after every worker task" in handoff
+    assert "Backlog resolution ledger:" in handoff
+    assert "No backlog candidate from this review remains open" in handoff
+    assert "StatQueryPlanningOutcome" in handoff
+    assert "GET /health/verification" in handoff
     assert "uv run pytest tests/test_project_cleanup.py -q" in handoff
     assert "http://127.0.0.1:7861/" in handoff
 

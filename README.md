@@ -217,6 +217,7 @@ The FastAPI app exposes deterministic governance surfaces alongside `/query`:
 - `GET /evals/report` runs the deterministic eval gate and returns JSON plus Markdown without writing docs files.
 - `POST /evals/run` runs the deterministic gate by default; `include_live=true` opts into cases that may require LM Studio.
 - `GET /guardrails/coverage` returns manifest-only guardrail coverage, with no DB or LLM dependency.
+- `GET /health/verification` returns operational readiness for the primary manifest, DuckDB core tables, guardrail manifest, and standard verification commands.
 - `GET /review-queue` and `PATCH /review-queue/{item_id}` expose the local human-review queue for unsupported or ambiguous API answers.
 
 See [docs/api.md](docs/api.md) for request and response details.

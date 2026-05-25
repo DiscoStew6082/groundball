@@ -2,7 +2,7 @@
 
 - Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
 - Mode: answer
-- Release recommendation: **PASS - deterministic release gate is green**
+- Release recommendation: **WARN - deterministic gate is green with baseline drift**
 - Cases loaded: 70
 - Attempted: 26
 - Passed: 26
@@ -41,7 +41,8 @@
 
 ## Baseline Comparison
 
-- Recommendation: PASS
+- Recommendation: WARN
+- Warning: dataset version changed
 
 ## Failed Cases
 

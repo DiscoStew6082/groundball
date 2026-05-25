@@ -76,6 +76,16 @@ Decision ordering is explicit so supplied claim verification, player biography
 detection, deterministic stat routing, grounded database ownership, LLM routing,
 and heuristic fallback keep their current precedence. Ambiguous or unsupported
 requests fail closed instead of falling through to ungrounded prose.
+`src/baseball_rag/unsupported_policy.py` runs before routing for deterministic
+out-of-scope requests such as SQL mutation text, betting, live scores, current
+injury/salary questions, non-baseball sports, Statcast-only fields, and
+subjective rankings without a metric.
+
+`src/baseball_rag/stat_query.py` uses `StatQueryPlanningOutcome` to keep
+stat-query planning explicit: a planning pass returns either a validated
+`StatQueryPlan` for DuckDB execution or a structured unsupported/ambiguous
+answer. This keeps coverage, player ambiguity, and single-season validation out
+of the execution path.
 
 ## Request Lifecycle
 
@@ -85,6 +95,12 @@ implementation. Conversation context is still passed into the answer service for
 follow-up handling. The public API and Gradio adapters call the same lifecycle
 through `execute_request(...)`, so trace and review behavior stays consistent
 across surfaces.
+
+Operational verification readiness is exposed by
+`src/baseball_rag/verification_health.py` and the FastAPI
+`GET /health/verification` endpoint. It checks that primary provenance loads,
+DuckDB core tables are queryable, guardrail manifests are available, and the
+standard focused/full/eval/browser verification commands are discoverable.
 
 ## Player Biographies
 
