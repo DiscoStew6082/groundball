@@ -60,6 +60,22 @@ def test_compact_data_manifest_preserves_primary_fields(tmp_path, monkeypatch):
                 "sha256": "abc",
             }
         ],
+        "source_authorities": [
+            {
+                "name": "Lahman",
+                "role": "primary",
+                "authority": "factual_stat_authority",
+                "dataset": "NeuML/baseballdata",
+                "upstream": "Lahman",
+                "optional": False,
+                "scopes": [
+                    "structured_stat_answers",
+                    "grounded_database_answers",
+                    "player_identity",
+                    "biography_stat_claim_primary_verification",
+                ],
+            }
+        ],
     }
 
 
@@ -116,6 +132,31 @@ def test_consensus_manifest_includes_available_retrosheet_manifest(tmp_path, mon
             "role": "secondary",
             "dataset": "Retrosheet event/stat consensus",
             "upstream": "Retrosheet",
+        },
+    ]
+    assert compact["source_authorities"] == [
+        {
+            "name": "Lahman",
+            "role": "primary",
+            "authority": "factual_stat_authority",
+            "dataset": "NeuML/baseballdata",
+            "upstream": "Lahman Baseball Database",
+            "optional": False,
+            "scopes": [
+                "structured_stat_answers",
+                "grounded_database_answers",
+                "player_identity",
+                "biography_stat_claim_primary_verification",
+            ],
+        },
+        {
+            "name": "Retrosheet",
+            "role": "secondary",
+            "authority": "optional_consensus_evidence",
+            "dataset": "Retrosheet event/stat consensus",
+            "upstream": "Retrosheet",
+            "optional": True,
+            "scopes": ["biography_stat_claim_consensus"],
         },
     ]
     retrosheet = compact["secondary_manifests"]["retrosheet"]

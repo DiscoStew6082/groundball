@@ -24,7 +24,9 @@ Completion summary:
   preserved Lahman plus optional Retrosheet evidence rows, SQL, params, warning
   behavior, and compatibility payloads.
 - Source provenance now centralizes compact primary and secondary manifest
-  shaping in `src/baseball_rag/provenance.py`.
+  shaping in `src/baseball_rag/provenance.py`, including the public
+  `source_authorities` catalog that names Lahman as primary and Retrosheet as
+  optional secondary consensus evidence.
 - Routing decisions now use stable route facts from
   `src/baseball_rag/routing/contracts.py` and an ordered decision chain in
   `src/baseball_rag/routing/decisions.py`, with compatibility exports preserved

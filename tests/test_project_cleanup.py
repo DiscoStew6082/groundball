@@ -1140,6 +1140,8 @@ def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
         in api_docs
     )
     assert "without claiming identical top-level\nschemas" in api_docs
+    assert "sources[].data_manifest.source_authorities" in api_docs
+    assert "Lahman/DuckDB is the primary factual/stat authority" in api_docs
     assert "secondary_manifests.retrosheet" in api_docs
     assert '"release_recommendation": "PASS - deterministic release gate is green"' in api_docs
     assert "follow-up resolution,\nunsupported policy" not in architecture

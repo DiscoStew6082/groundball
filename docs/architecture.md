@@ -49,9 +49,12 @@ manifests. Lahman/DuckDB remains the primary factual/stat authority.
 Retrosheet is optional secondary consensus evidence for biography stat claims,
 not a replacement source of truth for all answers.
 
-Primary stat and grounded database answers expose the Lahman manifest. Biography
-stat-claim consensus can expose a `consensus_sources` list that keeps Lahman
-primary and Retrosheet secondary provenance in one public payload.
+Primary stat and grounded database answers expose the Lahman manifest plus a
+`source_authorities` catalog that names Lahman as the non-optional factual stat
+authority. Biography stat-claim consensus can expose a `consensus_sources` list,
+the same authority catalog with Retrosheet marked as optional secondary
+evidence, and `secondary_manifests.retrosheet` availability details in one
+public payload.
 
 ## Routing
 

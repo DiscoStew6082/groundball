@@ -35,6 +35,22 @@ class TestApi:
         assert data["sources"]
         assert data["sources"][0]["type"] == "duckdb"
         assert data["sources"][0]["data_manifest"]["dataset"]["name"] == "NeuML/baseballdata"
+        assert data["sources"][0]["data_manifest"]["source_authorities"] == [
+            {
+                "name": "Lahman",
+                "role": "primary",
+                "authority": "factual_stat_authority",
+                "dataset": "NeuML/baseballdata",
+                "upstream": "Lahman Baseball Database",
+                "optional": False,
+                "scopes": [
+                    "structured_stat_answers",
+                    "grounded_database_answers",
+                    "player_identity",
+                    "biography_stat_claim_primary_verification",
+                ],
+            }
+        ]
         assert "warnings" in data
         assert data["unsupported"] is False
         assert data["unsupported_reason"] is None

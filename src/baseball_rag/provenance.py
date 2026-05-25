@@ -102,7 +102,9 @@ def load_secondary_data_manifest(source: str) -> dict[str, Any]:
 def compact_data_manifest() -> dict[str, Any]:
     """Return the manifest fields most useful inside an answer source."""
     manifest = load_data_manifest()
-    return _compact_manifest(manifest)
+    compact = _compact_manifest(manifest)
+    compact["source_authorities"] = source_authority_catalog()
+    return compact
 
 
 def compact_secondary_data_manifest(source: str) -> dict[str, Any]:
@@ -147,7 +149,48 @@ def compact_consensus_data_manifest() -> dict[str, Any]:
     manifest["secondary_manifests"] = {
         "retrosheet": compact_secondary_data_manifest("retrosheet"),
     }
+    manifest["source_authorities"] = source_authority_catalog(include_retrosheet=True)
     return manifest
+
+
+def source_authority_catalog(*, include_retrosheet: bool = False) -> list[dict[str, Any]]:
+    """Return source authority roles and scopes for public provenance payloads."""
+    primary = compact_data_manifest_without_authorities()
+    dataset = primary.get("dataset", {})
+    authorities: list[dict[str, Any]] = [
+        {
+            "name": "Lahman",
+            "role": "primary",
+            "authority": "factual_stat_authority",
+            "dataset": dataset.get("name"),
+            "upstream": dataset.get("upstream"),
+            "optional": False,
+            "scopes": [
+                "structured_stat_answers",
+                "grounded_database_answers",
+                "player_identity",
+                "biography_stat_claim_primary_verification",
+            ],
+        }
+    ]
+    if include_retrosheet:
+        authorities.append(
+            {
+                "name": "Retrosheet",
+                "role": "secondary",
+                "authority": "optional_consensus_evidence",
+                "dataset": "Retrosheet event/stat consensus",
+                "upstream": "Retrosheet",
+                "optional": True,
+                "scopes": ["biography_stat_claim_consensus"],
+            }
+        )
+    return authorities
+
+
+def compact_data_manifest_without_authorities() -> dict[str, Any]:
+    """Return the compact primary manifest without authority catalog metadata."""
+    return _compact_manifest(load_data_manifest())
 
 
 def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
