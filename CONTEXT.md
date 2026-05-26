@@ -1,6 +1,6 @@
 # Baseball RAG Context
 
-This file is the canonical current architecture and domain context for Baseball RAG. Start here for architecture review or worker handoff planning; open `README.md`, `docs/architecture.md`, or the completed architecture ledgers under `docs/` only when you need supporting detail.
+This file is the canonical current architecture and domain context for Baseball RAG. Start here for architecture review or worker handoff planning; open `README.md`, `docs/architecture.md`, or the completed architecture ledgers under `docs/archive/architecture/` only when you need supporting detail.
 
 ## Architecture Vocabulary
 
@@ -31,8 +31,8 @@ There is no `docs/adr/` directory in this repo yet. Treat this file as the curre
 
 - `README.md` for expanded product contract and demo vocabulary.
 - `docs/architecture.md` for the fuller architecture overview.
-- `docs/architecture-active-opportunities-handoff-plan.md` for the completed implementation ledger covering the 2026-05-25 active-opportunity set.
-- `docs/architecture-followup-worker-handoff-plan.md`, `docs/architecture-next-deepening-plan.md`, and `docs/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
+- `docs/archive/architecture/architecture-active-opportunities-handoff-plan.md` for the completed implementation ledger covering the 2026-05-25 active-opportunity set.
+- `docs/archive/architecture/architecture-followup-worker-handoff-plan.md`, `docs/archive/architecture/architecture-next-deepening-plan.md`, and `docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
 Do not reopen completed Modules without fresh public-behavior evidence. Prior ledgers mark routing decision order, request lifecycle ordering, visible evidence presentation, eval reporting, Grounded Database Planning, DuckDB Result Answer Assembly, Biography Stat Claim Vocabulary, LLM Narration Guard, Player Identity Authority, Query Output Contract, and Verified Evidence Read Model as landed.
 
@@ -54,8 +54,8 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Claim Verification and Source Provenance
 
-- 2026-05-23, commit `148ddd3`: Claim Verification Evidence Module and Source Provenance Module. Public contract: keep the consensus verifier stable, preserve Lahman plus optional Retrosheet evidence rows, SQL, params, warnings, compatibility payloads, and source authority catalog shaping. Verification is recorded in `docs/architecture-followup-worker-handoff-plan.md`.
-- 2026-05-24, commits `fee989d` and `8f569f1`: Biography Contract Completeness Guard Module and Verified Evidence Read Model Module. Public contract: generated biography JSON must include supported stat claims, unsupported prose still passes, and narration checks consume verified evidence instead of rendered answer text. Verification is recorded in `docs/architecture-fresh-deepening-handoff-plan.md`.
+- 2026-05-23, commit `148ddd3`: Claim Verification Evidence Module and Source Provenance Module. Public contract: keep the consensus verifier stable, preserve Lahman plus optional Retrosheet evidence rows, SQL, params, warnings, compatibility payloads, and source authority catalog shaping. Verification is recorded in `docs/archive/architecture/architecture-followup-worker-handoff-plan.md`.
+- 2026-05-24, commits `fee989d` and `8f569f1`: Biography Contract Completeness Guard Module and Verified Evidence Read Model Module. Public contract: generated biography JSON must include supported stat claims, unsupported prose still passes, and narration checks consume verified evidence instead of rendered answer text. Verification is recorded in `docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md`.
 
 #### Routing and Request Lifecycle
 
@@ -67,7 +67,7 @@ Completed entries must not ask future agents to finish anything. If future work 
 #### Grounded Database and Stat Answers
 
 - 2026-05-25, commit `0270a05`: Grounded Database Template Catalog Module. Public contract: deterministic template SQL text, params, source detail, route ownership, unsupported policy, and user-facing grounded answers stay stable while each template owns stable `template_id`, match facts, route ownership, SQL assembly, source detail, and optional `QuerySpec` locally.
-- 2026-05-23, commit `d86086c`: LLM-Flavored Narration Guard Module, Grounded Database Planning Module, DuckDB Result Answer Assembly Module, and Biography Stat Claim Vocabulary Module. Public contract: DuckDB-backed stat and grounded database answers keep verified SQL/row/source behavior; LLM prose is fallback or narration only after structured facts are verified. Verification is recorded in `docs/architecture-next-deepening-plan.md`.
+- 2026-05-23, commit `d86086c`: LLM-Flavored Narration Guard Module, Grounded Database Planning Module, DuckDB Result Answer Assembly Module, and Biography Stat Claim Vocabulary Module. Public contract: DuckDB-backed stat and grounded database answers keep verified SQL/row/source behavior; LLM prose is fallback or narration only after structured facts are verified. Verification is recorded in `docs/archive/architecture/architecture-next-deepening-plan.md`.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Player Identity Authority Module. Public contract: Lahman player resolution, display metadata, ambiguity policy, suffix handling, and optional Retrosheet ID mapping live behind one authority while compatibility facades remain.
 
 #### Stat Vocabulary and Narration Safety

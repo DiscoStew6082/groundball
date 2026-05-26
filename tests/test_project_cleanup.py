@@ -1093,6 +1093,10 @@ def test_stale_space_deploy_surface_is_not_active() -> None:
 
 def test_stale_architecture_handoff_docs_are_archived() -> None:
     active_docs = {
+        "architecture-active-opportunities-handoff-plan.md",
+        "architecture-followup-worker-handoff-plan.md",
+        "architecture-fresh-deepening-handoff-plan.md",
+        "architecture-next-deepening-plan.md",
         "architecture-all-six-deepening-handoff-plan.md",
         "architecture-deepening-handoff.md",
         "architecture-deepening-plan.md",
@@ -1126,9 +1130,9 @@ def test_docs_match_current_eval_and_corpus_runtime() -> None:
 
 def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
     architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-    handoff = (ROOT / "docs" / "architecture-followup-worker-handoff-plan.md").read_text(
-        encoding="utf-8"
-    )
+    handoff = (
+        ROOT / "docs" / "archive" / "architecture" / "architecture-followup-worker-handoff-plan.md"
+    ).read_text(encoding="utf-8")
     api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     eval_manifest = yaml.safe_load((ROOT / "evals" / "questions.yaml").read_text(encoding="utf-8"))
@@ -1166,9 +1170,9 @@ def test_active_architecture_docs_describe_followup_modules_as_landed() -> None:
 
 
 def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
-    handoff = (ROOT / "docs" / "architecture-fresh-deepening-handoff-plan.md").read_text(
-        encoding="utf-8"
-    )
+    handoff = (
+        ROOT / "docs" / "archive" / "architecture" / "architecture-fresh-deepening-handoff-plan.md"
+    ).read_text(encoding="utf-8")
 
     expected_sections = [
         "Status: Completed implementation",
@@ -1226,9 +1230,13 @@ def test_docs_describe_current_adapter_surfaces() -> None:
 
 
 def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
-    handoff = (ROOT / "docs" / "architecture-active-opportunities-handoff-plan.md").read_text(
-        encoding="utf-8"
-    )
+    handoff = (
+        ROOT
+        / "docs"
+        / "archive"
+        / "architecture"
+        / "architecture-active-opportunities-handoff-plan.md"
+    ).read_text(encoding="utf-8")
     context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
     expected_sections = [
@@ -1262,7 +1270,13 @@ def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     assert "Run a code-review subagent after every worker task" in handoff
     assert "http://127.0.0.1:7861/" in handoff
     assert "Review found and fixed" in handoff
-    assert "architecture-active-opportunities-handoff-plan.md" in context
+    for archived_ledger in (
+        "docs/archive/architecture/architecture-active-opportunities-handoff-plan.md",
+        "docs/archive/architecture/architecture-followup-worker-handoff-plan.md",
+        "docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md",
+        "docs/archive/architecture/architecture-next-deepening-plan.md",
+    ):
+        assert archived_ledger in context
     assert "detailed active worker handoff covering the current opportunities below" not in context
     assert "This plan covers three active Modules" not in handoff
     assert "active architecture opportunities" not in handoff
@@ -1287,7 +1301,13 @@ def test_context_file_captures_current_architecture_findings() -> None:
     assert "Retrosheet remains optional secondary consensus evidence" in context
     assert "Do not reopen completed Modules without fresh public-behavior evidence" in context
     assert "Treat this file as the current decision record" in context
-    assert "for completed implementation evidence" in context
+    for archived_ledger in (
+        "docs/archive/architecture/architecture-active-opportunities-handoff-plan.md",
+        "docs/archive/architecture/architecture-followup-worker-handoff-plan.md",
+        "docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md",
+        "docs/archive/architecture/architecture-next-deepening-plan.md",
+    ):
+        assert archived_ledger in context
 
     for definition in (
         "Module: anything with an Interface and Implementation.",
