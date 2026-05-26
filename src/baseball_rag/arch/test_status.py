@@ -34,9 +34,11 @@ class ArchitectureTestStatusResult:
     passed: int
     failed: int
     skipped: int = 0
+    errors: int = 0
     component_statuses: dict[str, TestStatus] = field(default_factory=dict)
     missing_mapped_tests: dict[str, tuple[str, ...]] = field(default_factory=dict)
     failed_test_files: tuple[str, ...] = ()
+    errored_test_files: tuple[str, ...] = ()
 
 
 def collect_test_status(
@@ -55,25 +57,38 @@ def collect_test_status(
         timeout=timeout,
     )
     output = f"{completed.stdout}{completed.stderr}"
-    passed, failed, skipped = _parse_summary_counts(output)
+    passed, failed, skipped, errors = _parse_summary_counts(output)
     failed_test_files = _parse_failed_test_files(output)
+    errored_test_files = _parse_errored_test_files(output)
     missing_mapped_tests = _missing_mapped_tests(component_test_map, repo_root=repo_root)
+    runner_failed_without_test_files = (
+        completed.returncode != 0
+        and failed == 0
+        and errors == 0
+        and not failed_test_files
+        and not errored_test_files
+    )
 
     component_statuses = _component_statuses(
         component_ids=component_ids,
         component_test_map=component_test_map,
         missing_mapped_tests=missing_mapped_tests,
         failed_count=failed,
+        error_count=errors,
         failed_test_files=failed_test_files,
+        errored_test_files=errored_test_files,
+        runner_failed_without_test_files=runner_failed_without_test_files,
     )
 
     return ArchitectureTestStatusResult(
         passed=passed,
         failed=failed,
         skipped=skipped,
+        errors=errors,
         component_statuses=component_statuses,
         missing_mapped_tests=missing_mapped_tests,
         failed_test_files=tuple(sorted(failed_test_files)),
+        errored_test_files=tuple(sorted(errored_test_files)),
     )
 
 
@@ -106,19 +121,22 @@ def collect_and_apply_test_status(
     return result
 
 
-def _parse_summary_counts(output: str) -> tuple[int, int, int]:
-    passed = failed = skipped = 0
+def _parse_summary_counts(output: str) -> tuple[int, int, int, int]:
+    passed = failed = skipped = errors = 0
     for line in output.splitlines():
         passed_match = re.search(r"(\d+)\s+passed", line)
         failed_match = re.search(r"(\d+)\s+failed", line)
         skipped_match = re.search(r"(\d+)\s+skipped", line)
+        error_match = re.search(r"(\d+)\s+errors?", line)
         if passed_match:
             passed = int(passed_match.group(1))
         if failed_match:
             failed = int(failed_match.group(1))
         if skipped_match:
             skipped = int(skipped_match.group(1))
-    return passed, failed, skipped
+        if error_match:
+            errors = int(error_match.group(1))
+    return passed, failed, skipped, errors
 
 
 def _parse_failed_test_files(output: str) -> set[str]:
@@ -133,6 +151,15 @@ def _parse_failed_test_files(output: str) -> set[str]:
         if progress_match:
             failed_files.add(_normalize_test_path(progress_match.group(1)))
     return failed_files
+
+
+def _parse_errored_test_files(output: str) -> set[str]:
+    errored_files: set[str] = set()
+    for line in output.splitlines():
+        error_match = re.search(r"\bERROR\s+([^:\s]+\.py)(?:::|\s+-|\s|$)", line)
+        if error_match:
+            errored_files.add(_normalize_test_path(error_match.group(1)))
+    return errored_files
 
 
 def _missing_mapped_tests(
@@ -157,11 +184,15 @@ def _component_statuses(
     component_test_map: Mapping[str, Sequence[str]],
     missing_mapped_tests: Mapping[str, Sequence[str]],
     failed_count: int,
+    error_count: int,
     failed_test_files: set[str],
+    errored_test_files: set[str],
+    runner_failed_without_test_files: bool,
 ) -> dict[str, TestStatus]:
     statuses: dict[str, TestStatus] = {}
     mapped_ids = set(component_test_map)
     failures_are_mapped = bool(failed_test_files)
+    suite_did_not_complete_cleanly = error_count > 0 or runner_failed_without_test_files
 
     for component_id in component_ids:
         if component_id not in mapped_ids or component_id in missing_mapped_tests:
@@ -171,8 +202,10 @@ def _component_statuses(
         mapped_files = {
             _normalize_test_path(test_path) for test_path in component_test_map[component_id]
         }
-        if mapped_files & failed_test_files:
+        if mapped_files & (failed_test_files | errored_test_files):
             statuses[component_id] = TestStatus.FAIL
+        elif suite_did_not_complete_cleanly:
+            statuses[component_id] = TestStatus.UNKNOWN
         elif failed_count == 0 or failures_are_mapped:
             statuses[component_id] = TestStatus.PASS
         else:

@@ -350,7 +350,8 @@ def build_dashboard() -> gr.Blocks:
                 arch_diagram._update_diagram()
                 status = (
                     f"Tests finished: {result.passed} passed, "
-                    f"{result.failed} failed, {result.skipped} skipped."
+                    f"{result.failed} failed, {result.errors} errors, "
+                    f"{result.skipped} skipped."
                 )
                 return arch_diagram.diagram_html.value, status
 

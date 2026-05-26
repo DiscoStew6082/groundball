@@ -79,6 +79,44 @@ class TestArchitectureTestStatusAdapter:
         }
         assert result.failed_test_files == ("tests/test_router.py",)
 
+    def test_reports_collection_errors_without_false_passes(self, tmp_path):
+        from baseball_rag.arch.test_status import collect_test_status
+
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_cli_player_query.py").write_text(
+            "def test_cli():\n    pass\n",
+            encoding="utf-8",
+        )
+        (tests_dir / "test_router.py").write_text(
+            "raise ImportError('boom')\n",
+            encoding="utf-8",
+        )
+
+        fake_result = MagicMock()
+        fake_result.stdout = "ERROR tests/test_router.py - ImportError: boom\n1 error in 0.01s"
+        fake_result.stderr = ""
+        fake_result.returncode = 2
+
+        component_test_map = {
+            "cli": ["tests/test_cli_player_query.py"],
+            "query-router": ["tests/test_router.py"],
+        }
+
+        with patch("subprocess.run", return_value=fake_result):
+            result = collect_test_status(
+                component_ids=("cli", "query-router"),
+                component_test_map=component_test_map,
+                repo_root=tmp_path,
+            )
+
+        assert result.component_statuses == {
+            "cli": TestStatus.UNKNOWN,
+            "query-router": TestStatus.FAIL,
+        }
+        assert result.errors == 1
+        assert result.errored_test_files == ("tests/test_router.py",)
+
 
 # --------------------------------------------------------------------------:
 # Phase 5.1 — Button exists and is attached to arch_diagram
