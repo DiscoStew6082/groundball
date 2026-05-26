@@ -24,16 +24,10 @@ doesn't match any type or the LLM is unsure, it returns null for time_period,
 and the CLI uses career-level results (no time filter).
 """
 
-import csv
 import json
 import re
-import unicodedata
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
 from typing import Any, cast
-
-from unidecode import unidecode
 
 from baseball_rag.arch.tracing import traced
 from baseball_rag.db.stat_registry import (
@@ -61,6 +55,10 @@ from baseball_rag.routing.decisions import (
 )
 from baseball_rag.routing.grounded_database_ownership import (
     deterministic_grounded_database_owns,
+)
+from baseball_rag.routing.player_mentions import (
+    is_known_player_mention,
+    normalize_player_mention,
 )
 from baseball_rag.year_parsing import extract_spelled_year
 
@@ -586,7 +584,7 @@ def _extract_player_name_heuristic(question: str) -> str | None:
     if did_pattern:
         candidate = did_pattern.group(1)
         if _looks_like_player_name(candidate):
-            return candidate
+            return normalize_player_mention(candidate)
 
     stat_subject_pattern = re.search(
         rf"\b(?:what\s+was|what\s+were)\s+({_NAME_RE})\s+"
@@ -606,8 +604,8 @@ def _extract_player_name_heuristic(question: str) -> str | None:
     )
     if compact_stat_pattern:
         candidate = compact_stat_pattern.group(1)
-        if _looks_like_player_name(candidate) and _looks_like_known_player_name(candidate):
-            return candidate
+        if _looks_like_known_player_name(candidate):
+            return normalize_player_mention(candidate)
 
     return None
 
@@ -690,42 +688,7 @@ def _looks_like_player_name(value: str) -> bool:
 
 
 def _looks_like_known_player_name(value: str) -> bool:
-    normalized = _normalize_player_name_for_lookup(value)
-    if normalized in _known_full_player_names():
-        return True
-    return " " not in normalized and normalized in _known_player_last_names()
-
-
-def _normalize_player_name_for_lookup(value: str) -> str:
-    folded = unidecode(unicodedata.normalize("NFD", value)).lower()
-    return re.sub(r"[^a-z0-9]+", " ", folded).strip()
-
-
-@lru_cache(maxsize=1)
-def _known_full_player_names() -> frozenset[str]:
-    return frozenset(full_name for full_name, _last_name in _load_player_name_aliases())
-
-
-@lru_cache(maxsize=1)
-def _known_player_last_names() -> frozenset[str]:
-    return frozenset(last_name for _full_name, last_name in _load_player_name_aliases())
-
-
-@lru_cache(maxsize=1)
-def _load_player_name_aliases() -> frozenset[tuple[str, str]]:
-    people_path = Path(__file__).resolve().parents[3] / "data" / "People.csv"
-    if not people_path.exists():
-        return frozenset()
-    aliases: set[tuple[str, str]] = set()
-    with people_path.open(newline="", encoding="utf-8") as handle:
-        for row in csv.DictReader(handle):
-            first = row.get("nameFirst") or ""
-            last = row.get("nameLast") or ""
-            full_name = _normalize_player_name_for_lookup(f"{first} {last}")
-            last_name = _normalize_player_name_for_lookup(last)
-            if full_name and last_name:
-                aliases.add((full_name, last_name))
-    return frozenset(aliases)
+    return is_known_player_mention(value)
 
 
 def _looks_like_name_token(value: str) -> bool:

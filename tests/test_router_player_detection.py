@@ -17,6 +17,29 @@ def _assert_single_year(result, year):
 class TestPlayerDetection:
     """Bug 2a: Router should detect and extract player names from queries."""
 
+    def test_route_time_player_lookup_does_not_read_people_csv_directly(
+        self,
+        monkeypatch,
+    ):
+        """Route-time player mentions should use the shared Lahman identity authority."""
+        import builtins
+
+        real_open = builtins.open
+
+        def fail_people_csv_open(file, *args, **kwargs):
+            if str(file).endswith("People.csv"):
+                raise AssertionError("query_router should not read People.csv directly")
+            return real_open(file, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", fail_people_csv_open)
+
+        result = route("What was Ted Williams batting average in 1941")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "AVG"
+        _assert_single_year(result, 1941)
+        assert result.player_name == "Ted Williams"
+
     def test_detect_player_name_from_stat_query(self):
         """'how many home runs did Babe Ruth hit' should extract player='Babe Ruth'.
 
@@ -56,6 +79,24 @@ class TestPlayerDetection:
         monkeypatch.setattr("baseball_rag.generation.llm.make_request", unavailable_llm)
 
         result = route("Matt Olson RBI in 2023")
+
+        assert result.intent == "stat_query"
+        assert result.stat == "RBI"
+        _assert_single_year(result, 2023)
+        assert result.player_name == "Matt Olson"
+
+    def test_lowercase_compact_player_stat_query_resolves_known_lahman_name_without_llm(
+        self,
+        monkeypatch,
+    ):
+        """Compact player stat phrasing should use Lahman lookup before the LLM."""
+
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("LLM router should not be called")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+        result = route("matt olson rbi in 2023")
 
         assert result.intent == "stat_query"
         assert result.stat == "RBI"
