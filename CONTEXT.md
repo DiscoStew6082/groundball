@@ -59,6 +59,7 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Routing and Request Lifecycle
 
+- 2026-05-26, commits `f135ed9` and `41ad058`: Routing Player Mention Lookup Adapter Module. Public contract: `route(question)` keeps deterministic precedence while route-time player mention checks use the shared DuckDB/Lahman Player Identity Authority instead of router-local People.csv alias loading, and unavailable Lahman/DuckDB setup degrades to an unknown player mention instead of raising during routing.
 - 2026-05-25, commit `0270a05`: Routing Decision Evidence Module. Public contract: `route(question)` caller behavior, deterministic route precedence, valid LLM routes, malformed LLM heuristic handling, and query-router tracing stay stable while `route_with_evidence(...)` and `RouteDecisionChain.decide_with_evidence()` expose inspectable ordered Adapter evidence.
 - 2026-05-23, commit `148ddd3`: Routing Decision Module and Request Lifecycle Ordering Module. Public contract: deterministic route precedence stays stable, compatibility exports remain available from `query_router.py`, and `execute_request(...)` remains the public request Adapter over `request_lifecycle.py`.
 - 2026-05-24, commits `fee989d` and `8f569f1`: LLM Router Adapter Module. Public contract: `route(question)` stays stable while malformed LLM output and deterministic precedence stay local to the router Adapter.
@@ -80,11 +81,13 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Eval and Operational Verification
 
+- 2026-05-26, commit `00b51f1`: Package-Safe Eval Manifest Metadata Adapter Module. Public contract: query audit eval metadata and `GET /guardrails/coverage` are package-safe and return explicit `unavailable` metadata when the repo-only manifest is absent, while repo-runtime eval report and guardrail coverage shaping delegate to the same package-owned manifest helpers.
 - 2026-05-23, commit `148ddd3`: Eval Reporting Module. Public contract: CLI artifacts and API governance payloads share `build_eval_report_payload` for summary and case-list data without claiming identical top-level schemas.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Operational verification health checks. Public contract: `GET /health/verification` reports data manifest, DuckDB core tables, guardrail manifest readiness, and the verification command set.
 
 #### Architecture Context
 
+- 2026-05-26, commits `fa57dda` and `78db668`: Architecture Test Status Adapter Module. Public contract: the Architecture Run All Tests button delegates pytest execution and parsing to a per-component status Adapter; mapped test failures mark only affected Modules as failing, collection/import errors do not produce false PASS badges, and unmapped or incomplete statuses remain UNKNOWN.
 - 2026-05-25, commit `f9eeef2`: Baseball RAG Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
 - 2026-05-25, commit `5417b46`: Architecture Ledger Registry. Public contract: Current Opportunities list all active opportunities by domain area and date; Completed Modules record completed work by domain area, date, and commit hash; Frozen Seams and the Update Rule keep future context ingestion small.
 
