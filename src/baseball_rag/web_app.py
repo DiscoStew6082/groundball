@@ -7,14 +7,13 @@ import json
 import logging
 import math
 import os
-import re
-import subprocess
 import threading
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import gradio as gr
 
+from baseball_rag.arch.test_status import ArchitectureTestStatusResult as _TestResult
+from baseball_rag.arch.test_status import collect_and_apply_test_status
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
 from baseball_rag.ui.gradio_adapter import GradioQueryAdapter
@@ -41,75 +40,15 @@ _TTL_HARD_EXIT_GRACE_SECONDS = 5.0
 # --------------------------------------------------------------------------
 
 
-@dataclass
-class _TestResult:
-    passed: int
-    failed: int
-    skipped: int = 0
-
-
 def run_all_tests() -> _TestResult:
     """Run the full pytest suite and update component statuses in the registry.
 
-    Parses ``pytest -q`` output to identify which test files covered which
-    components, then sets TestStatus.PASS / FAIL on each DiagramComponent.
-    Unmapped components (no known test file) get TestStatus.UNKNOWN.
+    The Architecture test-status adapter owns pytest parsing and component
+    mapping, while this function remains the dashboard button entry point.
     """
-    from baseball_rag.arch.components import TestStatus, get_registry
+    from baseball_rag.arch.components import get_registry
 
-    result = subprocess.run(
-        ["uv", "run", "pytest", "-q", "--tb=no"],
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    output = result.stdout + result.stderr
-
-    # Parse pytest -q summary line: handles "153 passed" and "150 passed, 3 failed"
-    # The numbers always appear BEFORE their labels
-    passed = failed = skipped = 0
-    for line in output.splitlines():
-        m = re.search(r"(\d+)\s+passed", line)
-        if m:
-            passed = int(m.group(1))
-        m = re.search(r"(\d+)\s+failed", line)
-        if m:
-            failed = int(m.group(1))
-        m = re.search(r"(\d+)\s+skipped", line)
-        if m:
-            skipped = int(m.group(1))
-
-    # Map component ids to their test file globs
-    component_test_map: dict[str, list[str]] = {
-        "cli": ["tests/test_cli_player_query.py"],
-        "query-router": [
-            "tests/test_router.py",
-            "tests/test_router_player_detection.py",
-            "tests/test_router_this_year.py",
-        ],
-        "claim-verifier": ["tests/test_player_bio_query.py"],
-        "duckdb": ["tests/test_queries.py"],
-        "llm": ["tests/test_llm.py", "tests/test_generation.py"],
-        "prompt": ["tests/test_prompts.py"],
-    }
-
-    registry = get_registry()
-    overall_pass = failed == 0
-
-    for comp_id in component_test_map:
-        if overall_pass:
-            status = TestStatus.PASS
-        else:
-            status = TestStatus.FAIL
-        registry.set_test_status(comp_id, status)
-
-    # Set UNKNOWN for components without test file mappings
-    mapped_ids = set(component_test_map.keys())
-    for comp in registry.all():
-        if comp.id not in mapped_ids:
-            registry.set_test_status(comp.id, TestStatus.UNKNOWN)
-
-    return _TestResult(passed=passed, failed=failed, skipped=skipped)
+    return collect_and_apply_test_status(get_registry())
 
 
 # --------------------------------------------------------------------------

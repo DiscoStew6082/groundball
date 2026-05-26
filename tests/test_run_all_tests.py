@@ -8,6 +8,78 @@ from unittest.mock import MagicMock, patch
 
 from baseball_rag.arch.components import TestStatus
 
+
+class TestArchitectureTestStatusAdapter:
+    """Adapter reports per-component Architecture test status."""
+
+    def test_reports_per_component_statuses_and_missing_mapped_tests(self, tmp_path):
+        from baseball_rag.arch.test_status import collect_test_status
+
+        existing_test = tmp_path / "tests" / "test_cli_player_query.py"
+        existing_test.parent.mkdir()
+        existing_test.write_text("def test_cli():\n    pass\n", encoding="utf-8")
+
+        fake_result = MagicMock()
+        fake_result.stdout = "1 passed in 0.01s"
+        fake_result.stderr = ""
+        fake_result.returncode = 0
+
+        component_test_map = {
+            "cli": ["tests/test_cli_player_query.py"],
+            "query-router": ["tests/test_missing_router.py"],
+        }
+
+        with patch("subprocess.run", return_value=fake_result):
+            result = collect_test_status(
+                component_ids=("cli", "query-router"),
+                component_test_map=component_test_map,
+                repo_root=tmp_path,
+            )
+
+        assert result.component_statuses == {
+            "cli": TestStatus.PASS,
+            "query-router": TestStatus.UNKNOWN,
+        }
+        assert result.missing_mapped_tests == {"query-router": ("tests/test_missing_router.py",)}
+
+    def test_reports_failures_per_component_from_pytest_output(self, tmp_path):
+        from baseball_rag.arch.test_status import collect_test_status
+
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_cli_player_query.py").write_text(
+            "def test_cli():\n    pass\n",
+            encoding="utf-8",
+        )
+        (tests_dir / "test_router.py").write_text(
+            "def test_router():\n    assert False\n",
+            encoding="utf-8",
+        )
+
+        fake_result = MagicMock()
+        fake_result.stdout = "tests/test_router.py::test_router FAILED\n1 failed, 1 passed in 0.01s"
+        fake_result.stderr = ""
+        fake_result.returncode = 1
+
+        component_test_map = {
+            "cli": ["tests/test_cli_player_query.py"],
+            "query-router": ["tests/test_router.py"],
+        }
+
+        with patch("subprocess.run", return_value=fake_result):
+            result = collect_test_status(
+                component_ids=("cli", "query-router"),
+                component_test_map=component_test_map,
+                repo_root=tmp_path,
+            )
+
+        assert result.component_statuses == {
+            "cli": TestStatus.PASS,
+            "query-router": TestStatus.FAIL,
+        }
+        assert result.failed_test_files == ("tests/test_router.py",)
+
+
 # --------------------------------------------------------------------------:
 # Phase 5.1 — Button exists and is attached to arch_diagram
 # --------------------------------------------------------------------------:
@@ -85,15 +157,16 @@ class TestRunAllTestsFunction:
                 assert comp.test_status == TestStatus.PASS, f"{comp_id} should be PASS"
 
     def test_run_all_tests_updates_component_statuses_fail(self):
-        """When tests fail, components with test files get TestStatus.FAIL."""
+        """When tests fail, only components mapped to failed files get FAIL."""
         from baseball_rag.web_app import build_dashboard, run_all_tests
 
         dash = build_dashboard()
         registry = dash.arch_diagram.registry
 
-        # Mock subprocess.run to return a failing suite
         fake_result = MagicMock()
-        fake_result.stdout = "150 passed, 3 failed in 50.0s"
+        fake_result.stdout = (
+            "tests/test_router.py::test_routes_stats FAILED\n150 passed, 1 failed in 50.0s"
+        )
         fake_result.stderr = ""
         fake_result.returncode = 1
 
@@ -101,13 +174,11 @@ class TestRunAllTestsFunction:
             result = run_all_tests()
 
         assert result.passed == 150
-        assert result.failed == 3
+        assert result.failed == 1
 
-        # Components mapped to test files should be marked FAIL
-        for comp_id in ("cli", "query-router", "claim-verifier"):
-            comp = registry.get(comp_id)
-            if comp is not None:
-                assert comp.test_status == TestStatus.FAIL, f"{comp_id} should be FAIL"
+        assert registry.get("query-router").test_status == TestStatus.FAIL
+        assert registry.get("cli").test_status == TestStatus.PASS
+        assert registry.get("claim-verifier").test_status == TestStatus.PASS
 
     def test_run_all_tests_sets_unknown_for_unmapped_components(self):
         """Components with no test file mapping keep their default status."""
