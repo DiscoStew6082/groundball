@@ -23,5 +23,8 @@ def normalize_player_mention(value: str) -> str:
 
 @lru_cache(maxsize=2048)
 def _has_player_identity(value: str) -> bool:
-    conn = get_duckdb()
-    return bool(resolve_player_by_name(value, conn).candidates)
+    try:
+        conn = get_duckdb()
+        return bool(resolve_player_by_name(value, conn).candidates)
+    except Exception:
+        return False

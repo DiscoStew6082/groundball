@@ -4,6 +4,8 @@ These tests verify that when a user asks about a specific player's stats,
 the router extracts the player name from the query.
 """
 
+from pathlib import Path
+
 from baseball_rag.routing import route
 from baseball_rag.routing.query_router import TimePeriodType
 
@@ -31,7 +33,15 @@ class TestPlayerDetection:
                 raise AssertionError("query_router should not read People.csv directly")
             return real_open(file, *args, **kwargs)
 
+        real_path_open = Path.open
+
+        def fail_people_csv_path_open(path, *args, **kwargs):
+            if str(path).endswith("People.csv"):
+                raise AssertionError("query_router should not read People.csv directly")
+            return real_path_open(path, *args, **kwargs)
+
         monkeypatch.setattr(builtins, "open", fail_people_csv_open)
+        monkeypatch.setattr(Path, "open", fail_people_csv_path_open)
 
         result = route("What was Ted Williams batting average in 1941")
 
@@ -39,6 +49,25 @@ class TestPlayerDetection:
         assert result.stat == "AVG"
         _assert_single_year(result, 1941)
         assert result.player_name == "Ted Williams"
+
+    def test_route_time_player_lookup_returns_unknown_when_lahman_is_unavailable(
+        self,
+        monkeypatch,
+    ):
+        """Route-time identity lookup should not make routing fail closed."""
+        from baseball_rag.routing import player_mentions
+
+        player_mentions._has_player_identity.cache_clear()
+
+        def fail_get_duckdb():
+            raise RuntimeError("missing Lahman data")
+
+        monkeypatch.setattr(player_mentions, "get_duckdb", fail_get_duckdb)
+
+        try:
+            assert player_mentions.is_known_player_mention("Ted Williams") is False
+        finally:
+            player_mentions._has_player_identity.cache_clear()
 
     def test_detect_player_name_from_stat_query(self):
         """'how many home runs did Babe Ruth hit' should extract player='Babe Ruth'.
