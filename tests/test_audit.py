@@ -28,6 +28,21 @@ def test_eval_category_matches_exact_manifest_question():
     }
 
 
+def test_eval_category_reports_unavailable_when_manifest_is_absent(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "baseball_rag.eval_manifest.default_questions_path",
+        lambda: tmp_path / "missing-questions.yaml",
+    )
+
+    match = eval_category_for_question("who had the most RBIs in 1962")
+
+    assert match["matched"] is False
+    assert match["case_id"] is None
+    assert match["category"] is None
+    assert match["status"] == "unavailable"
+    assert "missing-questions.yaml" in match["reason"]
+
+
 def test_build_query_metadata_is_deterministic_except_timestamp_and_latency():
     answer = StructuredAnswer(
         answer="Davis, Tommy: 153 RBI",

@@ -543,3 +543,22 @@ class TestApi:
         assert data["summary"]["unsupported_guardrails"] >= 1
         assert data["categories"]["unsupported"]
         assert data["markdown"].startswith("# Baseball RAG Guardrail Coverage")
+
+    def test_guardrails_coverage_reports_unavailable_when_manifest_is_absent(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        monkeypatch.setattr(
+            "baseball_rag.eval_manifest.default_questions_path",
+            lambda: tmp_path / "missing-questions.yaml",
+        )
+
+        response = client.get("/guardrails/coverage")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "unavailable"
+        assert data["summary"]["unsupported_guardrails"] == 0
+        assert data["categories"]["unsupported"] == []
+        assert "missing-questions.yaml" in data["reason"]

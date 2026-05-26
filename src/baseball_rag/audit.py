@@ -6,10 +6,10 @@ import hashlib
 import json
 import os
 import re
-import unicodedata
 from datetime import UTC, datetime
 from typing import Any
 
+from baseball_rag.eval_manifest import eval_category_for_question as _eval_category_for_question
 from baseball_rag.provenance import StructuredAnswer, compact_data_manifest
 from baseball_rag.support_state import answer_support_state
 
@@ -119,17 +119,7 @@ def model_version() -> dict[str, Any]:
 
 def eval_category_for_question(question: str) -> dict[str, Any]:
     """Return exact eval-manifest match metadata for a question."""
-    from evals.questions import load_cases
-
-    normalized = _normalized_text(question)
-    for case in load_cases():
-        if _normalized_text(case.question) != normalized:
-            continue
-        category = case.intent
-        if category is None and case.spec.get("expected_unsupported"):
-            category = "unsupported"
-        return {"matched": True, "case_id": case.id, "category": category}
-    return {"matched": False, "case_id": None, "category": None}
+    return _eval_category_for_question(question)
 
 
 def unsupported_reason(answer: StructuredAnswer) -> str | None:
@@ -162,9 +152,3 @@ def _sql_metadata(sources: list[dict[str, Any]]) -> dict[str, Any]:
         "truncated": False,
         "source_label": None,
     }
-
-
-def _normalized_text(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value)
-    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return without_accents.casefold().strip()

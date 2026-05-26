@@ -16,6 +16,12 @@ from typing import Any, Callable
 
 import yaml  # type: ignore[import-untyped]
 
+from baseball_rag.eval_manifest import (
+    format_guardrail_report as _format_guardrail_report,
+)
+from baseball_rag.eval_manifest import (
+    guardrail_coverage_payload as _guardrail_coverage_payload,
+)
 from baseball_rag.provenance import StructuredAnswer
 
 AnswerFn = Callable[[str], StructuredAnswer]
@@ -422,50 +428,7 @@ def compare_to_baseline(current: dict[str, Any], baseline: dict[str, Any]) -> Ba
 
 def format_guardrail_report(cases: list[EvalCase]) -> str:
     """Render deterministic guardrail coverage from the eval manifest."""
-    unsupported_cases = [case for case in cases if case.spec.get("expected_unsupported")]
-    sql_safety_cases = [
-        case
-        for case in cases
-        if case.spec.get("expected_sql_parameterized") or "sql_injection" in case.id
-    ]
-    provenance_cases = [
-        case
-        for case in cases
-        if case.required_sources
-        or case.spec.get("required_source_manifest_fields")
-        or case.spec.get("expected_sql_visible")
-    ]
-    ci_safe_guardrails = [
-        case for case in unsupported_cases + sql_safety_cases if case.should_run()
-    ]
-    live_guardrails = [
-        case
-        for case in unsupported_cases + sql_safety_cases
-        if not case.should_run() and case.requires_live_services()
-    ]
-
-    lines = [
-        "# Baseball RAG Guardrail Coverage",
-        "",
-        "## Summary",
-        "",
-        f"- CI-safe deterministic guardrails: {len(_dedupe_cases(ci_safe_guardrails))}",
-        f"- Unsupported guardrails: {len(unsupported_cases)}",
-        f"- SQL safety: {len(sql_safety_cases)}",
-        f"- Provenance/source visibility: {len(provenance_cases)}",
-        f"- Live/manual guardrail cases: {len(_dedupe_cases(live_guardrails))}",
-        "",
-        "## Unsupported Guardrails",
-        "",
-    ]
-    lines.extend(_case_lines(unsupported_cases) or ["- None"])
-    lines.extend(["", "## SQL Safety", ""])
-    lines.extend(_case_lines(sql_safety_cases) or ["- None"])
-    lines.extend(["", "## Provenance And Source Visibility", ""])
-    lines.extend(_case_lines(provenance_cases) or ["- None"])
-    lines.extend(["", "## Live/Manual Guardrail Cases", ""])
-    lines.extend(_case_lines(_dedupe_cases(live_guardrails)) or ["- None"])
-    return "\n".join(lines) + "\n"
+    return _format_guardrail_report(cases)
 
 
 def write_guardrail_report(path: Path, cases: list[EvalCase]) -> None:
@@ -709,44 +672,7 @@ def _risk_category_lines(cases: list[EvalCase]) -> list[str]:
 
 def guardrail_coverage_payload(cases: list[EvalCase]) -> dict[str, Any]:
     """Return structured guardrail coverage from the eval manifest."""
-    unsupported_cases = [case for case in cases if case.spec.get("expected_unsupported")]
-    sql_safety_cases = [
-        case
-        for case in cases
-        if case.spec.get("expected_sql_parameterized") or "sql_injection" in case.id
-    ]
-    provenance_cases = [
-        case
-        for case in cases
-        if case.required_sources
-        or case.spec.get("required_source_manifest_fields")
-        or case.spec.get("expected_sql_visible")
-    ]
-    ci_safe_guardrails = [
-        case for case in unsupported_cases + sql_safety_cases if case.should_run()
-    ]
-    live_guardrails = [
-        case
-        for case in unsupported_cases + sql_safety_cases
-        if not case.should_run() and case.requires_live_services()
-    ]
-    categories = {
-        "unsupported": _case_payloads(unsupported_cases),
-        "sql_safety": _case_payloads(sql_safety_cases),
-        "provenance_source_visibility": _case_payloads(provenance_cases),
-        "live_manual": _case_payloads(_dedupe_cases(live_guardrails)),
-    }
-    return {
-        "summary": {
-            "ci_safe_deterministic_guardrails": len(_dedupe_cases(ci_safe_guardrails)),
-            "unsupported_guardrails": len(unsupported_cases),
-            "sql_safety": len(sql_safety_cases),
-            "provenance_source_visibility": len(provenance_cases),
-            "live_manual_guardrail_cases": len(_dedupe_cases(live_guardrails)),
-        },
-        "categories": categories,
-        "markdown": format_guardrail_report(cases),
-    }
+    return _guardrail_coverage_payload(cases)
 
 
 def _dedupe_cases(cases: list[EvalCase]) -> list[EvalCase]:

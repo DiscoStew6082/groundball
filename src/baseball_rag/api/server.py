@@ -114,9 +114,9 @@ def evals_run(req: EvalRunRequest):
 @app.get("/guardrails/coverage")
 def guardrails_coverage():
     """Return manifest-only guardrail coverage."""
-    from evals.questions import guardrail_coverage_payload, load_cases
+    from baseball_rag.eval_manifest import default_guardrail_coverage_payload
 
-    return guardrail_coverage_payload(load_cases())
+    return default_guardrail_coverage_payload()
 
 
 def _run_eval_payload(*, include_live: bool) -> dict[str, Any]:
