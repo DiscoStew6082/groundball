@@ -11,7 +11,7 @@ from baseball_rag.db.queries import StatQueryPlan, StatQueryResult, execute_stat
 from baseball_rag.db.stat_registry import get_stat
 from baseball_rag.outcomes import ambiguous_outcome, no_data_outcome
 from baseball_rag.provenance import StructuredAnswer
-from baseball_rag.query_scope import QueryScope, coverage_source, resolve_query_scope
+from baseball_rag.query_scope import QueryScope, coverage_source, resolve_query_scope_outcome
 from baseball_rag.routing.query_router import StatQueryCase
 
 
@@ -70,35 +70,17 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlanningOutcome:
                     ],
                 )
             )
-        scope = resolve_query_scope(
+        scope_outcome = resolve_query_scope_outcome(
             decision.time_period,
             raw_question=decision.raw_question,
             stat=stat,
             intent=decision.intent,
-            validate_coverage=False,
+            require_single_season=True,
+            single_season_subject=f"Player-specific {stat} lookups",
         )
-        if isinstance(scope, StructuredAnswer):
-            return StatQueryPlanningOutcome(answer=scope)
-        if isinstance(scope, QueryScope) and not scope.is_single_season:
-            return StatQueryPlanningOutcome(
-                answer=ambiguous_outcome(
-                    answer=(
-                        f"Player-specific {stat} lookups need one season, not "
-                        f"{scope.start_year}-{scope.end_year}."
-                    ),
-                    intent=decision.intent,
-                    sources=[coverage_source()],
-                ),
-            )
-        scope = resolve_query_scope(
-            decision.time_period,
-            raw_question=decision.raw_question,
-            stat=stat,
-            intent=decision.intent,
-        )
-        if isinstance(scope, StructuredAnswer):
-            return StatQueryPlanningOutcome(answer=scope)
-        year = scope.start_year if isinstance(scope, QueryScope) else None
+        if scope_outcome.answer is not None:
+            return StatQueryPlanningOutcome(answer=scope_outcome.answer)
+        year = scope_outcome.scope.start_year if scope_outcome.scope is not None else None
         return StatQueryPlanningOutcome(
             plan=StatQueryPlan(
                 stat=stat,
@@ -116,15 +98,15 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlanningOutcome:
                 year=year,
             ),
         )
-    scope = resolve_query_scope(
+    scope_outcome = resolve_query_scope_outcome(
         decision.time_period,
         raw_question=decision.raw_question,
         stat=stat,
         intent=decision.intent,
     )
-    if isinstance(scope, StructuredAnswer):
-        return StatQueryPlanningOutcome(answer=scope)
-    if isinstance(scope, QueryScope):
+    if scope_outcome.answer is not None:
+        return StatQueryPlanningOutcome(answer=scope_outcome.answer)
+    if isinstance(scope_outcome.scope, QueryScope):
         return StatQueryPlanningOutcome(
             plan=StatQueryPlan(
                 stat=stat,
@@ -132,8 +114,8 @@ def plan_stat_query(decision: StatQueryCase) -> StatQueryPlanningOutcome:
                 kind="leaderboard",
                 intent=decision.intent,
                 position=decision.position,
-                start_year=scope.start_year,
-                end_year=scope.end_year,
+                start_year=scope_outcome.scope.start_year,
+                end_year=scope_outcome.scope.end_year,
             )
         )
     return StatQueryPlanningOutcome(

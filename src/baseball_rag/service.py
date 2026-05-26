@@ -122,17 +122,17 @@ def _grounded_database_single_season_year(
     if decision.time_period is None:
         return None
 
-    from baseball_rag.query_scope import QueryScope, resolve_query_scope
+    from baseball_rag.query_scope import resolve_query_scope_outcome
 
-    scope = resolve_query_scope(
+    outcome = resolve_query_scope_outcome(
         decision.time_period,
         raw_question=decision.raw_question,
         stat="grounded database question",
         intent=decision.intent,
         validate_coverage=False,
     )
-    if isinstance(scope, QueryScope) and scope.is_single_season:
-        return scope.start_year
+    if outcome.scope is not None and outcome.scope.is_single_season:
+        return outcome.scope.start_year
     return None
 
 
