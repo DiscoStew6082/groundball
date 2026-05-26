@@ -31,6 +31,8 @@ There is no `docs/adr/` directory in this repo yet. Treat this file as the curre
 
 - `README.md` for expanded product contract and demo vocabulary.
 - `docs/architecture.md` for the fuller architecture overview.
+- `docs/architecture-current-opportunities-handoff-plan.md` for the active
+  2026-05-26 four-track worker handoff.
 - `docs/archive/architecture/architecture-active-opportunities-handoff-plan.md` for the completed implementation ledger covering the 2026-05-25 active-opportunity set.
 - `docs/archive/architecture/architecture-followup-worker-handoff-plan.md`, `docs/archive/architecture/architecture-next-deepening-plan.md`, and `docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
@@ -44,9 +46,37 @@ Purpose: lower startup context by listing all active opportunities, completed Mo
 
 ### Current Opportunities
 
-- No active architecture-deepening opportunities are open from the 2026-05-25
-  active-opportunities handoff. Add a new opportunity only when fresh
-  public-behavior evidence or an explicit product decision shows a real delta.
+- 2026-05-26: Gradio Query Tab Wiring Module. Active handoff:
+  `docs/architecture-current-opportunities-handoff-plan.md`. Evidence: current
+  `web_app.py` still owns live Query tab callback sequencing, session-key
+  extraction, pending/completed component wiring, and stale-turn plumbing outside
+  `QuerySession` and `GradioQueryAdapter`. Public contract to preserve: Query
+  tab callback order, pending/completed/stale output names, session-scoped
+  latest-turn behavior, source JSON, SQL, rows, chat state, Ask-button state,
+  Browser smoke, and Architecture tab trace publication.
+- 2026-05-26: Query Scope Outcome Interface Module. Active handoff:
+  `docs/architecture-current-opportunities-handoff-plan.md`. Evidence:
+  `resolve_query_scope(...)` still exposes a `QueryScope | StructuredAnswer |
+  None` Interface and stat-query player-specific planning makes two scope passes
+  to preserve single-season ordering. Public contract to preserve: stat-query
+  and grounded database scope behavior, current-century decade ambiguity,
+  reversed-range ambiguity, manifest coverage no-data outcomes, review reasons,
+  and `StatQueryPlanningOutcome` caller behavior.
+- 2026-05-26: Architecture Trace Publication Policy Adapter. Active handoff:
+  `docs/architecture-current-opportunities-handoff-plan.md`. Evidence:
+  query-to-Architecture publication policy is split across `web_app.py`,
+  `QuerySession`, `ArchitectureDiagram`, and `LatestRunStore`. Public contract
+  to preserve: query-to-Architecture publication, session-scoped latest runs,
+  animate-vs-record behavior, trace history, and failure isolation around
+  diagram publication.
+- 2026-05-26: Retrosheet Source Catalog Audit Module. Active handoff:
+  `docs/architecture-current-opportunities-handoff-plan.md`. Evidence:
+  Retrosheet schema facts are spread across downloader, optional DuckDB loading,
+  biography vocabulary, and claim verification, but this track is audit-gated
+  because it overlaps completed Retrosheet-adjacent Modules. Public contract to
+  preserve: Lahman primary verification, optional Retrosheet secondary consensus
+  evidence, source authority catalog shape, consensus statuses, SQL, params,
+  warnings, and missing-secondary-source degradation.
 
 ### Completed Modules
 
@@ -112,6 +142,10 @@ These candidates were reviewed but should not be reopened without a fresh public
 - Biography Claim Consensus Presentation Module: dropped because biography claim verification presentation is already completed and current code has `BiographyStatClaimConsensusPresentation`.
 - Eval Gate Runner Module: dropped because Eval Reporting is already completed and CLI/HTTP payloads share `build_eval_report_payload`.
 - Verification Readiness Ledger Module: dropped unless the product decision is to make readiness commands/status a single source. `GET /health/verification` already covers operational verification readiness.
+- Verification Health Guardrail Projection Module: dropped during the 2026-05-26
+  review because package-safe eval manifest metadata and operational
+  verification health checks are already completed; reopen only with a concrete
+  `/health/verification` versus `/guardrails/coverage` behavior mismatch.
 
 ## Working Rules
 
