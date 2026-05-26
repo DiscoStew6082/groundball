@@ -1,10 +1,12 @@
 # Current Architecture Opportunities Handoff Plan
 
-Status: Active handoff for a new Codex session with subagents.
+Status: Completed implementation.
 
 This plan turns the 2026-05-26 architecture review into four worker-ready tracks
 for `/Volumes/Envoy/projects/baseball-rag`. `CONTEXT.md` remains the canonical
 front door. This file is the execution plan for the active opportunities below.
+Implementation landed on branch `disco-current-architecture-opportunities`;
+implementation commit `7137788` is recorded in `CONTEXT.md`.
 
 Use the architecture vocabulary from `CONTEXT.md`: a Module has an Interface and
 an Implementation; Depth creates Leverage at a Seam; a Shallow Module leaks too
@@ -407,6 +409,108 @@ uv run python -m evals.questions --report docs/eval-report.md --guardrail-report
 
 7. Run Browser smoke for UI-affecting changes and keep the server running.
 8. Commit the finished work and explain any unstaged changes.
+
+## Implementation Ledger
+
+### Worker A: Gradio Query Tab Wiring Module
+
+Status: Completed.
+
+Implemented `src/baseball_rag/ui/query_tab_wiring.py` as the browser-facing
+Query tab wiring Module. It owns Gradio callback registration, session-hash
+extraction, pending/completed component mapping, stale completion no-ops, and
+component id publication. `build_dashboard()` now stays layout-oriented and
+delegates Query tab choreography through `GradioQueryTabWiring`.
+
+Public behavior preserved: callback API names remain `begin_query` and
+`on_query`; pending/completed/stale output order still comes from
+`GradioQueryAdapter`; stale same-session completions no-op before backend
+execution; Architecture publication still receives the Gradio session key.
+
+Verification:
+
+```bash
+uv run pytest tests/test_dashboard.py tests/test_gradio_query_adapter.py tests/test_query_session.py tests/test_query_transaction.py tests/test_browser_contract.py tests/test_query_tab_wiring.py -q
+```
+
+### Worker B: Query Scope Outcome Interface Module
+
+Status: Completed.
+
+Implemented `QueryScopeOutcome` and `resolve_query_scope_outcome(...)` in
+`src/baseball_rag/query_scope.py`. The outcome names answerable scope, no-scope,
+and unsupported answer states and can enforce single-season policy before
+coverage validation. `stat_query.py` now consumes the outcome once for
+player-specific planning instead of making a double scope pass, and grounded
+database year extraction consumes the same outcome without route or answer
+drift.
+
+Public behavior preserved: bare current-century decades, reversed ranges,
+manifest coverage no-data answers, player-specific multi-season ambiguity, API
+review payloads, and grounded database single-season planning.
+
+Verification:
+
+```bash
+uv run pytest tests/test_query_scope.py tests/test_queries.py tests/test_request_execution.py tests/test_api.py -q
+```
+
+### Worker C: Architecture Trace Publication Policy Adapter
+
+Status: Completed.
+
+Implemented `src/baseball_rag/arch/trace_publication.py` as
+`ArchitectureTracePublisher`. It owns animate-vs-record policy, session-key
+publication into the Architecture latest-run read model, and exception logging
+without failing Query tab completion. `ArchitectureDiagram` remains the
+rendering Adapter and `LatestRunStore` remains the session-scoped latest-run
+store.
+
+Public behavior preserved: `respond()` and `respond_structured()` animate
+traces, Query tab completions record without mutating Architecture-tab
+components, session-scoped refresh still shows the current browser's latest
+trace, and diagram failures remain isolated.
+
+Verification:
+
+```bash
+uv run pytest tests/test_dashboard.py tests/test_diagram_ui.py tests/test_query_session.py tests/test_architecture_trace_publication.py -q
+```
+
+### Worker D: Retrosheet Source Catalog Audit Module
+
+Status: Completed as audit; no code catalog implemented.
+
+The audit found spread but no current friction that justifies a Retrosheet
+catalog Module. Keep no catalog Module until concrete friction appears.
+Downloader archive facts, optional DuckDB table loading,
+biography stat vocabulary, and claim verification each own distinct
+responsibilities, and existing tests cover the risky optional-secondary-source
+contracts. No catalog should be added until concrete churn or drift appears.
+
+Public behavior preserved: Lahman/DuckDB remains the primary factual/stat
+authority; Retrosheet remains optional secondary consensus evidence for
+biography stat claims; missing Retrosheet sources degrade without source
+authority, consensus-status, SQL, params, warning, or payload drift.
+
+Verification:
+
+```bash
+uv run pytest tests/test_retrosheet_downloader.py tests/test_retrosheet_duckdb_schema.py tests/test_player_stat_claims_consensus.py -q
+```
+
+### Integration Verification
+
+Focused commands run during implementation:
+
+```bash
+uv run pytest tests/test_query_scope.py tests/test_query_tab_wiring.py tests/test_architecture_trace_publication.py -q
+uv run pytest tests/test_dashboard.py tests/test_gradio_query_adapter.py tests/test_query_session.py tests/test_query_transaction.py tests/test_browser_contract.py tests/test_query_tab_wiring.py tests/test_diagram_ui.py tests/test_architecture_trace_publication.py -q
+uv run pytest tests/test_query_scope.py tests/test_queries.py tests/test_request_execution.py tests/test_api.py -q
+```
+
+Final required commands, Browser smoke, code-review subagent results, and commit
+evidence belong in the final coordinator report.
 
 ## New-Session Handoff Prompt
 

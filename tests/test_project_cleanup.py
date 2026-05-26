@@ -1294,7 +1294,7 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
     context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
     expected_sections = [
-        "Status: Active handoff",
+        "Status: Completed implementation",
         "## Scope",
         "## New-Session Operating Contract",
         "## Subagent Work Order",
@@ -1303,6 +1303,7 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
         "## Worker C: Architecture Trace Publication Policy Adapter",
         "## Worker D: Retrosheet Source Catalog Audit Module",
         "## Integration Coordinator",
+        "## Implementation Ledger",
         "## New-Session Handoff Prompt",
     ]
     for section in expected_sections:
@@ -1327,6 +1328,11 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
     assert "docs/architecture-current-opportunities-handoff-plan.md" in context
     assert "Evidence and decision basis" in handoff
     assert "Retrosheet Source Catalog Audit Module is audit-gated" in handoff
+    assert "Completed as audit; no code catalog implemented" in handoff
+    assert "no catalog Module until concrete friction" in handoff
+    assert "commit `TBD`" not in context
+    assert "`7137788`" in context
+    assert "implementation commit `7137788`" in handoff
     assert (
         "No code changes are authorized for Worker D until the audit cites "
         "concrete current friction"
@@ -1336,18 +1342,23 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
         "### Completed Modules",
         1,
     )[0]
+    completed_modules = context.split("### Completed Modules", 1)[1].split(
+        "### Frozen Seams",
+        1,
+    )[0]
+    assert "No active architecture-deepening opportunities are open" in current_opportunities
     for active_module in (
         "Gradio Query Tab Wiring Module",
         "Query Scope Outcome Interface Module",
         "Architecture Trace Publication Policy Adapter",
         "Retrosheet Source Catalog Audit Module",
     ):
-        assert active_module in current_opportunities
+        assert active_module not in current_opportunities
+        assert active_module in completed_modules
         assert active_module in handoff
 
-    assert "Evidence:" in current_opportunities
-    assert "audit-gated" in current_opportunities
-    assert "No active architecture-deepening opportunities are open" not in current_opportunities
+    assert "Evidence:" not in current_opportunities
+    assert "audit-gated" not in current_opportunities
 
     documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
     assert documented_test_paths
@@ -1421,14 +1432,14 @@ def test_context_file_captures_current_architecture_findings() -> None:
         assert completed_candidate not in current_opportunities
         assert completed_candidate in completed_modules
 
-    for active_candidate in (
+    for landed_candidate in (
         "Gradio Query Tab Wiring Module",
         "Query Scope Outcome Interface Module",
         "Architecture Trace Publication Policy Adapter",
         "Retrosheet Source Catalog Audit Module",
     ):
-        assert active_candidate in current_opportunities
-        assert active_candidate not in completed_modules
+        assert landed_candidate not in current_opportunities
+        assert landed_candidate in completed_modules
 
     for commit_hash in ("148ddd3", "d86086c", "fee989d", "8f569f1", "f9eeef2"):
         assert f"`{commit_hash}`" in registry
