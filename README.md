@@ -44,7 +44,7 @@ Key choices:
 - Stat definition questions such as "what is OPS?" use checked-in local stat definitions first; broader baseball explanations use the local LLM.
 - ChromaDB was removed because it duplicated generated facts and added fragile local state. DuckDB remains the source of truth for structured baseball facts.
 - CI runs a deterministic-only AI release gate with Markdown/JSON artifacts and baseline comparison. Live LLM evals stay optional local commands.
-- API responses include audit metadata for route, unsupported status, SQL template hash, source summaries, latency, dataset/model versions, and exact eval-manifest matches.
+- API responses include audit metadata for route, unsupported status, SQL template hash, source summaries, latency, dataset/model versions, and exact eval-manifest matches when the manifest is available.
 - Unsupported or ambiguous API answers are written to a small JSONL human-review queue.
 
 ## API Example
@@ -216,7 +216,7 @@ The FastAPI app exposes deterministic governance surfaces alongside `/query`:
 
 - `GET /evals/report` runs the deterministic eval gate and returns JSON plus Markdown without writing docs files.
 - `POST /evals/run` runs the deterministic gate by default; `include_live=true` opts into cases that may require LM Studio.
-- `GET /guardrails/coverage` returns manifest-only guardrail coverage, with no DB or LLM dependency.
+- `GET /guardrails/coverage` returns manifest-only guardrail coverage through the package-safe eval manifest adapter, with no DB or LLM dependency. In a package-only runtime where the repo manifest is absent, it returns explicit unavailable metadata instead of importing repo-only eval code.
 - `GET /health/verification` returns operational readiness for the primary manifest, DuckDB core tables, guardrail manifest, and standard verification commands.
 - `GET /review-queue` and `PATCH /review-queue/{item_id}` expose the local human-review queue for unsupported or ambiguous API answers.
 

@@ -76,6 +76,10 @@ Decision ordering is explicit so supplied claim verification, player biography
 detection, deterministic stat routing, grounded database ownership, LLM routing,
 and heuristic fallback keep their current precedence. Ambiguous or unsupported
 requests fail closed instead of falling through to ungrounded prose.
+For compact stat questions, route-time player mention checks use the Player Identity Authority
+over DuckDB/Lahman instead of router-local CSV aliases. If that lookup is
+unavailable, routing treats the mention as unknown rather than raising during
+classification.
 `src/baseball_rag/unsupported_policy.py` runs before routing for deterministic
 out-of-scope requests such as SQL mutation text, betting, live scores, current
 injury/salary questions, non-baseball sports, Statcast-only fields, and
@@ -138,12 +142,27 @@ The Gradio Query tab uses a named output contract in
 tuples map to component names in one Adapter instead of leaking tuple slots into
 dashboard code.
 
+## Architecture Explorer
+
+The Architecture tab includes a Developer tools accordion with Run All Tests.
+That control delegates to `src/baseball_rag/arch/test_status.py`, which runs
+pytest from the repo root and maps results to per-component status badges.
+Mapped test failures mark the owning component as failing, pytest collection
+errors do not create false pass badges, and unmapped or incomplete status stays
+UNKNOWN.
+
 ## Eval Reporting
 
 `evals/questions.py` owns the deterministic release gate. The CLI report writer
 and FastAPI governance endpoints use `build_eval_report_payload` for the shared
 summary and case-list data that feeds `GET /evals/report`, `POST /evals/run`,
 Markdown reports, and JSON artifacts.
+
+Runtime eval metadata and `GET /guardrails/coverage` use
+`src/baseball_rag/eval_manifest.py`, a package-safe eval manifest adapter. When
+the repo manifest is absent in a package-only runtime, query audit metadata and
+guardrail coverage return explicit unavailable status instead of importing the
+repo-only `evals` package.
 
 ## General Explanations
 

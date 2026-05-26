@@ -145,7 +145,7 @@ Ask a baseball question and get a grounded answer with provenance metadata.
     "eval": {
       "matched": true,
       "case_id": "stat_rbi_1962",
-      "category": "stat"
+      "category": "stat_query"
     },
     "latency_ms": 8.4,
     "trace": {
@@ -175,8 +175,13 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `warnings` | array | Non-fatal caveats, such as truncated results or LLM-backed open explanation errors |
 | `unsupported` | boolean | True when the system could not answer from grounded evidence |
 | `review` | object/null | Human review queue hint for unsupported or ambiguous answers |
-| `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match, latency, and trace stages |
+| `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match when available, latency, and trace stages |
 | `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, license notes, `source_authorities`, and optional `consensus_sources` plus `secondary_manifests.retrosheet` availability details for biography stat-claim evidence |
+
+`metadata.eval.status` is omitted for normal repo-manifest matches. If the eval
+manifest is absent in a package-only runtime, `metadata.eval.status` is
+`"unavailable"` and the payload includes a reason instead of importing the
+repo-only `evals` package.
 
 `sources[].data_manifest.source_authorities` is the authority catalog used by
 answer payloads. Lahman/DuckDB is the primary factual/stat authority for
@@ -258,7 +263,11 @@ Run evals with explicit options. An empty body `{}` runs the same deterministic 
 
 ### `GET /guardrails/coverage`
 
-Return manifest-only guardrail coverage generated from `evals/questions.yaml`. This endpoint does not touch DuckDB, LM Studio, or live services.
+Return manifest-only guardrail coverage generated through the package-safe eval
+manifest adapter from `evals/questions.yaml` when the repo manifest is present.
+This endpoint does not touch DuckDB, LM Studio, or live services. In a
+package-only runtime where the manifest is absent, it returns `status: "unavailable"`
+with a reason and empty coverage counts.
 
 **Response**
 
@@ -269,6 +278,29 @@ Return manifest-only guardrail coverage generated from `evals/questions.yaml`. T
     "unsupported_guardrails": 18,
     "sql_safety": 12,
     "provenance_source_visibility": 43,
+    "live_manual_guardrail_cases": 0
+  },
+  "categories": {
+    "unsupported": [],
+    "sql_safety": [],
+    "provenance_source_visibility": [],
+    "live_manual": []
+  },
+  "markdown": "# Baseball RAG Guardrail Coverage\n..."
+}
+```
+
+**Package-only unavailable response**
+
+```json
+{
+  "status": "unavailable",
+  "reason": "Guardrail manifest is unavailable at /path/to/evals/questions.yaml.",
+  "summary": {
+    "ci_safe_deterministic_guardrails": 0,
+    "unsupported_guardrails": 0,
+    "sql_safety": 0,
+    "provenance_source_visibility": 0,
     "live_manual_guardrail_cases": 0
   },
   "categories": {

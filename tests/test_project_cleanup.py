@@ -1205,6 +1205,26 @@ def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
         assert (ROOT / documented_path).exists(), documented_path
 
 
+def test_docs_describe_current_adapter_surfaces() -> None:
+    api_docs = (ROOT / "docs" / "api.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
+    development = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "`metadata.eval.status`" in api_docs
+    assert 'returns `status: "unavailable"`' in api_docs
+    assert "Package-only unavailable response" in api_docs
+    assert "Guardrail manifest is unavailable" in api_docs
+    assert "package-safe eval manifest adapter" in readme
+    assert "package-safe eval manifest adapter" in development
+    assert "route-time player mention checks use the Player Identity Authority" in architecture
+    assert "Run All Tests" in architecture
+    assert "per-component" in architecture
+    assert "repo root" in architecture
+    assert "`0427db6`" in context
+
+
 def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     handoff = (ROOT / "docs" / "architecture-active-opportunities-handoff-plan.md").read_text(
         encoding="utf-8"

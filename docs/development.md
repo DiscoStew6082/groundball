@@ -173,7 +173,7 @@ The API exposes release and review surfaces for local demos:
 
 - `GET /evals/report` returns the deterministic eval gate summary and Markdown report without writing files.
 - `POST /evals/run` defaults to deterministic-only evals. `include_live=true` opts into cases that may require LM Studio.
-- `GET /guardrails/coverage` returns manifest-only guardrail coverage from `evals/questions.yaml`.
+- `GET /guardrails/coverage` returns manifest-only guardrail coverage through the package-safe eval manifest adapter, returning explicit unavailable metadata when the repo manifest is absent in a package-only runtime.
 - `GET /review-queue` and `PATCH /review-queue/{item_id}` list, resolve, or dismiss API-created review items.
 
 Only `/query` writes review queue items. CLI and Gradio calls do not persist review state.

@@ -87,7 +87,7 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Architecture Context
 
-- 2026-05-26, commits `fa57dda` and `78db668`: Architecture Test Status Adapter Module. Public contract: the Architecture Run All Tests button delegates pytest execution and parsing to a per-component status Adapter; mapped test failures mark only affected Modules as failing, collection/import errors do not produce false PASS badges, and unmapped or incomplete statuses remain UNKNOWN.
+- 2026-05-26, commits `fa57dda`, `78db668`, and `0427db6`: Architecture Test Status Adapter Module. Public contract: the Architecture Run All Tests button delegates pytest execution and parsing to a per-component status Adapter; mapped test failures mark only affected Modules as failing, collection/import errors do not produce false PASS badges, pytest runs from the repo root, and unmapped or incomplete statuses remain UNKNOWN.
 - 2026-05-25, commit `f9eeef2`: Baseball RAG Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
 - 2026-05-25, commit `5417b46`: Architecture Ledger Registry. Public contract: Current Opportunities list all active opportunities by domain area and date; Completed Modules record completed work by domain area, date, and commit hash; Frozen Seams and the Update Rule keep future context ingestion small.
 
