@@ -117,6 +117,27 @@ class TestArchitectureTestStatusAdapter:
         assert result.errors == 1
         assert result.errored_test_files == ("tests/test_router.py",)
 
+    def test_runs_pytest_from_repo_root(self, tmp_path):
+        from baseball_rag.arch.test_status import collect_test_status
+
+        existing_test = tmp_path / "tests" / "test_cli_player_query.py"
+        existing_test.parent.mkdir()
+        existing_test.write_text("def test_cli():\n    pass\n", encoding="utf-8")
+
+        fake_result = MagicMock()
+        fake_result.stdout = "1 passed in 0.01s"
+        fake_result.stderr = ""
+        fake_result.returncode = 0
+
+        with patch("subprocess.run", return_value=fake_result) as run:
+            collect_test_status(
+                component_ids=("cli",),
+                component_test_map={"cli": ["tests/test_cli_player_query.py"]},
+                repo_root=tmp_path,
+            )
+
+        assert run.call_args.kwargs["cwd"] == tmp_path
+
 
 # --------------------------------------------------------------------------:
 # Phase 5.1 — Button exists and is attached to arch_diagram

@@ -50,9 +50,11 @@ def collect_test_status(
 ) -> ArchitectureTestStatusResult:
     """Run pytest and return per-component Architecture test status."""
 
+    root = _DEFAULT_REPO_ROOT if repo_root is None else Path(repo_root)
     completed = subprocess.run(
         list(PYTEST_COMMAND),
         capture_output=True,
+        cwd=root,
         text=True,
         timeout=timeout,
     )
@@ -60,7 +62,7 @@ def collect_test_status(
     passed, failed, skipped, errors = _parse_summary_counts(output)
     failed_test_files = _parse_failed_test_files(output)
     errored_test_files = _parse_errored_test_files(output)
-    missing_mapped_tests = _missing_mapped_tests(component_test_map, repo_root=repo_root)
+    missing_mapped_tests = _missing_mapped_tests(component_test_map, repo_root=root)
     runner_failed_without_test_files = (
         completed.returncode != 0
         and failed == 0
