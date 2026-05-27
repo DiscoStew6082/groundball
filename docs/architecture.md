@@ -6,6 +6,9 @@ Baseball RAG is organized around one request lifecycle used by the CLI, API, and
 Gradio UI. The lifecycle returns a `StructuredAnswer` with answer text, intent,
 sources, warnings, unsupported state, metadata, and trace information.
 
+For a non-linear visual overview, see the
+[Baseball RAG Architecture Pathway Map](architecture-pathways-large.svg).
+
 ```text
 Question
   |
@@ -85,11 +88,16 @@ out-of-scope requests such as SQL mutation text, betting, live scores, current
 injury/salary questions, non-baseball sports, Statcast-only fields, and
 subjective rankings without a metric.
 
+`src/baseball_rag/query_scope.py` exposes `QueryScopeOutcome`, an explicit
+scope read model for answerable scope, no scope, and unsupported answer states.
+It owns coverage, reversed-range, ambiguous-decade, and player-specific
+single-season policy so callers do not inspect a three-way union or make a
+second scope pass for normal planning.
+
 `src/baseball_rag/stat_query.py` uses `StatQueryPlanningOutcome` to keep
 stat-query planning explicit: a planning pass returns either a validated
 `StatQueryPlan` for DuckDB execution or a structured unsupported/ambiguous
-answer. This keeps coverage, player ambiguity, and single-season validation out
-of the execution path.
+answer. This keeps coverage and player ambiguity out of the execution path.
 
 ## Request Lifecycle
 
@@ -140,7 +148,9 @@ unchanged; the read model is only the verification Interface for narration.
 The Gradio Query tab uses a named output contract in
 `src/baseball_rag/ui/gradio_adapter.py` so pending, completed, and stale callback
 tuples map to component names in one Adapter instead of leaking tuple slots into
-dashboard code.
+dashboard code. `src/baseball_rag/ui/query_tab_wiring.py` owns the browser-facing
+Query tab callback order, session-hash extraction, stale completion no-ops, and
+component map validation while `build_dashboard()` stays layout-oriented.
 
 ## Architecture Explorer
 
@@ -150,6 +160,11 @@ pytest from the repo root and maps results to per-component status badges.
 Mapped test failures mark the owning component as failing, pytest collection
 errors do not create false pass badges, and unmapped or incomplete status stays
 UNKNOWN.
+
+Completed Query tab executions publish to the Architecture Explorer through
+`src/baseball_rag/arch/trace_publication.py`. The publication adapter owns
+animate-vs-record policy, session-scoped latest-run publication, and failure
+isolation while `ArchitectureDiagram` remains the rendering adapter.
 
 ## Eval Reporting
 

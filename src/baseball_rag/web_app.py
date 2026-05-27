@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import math
 import os
 import threading
@@ -14,18 +13,17 @@ import gradio as gr
 
 from baseball_rag.arch.test_status import ArchitectureTestStatusResult as _TestResult
 from baseball_rag.arch.test_status import collect_and_apply_test_status
+from baseball_rag.arch.trace_publication import ArchitectureTracePublisher
 from baseball_rag.request_execution import RequestExecution, execute_request
 from baseball_rag.service import render_text
 from baseball_rag.ui.gradio_adapter import GradioQueryAdapter
 from baseball_rag.ui.presentation import AnswerPresenter
 from baseball_rag.ui.query_session import QuerySession
-from baseball_rag.ui.query_transaction import BegunQuery
+from baseball_rag.ui.query_tab_wiring import GradioQueryTabWiring, request_session_key
 
 if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
 
-
-logger = logging.getLogger(__name__)
 
 _TTL_ENV_VAR = "BASEBALL_RAG_WEB_APP_TTL_SECONDS"
 _DEFAULT_SERVER_NAME = "0.0.0.0"
@@ -55,8 +53,6 @@ def run_all_tests() -> _TestResult:
 # Internal trace helper (avoids circular imports)
 # --------------------------------------------------------------------------
 
-_anim_lock = threading.Lock()
-
 _EXAMPLE_QUESTIONS = (
     "who had the most RBIs in 1962",
     "career home run leaders",
@@ -65,33 +61,6 @@ _EXAMPLE_QUESTIONS = (
     "who played for the Braves in 1936",
 )
 _DEFAULT_QUESTION = _EXAMPLE_QUESTIONS[0]
-
-
-def _animate_execution(diagram: "ArchitectureDiagram", execution: RequestExecution) -> None:
-    """Animate the diagram with the trace from a completed request."""
-    trace = execution.trace
-    if trace is not None and hasattr(diagram, "animate_trace"):
-        with _anim_lock:
-            diagram.animate_trace(trace)
-
-
-def _record_execution_trace(
-    diagram: "ArchitectureDiagram",
-    execution: RequestExecution,
-    session_key: str | None = None,
-) -> None:
-    """Retain the completed trace without mutating Architecture-tab components."""
-    trace = execution.trace
-    if hasattr(diagram, "record_execution"):
-        with _anim_lock:
-            diagram.record_execution(execution, session_key=session_key)
-        return
-    if trace is None or not hasattr(diagram, "trace_history"):
-        return
-    with _anim_lock:
-        diagram.trace_history.append(trace)
-        if len(diagram.trace_history) > diagram.max_history:
-            diagram.trace_history.pop(0)
 
 
 def _execute_for_gradio(
@@ -116,18 +85,7 @@ def _diagram_execution_recorder(
     """Return the trace update policy for a UI session."""
     if diagram is None:
         return None
-
-    def record(execution: RequestExecution, session_key: str | None = None) -> None:
-        try:
-            if animate_diagram:
-                _animate_execution(diagram, execution)
-            else:
-                _record_execution_trace(diagram, execution, session_key=session_key)
-        except Exception:
-            query = execution.trace.query if execution.trace is not None else ""
-            logger.exception("Gradio diagram trace update failed for %r", query)
-
-    return record
+    return ArchitectureTracePublisher(diagram, animate=animate_diagram).publish
 
 
 # --------------------------------------------------------------------------
@@ -241,7 +199,6 @@ def build_dashboard() -> gr.Blocks:
                     animate_diagram=False,
                 ),
             )
-            query_adapter = GradioQueryAdapter()
             query_output_components = {
                 "chat": chat,
                 "question": question,
@@ -255,68 +212,19 @@ def build_dashboard() -> gr.Blocks:
                 "conversation_state": conversation_state,
                 "ask_button": submit,
             }
-            dashboard_metadata = dashboard
-            dashboard_metadata.query_output_component_ids = {  # type: ignore[attr-defined]
-                name: component._id for name, component in query_output_components.items()
-            }
-
-            def _request_session_key(request: gr.Request | None) -> str | None:
-                if request is not None and request.session_hash:
-                    return request.session_hash
-                return None
-
-            def begin_query(
-                msg,
-                chat_history,
-                conversation,
-                turn_registry,
-                request: Optional[gr.Request] = None,
-            ):
-                begun = query_session.begin(
-                    msg,
-                    chat_history,
-                    conversation,
-                    turn_registry,
-                    session_key=_request_session_key(request),
-                )
-                return query_adapter.pending_outputs(
-                    begun.update,
-                    begun=begun.begun,
-                    registry=begun.registry,
-                    ask_interactive=begun.ask_interactive,
-                )
-
-            def on_query(
-                begun: BegunQuery | None,
-                turn_registry: dict[str, str | None] | None,
-                request: Optional[gr.Request] = None,
-            ):
-                completed = query_session.complete(
-                    begun,
-                    turn_registry,
-                    session_key=_request_session_key(request),
-                )
-                if completed is None:
-                    return query_adapter.stale_outputs()
-                return query_adapter.completed_outputs(completed.update)
-
-            begin_query_outputs = gr.on(
-                triggers=[submit.click, question.submit],
-                fn=begin_query,
-                inputs=[question, chat_state, conversation_state, query_turn_registry],
-                outputs=query_adapter.pending_components(query_output_components),
-                trigger_mode="always_last",
-                show_progress="hidden",
-                queue=False,
+            query_wiring = GradioQueryTabWiring(
+                session=query_session,
+                adapter=GradioQueryAdapter(),
+                components=query_output_components,
             )
-
-            begin_query_outputs.then(
-                fn=on_query,
-                inputs=[query_turn_state, query_turn_registry],
-                outputs=query_adapter.completed_components(query_output_components),
-                trigger_mode="always_last",
-                show_progress="minimal",
-                queue=False,
+            dashboard.query_output_component_ids = query_wiring.component_ids()  # type: ignore[attr-defined]
+            query_wiring.wire(
+                submit=submit,
+                question=question,
+                chat_state=chat_state,
+                conversation_state=conversation_state,
+                query_turn_registry=query_turn_registry,
+                query_turn_state=query_turn_state,
             )
 
         with gr.Tab("Architecture") as architecture_tab:
@@ -327,7 +235,7 @@ def build_dashboard() -> gr.Blocks:
             arch_diagram.render()
 
             def refresh_architecture_trace(request: Optional[gr.Request] = None):
-                return arch_diagram.latest_trace_values(session_key=_request_session_key(request))
+                return arch_diagram.latest_trace_values(session_key=request_session_key(request))
 
             architecture_tab.select(
                 fn=refresh_architecture_trace,

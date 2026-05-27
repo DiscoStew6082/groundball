@@ -1229,6 +1229,19 @@ def test_docs_describe_current_adapter_surfaces() -> None:
     assert "`0427db6`" in context
 
 
+def test_architecture_overview_links_pathway_map_asset() -> None:
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    pathway_map_path = ROOT / "docs" / "architecture-pathways-large.svg"
+
+    assert pathway_map_path.exists()
+    pathway_map = pathway_map_path.read_text(encoding="utf-8")
+    assert (
+        "[Baseball RAG Architecture Pathway Map](architecture-pathways-large.svg)" in architecture
+    )
+    assert '<title id="title">Baseball RAG Architecture Pathway Map</title>' in pathway_map
+    assert "Not a pipeline" in pathway_map
+
+
 def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     handoff = (
         ROOT
@@ -1281,6 +1294,90 @@ def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     assert "This plan covers three active Modules" not in handoff
     assert "active architecture opportunities" not in handoff
     assert "\nImplement the active architecture opportunities" not in handoff
+
+    documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
+    assert documented_test_paths
+    for documented_path in documented_test_paths:
+        assert (ROOT / documented_path).exists(), documented_path
+
+
+def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
+    handoff_path = ROOT / "docs" / "architecture-current-opportunities-handoff-plan.md"
+    handoff = handoff_path.read_text(encoding="utf-8")
+    context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
+
+    expected_sections = [
+        "Status: Completed implementation",
+        "## Scope",
+        "## New-Session Operating Contract",
+        "## Subagent Work Order",
+        "## Worker A: Gradio Query Tab Wiring Module",
+        "## Worker B: Query Scope Outcome Interface Module",
+        "## Worker C: Architecture Trace Publication Policy Adapter",
+        "## Worker D: Retrosheet Source Catalog Audit Module",
+        "## Integration Coordinator",
+        "## Implementation Ledger",
+        "## New-Session Handoff Prompt",
+    ]
+    for section in expected_sections:
+        assert section in handoff
+
+    for term in ("Module", "Interface", "Implementation", "Depth", "Shallow"):
+        assert term in handoff
+    for term in ("Seam", "Adapter", "Leverage", "Locality"):
+        assert term in handoff
+
+    assert "Use the tdd skill for code-changing slices" in handoff
+    assert "Run a code-review subagent after every worker task" in handoff
+    assert "DuckDB/Lahman remains the primary factual/stat authority" in handoff
+    assert "Do not add a stored corpus, vector index, or Chroma replacement" in handoff
+    assert "http://127.0.0.1:7861/" in handoff
+    assert "uv run baseball-rag-ui" in handoff
+    assert "make the Browser visible" in handoff
+    assert "uv run ruff check src/ tests/ evals/" in handoff
+    assert "uv run pytest -q" in handoff
+    assert "If the branch is pushed to GitHub, watch CI until it is green" in handoff
+    assert "any unstaged changes are explained" in handoff
+    assert "docs/architecture-current-opportunities-handoff-plan.md" in context
+    assert "completed 2026-05-26 four-track implementation ledger" in context
+    assert "for the active\n  2026-05-26 four-track worker handoff" not in context
+    assert "Evidence and decision basis" in handoff
+    assert "Completed implementation ledger for the four tracks reviewed on 2026-05-26" in handoff
+    assert "execution plan for the active opportunities below" not in handoff
+    assert "\nImplement or audit these Modules in order of risk:" not in handoff
+    assert "The active handoff has four tracks:" not in handoff
+    assert "Retrosheet Source Catalog Audit Module is audit-gated" in handoff
+    assert "Completed as audit; no code catalog implemented" in handoff
+    assert "no catalog Module until concrete friction" in handoff
+    assert "commit `TBD`" not in context
+    assert "`7137788`" in context
+    assert "implementation commit `7137788`" in handoff
+    assert (
+        "No code changes are authorized for Worker D until the audit cites "
+        "concrete current friction"
+    ) in handoff
+
+    current_opportunities = context.split("### Current Opportunities", 1)[1].split(
+        "### Completed Modules",
+        1,
+    )[0]
+    completed_modules = context.split("### Completed Modules", 1)[1].split(
+        "### Frozen Seams",
+        1,
+    )[0]
+    assert "No active architecture-deepening opportunities are open" in current_opportunities
+    for active_module in (
+        "Gradio Query Tab Wiring Module",
+        "Query Scope Outcome Interface Module",
+        "Architecture Trace Publication Policy Adapter",
+        "Retrosheet Source Catalog Audit Module",
+    ):
+        assert active_module not in current_opportunities
+        assert active_module in completed_modules
+        assert active_module in handoff
+
+    assert "Evidence:" not in current_opportunities
+    assert "audit-gated" not in current_opportunities
 
     documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
     assert documented_test_paths
@@ -1346,8 +1443,6 @@ def test_context_file_captures_current_architecture_findings() -> None:
     assert registry.index("### Frozen Seams") < registry.index("### Update Rule")
     assert "Architecture Ledger Registry" not in current_opportunities
 
-    assert "No active architecture-deepening opportunities are open" in current_opportunities
-
     for completed_candidate in (
         "Routing Decision Evidence Module",
         "Grounded Database Template Catalog Module",
@@ -1355,6 +1450,15 @@ def test_context_file_captures_current_architecture_findings() -> None:
     ):
         assert completed_candidate not in current_opportunities
         assert completed_candidate in completed_modules
+
+    for landed_candidate in (
+        "Gradio Query Tab Wiring Module",
+        "Query Scope Outcome Interface Module",
+        "Architecture Trace Publication Policy Adapter",
+        "Retrosheet Source Catalog Audit Module",
+    ):
+        assert landed_candidate not in current_opportunities
+        assert landed_candidate in completed_modules
 
     for commit_hash in ("148ddd3", "d86086c", "fee989d", "8f569f1", "f9eeef2"):
         assert f"`{commit_hash}`" in registry

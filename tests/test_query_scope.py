@@ -1,5 +1,5 @@
 from baseball_rag.provenance import StructuredAnswer
-from baseball_rag.query_scope import QueryScope, resolve_query_scope
+from baseball_rag.query_scope import QueryScope, resolve_query_scope, resolve_query_scope_outcome
 from baseball_rag.routing import TimePeriod, TimePeriodType
 
 
@@ -29,6 +29,47 @@ def test_explicit_historical_decade_resolves_to_year_range():
     )
 
     assert result == QueryScope(1920, 1929)
+
+
+def test_scope_outcome_names_answerable_and_no_scope_states():
+    answerable = resolve_query_scope_outcome(
+        TimePeriod(type=TimePeriodType.SINGLE, value=1962),
+        raw_question="who had the most RBIs in 1962",
+        stat="RBI",
+        intent="stat_query",
+        coverage={"min": 1871, "max": 2025},
+    )
+    no_scope = resolve_query_scope_outcome(
+        None,
+        raw_question="career home run leaders",
+        stat="HR",
+        intent="stat_query",
+        coverage={"min": 1871, "max": 2025},
+    )
+
+    assert answerable.is_answerable
+    assert answerable.scope == QueryScope(1962, 1962)
+    assert answerable.answer is None
+    assert no_scope.is_no_scope
+    assert no_scope.scope is None
+    assert no_scope.answer is None
+
+
+def test_scope_outcome_enforces_single_season_without_double_pass():
+    result = resolve_query_scope_outcome(
+        TimePeriod(type=TimePeriodType.RANGE, value=[1961, 1962]),
+        raw_question="how many HRs did Mickey Mantle have from 1961 to 1962",
+        stat="HR",
+        intent="stat_query",
+        coverage={"min": 1871, "max": 2025},
+        require_single_season=True,
+        single_season_subject="Player-specific HR lookups",
+    )
+
+    assert result.is_unsupported
+    assert result.answer is not None
+    assert result.answer.unsupported_reason == "ambiguous"
+    assert "Player-specific HR lookups need one season, not 1961-1962" in result.answer.answer
 
 
 def test_reversed_ranges_are_ambiguous_before_execution():

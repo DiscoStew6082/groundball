@@ -31,6 +31,7 @@ There is no `docs/adr/` directory in this repo yet. Treat this file as the curre
 
 - `README.md` for expanded product contract and demo vocabulary.
 - `docs/architecture.md` for the fuller architecture overview.
+- `docs/architecture-current-opportunities-handoff-plan.md` for the completed 2026-05-26 four-track implementation ledger.
 - `docs/archive/architecture/architecture-active-opportunities-handoff-plan.md` for the completed implementation ledger covering the 2026-05-25 active-opportunity set.
 - `docs/archive/architecture/architecture-followup-worker-handoff-plan.md`, `docs/archive/architecture/architecture-next-deepening-plan.md`, and `docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
@@ -44,9 +45,9 @@ Purpose: lower startup context by listing all active opportunities, completed Mo
 
 ### Current Opportunities
 
-- No active architecture-deepening opportunities are open from the 2026-05-25
-  active-opportunities handoff. Add a new opportunity only when fresh
-  public-behavior evidence or an explicit product decision shows a real delta.
+No active architecture-deepening opportunities are open from the 2026-05-26
+review. Reopen only with fresh public-behavior evidence or an explicit product
+decision.
 
 ### Completed Modules
 
@@ -54,6 +55,13 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Claim Verification and Source Provenance
 
+- 2026-05-26, commit `7137788`: Retrosheet Source Catalog Audit Module. Decision:
+  no catalog implementation is justified until concrete current friction
+  appears. Public contract: Lahman/DuckDB remains primary, Retrosheet remains
+  optional secondary consensus evidence for biography stat claims, and missing
+  Retrosheet files/tables continue to degrade without source-authority,
+  consensus-status, SQL, params, warning, or payload drift. Verification is
+  recorded in `docs/architecture-current-opportunities-handoff-plan.md`.
 - 2026-05-23, commit `148ddd3`: Claim Verification Evidence Module and Source Provenance Module. Public contract: keep the consensus verifier stable, preserve Lahman plus optional Retrosheet evidence rows, SQL, params, warnings, compatibility payloads, and source authority catalog shaping. Verification is recorded in `docs/archive/architecture/architecture-followup-worker-handoff-plan.md`.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Biography Contract Completeness Guard Module and Verified Evidence Read Model Module. Public contract: generated biography JSON must include supported stat claims, unsupported prose still passes, and narration checks consume verified evidence instead of rendered answer text. Verification is recorded in `docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md`.
 
@@ -66,6 +74,13 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Grounded Database and Stat Answers
 
+- 2026-05-26, commit `7137788`: Query Scope Outcome Interface Module. Public
+  contract: `resolve_query_scope_outcome(...)` names answerable, no-scope, and
+  unsupported outcomes while preserving stat-query and grounded database scope
+  behavior, current-century decade ambiguity, reversed-range ambiguity, manifest
+  coverage no-data outcomes, review reasons, and `StatQueryPlanningOutcome`
+  caller behavior. Verification is recorded in
+  `docs/architecture-current-opportunities-handoff-plan.md`.
 - 2026-05-25, commit `0270a05`: Grounded Database Template Catalog Module. Public contract: deterministic template SQL text, params, source detail, route ownership, unsupported policy, and user-facing grounded answers stay stable while each template owns stable `template_id`, match facts, route ownership, SQL assembly, source detail, and optional `QuerySpec` locally.
 - 2026-05-23, commit `d86086c`: LLM-Flavored Narration Guard Module, Grounded Database Planning Module, DuckDB Result Answer Assembly Module, and Biography Stat Claim Vocabulary Module. Public contract: DuckDB-backed stat and grounded database answers keep verified SQL/row/source behavior; LLM prose is fallback or narration only after structured facts are verified. Verification is recorded in `docs/archive/architecture/architecture-next-deepening-plan.md`.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Player Identity Authority Module. Public contract: Lahman player resolution, display metadata, ambiguity policy, suffix handling, and optional Retrosheet ID mapping live behind one authority while compatibility facades remain.
@@ -76,6 +91,13 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### UI and Output Presentation
 
+- 2026-05-26, commit `7137788`: Gradio Query Tab Wiring Module. Public contract:
+  `GradioQueryTabWiring` owns Query tab callback order, Gradio session-hash
+  extraction, pending/completed component mapping, stale completion no-ops, and
+  component id validation while preserving source JSON, SQL, rows, chat state,
+  conversation state, Ask-button state, callback API names, Browser smoke, and
+  Architecture tab trace publication. Verification is recorded in
+  `docs/architecture-current-opportunities-handoff-plan.md`.
 - 2026-05-23, commit `148ddd3`: Visible Evidence Presentation Module. Public contract: `AnswerPresenter` owns useful verification rows and SQL selection for multi-source answers while preserving common DuckDB stat display.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Query Output Contract Module. Public contract: Gradio pending, completed, and stale callback payload order lives behind a named output Adapter and the Browser smoke remains the visible proof.
 
@@ -87,6 +109,12 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### Architecture Context
 
+- 2026-05-26, commit `7137788`: Architecture Trace Publication Policy Adapter.
+  Public contract: `ArchitectureTracePublisher` owns Query-to-Architecture
+  animate-vs-record policy, session-scoped latest-run publication, and diagram
+  failure isolation while `ArchitectureDiagram` remains focused on rendering
+  and latest-run storage. Verification is recorded in
+  `docs/architecture-current-opportunities-handoff-plan.md`.
 - 2026-05-26, commits `fa57dda`, `78db668`, and `0427db6`: Architecture Test Status Adapter Module. Public contract: the Architecture Run All Tests button delegates pytest execution and parsing to a per-component status Adapter; mapped test failures mark only affected Modules as failing, collection/import errors do not produce false PASS badges, pytest runs from the repo root, and unmapped or incomplete statuses remain UNKNOWN.
 - 2026-05-25, commit `f9eeef2`: Baseball RAG Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
 - 2026-05-25, commit `5417b46`: Architecture Ledger Registry. Public contract: Current Opportunities list all active opportunities by domain area and date; Completed Modules record completed work by domain area, date, and commit hash; Frozen Seams and the Update Rule keep future context ingestion small.
@@ -112,6 +140,10 @@ These candidates were reviewed but should not be reopened without a fresh public
 - Biography Claim Consensus Presentation Module: dropped because biography claim verification presentation is already completed and current code has `BiographyStatClaimConsensusPresentation`.
 - Eval Gate Runner Module: dropped because Eval Reporting is already completed and CLI/HTTP payloads share `build_eval_report_payload`.
 - Verification Readiness Ledger Module: dropped unless the product decision is to make readiness commands/status a single source. `GET /health/verification` already covers operational verification readiness.
+- Verification Health Guardrail Projection Module: dropped during the 2026-05-26
+  review because package-safe eval manifest metadata and operational
+  verification health checks are already completed; reopen only with a concrete
+  `/health/verification` versus `/guardrails/coverage` behavior mismatch.
 
 ## Working Rules
 

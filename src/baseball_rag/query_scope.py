@@ -25,6 +25,30 @@ class QueryScope:
         return self.start_year == self.end_year
 
 
+@dataclass(frozen=True)
+class QueryScopeOutcome:
+    """Named result of resolving routed time facts."""
+
+    scope: QueryScope | None = None
+    answer: StructuredAnswer | None = None
+
+    def __post_init__(self) -> None:
+        if self.scope is not None and self.answer is not None:
+            raise ValueError("query scope outcome cannot contain both scope and answer")
+
+    @property
+    def is_answerable(self) -> bool:
+        return self.scope is not None
+
+    @property
+    def is_unsupported(self) -> bool:
+        return self.answer is not None
+
+    @property
+    def is_no_scope(self) -> bool:
+        return self.scope is None and self.answer is None
+
+
 def resolve_query_scope(
     time_period: TimePeriod | None,
     *,
@@ -36,23 +60,59 @@ def resolve_query_scope(
     validate_coverage: bool = True,
 ) -> QueryScope | StructuredAnswer | None:
     """Resolve routed time facts into an answerable scope or unsupported answer."""
+    outcome = resolve_query_scope_outcome(
+        time_period,
+        raw_question=raw_question,
+        stat=stat,
+        intent=intent,
+        coverage=coverage,
+        current_year=current_year,
+        validate_coverage=validate_coverage,
+    )
+    return outcome.answer if outcome.answer is not None else outcome.scope
+
+
+def resolve_query_scope_outcome(
+    time_period: TimePeriod | None,
+    *,
+    raw_question: str,
+    stat: str,
+    intent: str,
+    coverage: dict[str, Any] | None = None,
+    current_year: int | None = None,
+    validate_coverage: bool = True,
+    require_single_season: bool = False,
+    single_season_subject: str | None = None,
+) -> QueryScopeOutcome:
+    """Resolve routed time facts into an explicit scope outcome."""
     if time_period is None:
-        return None
+        return QueryScopeOutcome()
     current = _current_year() if current_year is None else current_year
     if _is_ambiguous_current_century_decade(time_period, raw_question, current):
-        return ambiguous_outcome(
-            answer=(
-                f"The decade in '{raw_question}' is ambiguous. "
-                "Use a full decade like 1920s or 2020s."
-            ),
-            intent=intent,
-            sources=[coverage_source()],
+        return QueryScopeOutcome(
+            answer=ambiguous_outcome(
+                answer=(
+                    f"The decade in '{raw_question}' is ambiguous. "
+                    "Use a full decade like 1920s or 2020s."
+                ),
+                intent=intent,
+                sources=[coverage_source()],
+            )
         )
 
     scope = _resolve_time_period(time_period, raw_question, current)
     if scope is None:
-        return None
+        return QueryScopeOutcome()
 
+    if require_single_season and not scope.is_single_season:
+        subject = single_season_subject or f"{stat} lookups"
+        return QueryScopeOutcome(
+            answer=ambiguous_outcome(
+                answer=f"{subject} need one season, not {scope.start_year}-{scope.end_year}.",
+                intent=intent,
+                sources=[coverage_source()],
+            )
+        )
     if validate_coverage:
         unsupported = _unsupported_for_scope(
             stat=stat,
@@ -61,8 +121,8 @@ def resolve_query_scope(
             coverage=coverage,
         )
         if unsupported is not None:
-            return unsupported
-    return scope
+            return QueryScopeOutcome(answer=unsupported)
+    return QueryScopeOutcome(scope=scope)
 
 
 def structured_stat_year_coverage() -> dict[str, Any]:
