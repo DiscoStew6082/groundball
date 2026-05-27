@@ -1229,6 +1229,19 @@ def test_docs_describe_current_adapter_surfaces() -> None:
     assert "`0427db6`" in context
 
 
+def test_architecture_overview_links_pathway_map_asset() -> None:
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    pathway_map_path = ROOT / "docs" / "architecture-pathways-large.svg"
+
+    assert pathway_map_path.exists()
+    pathway_map = pathway_map_path.read_text(encoding="utf-8")
+    assert (
+        "[Baseball RAG Architecture Pathway Map](architecture-pathways-large.svg)" in architecture
+    )
+    assert '<title id="title">Baseball RAG Architecture Pathway Map</title>' in pathway_map
+    assert "Not a pipeline" in pathway_map
+
+
 def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
     handoff = (
         ROOT
