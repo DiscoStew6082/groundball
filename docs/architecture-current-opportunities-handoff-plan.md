@@ -2,9 +2,9 @@
 
 Status: Completed implementation.
 
-This plan turns the 2026-05-26 architecture review into four worker-ready tracks
-for `/Volumes/Envoy/projects/baseball-rag`. `CONTEXT.md` remains the canonical
-front door. This file is the execution plan for the active opportunities below.
+Completed implementation ledger for the four tracks reviewed on 2026-05-26.
+`CONTEXT.md` remains the canonical front door. This file records the completed
+work and evidence for `/Volumes/Envoy/projects/baseball-rag`.
 Implementation landed on branch `disco-current-architecture-opportunities`;
 implementation commit `7137788` is recorded in `CONTEXT.md`.
 
@@ -15,7 +15,7 @@ the maintenance payoff.
 
 ## Scope
 
-Implement or audit these Modules in order of risk:
+Completed tracks, in original risk order:
 
 1. Gradio Query Tab Wiring Module.
 2. Query Scope Outcome Interface Module.
@@ -522,18 +522,18 @@ skill for dev work, use subagents wherever possible, run a code-review subagent
 after every task, commit before finishing, and if you push, verify CI is green.
 
 Start by reading CONTEXT.md and docs/architecture-current-opportunities-handoff-plan.md.
-The active handoff has four tracks:
+The completed ledger has four tracks:
 
 1. Worker A: Gradio Query Tab Wiring Module.
 2. Worker B: Query Scope Outcome Interface Module.
 3. Worker C: Architecture Trace Publication Policy Adapter.
 4. Worker D: Retrosheet Source Catalog Audit Module.
 
-Spawn subagents for disjoint work. Worker A and Worker B can start in parallel;
-Worker D should begin as an audit; Worker C should wait until Worker A's
-web_app.py edits are clear. Each worker must use TDD for code-changing slices,
-preserve public behavior, and report changed files plus tests run. After each
-worker, run a code-review subagent and address findings.
+Do not reopen these tracks without fresh public-behavior evidence or an explicit
+product decision. For any new follow-up, spawn subagents for disjoint work, use
+TDD for code-changing slices, preserve public behavior, and report changed files
+plus tests run. After each worker, run a code-review subagent and address
+findings.
 
 For UI-affecting work, start or reuse `uv run baseball-rag-ui`, open
 http://127.0.0.1:7861/ in the Codex in-app Browser, make the Browser visible,

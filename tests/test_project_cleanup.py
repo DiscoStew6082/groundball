@@ -1339,7 +1339,13 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
     assert "If the branch is pushed to GitHub, watch CI until it is green" in handoff
     assert "any unstaged changes are explained" in handoff
     assert "docs/architecture-current-opportunities-handoff-plan.md" in context
+    assert "completed 2026-05-26 four-track implementation ledger" in context
+    assert "for the active\n  2026-05-26 four-track worker handoff" not in context
     assert "Evidence and decision basis" in handoff
+    assert "Completed implementation ledger for the four tracks reviewed on 2026-05-26" in handoff
+    assert "execution plan for the active opportunities below" not in handoff
+    assert "\nImplement or audit these Modules in order of risk:" not in handoff
+    assert "The active handoff has four tracks:" not in handoff
     assert "Retrosheet Source Catalog Audit Module is audit-gated" in handoff
     assert "Completed as audit; no code catalog implemented" in handoff
     assert "no catalog Module until concrete friction" in handoff

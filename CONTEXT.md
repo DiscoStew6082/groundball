@@ -31,8 +31,7 @@ There is no `docs/adr/` directory in this repo yet. Treat this file as the curre
 
 - `README.md` for expanded product contract and demo vocabulary.
 - `docs/architecture.md` for the fuller architecture overview.
-- `docs/architecture-current-opportunities-handoff-plan.md` for the active
-  2026-05-26 four-track worker handoff.
+- `docs/architecture-current-opportunities-handoff-plan.md` for the completed 2026-05-26 four-track implementation ledger.
 - `docs/archive/architecture/architecture-active-opportunities-handoff-plan.md` for the completed implementation ledger covering the 2026-05-25 active-opportunity set.
 - `docs/archive/architecture/architecture-followup-worker-handoff-plan.md`, `docs/archive/architecture/architecture-next-deepening-plan.md`, and `docs/archive/architecture/architecture-fresh-deepening-handoff-plan.md` for completed implementation evidence.
 
