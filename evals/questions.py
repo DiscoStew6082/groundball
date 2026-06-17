@@ -218,7 +218,7 @@ def format_eval_report(report: EvalReport) -> str:
     )
 
     lines = [
-        "# Baseball RAG Eval Report",
+        "# Groundball Eval Report",
         "",
         f"- Command: `{report.command}`",
         f"- Mode: {report.mode}",

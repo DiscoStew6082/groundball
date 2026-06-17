@@ -1,4 +1,4 @@
-"""ArchitectureDiagram — Gradio Blocks component for the Baseball RAG pipeline diagram.
+"""ArchitectureDiagram — Gradio Blocks component for the Groundball pipeline diagram.
 
 Phase 3 of the Architecture Explorer plan.
 """
@@ -265,7 +265,7 @@ def _card_html(comp: DiagramComponent, extra_cls: str = "") -> str:
 
 
 class ArchitectureDiagram(gr.Blocks):
-    """Interactive Gradio Blocks component that renders the Baseball RAG architecture.
+    """Interactive Gradio Blocks component that renders the Groundball architecture.
 
     Parameters
     ----------
@@ -328,7 +328,7 @@ class ArchitectureDiagram(gr.Blocks):
 
         # ---- Build the UI --------------------------------------------------------
         with self:
-            gr.Markdown("### \U0001f3c6 Baseball RAG — Architecture Explorer")
+            gr.Markdown("### \U0001f3c6 Groundball — Architecture Explorer")
 
             with gr.Row():
                 # Left: diagram + footer

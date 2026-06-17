@@ -1,4 +1,4 @@
-"""Baseball RAG application."""
+"""Groundball application."""
 
 from baseball_rag.db import DATA_DIR
 

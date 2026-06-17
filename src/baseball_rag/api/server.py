@@ -1,4 +1,4 @@
-"""FastAPI server for Baseball RAG."""
+"""FastAPI server for Groundball."""
 
 import logging
 from dataclasses import asdict
@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from baseball_rag.answer_mode import AnswerMode
 
-app = FastAPI(title="Baseball RAG API")
+app = FastAPI(title="Groundball API")
 logger = logging.getLogger(__name__)
 
 

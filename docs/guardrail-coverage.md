@@ -1,4 +1,4 @@
-# Baseball RAG Guardrail Coverage
+# Groundball Guardrail Coverage
 
 ## Summary
 

@@ -1,7 +1,7 @@
 [project]
 name = "baseball-rag"
 version = "0.1.0"
-description = "Baseball RAG application — query MLB history with natural language"
+description = "Groundball application — query MLB history with natural language"
 requires-python = ">=3.11"
 dependencies = [
     "requests",

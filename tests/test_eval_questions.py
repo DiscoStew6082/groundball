@@ -395,7 +395,7 @@ def test_format_eval_report_includes_counts_coverage_and_live_note():
         )
     )
 
-    assert "# Baseball RAG Eval Report" in report
+    assert "# Groundball Eval Report" in report
     assert "- Command: `python -m evals.questions --report docs/eval-report.md`" in report
     assert (
         "- Release recommendation: **BLOCK - investigate deterministic eval "
@@ -574,7 +574,7 @@ def test_compare_to_baseline_pass_warn_and_block():
 def test_format_guardrail_report_groups_coverage_by_risk():
     report = format_guardrail_report(load_cases())
 
-    assert "# Baseball RAG Guardrail Coverage" in report
+    assert "# Groundball Guardrail Coverage" in report
     assert "## Summary" in report
     assert "- Unsupported guardrails:" in report
     assert "- SQL safety:" in report
@@ -782,7 +782,7 @@ def test_main_writes_guardrail_report(tmp_path: Path, monkeypatch):
         ]
     )
 
-    assert "# Baseball RAG Guardrail Coverage" in guardrail_path.read_text(encoding="utf-8")
+    assert "# Groundball Guardrail Coverage" in guardrail_path.read_text(encoding="utf-8")
 
 
 def test_main_blocks_release_when_no_deterministic_cases_attempted(tmp_path: Path):

@@ -2,12 +2,12 @@
 
 ## System Overview
 
-Baseball RAG is organized around one request lifecycle used by the CLI, API, and
+Groundball is organized around one request lifecycle used by the CLI, API, and
 Gradio UI. The lifecycle returns a `StructuredAnswer` with answer text, intent,
 sources, warnings, unsupported state, metadata, and trace information.
 
 For a non-linear visual overview, see the
-[Baseball RAG Architecture Pathway Map](architecture-pathways-large.svg).
+[Groundball Architecture Pathway Map](architecture-pathways-large.svg).
 
 ```text
 Question

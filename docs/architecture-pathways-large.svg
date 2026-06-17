@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1650" viewBox="0 0 2400 1650" role="img" aria-labelledby="title desc">
-  <title id="title">Baseball RAG Architecture Pathway Map</title>
-  <desc id="desc">A non-linear architecture map showing Baseball RAG as a set of branching and rejoining pathways around request lifecycle, routing, evidence, UI, tracing, and verification.</desc>
+  <title id="title">Groundball Architecture Pathway Map</title>
+  <desc id="desc">A non-linear architecture map showing Groundball as a set of branching and rejoining pathways around request lifecycle, routing, evidence, UI, tracing, and verification.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
       <path d="M 1 1 L 11 6 L 1 11 z" fill="#29445a"/>
@@ -39,7 +39,7 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="2400" height="1650"/>
-  <text class="title" x="90" y="92">Baseball RAG Architecture Pathway Map</text>
+  <text class="title" x="90" y="92">Groundball Architecture Pathway Map</text>
   <text class="subtitle" x="92" y="136">Not a pipeline: a routed evidence system with branching answer paths, shared provenance, UI state, tracing, and verification loops.</text>
 
   <rect class="boundary" x="58" y="174" width="2284" height="1376"/>

@@ -1,4 +1,4 @@
-# Baseball RAG Eval Report
+# Groundball Eval Report
 
 - Command: `python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json`
 - Mode: answer

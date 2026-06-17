@@ -1,4 +1,4 @@
-"""Baseball RAG — Architecture Explorer module.
+"""Groundball — Architecture Explorer module.
 
 Exports the public API for the diagram component registry and tracing primitives.
 """

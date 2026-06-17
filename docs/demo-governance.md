@@ -1,6 +1,6 @@
 # Five-Minute AI Governance Demo
 
-This walkthrough shows Baseball RAG as an eval-gated, audit-ready AI assistant rather than a generic chatbot. It uses deterministic commands by default, so it does not require LM Studio, external LMs, or live services.
+This walkthrough shows Groundball as an eval-gated, audit-ready AI assistant rather than a generic chatbot. It uses deterministic commands by default, so it does not require LM Studio, external LMs, or live services.
 
 ## 1. Run The Deterministic Release Gate
 
@@ -106,4 +106,4 @@ Talking point: unsupported or ambiguous answers are not just rejected; they can 
 
 Use this one-sentence framing:
 
-> Baseball RAG is a grounded baseball analytics assistant, but the portfolio story is the release-confidence framework: deterministic eval gates, guardrail coverage, audit-ready provenance, and human-in-the-loop review.
+> Groundball is a grounded baseball analytics assistant, but the portfolio story is the release-confidence framework: deterministic eval gates, guardrail coverage, audit-ready provenance, and human-in-the-loop review.

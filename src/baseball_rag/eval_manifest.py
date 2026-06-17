@@ -177,7 +177,7 @@ def format_guardrail_report(cases: Sequence[ManifestCase]) -> str:
     """Render deterministic guardrail coverage from the eval manifest."""
     groups = _guardrail_groups(cases)
     lines = [
-        "# Baseball RAG Guardrail Coverage",
+        "# Groundball Guardrail Coverage",
         "",
         "## Summary",
         "",
@@ -296,7 +296,7 @@ def _case_payloads(cases: Sequence[ManifestCase]) -> list[dict[str, Any]]:
 def _unavailable_guardrail_report(reason: str) -> str:
     return "\n".join(
         [
-            "# Baseball RAG Guardrail Coverage",
+            "# Groundball Guardrail Coverage",
             "",
             "## Summary",
             "",

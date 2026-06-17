@@ -1,4 +1,4 @@
-"""Baseball RAG query engine — CLI entry point."""
+"""Groundball query engine — CLI entry point."""
 
 import sys
 
@@ -14,7 +14,7 @@ def answer(question: str) -> str:
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] == "--help":
         print(
-            "Baseball RAG Query Engine\n"
+            "Groundball Query Engine\n"
             "Usage: baseball-rag 'your question'\n\n"
             "Examples:\n"
             "  baseball-rag 'who had the most RBIs in 1962'\n"

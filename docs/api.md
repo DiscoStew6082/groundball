@@ -232,7 +232,7 @@ schemas.
   "failed": [],
   "skipped": [],
   "warnings": [],
-  "markdown": "# Baseball RAG Eval Report\n..."
+  "markdown": "# Groundball Eval Report\n..."
 }
 ```
 
@@ -286,7 +286,7 @@ with a reason and empty coverage counts.
     "provenance_source_visibility": [],
     "live_manual": []
   },
-  "markdown": "# Baseball RAG Guardrail Coverage\n..."
+  "markdown": "# Groundball Guardrail Coverage\n..."
 }
 ```
 
@@ -309,7 +309,7 @@ with a reason and empty coverage counts.
     "provenance_source_visibility": [],
     "live_manual": []
   },
-  "markdown": "# Baseball RAG Guardrail Coverage\n..."
+  "markdown": "# Groundball Guardrail Coverage\n..."
 }
 ```
 

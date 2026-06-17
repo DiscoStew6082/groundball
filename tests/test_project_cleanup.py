@@ -1235,10 +1235,8 @@ def test_architecture_overview_links_pathway_map_asset() -> None:
 
     assert pathway_map_path.exists()
     pathway_map = pathway_map_path.read_text(encoding="utf-8")
-    assert (
-        "[Baseball RAG Architecture Pathway Map](architecture-pathways-large.svg)" in architecture
-    )
-    assert '<title id="title">Baseball RAG Architecture Pathway Map</title>' in pathway_map
+    assert "[Groundball Architecture Pathway Map](architecture-pathways-large.svg)" in architecture
+    assert '<title id="title">Groundball Architecture Pathway Map</title>' in pathway_map
     assert "Not a pipeline" in pathway_map
 
 
@@ -1388,7 +1386,7 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
 def test_context_file_captures_current_architecture_findings() -> None:
     context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
 
-    assert "Baseball RAG Context" in context
+    assert "Groundball Context" in context
     assert "canonical current architecture and domain context" in context
     assert (
         "open `README.md`, `docs/architecture.md`, or the completed architecture ledgers" in context

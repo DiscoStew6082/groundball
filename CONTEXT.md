@@ -1,6 +1,6 @@
-# Baseball RAG Context
+# Groundball Context
 
-This file is the canonical current architecture and domain context for Baseball RAG. Start here for architecture review or worker handoff planning; open `README.md`, `docs/architecture.md`, or the completed architecture ledgers under `docs/archive/architecture/` only when you need supporting detail.
+This file is the canonical current architecture and domain context for Groundball. Start here for architecture review or worker handoff planning; open `README.md`, `docs/architecture.md`, or the completed architecture ledgers under `docs/archive/architecture/` only when you need supporting detail.
 
 ## Architecture Vocabulary
 
@@ -17,7 +17,7 @@ Use these words consistently:
 
 ## Domain Contract
 
-- Baseball RAG answers historical MLB questions with natural language in and grounded evidence out.
+- Groundball answers historical MLB questions with natural language in and grounded evidence out.
 - DuckDB/Lahman remains the primary factual/stat authority for structured stat answers, grounded database answers, player identity, and primary biography stat-claim verification.
 - Retrosheet remains optional secondary consensus evidence for biography stat claims, not a replacement factual authority for all query paths.
 - LLMs may classify, narrate, and generate biography prose, but structured baseball facts must stay verified against DuckDB/Lahman and optional Retrosheet evidence where supported.
@@ -116,7 +116,7 @@ Completed entries must not ask future agents to finish anything. If future work 
   and latest-run storage. Verification is recorded in
   `docs/architecture-current-opportunities-handoff-plan.md`.
 - 2026-05-26, commits `fa57dda`, `78db668`, and `0427db6`: Architecture Test Status Adapter Module. Public contract: the Architecture Run All Tests button delegates pytest execution and parsing to a per-component status Adapter; mapped test failures mark only affected Modules as failing, collection/import errors do not produce false PASS badges, pytest runs from the repo root, and unmapped or incomplete statuses remain UNKNOWN.
-- 2026-05-25, commit `f9eeef2`: Baseball RAG Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
+- 2026-05-25, commit `f9eeef2`: Groundball Context. Public contract: this file is the root architecture context, vocabulary source, active-opportunity front door, and working-rules summary for future improvement rounds.
 - 2026-05-25, commit `5417b46`: Architecture Ledger Registry. Public contract: Current Opportunities list all active opportunities by domain area and date; Completed Modules record completed work by domain area, date, and commit hash; Frozen Seams and the Update Rule keep future context ingestion small.
 
 ### Frozen Seams

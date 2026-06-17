@@ -490,7 +490,7 @@ class TestApi:
         assert data["include_live"] is False
         assert data["summary"]["attempted"] == 26
         assert data["summary"]["recommendation"] in {"PASS", "WARN"}
-        assert data["markdown"].startswith("# Baseball RAG Eval Report")
+        assert data["markdown"].startswith("# Groundball Eval Report")
 
     def test_evals_run_include_live_adds_llm_warning(self, monkeypatch):
         monkeypatch.setattr(
@@ -504,7 +504,7 @@ class TestApi:
                 "results": {"passed": [], "failed": [], "skipped": []},
                 "failed": [],
                 "skipped": [],
-                "markdown": "# Baseball RAG Eval Report\n",
+                "markdown": "# Groundball Eval Report\n",
                 "warnings": [],
             },
         )
@@ -542,7 +542,7 @@ class TestApi:
         data = response.json()
         assert data["summary"]["unsupported_guardrails"] >= 1
         assert data["categories"]["unsupported"]
-        assert data["markdown"].startswith("# Baseball RAG Guardrail Coverage")
+        assert data["markdown"].startswith("# Groundball Guardrail Coverage")
 
     def test_guardrails_coverage_reports_unavailable_when_manifest_is_absent(
         self,

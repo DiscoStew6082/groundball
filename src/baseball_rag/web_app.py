@@ -1,4 +1,4 @@
-"""Gradio dashboard for Baseball RAG query and architecture inspection."""
+"""Gradio dashboard for Groundball query and architecture inspection."""
 
 from __future__ import annotations
 
@@ -154,10 +154,10 @@ def build_dashboard() -> gr.Blocks:
 
     arch_diagram = ArchitectureDiagram(registry=get_registry())
 
-    dashboard = gr.Blocks(title="Baseball RAG — Architecture Explorer")
+    dashboard = gr.Blocks(title="Groundball — Architecture Explorer")
 
     with dashboard:
-        gr.Markdown("## ⚾ Baseball RAG — Query Engine & Architecture Explorer")
+        gr.Markdown("## ⚾ Groundball — Query Engine & Architecture Explorer")
 
         with gr.Tab("Query"):
             chat_state = gr.State([])
@@ -365,7 +365,7 @@ def _main_with_defaults(
     default_ttl_seconds: str | None,
 ) -> None:
     """Run the web app CLI with caller-provided defaults."""
-    parser = argparse.ArgumentParser(description="Launch the Baseball RAG Gradio dashboard.")
+    parser = argparse.ArgumentParser(description="Launch the Groundball Gradio dashboard.")
     parser.add_argument("--server-name", default=default_server_name)
     parser.add_argument("--server-port", default=default_server_port, type=int)
     parser.add_argument(
