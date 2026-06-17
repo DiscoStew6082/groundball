@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-git clone <repo-url>
-cd baseball-rag
+git clone https://github.com/DiscoStew6082/groundball.git
+cd groundball
 uv sync
 ```
 
@@ -45,14 +45,15 @@ uv run python -m baseball_rag.db.download
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | OpenAI-compatible LM Studio base URL |
 | `LMSTUDIO_MODEL` | `google/gemma-4-26b-a4b` | Model name sent to LM Studio |
 | `LMSTUDIO_TIMEOUT_SECONDS` | `20` | Request timeout for LM Studio calls |
-| `BASEBALL_RAG_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue |
-| `BASEBALL_RAG_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `0` disables it |
+| `GROUNDBALL_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue; `BASEBALL_RAG_REVIEW_QUEUE_PATH` remains a compatibility alias |
+| `GROUNDBALL_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias; `0` disables it |
+| `GROUNDBALL_CURRENT_YEAR` | current system year | Optional deterministic override for relative-year query parsing; `BASEBALL_RAG_CURRENT_YEAR` remains a compatibility alias |
 
 ## Running Locally
 
 ```bash
 # CLI (stat query — DuckDB)
-uv run python -m baseball_rag.cli "who had the most RBIs in 1962"
+uv run groundball "who had the most RBIs in 1962"
 
 # API server (port 8000)
 uv run uvicorn baseball_rag.api.server:app --reload
@@ -61,7 +62,7 @@ uv run uvicorn baseball_rag.api.server:app --reload
 uv run python -m baseball_rag.web_app
 
 # Short local UI entrypoint used by the Codex workflow (port 7861)
-uv run baseball-rag-ui
+uv run groundball-ui
 
 # Web UI with a one-hour process TTL
 uv run python -m baseball_rag.web_app --ttl-seconds 3600
@@ -154,7 +155,7 @@ or the Gradio UI:
 4. Smoke the live UI in the Codex in-app Browser:
 
    ```bash
-   uv run baseball-rag-ui
+   uv run groundball-ui
    ```
 
    Open `http://127.0.0.1:7861/`, run `who had the most RBIs in 1962`,

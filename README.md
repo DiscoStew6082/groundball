@@ -1,6 +1,6 @@
 # Groundball: Eval-Gated Baseball Analytics With Audit-Ready Provenance
 
-[![CI](https://github.com/DiscoStew6082/baseball-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/DiscoStew6082/baseball-rag/actions/workflows/ci.yml)
+[![CI](https://github.com/DiscoStew6082/groundball/actions/workflows/ci.yml/badge.svg)](https://github.com/DiscoStew6082/groundball/actions/workflows/ci.yml)
 
 Groundball is a local-first question answering system for MLB history built around one uncomfortable fact: models hallucinate real baseball stats. It routes natural language questions to grounded sources, answers structured questions from DuckDB, uses the local LLM only where prose is appropriate, and returns provenance with the rows, SQL, checksums, dataset license metadata, and verification results used to support the answer.
 
@@ -112,14 +112,14 @@ curl -s http://127.0.0.1:8000/sources
 CLI:
 
 ```bash
-uv run baseball-rag "career home run leaders"
-uv run baseball-rag "who was Babe Ruth"
+uv run groundball "career home run leaders"
+uv run groundball "who was Babe Ruth"
 ```
 
 Gradio UI:
 
 ```bash
-uv run baseball-rag-ui
+uv run groundball-ui
 ```
 
 The short UI command binds to `127.0.0.1:7861` and runs until you stop it with
@@ -127,10 +127,10 @@ Ctrl-C. Add a TTL only for short smoke tests where you want the process to exit
 automatically:
 
 ```bash
-uv run baseball-rag-ui --ttl-seconds 300
+uv run groundball-ui --ttl-seconds 300
 ```
 
-You can also set `BASEBALL_RAG_WEB_APP_TTL_SECONDS`; `0` or an unset value disables
+You can also set `GROUNDBALL_WEB_APP_TTL_SECONDS`; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias. `0` or an unset value disables
 the TTL.
 
 The UI shows the answer, evidence table, source JSON, and SQL for query paths that generate SQL.

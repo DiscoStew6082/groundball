@@ -101,52 +101,6 @@ wheels = [
 ]
 
 [[package]]
-name = "baseball-rag"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "duckdb" },
-    { name = "fastapi" },
-    { name = "gradio" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "typer" },
-    { name = "unidecode" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-    { name = "types-requests" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "duckdb" },
-    { name = "fastapi" },
-    { name = "gradio" },
-    { name = "httpx", marker = "extra == 'dev'" },
-    { name = "mypy", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "requests" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "typer" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.20260508" },
-    { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.33.0.20260508" },
-    { name = "unidecode", specifier = ">=1.4.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "brotli"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -550,6 +504,52 @@ sdist = { url = "https://files.pythonhosted.org/packages/52/36/bbdede67400277bef
 wheels = [
     { url = "https://files.pythonhosted.org/packages/28/27/3d6dcadc8a3214d8522c1e7f6a19554e33659be44546d44a2f7572ac7d2a/groovy-0.1.2-py3-none-any.whl", hash = "sha256:7f7975bab18c729a257a8b1ae9dcd70b7cafb1720481beae47719af57c35fa64", size = 14090, upload-time = "2025-02-28T20:24:55.152Z" },
 ]
+
+[[package]]
+name = "groundball"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "duckdb" },
+    { name = "fastapi" },
+    { name = "gradio" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "typer" },
+    { name = "unidecode" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+    { name = "types-requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb" },
+    { name = "fastapi" },
+    { name = "gradio" },
+    { name = "httpx", marker = "extra == 'dev'" },
+    { name = "mypy", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests" },
+    { name = "ruff", marker = "extra == 'dev'" },
+    { name = "typer" },
+    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.20260508" },
+    { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.33.0.20260508" },
+    { name = "unidecode", specifier = ">=1.4.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "h11"

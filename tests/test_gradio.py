@@ -178,11 +178,11 @@ class TestGradio:
         assert close_calls == [False]
         assert block_calls == [True]
 
-    def test_main_reads_ttl_from_env(self, monkeypatch):
+    def test_main_reads_ttl_from_groundball_env(self, monkeypatch):
         """The module entrypoint passes env-configured TTL to launch."""
         calls = []
 
-        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "90")
+        monkeypatch.setenv("GROUNDBALL_WEB_APP_TTL_SECONDS", "90")
         monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
 
         web_app.main([])
@@ -195,11 +195,22 @@ class TestGradio:
             }
         ]
 
+    def test_main_keeps_baseball_rag_env_ttl_as_compatibility_alias(self, monkeypatch):
+        """Old env vars keep existing local scripts working during the rename."""
+        calls = []
+
+        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "90")
+        monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
+
+        web_app.main([])
+
+        assert calls[0]["ttl_seconds"] == 90.0
+
     def test_main_cli_ttl_overrides_env(self, monkeypatch):
         """The CLI TTL flag wins over the environment variable."""
         calls = []
 
-        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "90")
+        monkeypatch.setenv("GROUNDBALL_WEB_APP_TTL_SECONDS", "90")
         monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
 
         web_app.main(["--ttl-seconds", "0"])
@@ -226,20 +237,24 @@ class TestGradio:
         """The short UI command still honors env-configured TTL values."""
         calls = []
 
-        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "300")
+        monkeypatch.setenv("GROUNDBALL_WEB_APP_TTL_SECONDS", "300")
         monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
 
         web_app.dev_main([])
 
         assert calls[0]["ttl_seconds"] == 300.0
 
-    def test_project_exposes_short_ui_script(self):
-        """pyproject exposes a memorable command for local browser QA."""
+    def test_project_exposes_groundball_and_compatibility_scripts(self):
+        """pyproject exposes renamed commands while preserving old aliases."""
         import tomllib
         from pathlib import Path
 
         pyproject = tomllib.loads(Path("pyproject.toml").read_text())
 
+        assert pyproject["project"]["name"] == "groundball"
+        assert pyproject["project"]["scripts"]["groundball"] == "baseball_rag.cli:main"
+        assert pyproject["project"]["scripts"]["groundball-ui"] == ("baseball_rag.web_app:dev_main")
+        assert pyproject["project"]["scripts"]["baseball-rag"] == "baseball_rag.cli:main"
         assert pyproject["project"]["scripts"]["baseball-rag-ui"] == (
             "baseball_rag.web_app:dev_main"
         )
@@ -248,7 +263,7 @@ class TestGradio:
         """Invalid environment TTL values fail before launching Gradio."""
         calls = []
 
-        monkeypatch.setenv("BASEBALL_RAG_WEB_APP_TTL_SECONDS", "inf")
+        monkeypatch.setenv("GROUNDBALL_WEB_APP_TTL_SECONDS", "inf")
         monkeypatch.setattr(web_app, "_launch_dashboard", lambda **kwargs: calls.append(kwargs))
 
         with pytest.raises(SystemExit):

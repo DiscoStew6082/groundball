@@ -25,7 +25,8 @@ if TYPE_CHECKING:
     from baseball_rag.arch.diagram import ArchitectureDiagram
 
 
-_TTL_ENV_VAR = "BASEBALL_RAG_WEB_APP_TTL_SECONDS"
+_TTL_ENV_VAR = "GROUNDBALL_WEB_APP_TTL_SECONDS"
+_LEGACY_TTL_ENV_VAR = "BASEBALL_RAG_WEB_APP_TTL_SECONDS"
 _DEFAULT_SERVER_NAME = "0.0.0.0"
 _DEFAULT_SERVER_PORT = 7860
 _DEV_SERVER_NAME = "127.0.0.1"
@@ -357,6 +358,14 @@ def _launch_dashboard(
     demo.launch(server_name=server_name, server_port=server_port)
 
 
+def _configured_ttl(default_ttl_seconds: str | None) -> str | None:
+    """Return the renamed TTL env value with legacy env-var fallback."""
+    return os.environ.get(
+        _TTL_ENV_VAR,
+        os.environ.get(_LEGACY_TTL_ENV_VAR, default_ttl_seconds),
+    )
+
+
 def _main_with_defaults(
     argv: list[str] | None,
     *,
@@ -373,14 +382,13 @@ def _main_with_defaults(
         default=None,
         help=(
             "Optional process time to live in seconds. "
-            f"May also be set with {_TTL_ENV_VAR}. Use 0 to disable."
+            f"May also be set with {_TTL_ENV_VAR}; {_LEGACY_TTL_ENV_VAR} is "
+            "still accepted as a compatibility alias. Use 0 to disable."
         ),
     )
     args = parser.parse_args(argv)
     raw_ttl = (
-        args.ttl_seconds
-        if args.ttl_seconds is not None
-        else os.environ.get(_TTL_ENV_VAR, default_ttl_seconds)
+        args.ttl_seconds if args.ttl_seconds is not None else _configured_ttl(default_ttl_seconds)
     )
     try:
         ttl_seconds = _parse_ttl_seconds(raw_ttl)

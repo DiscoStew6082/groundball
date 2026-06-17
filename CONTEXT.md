@@ -152,5 +152,5 @@ These candidates were reviewed but should not be reopened without a fresh public
 - Keep DuckDB/Lahman as the primary factual/stat authority.
 - Preserve CLI, HTTP Adapter, Gradio, source JSON, SQL, metadata, review, and eval payload shapes unless a public-behavior test proves an intentional change.
 - Run focused verification after each slice. For broader changes, run `uv run ruff check src/ tests/ evals/`, `uv run mypy src/`, `uv run pytest -q`, and the deterministic eval gate.
-- For UI-affecting changes, start the local UI when needed with `uv run baseball-rag-ui`, use the Codex in-app Browser at `http://127.0.0.1:7861/`, smoke `who had the most RBIs in 1962`, and keep the dev server running.
+- For UI-affecting changes, start the local UI when needed with `uv run groundball-ui`, use the Codex in-app Browser at `http://127.0.0.1:7861/`, smoke `who had the most RBIs in 1962`, and keep the dev server running.
 - A code-changing task is complete only after review, commit, and an explanation of any unstaged changes.

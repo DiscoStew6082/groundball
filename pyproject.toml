@@ -1,5 +1,5 @@
 [project]
-name = "baseball-rag"
+name = "groundball"
 version = "0.1.0"
 description = "Groundball application — query MLB history with natural language"
 requires-python = ">=3.11"
@@ -26,6 +26,8 @@ dev = [
 ]
 
 [project.scripts]
+groundball = "baseball_rag.cli:main"
+groundball-ui = "baseball_rag.web_app:dev_main"
 baseball-rag = "baseball_rag.cli:main"
 baseball-rag-ui = "baseball_rag.web_app:dev_main"
 

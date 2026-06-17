@@ -75,9 +75,17 @@ def enqueue_review_item(question: str, answer: StructuredAnswer) -> dict[str, An
     return review_payload(item)
 
 
+_REVIEW_QUEUE_ENV_VAR = "GROUNDBALL_REVIEW_QUEUE_PATH"
+_LEGACY_REVIEW_QUEUE_ENV_VAR = "BASEBALL_RAG_REVIEW_QUEUE_PATH"
+
+
 def review_queue_path() -> Path:
     """Return the configured local review queue path."""
-    return Path(os.environ.get("BASEBALL_RAG_REVIEW_QUEUE_PATH", DEFAULT_REVIEW_QUEUE_PATH))
+    configured = os.environ.get(
+        _REVIEW_QUEUE_ENV_VAR,
+        os.environ.get(_LEGACY_REVIEW_QUEUE_ENV_VAR, DEFAULT_REVIEW_QUEUE_PATH),
+    )
+    return Path(configured)
 
 
 def persist_review_item(

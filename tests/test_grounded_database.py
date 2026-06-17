@@ -807,7 +807,7 @@ class TestGroundedDatabaseProvenance:
         from baseball_rag.routing.query_router import TimePeriod, TimePeriodType
         from baseball_rag.service import _answer_grounded_database_question
 
-        monkeypatch.setenv("BASEBALL_RAG_CURRENT_YEAR", "1937")
+        monkeypatch.setenv("GROUNDBALL_CURRENT_YEAR", "1937")
         decision = GroundedDatabaseQuestionCase(
             raw_question="Who played for the Braves last year?",
             time_period=TimePeriod(

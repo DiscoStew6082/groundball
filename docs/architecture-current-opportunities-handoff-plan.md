@@ -4,7 +4,7 @@ Status: Completed implementation.
 
 Completed implementation ledger for the four tracks reviewed on 2026-05-26.
 `CONTEXT.md` remains the canonical front door. This file records the completed
-work and evidence for `/Volumes/Envoy/projects/baseball-rag`.
+work and evidence for `/Volumes/Envoy/projects/groundball`.
 Implementation landed on branch `disco-current-architecture-opportunities`;
 implementation commit `7137788` is recorded in `CONTEXT.md`.
 
@@ -71,7 +71,7 @@ Evidence and decision basis:
 - Preserve CLI, HTTP Adapter, Gradio, source JSON, SQL, metadata, review, and
   eval payload shapes unless a public-behavior test proves an intentional
   change.
-- For UI-affecting changes, start the local UI with `uv run baseball-rag-ui`,
+- For UI-affecting changes, start the local UI with `uv run groundball-ui`,
   open `http://127.0.0.1:7861/` in the Codex in-app Browser, make the Browser
   visible, run `who had the most RBIs in 1962`, confirm rows, source JSON, SQL,
   enabled Ask button state, and Architecture tab trace visibility, and keep the
@@ -517,7 +517,7 @@ evidence belong in the final coordinator report.
 Use this prompt to continue in a new Codex session:
 
 ```text
-You are in /Volumes/Envoy/projects/baseball-rag. Follow AGENTS.md: use the tdd
+You are in /Volumes/Envoy/projects/groundball. Follow AGENTS.md: use the tdd
 skill for dev work, use subagents wherever possible, run a code-review subagent
 after every task, commit before finishing, and if you push, verify CI is green.
 
@@ -535,7 +535,7 @@ TDD for code-changing slices, preserve public behavior, and report changed files
 plus tests run. After each worker, run a code-review subagent and address
 findings.
 
-For UI-affecting work, start or reuse `uv run baseball-rag-ui`, open
+For UI-affecting work, start or reuse `uv run groundball-ui`, open
 http://127.0.0.1:7861/ in the Codex in-app Browser, make the Browser visible,
 run `who had the most RBIs in 1962`, verify rows/source JSON/SQL/Ask button
 state, check the Architecture tab, and keep the dev server running.

@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 class Layer(Enum):
-    """Vertical layer in the baseball-rag architecture stack."""
+    """Vertical layer in the Groundball architecture stack."""
 
     API = "api"
     ROUTING = "routing"

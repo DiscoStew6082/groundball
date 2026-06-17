@@ -15,10 +15,11 @@ def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] == "--help":
         print(
             "Groundball Query Engine\n"
-            "Usage: baseball-rag 'your question'\n\n"
+            "Usage: groundball 'your question'\n\n"
+            "Compatibility alias: baseball-rag\n\n"
             "Examples:\n"
-            "  baseball-rag 'who had the most RBIs in 1962'\n"
-            "  baseball-rag 'career home run leaders'\n"
+            "  groundball 'who had the most RBIs in 1962'\n"
+            "  groundball 'career home run leaders'\n"
         )
         sys.exit(0)
 

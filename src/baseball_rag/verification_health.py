@@ -42,7 +42,7 @@ def operational_verification_health() -> dict[str, Any]:
                 "--guardrail-report docs/guardrail-coverage.md "
                 "--json-report docs/eval-report.json --baseline evals/baseline.json"
             ),
-            "browser_smoke": "uv run baseball-rag-ui",
+            "browser_smoke": "uv run groundball-ui",
         },
     }
 

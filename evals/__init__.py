@@ -1,1 +1,1 @@
-"""Golden evaluation helpers for baseball-rag."""
+"""Golden evaluation helpers for Groundball."""

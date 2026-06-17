@@ -1,6 +1,6 @@
 version: 1
 description: >
-  Golden evaluation set for grounded baseball-rag behavior. Each item names the
+  Golden evaluation set for Groundball's grounded behavior. Each item names the
   intended route, expected answer shape, provenance requirements, and edge cases
   that should remain unsupported rather than guessed.
 minimum_pass_rate: 0.85

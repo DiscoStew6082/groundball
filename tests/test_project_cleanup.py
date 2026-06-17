@@ -1330,7 +1330,7 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
     assert "DuckDB/Lahman remains the primary factual/stat authority" in handoff
     assert "Do not add a stored corpus, vector index, or Chroma replacement" in handoff
     assert "http://127.0.0.1:7861/" in handoff
-    assert "uv run baseball-rag-ui" in handoff
+    assert "uv run groundball-ui" in handoff
     assert "make the Browser visible" in handoff
     assert "uv run ruff check src/ tests/ evals/" in handoff
     assert "uv run pytest -q" in handoff
@@ -1473,7 +1473,7 @@ def test_context_file_captures_current_architecture_findings() -> None:
         assert filtered_candidate in context
 
     assert "http://127.0.0.1:7861/" in context
-    assert "uv run baseball-rag-ui" in context
+    assert "uv run groundball-ui" in context
     assert "keep the dev server running" in context
     assert "Use TDD for code-changing slices" in context
     assert "run a code-review subagent after every task" in context

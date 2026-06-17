@@ -13,7 +13,7 @@ uv run python -m evals.questions
 Optional UI:
 
 ```bash
-uv run python -m baseball_rag.web_app
+uv run groundball-ui
 ```
 
 ## Script

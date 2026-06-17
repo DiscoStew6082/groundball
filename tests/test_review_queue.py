@@ -111,7 +111,7 @@ def test_review_payload_and_jsonl_round_trip(tmp_path):
 
 
 def test_enqueue_review_item_owns_build_persist_payload_choreography(tmp_path, monkeypatch):
-    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+    monkeypatch.setenv("GROUNDBALL_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
     answer = StructuredAnswer(
         answer="No grounded result found.",
         intent="stat_query",
@@ -124,6 +124,21 @@ def test_enqueue_review_item_owns_build_persist_payload_choreography(tmp_path, m
     assert payload is not None
     assert payload["queued"] is True
     assert payload["reason"] == "unsupported"
+    assert load_review_items(tmp_path / "review.jsonl")[0].id == payload["item_id"]
+
+
+def test_enqueue_review_item_honors_legacy_baseball_rag_queue_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+    answer = StructuredAnswer(
+        answer="No grounded result found.",
+        intent="stat_query",
+        unsupported=True,
+        metadata={"query_id": "q_same"},
+    )
+
+    payload = enqueue_review_item("who led MLB in vibes", answer)
+
+    assert payload is not None
     assert load_review_items(tmp_path / "review.jsonl")[0].id == payload["item_id"]
 
 

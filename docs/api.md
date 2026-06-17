@@ -53,7 +53,7 @@ deterministic and does not call the LLM.
     "focused": "uv run pytest tests/test_api.py -q",
     "full": "uv run pytest -q",
     "eval_gate": "uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json",
-    "browser_smoke": "uv run baseball-rag-ui"
+    "browser_smoke": "uv run groundball-ui"
   }
 }
 ```
@@ -317,7 +317,7 @@ with a reason and empty coverage counts.
 
 ### `GET /review-queue`
 
-Return the latest local human-review queue snapshots. The queue is append-only JSONL at `data/review_queue.jsonl` by default; set `BASEBALL_RAG_REVIEW_QUEUE_PATH` to override it.
+Return the latest local human-review queue snapshots. The queue is append-only JSONL at `data/review_queue.jsonl` by default; set `GROUNDBALL_REVIEW_QUEUE_PATH` to override it. `BASEBALL_RAG_REVIEW_QUEUE_PATH` remains a compatibility alias.
 
 **Query parameters**
 

@@ -98,3 +98,37 @@ def test_coverage_no_data_uses_manifest_range():
     assert isinstance(result, StructuredAnswer)
     assert result.unsupported_reason == "no_data"
     assert "1871-2025" in result.answer
+
+
+def test_relative_year_scope_uses_groundball_current_year_env(monkeypatch):
+    monkeypatch.setenv("GROUNDBALL_CURRENT_YEAR", "1937")
+
+    result = resolve_query_scope_outcome(
+        TimePeriod(
+            type=TimePeriodType.RELATIVE,
+            value={"direction": "past", "unit": "year", "count": 1},
+        ),
+        raw_question="who played for the Braves last year",
+        stat="G",
+        intent="grounded_database_question",
+        coverage={"min": 1871, "max": 2025},
+    )
+
+    assert result.scope == QueryScope(1936, 1936)
+
+
+def test_relative_year_scope_keeps_baseball_rag_current_year_env_alias(monkeypatch):
+    monkeypatch.setenv("BASEBALL_RAG_CURRENT_YEAR", "1937")
+
+    result = resolve_query_scope_outcome(
+        TimePeriod(
+            type=TimePeriodType.RELATIVE,
+            value={"direction": "past", "unit": "year", "count": 1},
+        ),
+        raw_question="who played for the Braves last year",
+        stat="G",
+        intent="grounded_database_question",
+        coverage={"min": 1871, "max": 2025},
+    )
+
+    assert result.scope == QueryScope(1936, 1936)

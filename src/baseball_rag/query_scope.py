@@ -244,8 +244,15 @@ def _explicit_decade_start(raw_question: str, value: int) -> int | None:
     return start_year if start_year % 100 == value else None
 
 
+_CURRENT_YEAR_ENV_VAR = "GROUNDBALL_CURRENT_YEAR"
+_LEGACY_CURRENT_YEAR_ENV_VAR = "BASEBALL_RAG_CURRENT_YEAR"
+
+
 def _current_year() -> int:
-    configured = os.environ.get("BASEBALL_RAG_CURRENT_YEAR")
+    configured = os.environ.get(
+        _CURRENT_YEAR_ENV_VAR,
+        os.environ.get(_LEGACY_CURRENT_YEAR_ENV_VAR),
+    )
     if configured is not None:
         try:
             return int(configured)

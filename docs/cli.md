@@ -1,35 +1,35 @@
 # CLI Reference
 
-## `baseball-rag`
+## `groundball`
 
 Single command for ad-hoc queries against the shared answer pipeline.
 
 ### Usage
 
 ```bash
-uv run python -m baseball_rag.cli "your question here"
+uv run groundball "your question here"
 ```
 
-Or via the installed entry point:
+The module form (`uv run python -m baseball_rag.cli ...`) and legacy `baseball-rag` entry point remain available for compatibility.
 
 ```bash
-baseball-rag "who was Babe Ruth"
+uv run groundball "who was Babe Ruth"
 ```
 
 ### Examples
 
 ```bash
 # Stat query with year filter -> DuckDB lookup
-uv run python -m baseball_rag.cli "who had the most RBIs in 1962"
+uv run groundball "who had the most RBIs in 1962"
 
 # Career stat leaders -> DuckDB lookup
-uv run python -m baseball_rag.cli "career home run leaders"
+uv run groundball "career home run leaders"
 
 # Player biography -> DuckDB identity + LLM JSON + DuckDB claim verification
-uv run python -m baseball_rag.cli "who was Babe Ruth"
+uv run groundball "who was Babe Ruth"
 
 # General stat explanation -> direct LLM answer
-uv run python -m baseball_rag.cli "what is OPS"
+uv run groundball "what is OPS"
 ```
 
 ### How It Works
