@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="430" viewBox="0 0 980 430" role="img" aria-labelledby="title desc">
+  <title id="title">Groundball CLI demo</title>
+  <desc id="desc">Terminal demo showing Groundball answering who had the most RBIs in 1962 with DuckDB-backed results.</desc>
+  <rect width="980" height="430" rx="18" fill="#0d1117"/>
+  <rect x="0" y="0" width="980" height="48" rx="18" fill="#161b22"/>
+  <circle cx="28" cy="24" r="7" fill="#ff5f56"/>
+  <circle cx="52" cy="24" r="7" fill="#ffbd2e"/>
+  <circle cx="76" cy="24" r="7" fill="#27c93f"/>
+  <text x="110" y="31" font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="16" fill="#8b949e">Groundball local CLI demo</text>
+  <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="18">
+    <text x="34" y="86" fill="#7ee787">$ uv run groundball "who had the most RBIs in 1962"</text>
+    <text x="34" y="128" fill="#c9d1d9">Top RBI leaders (1962-1962):</text>
+    <text x="58" y="160" fill="#c9d1d9">1. Davis, Tommy: 153 RBI</text>
+    <text x="58" y="190" fill="#c9d1d9">2. Mays, Willie: 141 RBI</text>
+    <text x="58" y="220" fill="#c9d1d9">3. Robinson, Frank: 136 RBI</text>
+    <text x="58" y="250" fill="#c9d1d9">4. Aaron, Hank: 128 RBI</text>
+    <text x="58" y="280" fill="#c9d1d9">5. Killebrew, Harmon: 126 RBI</text>
+    <text x="34" y="330" fill="#58a6ff">DuckDB facts + whitelisted stats + visible provenance, not unsupported LLM recall.</text>
+    <text x="34" y="366" fill="#8b949e">Deterministic eval gate: 790 local tests passed before this README update was pushed.</text>
+  </g>
+</svg>

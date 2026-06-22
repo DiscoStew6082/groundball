@@ -14,6 +14,8 @@ Groundball is a local-first MLB history assistant that turns natural-language ba
 
 **Recruiter signal:** this is not a chatbot wrapper. It is an AI systems project focused on grounded generation, provenance, deterministic release gates, and operational failure modes.
 
+![Groundball CLI demo showing a grounded RBI leaderboard answer](docs/assets/groundball-cli-demo.svg)
+
 ## What it does
 
 Groundball routes natural-language questions to grounded sources, answers structured questions from DuckDB, uses the local LLM only where prose is appropriate, and returns provenance with the rows, SQL, checksums, dataset license metadata, and verification results used to support the answer.
@@ -274,3 +276,7 @@ Useful docs:
 - [CLI notes](docs/cli.md)
 - [Demo checklist](docs/demo-checklist.md)
 - [Five-minute AI governance demo](docs/demo-governance.md)
+
+## License
+
+Groundball's code is released under the [MIT License](LICENSE). Dataset licenses remain governed by their upstream sources; see [data/manifest.json](data/manifest.json) for source, checksum, coverage, and license metadata.
