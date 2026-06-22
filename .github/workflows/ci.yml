@@ -12,7 +12,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -31,7 +31,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -45,7 +45,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [security, lint, typecheck]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -84,7 +84,7 @@ jobs:
             echo "## Guardrail Coverage Report"
             cat guardrail-coverage.md
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: deterministic-reliability-reports
@@ -92,10 +92,10 @@ jobs:
             eval-report.md
             eval-report.json
             guardrail-coverage.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-xml
           path: coverage.xml
-      - uses: codecov/codecov-action@v6
+      - uses: codecov/codecov-action@v7
         continue-on-error: true
