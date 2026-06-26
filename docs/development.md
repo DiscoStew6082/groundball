@@ -179,6 +179,23 @@ The API exposes release and review surfaces for local demos:
 
 Only `/query` writes review queue items. CLI and Gradio calls do not persist review state.
 
+## Go Contract Verifier
+
+Groundball includes a small Go verifier for the Python API contract. It does not
+answer baseball questions itself; it probes the running FastAPI app and checks
+that operational readiness, source provenance, visible SQL, parameterization,
+and the default deterministic query contract are still exposed.
+
+```bash
+go test ./...
+go run ./cmd/groundball-verify --json
+```
+
+The verifier expects the API to be running at `http://127.0.0.1:8000` by
+default. Use `--base-url` for another server. The built-in query checks the
+`stat_rbi_1962` eval case; custom queries can opt into a different eval
+expectation with `--expected-eval-case`.
+
 ## Project Conventions
 
 - Package location: `src/baseball_rag/` (explicit package discovery via `[tool.hatch.build.targets.wheel]` in pyproject.toml)

@@ -32,3 +32,4 @@ data/secondary_sources/retrosheet/*
 
 # Misc
 .depeval/
+/groundball-verify
