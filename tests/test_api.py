@@ -320,12 +320,11 @@ class TestApi:
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "unsupported"
 
-    def test_query_endpoint_rejects_struck_out_the_side_without_llm(self, tmp_path, monkeypatch):
+    def test_query_endpoint_answers_struck_out_the_side_without_llm(self, monkeypatch):
         def fail_llm(*_args, **_kwargs):
-            raise AssertionError("event-level unsupported questions must not call the LLM")
+            raise AssertionError("Retrosheet event-derived questions must not call the LLM")
 
         monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
-        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
 
         response = client.post(
             "/query",
@@ -336,15 +335,30 @@ class TestApi:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["unsupported"] is True
-        assert data["unsupported_reason"] == "unsupported"
-        assert "inning-level play or event data" in data["answer"]
-        assert data["sources"][0]["type"] == "system"
-        assert data["sources"][0]["label"] == "Unsupported question policy"
-        assert data["metadata"]["unsupported"] is True
-        assert data["metadata"]["source_types"] == ["system"]
-        assert data["review"]["queued"] is True
-        assert data["review"]["reason"] == "unsupported"
+        assert data["intent"] == "grounded_database_question"
+        assert data["unsupported"] is False
+        assert data["unsupported_reason"] is None
+        assert "Rollie Fingers struck out the side 40 times" in data["answer"]
+        assert "37 if requiring he began the half-inning" in data["answer"]
+        assert data["sources"][0]["type"] == "duckdb"
+        assert data["sources"][0]["label"] == "Deterministic template query"
+        assert "retrosheet_pitcher_strikeout_side_events" in data["sources"][0]["sql"]
+        assert data["sources"][0]["rows"][0]["career_strikeout_side_count"] == 40
+        retrosheet_manifest = data["sources"][0]["data_manifest"]["secondary_manifests"][
+            "retrosheet"
+        ]
+        assert retrosheet_manifest["available"] is True
+        assert (
+            retrosheet_manifest["files"][0]["table"] == "retrosheet_pitcher_strikeout_side_events"
+        )
+        assert data["metadata"]["unsupported"] is False
+        assert data["metadata"]["source_types"] == ["duckdb"]
+        assert data["review"] is None
+
+    def test_strikeout_side_template_does_not_own_broad_list_questions(self):
+        from baseball_rag.db.grounded_database_templates import match_template
+
+        assert match_template("which pitchers have struck out the side in their career") is None
 
     def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))

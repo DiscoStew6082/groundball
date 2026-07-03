@@ -13,6 +13,8 @@ from baseball_rag.provenance import (
     StructuredAnswer,
     UnsupportedReason,
     compact_data_manifest,
+    compact_secondary_data_manifest,
+    source_authority_catalog,
 )
 
 
@@ -42,7 +44,7 @@ def answer_grounded_database_result(
         sql=query_result.sql,
         columns=query_result.columns,
         rows=_rows_to_dicts(query_result.columns, query_result.rows[:100]),
-        data_manifest=compact_data_manifest(),
+        data_manifest=_grounded_database_data_manifest(query_result),
     )
 
     if query_result.row_count == 0:
@@ -156,6 +158,37 @@ def _source_from_stat_result(query_result: Any) -> SourceRecord:
 
 def _rows_to_dicts(columns: list[str], rows: list[tuple]) -> list[dict[str, Any]]:
     return [dict(zip(columns, row)) for row in rows]
+
+
+def _grounded_database_data_manifest(query_result: GroundedDatabaseResult) -> dict[str, Any]:
+    manifest = compact_data_manifest()
+    source_text = " ".join(
+        (
+            query_result.source_label,
+            query_result.source_detail,
+            query_result.sql,
+        )
+    ).lower()
+    if "retrosheet" not in source_text:
+        return manifest
+
+    manifest["secondary_manifests"] = {
+        "retrosheet": compact_secondary_data_manifest("retrosheet"),
+    }
+    manifest["source_authorities"] = _retrosheet_event_authorities()
+    return manifest
+
+
+def _retrosheet_event_authorities() -> list[dict[str, Any]]:
+    authorities = source_authority_catalog(include_retrosheet=True)
+    for authority in authorities:
+        if authority.get("name") != "Retrosheet":
+            continue
+        scopes = list(authority.get("scopes", []))
+        if "event_derived_grounded_database_answers" not in scopes:
+            scopes.append("event_derived_grounded_database_answers")
+        authority["scopes"] = scopes
+    return authorities
 
 
 def _grounded_database_unsupported_reason(

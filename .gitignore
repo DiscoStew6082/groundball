@@ -21,6 +21,7 @@ data/*.duckdb
 data/secondary_sources/retrosheet/*
 !data/secondary_sources/retrosheet/
 !data/secondary_sources/retrosheet/manifest.json
+!data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv
 
 # Environments
 .venv/

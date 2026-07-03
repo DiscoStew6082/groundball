@@ -205,6 +205,8 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
     if result.row_count == 0:
         return f"No results found for '{question}'."
 
+    if _is_pitcher_strikeout_side_count_result(result):
+        return _format_pitcher_strikeout_side_count_result(result)
     if _is_player_name_result(result):
         return _format_player_name_result(result)
     return _format_labeled_result(result)
@@ -212,6 +214,23 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
 
 def _is_player_name_result(result: GroundedDatabaseResult) -> bool:
     return result.columns == ["name"]
+
+
+def _is_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> bool:
+    return {
+        "name",
+        "career_strikeout_side_count",
+        "strict_started_half_count",
+    } <= set(result.columns)
+
+
+def _format_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> str:
+    row = dict(zip(result.columns, result.rows[0], strict=False))
+    return (
+        f"{row['name']} struck out the side {row['career_strikeout_side_count']} times "
+        "in his career by Retrosheet event-derived count. "
+        f"That is {row['strict_started_half_count']} if requiring he began the half-inning."
+    )
 
 
 def _result_count_line(result: GroundedDatabaseResult, noun: str) -> str:

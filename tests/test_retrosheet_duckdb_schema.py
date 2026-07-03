@@ -81,6 +81,11 @@ def test_duckdb_loads_optional_retrosheet_tables_with_stat_filters(tmp_path, mon
         "id,name_first,name_last\nruthb101,Babe,Ruth\ngehrl101,Lou,Gehrig\n",
         encoding="utf-8",
     )
+    (retrosheet_dir / "pitcher_strikeout_side_events.csv").write_text(
+        "retroID,year,game_id,inning,batting_home,started_half_inning,strikeout_outs,total_outs_recorded,event_sequence\n"
+        "ruthb101,1916,BOS191604180,9,0,true,3,3,K|K|K\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
     duckdb_schema._cached_conn = None
 
@@ -91,6 +96,12 @@ def test_duckdb_loads_optional_retrosheet_tables_with_stat_filters(tmp_path, mon
         assert conn.execute("SELECT count(*) FROM retrosheet_pitching").fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM retrosheet_fielding").fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM retrosheet_biofile").fetchone()[0] == 2
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM retrosheet_pitcher_strikeout_side_events"
+            ).fetchone()[0]
+            == 1
+        )
         assert conn.execute("SELECT count(*) FROM batting").fetchone()[0] == 1
     finally:
         conn.close()

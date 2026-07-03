@@ -1,20 +1,33 @@
 {
   "dataset": {
-    "name": "Retrosheet CSV daily logs and biographical data",
-    "source_url": "https://www.retrosheet.org/downloads/csvdownloads.html",
+    "name": "Retrosheet CSV daily logs, biographical data, and event-derived local aggregates",
+    "source_url": "https://www.retrosheet.org/",
     "attribution": "The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.",
-    "license_notes": "Placeholder manifest. Run python -m baseball_rag.db.secondary_sources.retrosheet after downloading to record local checksums, row counts, year coverage, and download timestamp."
+    "license_notes": "Retrosheet data is free to use with required attribution. Retrosheet makes no guarantees of accuracy and updates data as corrections arrive."
   },
   "download": {
-    "downloaded_at": null,
-    "download_tool": "python -m baseball_rag.db.secondary_sources.retrosheet",
-    "notes": "Only batting.zip, pitching.zip, fielding.zip, and biodata.zip are fetched."
+    "downloaded_at": "2026-07-03T02:35:00-04:00",
+    "download_tool": "ad hoc Retrosheet event-file derivation for pitcher strikeout-side evidence rows",
+    "notes": "Only pitcher_strikeout_side_events.csv is present locally. Retrosheet aggregate CSV archives are optional and not currently downloaded."
   },
   "coverage": {
     "year_coverage": {
-      "min": null,
-      "max": null
+      "min": 1969,
+      "max": 1984
     }
   },
-  "files": []
+  "files": [
+    {
+      "path": "data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv",
+      "source_url": "https://www.retrosheet.org/events/",
+      "table": "retrosheet_pitcher_strikeout_side_events",
+      "kind": "event_derived_evidence",
+      "rows": 40,
+      "year_coverage": {
+        "min": 1969,
+        "max": 1984
+      },
+      "sha256": "ba15d73f2286b038485ea7e1bb8e6c0dd3b3d3f3535ee41dd736669f7e1f2ea2"
+    }
+  ]
 }
