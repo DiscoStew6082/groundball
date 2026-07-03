@@ -6,6 +6,7 @@ import re
 
 from baseball_rag.outcomes import unsupported_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
+from baseball_rag.retrosheet_event_capabilities import unsupported_retrosheet_event_reason
 
 _POLICY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
@@ -48,40 +49,48 @@ _POLICY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"\btriple-a\b|\btriple a\b|\bminor leagues?\b"),
         "Minor-league leaderboards are outside the local MLB-focused dataset.",
     ),
-    (
-        re.compile(
-            r"\b(?:enter(?:ed|s)?|came in|come in|came into|come into|inherited|inherit)"
-            r"\b.*\b(?:runners?|men) on(?: base)?\b|"
-            r"\b(?:inherited|inherit) runners?\b"
-        ),
-        (
-            "Retrosheet event data is local, but this event query is not modeled yet. "
-            "Supported Retrosheet event queries currently cover pitcher strikeout-side "
-            "career counts, year counts, and career leaderboards."
-        ),
-    ),
 )
 
 
 def unsupported_policy_outcome(question: str) -> StructuredAnswer | None:
     """Return a structured unsupported answer for deterministic policy misses."""
     lower_question = question.lower()
+    retrosheet_event_reason = unsupported_retrosheet_event_reason(question)
+    if retrosheet_event_reason is not None:
+        return _unsupported_policy_outcome(
+            answer=(
+                f"I can't answer that from the grounded local baseball data. "
+                f"{retrosheet_event_reason} Ask for a specific MLB statistic, player, "
+                "team, season, or historical query covered by the local DuckDB data."
+            ),
+            source_detail=(
+                "Deterministic pre-routing guardrail from the Retrosheet event support matrix."
+            ),
+        )
+
     for pattern, reason in _POLICY_PATTERNS:
         if pattern.search(lower_question):
-            return unsupported_outcome(
+            return _unsupported_policy_outcome(
                 answer=(
                     f"I can't answer that from the grounded local baseball data. {reason} "
                     "Ask for a specific MLB statistic, player, team, season, or historical "
                     "query covered by the local DuckDB data."
                 ),
-                intent="unsupported",
-                reason="unsupported",
-                sources=[
-                    SourceRecord(
-                        type="system",
-                        label="Unsupported question policy",
-                        detail="Deterministic pre-routing guardrail for out-of-scope requests.",
-                    )
-                ],
+                source_detail="Deterministic pre-routing guardrail for out-of-scope requests.",
             )
     return None
+
+
+def _unsupported_policy_outcome(*, answer: str, source_detail: str) -> StructuredAnswer:
+    return unsupported_outcome(
+        answer=answer,
+        intent="unsupported",
+        reason="unsupported",
+        sources=[
+            SourceRecord(
+                type="system",
+                label="Unsupported question policy",
+                detail=source_detail,
+            )
+        ],
+    )
