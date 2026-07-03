@@ -107,7 +107,12 @@ def compact_data_manifest() -> dict[str, Any]:
     return compact
 
 
-def compact_secondary_data_manifest(source: str) -> dict[str, Any]:
+def compact_secondary_data_manifest(
+    source: str,
+    *,
+    required_tables: list[str] | None = None,
+    any_required_table: bool = False,
+) -> dict[str, Any]:
     """Return compact provenance for an optional secondary source."""
     try:
         manifest = load_secondary_data_manifest(source)
@@ -123,9 +128,21 @@ def compact_secondary_data_manifest(source: str) -> dict[str, Any]:
 
     compact = _compact_manifest(manifest)
     available = bool(compact["files"]) and bool(compact["download"].get("downloaded_at"))
+    if available and required_tables is not None:
+        present_tables = {item.get("table") for item in compact["files"]}
+        required = set(required_tables)
+        if any_required_table:
+            available = bool(required & present_tables)
+        else:
+            available = required <= present_tables
     compact["available"] = available
     if not available:
-        compact["unavailable_reason"] = f"{source} manifest has no available local files"
+        if required_tables:
+            compact["unavailable_reason"] = (
+                f"{source} manifest does not include required tables: {', '.join(required_tables)}"
+            )
+        else:
+            compact["unavailable_reason"] = f"{source} manifest has no available local files"
     return compact
 
 
@@ -147,7 +164,16 @@ def compact_consensus_data_manifest() -> dict[str, Any]:
         },
     ]
     manifest["secondary_manifests"] = {
-        "retrosheet": compact_secondary_data_manifest("retrosheet"),
+        "retrosheet": compact_secondary_data_manifest(
+            "retrosheet",
+            required_tables=[
+                "retrosheet_batting",
+                "retrosheet_pitching",
+                "retrosheet_fielding",
+                "retrosheet_biofile",
+            ],
+            any_required_table=True,
+        ),
     }
     manifest["source_authorities"] = source_authority_catalog(include_retrosheet=True)
     return manifest

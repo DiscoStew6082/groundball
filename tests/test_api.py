@@ -326,34 +326,42 @@ class TestApi:
 
         monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
 
-        response = client.post(
-            "/query",
-            json={
-                "question": "how many times did Rollie Fingers strike out the side in his career"
-            },
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["intent"] == "grounded_database_question"
-        assert data["unsupported"] is False
-        assert data["unsupported_reason"] is None
-        assert "Rollie Fingers struck out the side 40 times" in data["answer"]
-        assert "37 if requiring he began the half-inning" in data["answer"]
-        assert data["sources"][0]["type"] == "duckdb"
-        assert data["sources"][0]["label"] == "Deterministic template query"
-        assert "retrosheet_pitcher_strikeout_side_events" in data["sources"][0]["sql"]
-        assert data["sources"][0]["rows"][0]["career_strikeout_side_count"] == 40
-        retrosheet_manifest = data["sources"][0]["data_manifest"]["secondary_manifests"][
-            "retrosheet"
+        cases = [
+            (
+                "how many times did Rollie Fingers strike out the side in his career",
+                "Rollie Fingers struck out the side 40 times",
+                40,
+            ),
+            (
+                "how many times did Nolan Ryan strike out the side in his career",
+                "Nolan Ryan struck out the side 324 times",
+                324,
+            ),
         ]
-        assert retrosheet_manifest["available"] is True
-        assert (
-            retrosheet_manifest["files"][0]["table"] == "retrosheet_pitcher_strikeout_side_events"
-        )
-        assert data["metadata"]["unsupported"] is False
-        assert data["metadata"]["source_types"] == ["duckdb"]
-        assert data["review"] is None
+
+        for question, answer_text, expected_count in cases:
+            response = client.post("/query", json={"question": question})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["intent"] == "grounded_database_question"
+            assert data["unsupported"] is False
+            assert data["unsupported_reason"] is None
+            assert answer_text in data["answer"]
+            assert data["sources"][0]["type"] == "duckdb"
+            assert data["sources"][0]["label"] == "Deterministic template query"
+            assert "retrosheet_pitcher_strikeout_side_events" in data["sources"][0]["sql"]
+            assert data["sources"][0]["rows"][0]["career_strikeout_side_count"] == expected_count
+            retrosheet_manifest = data["sources"][0]["data_manifest"]["secondary_manifests"][
+                "retrosheet"
+            ]
+            assert retrosheet_manifest["available"] is True
+            assert retrosheet_manifest["files"][0]["table"] == (
+                "retrosheet_pitcher_strikeout_side_events"
+            )
+            assert data["metadata"]["unsupported"] is False
+            assert data["metadata"]["source_types"] == ["duckdb"]
+            assert data["review"] is None
 
     def test_strikeout_side_template_does_not_own_broad_list_questions(self):
         from baseball_rag.db.grounded_database_templates import match_template

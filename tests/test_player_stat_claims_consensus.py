@@ -765,7 +765,7 @@ def test_consensus_provenance_marks_placeholder_retrosheet_manifest_optional():
     assert presentation.data_manifest["dataset"]["name"] == "NeuML/baseballdata"
     retrosheet = presentation.data_manifest["secondary_manifests"]["retrosheet"]
     assert retrosheet["available"] is False
-    assert retrosheet["dataset"]["name"] == "Retrosheet CSV daily logs and biographical data"
+    assert "retrosheet_batting" in retrosheet["unavailable_reason"]
 
 
 def test_consensus_presentation_surfaces_retrosheet_sql_for_secondary_only_evidence():
