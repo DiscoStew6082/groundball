@@ -396,16 +396,20 @@ class TestApi:
         assert leaders_data["sources"][0]["rows"][0]["name"] == "Nolan Ryan"
         assert leaders_data["sources"][0]["rows"][0]["career_strikeout_side_count"] == 324
 
-    def test_query_endpoint_rejects_unmodeled_retrosheet_event_queries(self, monkeypatch):
+    def test_query_endpoint_rejects_unmodeled_retrosheet_event_queries(self, monkeypatch, tmp_path):
         def fail_llm(*_args, **_kwargs):
             raise AssertionError("unmodeled Retrosheet event queries must not call the LLM")
 
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
         monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
 
         for question in (
             "how often did Rollie Fingers enter with runners on",
             "how often did Rollie Fingers inherit runners",
             "how often did Rollie Fingers come in with men on base",
+            "how often did Rollie Fingers strike out the side in the postseason",
+            "how many called strikeout-side innings did Rollie Fingers have",
+            "how many times did Rollie Fingers strike out the side in a game in 1972",
         ):
             response = client.post("/query", json={"question": question})
 
