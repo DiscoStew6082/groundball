@@ -1,6 +1,7 @@
 """DuckDB CSV schema setup — zero-ingestion queries over NeuML/baseballdata CSVs."""
 
 import csv
+import json
 import os
 import tempfile
 import threading
@@ -28,6 +29,7 @@ RETROSHEET_ARCHIVES = {
     "fielding.csv": "fielding.zip",
     "biofile0.csv": "biodata.zip",
 }
+RETROSHEET_DATABASE_FILENAME = "retrosheet.duckdb"
 RETROSHEET_DERIVED_TABLES = {
     "retrosheet_pitcher_strikeout_side_events": "pitcher_strikeout_side_events.csv",
 }
@@ -258,7 +260,11 @@ def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: 
     if not retrosheet_dir.exists():
         return
 
+    cached_tables = _load_retrosheet_database_tables(conn, retrosheet_dir)
+
     for table_name, csv_name in RETROSHEET_STAT_TABLES.items():
+        if table_name in cached_tables:
+            continue
         csv_path = _ensure_retrosheet_csv(retrosheet_dir, csv_name)
         if csv_path.exists():
             conn.execute(
@@ -272,15 +278,16 @@ def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: 
             )
 
     table_name, csv_name = RETROSHEET_BIOFILE
-    csv_path = _ensure_retrosheet_csv(retrosheet_dir, csv_name)
-    if csv_path.exists():
-        conn.execute(
-            f"""
-            CREATE TABLE {table_name} AS
-            SELECT *
-            FROM read_csv_auto('{_sql_string(csv_path)}')
-            """
-        )
+    if table_name not in cached_tables:
+        csv_path = _ensure_retrosheet_csv(retrosheet_dir, csv_name)
+        if csv_path.exists():
+            conn.execute(
+                f"""
+                CREATE TABLE {table_name} AS
+                SELECT *
+                FROM read_csv_auto('{_sql_string(csv_path)}')
+                """
+            )
 
     for table_name, csv_name in RETROSHEET_DERIVED_TABLES.items():
         csv_path = retrosheet_dir / csv_name
@@ -292,6 +299,147 @@ def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: 
                 FROM read_csv_auto('{_sql_string(csv_path)}')
                 """
             )
+
+
+def _load_retrosheet_database_tables(
+    conn: duckdb.DuckDBPyConnection,
+    retrosheet_dir: Path,
+) -> set[str]:
+    database_path = retrosheet_dir / RETROSHEET_DATABASE_FILENAME
+    if not database_path.exists():
+        return set()
+    if not _retrosheet_database_cache_valid(retrosheet_dir, database_path):
+        return set()
+
+    alias = "retrosheet_cache"
+    loaded_tables: set[str] = set()
+    try:
+        conn.execute(f"ATTACH '{_sql_string(database_path)}' AS {alias} (READ_ONLY)")
+    except duckdb.Error:
+        return set()
+    try:
+        for table_name in RETROSHEET_STAT_TABLES:
+            if not _attached_table_exists(conn, alias, table_name):
+                continue
+            conn.execute(
+                f"""
+                CREATE TABLE {table_name} AS
+                SELECT *
+                FROM {alias}.{table_name}
+                WHERE lower(stattype) = 'value'
+                  AND lower(gametype) IN ('regular', 'playoff')
+                """
+            )
+            loaded_tables.add(table_name)
+
+        table_name, _csv_name = RETROSHEET_BIOFILE
+        if _attached_table_exists(conn, alias, table_name):
+            conn.execute(
+                f"""
+                CREATE TABLE {table_name} AS
+                SELECT *
+                FROM {alias}.{table_name}
+                """
+            )
+            loaded_tables.add(table_name)
+    finally:
+        conn.execute(f"DETACH {alias}")
+    return loaded_tables
+
+
+def _retrosheet_database_cache_valid(retrosheet_dir: Path, database_path: Path) -> bool:
+    manifest_path = retrosheet_dir / "manifest.json"
+    if not manifest_path.exists():
+        return False
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+
+    cache = manifest.get("cache", {}).get("database", {})
+    if cache and Path(cache.get("path", "")).name != database_path.name:
+        return False
+
+    database_metadata = _retrosheet_database_metadata(database_path)
+    if database_metadata is None:
+        return False
+    if database_metadata.get("schema_version") != "1":
+        return False
+
+    database_archive_hashes = _retrosheet_metadata_archive_hashes(database_metadata)
+    cached_archive_hashes = (
+        database_archive_hashes
+        if database_archive_hashes
+        else cache.get("source_archive_sha256", {})
+    )
+    if not isinstance(cached_archive_hashes, dict) or not cached_archive_hashes:
+        return False
+
+    manifest_archive_hashes = {
+        item.get("archive"): item.get("archive_sha256")
+        for item in manifest.get("files", [])
+        if item.get("archive") and item.get("archive_sha256")
+    }
+    for archive_name, archive_hash in manifest_archive_hashes.items():
+        if cached_archive_hashes.get(archive_name) != archive_hash:
+            return False
+    return True
+
+
+def _retrosheet_database_metadata(database_path: Path) -> dict[str, str] | None:
+    try:
+        metadata_conn = duckdb.connect(str(database_path), read_only=True)
+    except duckdb.Error:
+        return None
+    try:
+        table_exists = metadata_conn.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_name = 'retrosheet_cache_metadata'
+            LIMIT 1
+            """
+        ).fetchone()
+        if not table_exists:
+            return None
+        rows = metadata_conn.execute("SELECT key, value FROM retrosheet_cache_metadata").fetchall()
+    except duckdb.Error:
+        return None
+    finally:
+        metadata_conn.close()
+
+    return {key: value for key, value in rows}
+
+
+def _retrosheet_metadata_archive_hashes(metadata: dict[str, str]) -> dict[str, str] | None:
+    raw_value = metadata.get("source_archive_sha256")
+    if raw_value is None:
+        return None
+    try:
+        value = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _attached_table_exists(
+    conn: duckdb.DuckDBPyConnection,
+    schema_name: str,
+    table_name: str,
+) -> bool:
+    return bool(
+        conn.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_catalog = ?
+              AND table_name = ?
+            LIMIT 1
+            """,
+            [schema_name, table_name],
+        ).fetchone()
+    )
 
 
 def _ensure_retrosheet_csv(retrosheet_dir: Path, csv_name: str) -> Path:

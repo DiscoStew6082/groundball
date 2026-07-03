@@ -18,6 +18,7 @@ coverage.xml
 # Data — downloaded from HuggingFace at runtime, not stored in repo
 data/*.csv
 data/*.duckdb
+# Retrosheet zips are tracked as source artifacts; the local DuckDB cache is ignored.
 data/secondary_sources/retrosheet/*
 !data/secondary_sources/retrosheet/
 !data/secondary_sources/retrosheet/manifest.json
