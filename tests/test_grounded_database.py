@@ -5,6 +5,50 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def _write_core_csvs_with_retro_ids(data_dir):
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "Batting.csv").write_text(
+        "playerID,yearID,teamID,lgID,G,AB,H,HR,RBI,SB,BB\n"
+        "campbe01,1969,OAK,AL,1,4,1,0,0,1,0\n"
+        "hendrri01,1982,OAK,AL,1,4,1,0,0,1,0\n",
+        encoding="utf-8",
+    )
+    (data_dir / "Pitching.csv").write_text(
+        "playerID,yearID,teamID,lgID,W,L,ERA,IPouts\n",
+        encoding="utf-8",
+    )
+    (data_dir / "Fielding.csv").write_text(
+        "playerID,yearID,teamID,lgID,POS,PO,A,E\n",
+        encoding="utf-8",
+    )
+    (data_dir / "People.csv").write_text(
+        "playerID,retroID,nameFirst,nameLast\n"
+        "campbe01,campb101,Bert,Campaneris\n"
+        "hendrri01,hendr001,Rickey,Henderson\n",
+        encoding="utf-8",
+    )
+
+
+def _write_retrosheet_batting_streak_fixture(data_dir):
+    retrosheet_dir = data_dir / "secondary_sources" / "retrosheet"
+    retrosheet_dir.mkdir(parents=True)
+    campy_rows = "\n".join(
+        f"OAK196906{day:02d}0,campb101,OAK,value,1,196906{day:02d},regular" for day in range(10, 22)
+    )
+    (retrosheet_dir / "batting.csv").write_text(
+        "gid,id,team,stattype,b_sb,date,gametype\n"
+        "OAK196906090,campb101,OAK,value,0,19690609,regular\n"
+        f"{campy_rows}\n"
+        "OAK196906220,campb101,OAK,value,0,19690622,regular\n"
+        "OAK198205010,hendr001,OAK,value,1,19820501,regular\n"
+        "OAK198205020,hendr001,OAK,value,1,19820502,regular\n"
+        "OAK198205030,hendr001,OAK,value,0,19820503,regular\n"
+        "OAK198210100,hendr001,OAK,value,1,19821010,playoff\n"
+        "OAK198210110,hendr001,OAK,value,1,19821011,playoff\n",
+        encoding="utf-8",
+    )
+
+
 class TestAssembleSQL:
     """Unit tests for the deterministic SQL assembler.
 
@@ -111,6 +155,68 @@ class TestDeterministicTemplates:
         assert matched.source_detail == (
             "Matched local 30-30 club template: player seasons with at least 30 HR and 30 SB."
         )
+
+    def test_stolen_base_streak_template_answers_all_time_and_player_specific(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import format_result, query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_batting_streak_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            all_time = query(
+                "what is the longest stolen base streak in MLB history",
+                conn,
+                request_fn=mock_call,
+            )
+            player_specific = query(
+                "what was Rickey Henderson's longest stolen base streak",
+                conn,
+                request_fn=mock_call,
+            )
+            postseason = query(
+                "what was Rickey Henderson's longest postseason stolen base streak",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert all_time.rows[0][:4] == ("Bert Campaneris", 12, "1969-06-10", "1969-06-21")
+        assert player_specific.rows[0][0:2] == ("Rickey Henderson", 2)
+        assert postseason.rows[0][0:2] == ("Rickey Henderson", 2)
+        assert "Bert Campaneris had the longest stolen-base streak" in format_result(
+            all_time, "question"
+        )
+
+    @pytest.mark.parametrize(
+        ("question", "reason"),
+        [
+            ("what team has the longest stolen base streak", "Team stolen-base streaks"),
+            (
+                "what is the longest stolen base streak without being caught stealing",
+                "caught-stealing-aware attempt modeling",
+            ),
+            ("longest stolen base streak stealing third base", "Base-specific"),
+        ],
+    )
+    def test_stolen_base_streak_template_rejects_unmodeled_variants(self, question, reason):
+        from baseball_rag.db.grounded_database_templates import match_template
+
+        matched = match_template(question)
+
+        assert matched is not None
+        assert matched.unsupported_reason == "unsupported"
+        assert reason in matched.assembled.params[0]
 
     def test_500_home_run_club_template_bypasses_llm(self):
         mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))

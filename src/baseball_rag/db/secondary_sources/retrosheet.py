@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import hashlib
+import io
 import json
 import re
 import zipfile
@@ -99,6 +101,7 @@ def write_manifest(target_dir: Path | None = None, *, downloaded_at: str | None 
         timespec="seconds"
     )
     files = [_file_manifest(target_dir, archive) for archive in ARCHIVES]
+    files.extend(_existing_derived_file_manifests(target_dir))
     year_mins: list[int] = []
     year_maxes: list[int] = []
     for item in files:
@@ -110,7 +113,7 @@ def write_manifest(target_dir: Path | None = None, *, downloaded_at: str | None 
 
     manifest = {
         "dataset": {
-            "name": "Retrosheet CSV daily logs and biographical data",
+            "name": "Retrosheet CSV daily logs and local derived projections",
             "source_url": "https://www.retrosheet.org/downloads/csvdownloads.html",
             "attribution": RETROSHEET_ATTRIBUTION,
             "license_notes": (
@@ -121,7 +124,10 @@ def write_manifest(target_dir: Path | None = None, *, downloaded_at: str | None 
         "download": {
             "downloaded_at": timestamp,
             "download_tool": "python -m baseball_rag.db.secondary_sources.retrosheet",
-            "notes": "Only batting.zip, pitching.zip, fielding.zip, and biodata.zip are fetched.",
+            "notes": (
+                "Fetched batting.zip, pitching.zip, fielding.zip, and biodata.zip; "
+                "preserves existing local Retrosheet-derived projection entries."
+            ),
         },
         "coverage": {
             "year_coverage": {
@@ -169,23 +175,37 @@ def _extract_zip(archive_path: Path, target_dir: Path) -> None:
 def _file_manifest(target_dir: Path, archive: RetrosheetArchive) -> RetrosheetFileManifest:
     archive_path = target_dir / archive.archive_name
     csv_path = target_dir / archive.csv_name
-    rows, year_coverage = _csv_metadata(csv_path)
+    rows, year_coverage = _csv_metadata(csv_path, archive_path, archive.csv_name)
+    local_path = archive_path if archive_path.exists() else csv_path
     return {
         "archive": archive.archive_name,
-        "path": f"data/secondary_sources/retrosheet/{archive.csv_name}",
+        "path": f"data/secondary_sources/retrosheet/{local_path.name}",
         "source_url": archive.source_url,
         "table": archive.table_name,
         "kind": "stat" if archive.stat_table else "bio",
         "rows": rows,
         "year_coverage": year_coverage,
-        "sha256": _sha256(csv_path),
-        "archive_sha256": _sha256(archive_path),
+        "sha256": _csv_sha256(csv_path, archive_path, archive.csv_name),
+        "archive_sha256": _sha256(archive_path) if archive_path.exists() else "",
     }
 
 
-def _csv_metadata(path: Path) -> tuple[int, YearCoverage]:
+def _existing_derived_file_manifests(target_dir: Path) -> list[RetrosheetFileManifest]:
+    manifest_path = target_dir / MANIFEST_FILENAME
+    if not manifest_path.exists():
+        return []
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw_tables = {archive.table_name for archive in ARCHIVES}
+    derived = []
+    for item in manifest.get("files", []):
+        if item.get("table") not in raw_tables:
+            derived.append(item)
+    return derived
+
+
+def _csv_metadata(path: Path, archive_path: Path, member_name: str) -> tuple[int, YearCoverage]:
     years: list[int] = []
-    with path.open(newline="", encoding="utf-8") as f:
+    with _open_csv_text(path, archive_path, member_name) as f:
         reader = csv.DictReader(f)
         rows = 0
         for row in reader:
@@ -198,6 +218,18 @@ def _csv_metadata(path: Path) -> tuple[int, YearCoverage]:
         "min": min(years) if years else None,
         "max": max(years) if years else None,
     }
+
+
+@contextlib.contextmanager
+def _open_csv_text(path: Path, archive_path: Path, member_name: str):
+    if archive_path.exists():
+        with zipfile.ZipFile(archive_path) as archive:
+            with archive.open(member_name) as raw:
+                with io.TextIOWrapper(raw, encoding="utf-8", newline="") as f:
+                    yield f
+        return
+    with path.open(newline="", encoding="utf-8") as f:
+        yield f
 
 
 def _row_year(row: dict[str, str]) -> int | None:
@@ -224,6 +256,17 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _csv_sha256(path: Path, archive_path: Path, member_name: str) -> str:
+    if archive_path.exists():
+        digest = hashlib.sha256()
+        with zipfile.ZipFile(archive_path) as archive:
+            with archive.open(member_name) as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        return digest.hexdigest()
+    return _sha256(path)
 
 
 def main() -> None:

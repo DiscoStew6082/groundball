@@ -368,6 +368,34 @@ class TestApi:
 
         assert match_template("which pitchers have struck out the side in their career") is None
 
+    def test_query_endpoint_answers_stolen_base_streak_without_llm(self, monkeypatch):
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("Retrosheet game-log streak questions must not call the LLM")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+        response = client.post(
+            "/query",
+            json={"question": "what is the longest stolen base streak in MLB history"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is False
+        assert (
+            "Bert Campaneris had the longest stolen-base streak: "
+            "12 consecutive regular-season games"
+        ) in data["answer"]
+        assert data["sources"][0]["label"] == "Deterministic template query"
+        assert "retrosheet_batting" in data["sources"][0]["sql"]
+        assert data["sources"][0]["rows"][0]["name"] == "Bert Campaneris"
+        assert data["sources"][0]["rows"][0]["stolen_base_streak_games"] == 12
+        retrosheet_manifest = data["sources"][0]["data_manifest"]["secondary_manifests"][
+            "retrosheet"
+        ]
+        assert retrosheet_manifest["available"] is True
+        assert any(item["table"] == "retrosheet_batting" for item in retrosheet_manifest["files"])
+
     def test_query_endpoint_answers_strikeout_side_year_and_leaders_without_llm(self, monkeypatch):
         def fail_llm(*_args, **_kwargs):
             raise AssertionError("Retrosheet event-derived questions must not call the LLM")

@@ -99,6 +99,41 @@ def retrosheet_event_capabilities() -> tuple[RetrosheetEventCapability, ...]:
                 ),
             ),
         ),
+        RetrosheetEventCapability(
+            capability_id="stolen_base_streak",
+            title="Stolen-base game streaks",
+            local_table="retrosheet_batting",
+            data_source="Retrosheet game-level batting logs",
+            supported_query_families=(
+                "All-time longest stolen-base game streak",
+                "Named player longest stolen-base game streak",
+                "Named player longest postseason stolen-base game streak",
+            ),
+            supported_filters=(
+                "player full name",
+                "regular season",
+                "postseason",
+            ),
+            unsupported_nearby_families=(
+                "Team stolen-base streaks",
+                "Consecutive successful steal attempts without caught stealing",
+                "Base-specific steal streaks",
+            ),
+            unsupported_patterns=(
+                re.compile(
+                    r"\bteams?\b.*\bstolen bases?\b.*\bstreak\b|"
+                    r"\bstolen bases?\b.*\bstreak\b.*\bteams?\b"
+                ),
+                re.compile(
+                    r"\bstolen bases?\b.*\bstreak\b.*\b(?:caught stealing|"
+                    r"without being caught|without getting caught)\b"
+                ),
+                re.compile(
+                    r"\bstolen bases?\b.*\bstreak\b.*\b(?:stealing|steal|stolen)\s+"
+                    r"(?:second|third|home)\b"
+                ),
+            ),
+        ),
     )
 
 

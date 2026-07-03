@@ -528,6 +528,72 @@ def _extract_opponent_team_pattern(q: str) -> str | None:
     return match.group("team_id") if match else None
 
 
+def _match_stolen_base_streak(q: str) -> Mapping[str, Any] | None:
+    if not re.search(r"\bstolen bases?\b", q) or "streak" not in q:
+        return None
+    if not re.search(r"\b(?:longest|best|record|most|leader)\b", q):
+        return None
+    unsupported_reason = _unsupported_stolen_base_streak_reason(q)
+    return {
+        "pattern": "stolen-base streak",
+        "unsupported_reason": unsupported_reason,
+        "player_name": _extract_stolen_base_streak_player_name(q),
+        "gametype": "playoff" if _mentions_postseason(q) else "regular",
+    }
+
+
+def _mentions_postseason(q: str) -> bool:
+    return bool(re.search(r"\b(?:postseason|playoffs?|world series)\b", q))
+
+
+def _extract_stolen_base_streak_player_name(q: str) -> str | None:
+    for pattern in (
+        r"\b(?:what (?:was|is) )?(?P<player>[a-z][a-z .'\\-]+?)'s\s+"
+        r"(?:longest|best)\s+(?:postseason\s+)?stolen bases?\s+streak\b",
+        r"\b(?:what (?:was|is) )?(?P<player>[a-z][a-z .'\\-]+?)\s+s\s+"
+        r"(?:longest|best)\s+(?:postseason\s+)?stolen bases?\s+streak\b",
+        r"\b(?P<player>[a-z][a-z .'\\-]+?)\s+"
+        r"(?:longest|best)\s+(?:postseason\s+)?stolen bases?\s+streak\b",
+        r"\b(?:longest|best|record|most|leader)\s+(?:postseason\s+)?"
+        r"stolen bases?\s+streak\s+(?:for|by)\s+(?P<player>[a-z][a-z .'\\-]+?)\b",
+    ):
+        match = re.search(pattern, q)
+        if match is None:
+            continue
+        player_name = match.group("player").strip()
+        if player_name not in {"mlb", "major league baseball", "who", "what"} and not re.match(
+            r"^(?:what|who|which|the)\b", player_name
+        ):
+            return player_name
+    return None
+
+
+def _unsupported_stolen_base_streak_reason(q: str) -> str | None:
+    if re.search(r"\b(?:team|teams)\b", q):
+        return "Team stolen-base streaks are not modeled yet."
+    if re.search(r"\b(?:caught stealing|without being caught|without getting caught)\b", q):
+        return (
+            "Consecutive successful stolen-base attempt streaks need caught-stealing-aware "
+            "attempt modeling, not just games with at least one stolen base."
+        )
+    if re.search(r"\b(?:stealing|steal|stolen)\s+(?:second|third|home)\b", q):
+        return "Base-specific stolen-base streaks are not modeled yet."
+    return None
+
+
+def _assemble_stolen_base_streak(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    if facts.get("unsupported_reason"):
+        return _unsupported_sql(str(facts["unsupported_reason"]))
+    player_name = facts.get("player_name")
+    return _stolen_base_streak_sql(
+        str(player_name) if player_name else None,
+        str(facts["gametype"]),
+    )
+
+
 def _assemble_pitcher_strikeout_side_count(
     facts: Mapping[str, Any],
     _question: str,
@@ -646,6 +712,15 @@ _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
             "Matched local qualified season ERA leader template with an innings guard."
         ),
         route_owner=_qualified_season_era_route_owner,
+    ),
+    GroundedDatabaseTemplate(
+        template_id="stolen_base_streak",
+        description="Retrosheet game-log stolen-base streaks",
+        matcher=_match_stolen_base_streak,
+        assemble=_assemble_stolen_base_streak,
+        source_detail=_source_detail(
+            "Matched local Retrosheet game-level batting log stolen-base streak template."
+        ),
     ),
     GroundedDatabaseTemplate(
         template_id="pitcher_strikeout_side_game_log",
@@ -938,6 +1013,82 @@ def _qualified_season_avg_sql(year: int | None, min_ab: int) -> AssembledSQL:
         ORDER BY b.yearID, b.lgID, AVG DESC, p.nameLast, p.nameFirst
         """,
         [year, min_ab, min_ab],
+    )
+
+
+def _stolen_base_streak_sql(player_name: str | None, gametype: str) -> AssembledSQL:
+    player_filter = "AND lower(p.nameFirst || ' ' || p.nameLast) = ?" if player_name else ""
+    params: list[object] = [gametype.lower()]
+    if player_name:
+        params.append(player_name.lower())
+    return AssembledSQL(
+        """
+        WITH player_games AS (
+            SELECT
+                p.playerID,
+                p.nameFirst,
+                p.nameLast,
+                COALESCE(team.name, rb.team) AS team_name,
+                rb.gid AS game_id,
+                CAST(strptime(CAST(rb.date AS VARCHAR), '%Y%m%d') AS DATE) AS game_date,
+                COALESCE(TRY_CAST(rb.b_sb AS INTEGER), 0) AS stolen_bases,
+                ROW_NUMBER() OVER (
+                    PARTITION BY p.playerID
+                    ORDER BY CAST(strptime(CAST(rb.date AS VARCHAR), '%Y%m%d') AS DATE), rb.gid
+                ) AS player_game_number
+            FROM retrosheet_batting rb
+            JOIN people p ON lower(p.retroID) = lower(rb.id)
+            LEFT JOIN teams team ON team.teamID = rb.team
+            WHERE lower(rb.gametype) = ?
+                {player_filter}
+        ),
+        steal_games AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY playerID
+                    ORDER BY player_game_number
+                ) AS steal_game_number
+            FROM player_games
+            WHERE stolen_bases >= 1
+        ),
+        streak_games AS (
+            SELECT
+                *,
+                player_game_number - steal_game_number AS streak_group
+            FROM steal_games
+        ),
+        streaks AS (
+            SELECT
+                playerID,
+                nameFirst,
+                nameLast,
+                streak_group,
+                COUNT(*) AS stolen_base_streak_games,
+                MIN(game_date) AS start_date,
+                MAX(game_date) AS end_date,
+                MIN(team_name) AS team,
+                SUM(stolen_bases) AS stolen_bases,
+                STRING_AGG(game_id, ', ' ORDER BY game_date, game_id) AS game_ids
+            FROM streak_games
+            GROUP BY playerID, nameFirst, nameLast, streak_group
+        )
+        SELECT
+            nameFirst,
+            nameLast,
+            stolen_base_streak_games,
+            strftime(start_date, '%Y-%m-%d') AS start_date,
+            strftime(end_date, '%Y-%m-%d') AS end_date,
+            team,
+            ? AS gametype,
+            stolen_bases,
+            game_ids,
+            'Consecutive player games appeared in with at least one stolen base.' AS definition
+        FROM streaks
+        ORDER BY stolen_base_streak_games DESC, end_date ASC, nameLast, nameFirst
+        LIMIT 1
+        """.format(player_filter=player_filter),
+        [*params, gametype.lower()],
     )
 
 

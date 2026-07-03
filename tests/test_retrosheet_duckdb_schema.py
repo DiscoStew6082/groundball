@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import zipfile
+
 import duckdb
 
 from baseball_rag.db import duckdb_schema
@@ -112,6 +114,43 @@ def test_duckdb_loads_optional_retrosheet_tables_with_stat_filters(tmp_path, mon
             == "NYA"
         )
         assert conn.execute("SELECT count(*) FROM batting").fetchone()[0] == 1
+    finally:
+        conn.close()
+        duckdb_schema._cached_conn = None
+
+
+def test_duckdb_prefers_tracked_retrosheet_zip_over_loose_csv(tmp_path, monkeypatch):
+    _write_core_lahman_csvs(tmp_path)
+    retrosheet_dir = tmp_path / "secondary_sources" / "retrosheet"
+    retrosheet_dir.mkdir(parents=True)
+    with zipfile.ZipFile(retrosheet_dir / "batting.zip", "w") as archive:
+        archive.writestr(
+            "batting.csv",
+            "gid,id,stattype,gametype,date,b_sb\n"
+            "OAK196906100,campb101,value,regular,1969-06-10,1\n"
+            "OAK196906110,campb101,official,regular,1969-06-11,1\n"
+            "OAK196906120,campb101,value,exhibition,1969-06-12,1\n",
+        )
+    (retrosheet_dir / "batting.csv").write_text(
+        "gid,id,stattype,gametype,date,b_sb\nOAK196906100,campb101,value,regular,1969-06-10,0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+    monkeypatch.setenv(
+        duckdb_schema.RETROSHEET_EXTRACT_DIR_ENV,
+        str(tmp_path / "retrosheet-cache"),
+    )
+    duckdb_schema._cached_conn = None
+
+    conn = duckdb_schema.get_duckdb()
+
+    try:
+        assert (
+            conn.execute("SELECT sum(CAST(b_sb AS INTEGER)) FROM retrosheet_batting").fetchone()[0]
+            == 1
+        )
+        assert (retrosheet_dir / "batting.csv").exists()
+        assert list((tmp_path / "retrosheet-cache").glob("*/batting.csv"))
     finally:
         conn.close()
         duckdb_schema._cached_conn = None

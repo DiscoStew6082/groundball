@@ -22,6 +22,10 @@ data/secondary_sources/retrosheet/*
 !data/secondary_sources/retrosheet/
 !data/secondary_sources/retrosheet/manifest.json
 !data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv
+!data/secondary_sources/retrosheet/batting.zip
+!data/secondary_sources/retrosheet/pitching.zip
+!data/secondary_sources/retrosheet/fielding.zip
+!data/secondary_sources/retrosheet/biodata.zip
 
 # Environments
 .venv/

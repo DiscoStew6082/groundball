@@ -209,6 +209,8 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
         return _format_pitcher_strikeout_side_game_log_result(result)
     if _is_pitcher_strikeout_side_count_result(result):
         return _format_pitcher_strikeout_side_count_result(result)
+    if _is_stolen_base_streak_result(result):
+        return _format_stolen_base_streak_result(result)
     if _is_player_name_result(result):
         return _format_player_name_result(result)
     return _format_labeled_result(result)
@@ -236,6 +238,28 @@ def _is_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -
         "half_inning",
         "started_half_inning",
     } <= set(result.columns)
+
+
+def _is_stolen_base_streak_result(result: GroundedDatabaseResult) -> bool:
+    return {
+        "name",
+        "stolen_base_streak_games",
+        "start_date",
+        "end_date",
+        "gametype",
+    } <= set(result.columns)
+
+
+def _format_stolen_base_streak_result(result: GroundedDatabaseResult) -> str:
+    row = dict(zip(result.columns, result.rows[0], strict=False))
+    game_type = "postseason" if row["gametype"] == "playoff" else "regular-season"
+    team = f" while with {row['team']}" if row.get("team") else ""
+    return (
+        f"{row['name']} had the longest stolen-base streak: "
+        f"{row['stolen_base_streak_games']} consecutive {game_type} games"
+        f"{team}, each with at least one stolen base, from {row['start_date']} through "
+        f"{row['end_date']}, by Retrosheet game-level batting logs."
+    )
 
 
 def _format_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -> str:

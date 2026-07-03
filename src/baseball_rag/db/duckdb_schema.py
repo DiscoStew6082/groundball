@@ -1,7 +1,10 @@
 """DuckDB CSV schema setup — zero-ingestion queries over NeuML/baseballdata CSVs."""
 
 import csv
+import os
+import tempfile
 import threading
+import zipfile
 from pathlib import Path
 
 import duckdb
@@ -19,10 +22,17 @@ RETROSHEET_STAT_TABLES = {
     "retrosheet_pitching": "pitching.csv",
     "retrosheet_fielding": "fielding.csv",
 }
+RETROSHEET_ARCHIVES = {
+    "batting.csv": "batting.zip",
+    "pitching.csv": "pitching.zip",
+    "fielding.csv": "fielding.zip",
+    "biofile0.csv": "biodata.zip",
+}
 RETROSHEET_DERIVED_TABLES = {
     "retrosheet_pitcher_strikeout_side_events": "pitcher_strikeout_side_events.csv",
 }
 RETROSHEET_BIOFILE = ("retrosheet_biofile", "biofile0.csv")
+RETROSHEET_EXTRACT_DIR_ENV = "BASEBALL_RAG_RETROSHEET_EXTRACT_DIR"
 
 # Try to load Teams.csv at module init; fall back to {} if not present.
 _TEAMS_CSV_PATH = DATA_DIR / "Teams.csv"
@@ -249,20 +259,20 @@ def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: 
         return
 
     for table_name, csv_name in RETROSHEET_STAT_TABLES.items():
-        csv_path = retrosheet_dir / csv_name
+        csv_path = _ensure_retrosheet_csv(retrosheet_dir, csv_name)
         if csv_path.exists():
             conn.execute(
                 f"""
                 CREATE TABLE {table_name} AS
                 SELECT *
-                FROM read_csv_auto('{_sql_string(csv_path)}')
+                FROM read_csv_auto('{_sql_string(csv_path)}', all_varchar=true)
                 WHERE lower(stattype) = 'value'
                   AND lower(gametype) IN ('regular', 'playoff')
                 """
             )
 
     table_name, csv_name = RETROSHEET_BIOFILE
-    csv_path = retrosheet_dir / csv_name
+    csv_path = _ensure_retrosheet_csv(retrosheet_dir, csv_name)
     if csv_path.exists():
         conn.execute(
             f"""
@@ -282,6 +292,38 @@ def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: 
                 FROM read_csv_auto('{_sql_string(csv_path)}')
                 """
             )
+
+
+def _ensure_retrosheet_csv(retrosheet_dir: Path, csv_name: str) -> Path:
+    csv_path = retrosheet_dir / csv_name
+    archive_name = RETROSHEET_ARCHIVES.get(csv_name)
+    if archive_name is None:
+        return csv_path
+    archive_path = retrosheet_dir / archive_name
+    if not archive_path.exists():
+        return csv_path
+
+    cache_dir = _retrosheet_extract_dir(archive_path)
+    extracted_path = cache_dir / csv_name
+    if extracted_path.exists():
+        return extracted_path
+
+    with zipfile.ZipFile(archive_path) as archive:
+        member = archive.getinfo(csv_name)
+        destination = (cache_dir / member.filename).resolve()
+        if not destination.is_relative_to(cache_dir.resolve()):
+            raise RuntimeError(f"Refusing to extract unsafe Retrosheet member: {member.filename}")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        archive.extract(member, cache_dir)
+    return extracted_path
+
+
+def _retrosheet_extract_dir(archive_path: Path) -> Path:
+    root = os.environ.get(RETROSHEET_EXTRACT_DIR_ENV)
+    base_dir = Path(root) if root else Path(tempfile.gettempdir()) / "groundball-retrosheet"
+    stat = archive_path.stat()
+    cache_key = f"{archive_path.stem}-{stat.st_size}-{int(stat.st_mtime)}"
+    return base_dir / cache_key
 
 
 def _sql_string(path: Path) -> str:

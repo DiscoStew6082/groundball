@@ -178,10 +178,18 @@ def _grounded_database_data_manifest(query_result: GroundedDatabaseResult) -> di
     if "retrosheet" not in source_text:
         return manifest
 
+    required_tables = []
+    if "retrosheet_pitcher_strikeout_side_events" in source_text:
+        required_tables.append("retrosheet_pitcher_strikeout_side_events")
+    if "retrosheet_batting" in source_text:
+        required_tables.append("retrosheet_batting")
+    if not required_tables:
+        required_tables.append("retrosheet_pitcher_strikeout_side_events")
+
     manifest["secondary_manifests"] = {
         "retrosheet": compact_secondary_data_manifest(
             "retrosheet",
-            required_tables=["retrosheet_pitcher_strikeout_side_events"],
+            required_tables=required_tables,
         ),
     }
     manifest["source_authorities"] = _retrosheet_event_authorities()
@@ -196,6 +204,8 @@ def _retrosheet_event_authorities() -> list[dict[str, Any]]:
         scopes = list(authority.get("scopes", []))
         if "event_derived_grounded_database_answers" not in scopes:
             scopes.append("event_derived_grounded_database_answers")
+        if "game_level_grounded_database_answers" not in scopes:
+            scopes.append("game_level_grounded_database_answers")
         authority["scopes"] = scopes
     return authorities
 
