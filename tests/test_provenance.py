@@ -14,6 +14,7 @@ from baseball_rag.provenance import (
     StructuredAnswer,
     compact_consensus_data_manifest,
     compact_data_manifest,
+    compact_secondary_data_manifest,
 )
 from baseball_rag.review_queue import build_review_item
 
@@ -214,6 +215,46 @@ def test_consensus_manifest_does_not_treat_event_projection_as_stat_consensus(
 
     assert retrosheet["available"] is False
     assert "retrosheet_batting" in retrosheet["unavailable_reason"]
+
+
+def test_secondary_manifest_filters_required_files_even_when_unavailable(tmp_path, monkeypatch):
+    secondary = tmp_path / "secondary_sources" / "retrosheet" / "manifest.json"
+    _write_manifest(
+        secondary,
+        {
+            "dataset": {"name": "Retrosheet CSV daily logs"},
+            "download": {},
+            "coverage": {},
+            "files": [
+                {
+                    "path": "data/secondary_sources/retrosheet/batting.zip",
+                    "table": "retrosheet_batting",
+                    "rows": 10,
+                    "year_coverage": {"min": 1901, "max": 2025},
+                    "sha256": "batting",
+                },
+                {
+                    "path": "data/secondary_sources/retrosheet/pitching.zip",
+                    "table": "retrosheet_pitching",
+                    "rows": 5,
+                    "year_coverage": {"min": 1901, "max": 2025},
+                    "sha256": "pitching",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "baseball_rag.provenance.secondary_manifest_path",
+        lambda source: secondary,
+    )
+
+    compact = compact_secondary_data_manifest(
+        "retrosheet",
+        required_tables=["retrosheet_pitching"],
+    )
+
+    assert compact["available"] is False
+    assert [item["table"] for item in compact["files"]] == ["retrosheet_pitching"]
 
 
 def test_structured_answer_serializes_metadata():

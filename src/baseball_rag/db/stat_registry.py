@@ -91,12 +91,16 @@ class StatSqlAdapter:
 
     table: StatTable
     columns: Mapping[str, str]
+    numeric_columns: bool = False
 
     def column(self, alias: str, stat: str) -> str:
         column = self.columns.get(stat.upper())
         if column is None:
             raise ValueError(f"{self.table} source cannot render {stat}")
-        return f"{alias}.{column}"
+        expression = f"{alias}.{column}"
+        if self.numeric_columns:
+            return f"TRY_CAST({expression} AS DOUBLE)"
+        return expression
 
 
 def quote_identifier(identifier: str) -> str:

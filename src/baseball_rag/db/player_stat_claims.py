@@ -966,7 +966,11 @@ def _retrosheet_sql_adapter(
         for stat in retrosheet_adapter_stats(stat_table)
         if (column := _retrosheet_stat_column(conn, table, stat_table, stat)) is not None
     }
-    return StatSqlAdapter(table=stat_table, columns=column_map) if column_map else None
+    return (
+        StatSqlAdapter(table=stat_table, columns=column_map, numeric_columns=True)
+        if column_map
+        else None
+    )
 
 
 def _retrosheet_filter_clause(

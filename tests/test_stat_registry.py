@@ -83,6 +83,23 @@ def test_registry_renders_avg_expression_for_retrosheet_columns():
     assert expression == 'CAST(rb."b_h" AS DOUBLE) / NULLIF(rb."b_ab", 0)'
 
 
+def test_registry_can_cast_string_backed_retrosheet_columns():
+    adapter = StatSqlAdapter(
+        table="batting",
+        columns={"HR": '"b_hr"', "AB": '"b_ab"'},
+        numeric_columns=True,
+    )
+
+    assert (
+        get_stat("HR").aggregate_expression("rb", adapter=adapter)
+        == 'SUM(TRY_CAST(rb."b_hr" AS DOUBLE))'
+    )
+    assert (
+        get_stat("AVG").aggregate_sample_clause("rb", adapter=adapter)
+        == 'SUM(TRY_CAST(rb."b_ab" AS DOUBLE)) >= 100'
+    )
+
+
 def test_registry_renders_sample_guards_for_retrosheet_columns():
     batting_adapter = StatSqlAdapter(table="batting", columns={"AB": '"b_ab"'})
     pitching_adapter = StatSqlAdapter(table="pitching", columns={"IPOUTS": '"p_ipouts"'})

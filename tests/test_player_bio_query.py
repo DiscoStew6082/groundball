@@ -355,13 +355,13 @@ def test_llm_biography_with_verified_career_stat_claim_adds_duckdb_provenance(mo
     assert (
         _consensus_scorecard(
             total=1,
-            verified_by_all=0,
-            primary_only=1,
+            verified_by_all=1,
+            primary_only=0,
             secondary_only=0,
             contradicted_by_all=0,
             conflicts=0,
             unsupported=0,
-            score="failing",
+            score="passing",
         )
         in result.answer
     )
@@ -393,13 +393,13 @@ def test_llm_biography_with_verified_season_stat_claim_passes(monkeypatch):
     assert (
         _consensus_scorecard(
             total=1,
-            verified_by_all=0,
-            primary_only=1,
+            verified_by_all=1,
+            primary_only=0,
             secondary_only=0,
             contradicted_by_all=0,
             conflicts=0,
             unsupported=0,
-            score="failing",
+            score="passing",
         )
         in result.answer
     )
@@ -508,13 +508,13 @@ def test_llm_biography_skips_draft_answer_object_before_final_contract(monkeypat
     assert (
         _consensus_scorecard(
             total=1,
-            verified_by_all=0,
-            primary_only=1,
+            verified_by_all=1,
+            primary_only=0,
             secondary_only=0,
             contradicted_by_all=0,
             conflicts=0,
             unsupported=0,
-            score="failing",
+            score="passing",
         )
         in result.answer
     )
@@ -614,16 +614,16 @@ def test_llm_biography_with_contradicted_stat_claim_warns_but_returns_prose(monk
             verified_by_all=0,
             primary_only=0,
             secondary_only=0,
-            contradicted_by_all=0,
+            contradicted_by_all=1,
             conflicts=0,
-            unsupported=1,
+            unsupported=0,
             score="failing",
         )
         in result.answer
     )
     assert (
-        "One stat claim was not verifiable against Lahman and Retrosheet: "
-        "HR was claimed as 999, Lahman has 714, and Retrosheet did not verify it."
+        "One stat claim was contradicted by Lahman and Retrosheet: "
+        "HR was claimed as 999, but Lahman/Retrosheet consensus has 714 for career."
     ) in result.answer
     assert "could not be verified" not in result.answer
     assert result.warnings
@@ -656,19 +656,19 @@ def test_llm_biography_with_mixed_claims_names_only_contradictions(monkeypatch):
     assert (
         _consensus_scorecard(
             total=3,
-            verified_by_all=0,
-            primary_only=2,
+            verified_by_all=2,
+            primary_only=0,
             secondary_only=0,
-            contradicted_by_all=0,
+            contradicted_by_all=1,
             conflicts=0,
-            unsupported=1,
+            unsupported=0,
             score="failing",
         )
         in result.answer
     )
-    assert "Most stat claims were verified." not in result.answer
+    assert "Most stat claims were verified by all sources." in result.answer
     assert (
-        "SB was claimed as 301, Lahman has 329, and Retrosheet did not verify it" in result.answer
+        "SB was claimed as 301, but Lahman/Retrosheet consensus has 329 for career" in result.answer
     )
     assert "could not be verified" not in result.answer
     assert [row["status"] for row in result.sources[0].rows] == [
@@ -703,19 +703,19 @@ def test_supplied_biography_verification_scores_all_claims_without_llm(monkeypat
     assert (
         _consensus_scorecard(
             total=5,
-            verified_by_all=0,
-            primary_only=3,
+            verified_by_all=3,
+            primary_only=0,
             secondary_only=0,
-            contradicted_by_all=0,
+            contradicted_by_all=1,
             conflicts=0,
-            unsupported=2,
+            unsupported=1,
             score="failing",
         )
         in result.answer
     )
-    assert "Most stat claims were verified." not in result.answer
+    assert "Most stat claims were verified by all sources." in result.answer
     assert (
-        "SB was claimed as 301, Lahman has 329, and Retrosheet did not verify it" in result.answer
+        "SB was claimed as 301, but Lahman/Retrosheet consensus has 329 for career" in result.answer
     )
     assert (
         "MVP was claimed as 3, but Lahman/Retrosheet consensus verification "
@@ -841,13 +841,13 @@ def test_supplied_biography_verifies_season_claim_against_that_year(monkeypatch)
     assert (
         _consensus_scorecard(
             total=1,
-            verified_by_all=0,
-            primary_only=1,
+            verified_by_all=1,
+            primary_only=0,
             secondary_only=0,
             contradicted_by_all=0,
             conflicts=0,
             unsupported=0,
-            score="failing",
+            score="passing",
         )
         in result.answer
     )
@@ -869,13 +869,13 @@ def test_supplied_biography_preserves_leading_decimal_rate_claim(monkeypatch):
     assert (
         _consensus_scorecard(
             total=1,
-            verified_by_all=0,
-            primary_only=1,
+            verified_by_all=1,
+            primary_only=0,
             secondary_only=0,
             contradicted_by_all=0,
             conflicts=0,
             unsupported=0,
-            score="failing",
+            score="passing",
         )
         in result.answer
     )
@@ -908,23 +908,23 @@ def test_llm_biography_does_not_say_most_when_verified_claims_are_not_majority(m
     assert (
         _consensus_scorecard(
             total=3,
-            verified_by_all=0,
-            primary_only=1,
+            verified_by_all=1,
+            primary_only=0,
             secondary_only=0,
-            contradicted_by_all=0,
+            contradicted_by_all=2,
             conflicts=0,
-            unsupported=2,
+            unsupported=0,
             score="failing",
         )
         in result.answer
     )
     assert "Most stat claims were verified." not in result.answer
-    assert "2 stat claims were not verifiable against Lahman and Retrosheet:" in result.answer
+    assert "2 stat claims were contradicted by Lahman and Retrosheet:" in result.answer
     assert (
-        "RBI was claimed as 1, Lahman has 2086, and Retrosheet did not verify it" in result.answer
+        "RBI was claimed as 1, but Lahman/Retrosheet consensus has 2086 for career" in result.answer
     )
     assert (
-        "SB was claimed as 301, Lahman has 329, and Retrosheet did not verify it" in result.answer
+        "SB was claimed as 301, but Lahman/Retrosheet consensus has 329 for career" in result.answer
     )
 
 

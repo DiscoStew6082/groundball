@@ -750,7 +750,7 @@ def test_consensus_retrosheet_sql_filters_by_retroid_and_year():
     assert result.secondary.params == ["retro001", 1927]
 
 
-def test_consensus_provenance_marks_placeholder_retrosheet_manifest_optional():
+def test_consensus_provenance_includes_retrosheet_manifest_when_available():
     conn = _conn()
     _add_player(conn)
     _add_batting(conn)
@@ -764,8 +764,8 @@ def test_consensus_provenance_marks_placeholder_retrosheet_manifest_optional():
 
     assert presentation.data_manifest["dataset"]["name"] == "NeuML/baseballdata"
     retrosheet = presentation.data_manifest["secondary_manifests"]["retrosheet"]
-    assert retrosheet["available"] is False
-    assert "retrosheet_batting" in retrosheet["unavailable_reason"]
+    assert retrosheet["available"] is True
+    assert any(item["table"] == "retrosheet_batting" for item in retrosheet["files"])
 
 
 def test_consensus_presentation_surfaces_retrosheet_sql_for_secondary_only_evidence():
