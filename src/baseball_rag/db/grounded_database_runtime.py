@@ -219,18 +219,41 @@ def _is_player_name_result(result: GroundedDatabaseResult) -> bool:
 def _is_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> bool:
     return {
         "name",
-        "career_strikeout_side_count",
         "strict_started_half_count",
-    } <= set(result.columns)
+    } <= set(result.columns) and (
+        "career_strikeout_side_count" in result.columns or "strikeout_side_count" in result.columns
+    )
 
 
 def _format_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> str:
+    if "strikeout_side_count" in result.columns and "year" in result.columns:
+        return _format_pitcher_strikeout_side_year_count_result(result)
+    if result.row_count > 1 and "career_strikeout_side_count" in result.columns:
+        return _format_pitcher_strikeout_side_leaderboard_result(result)
+
     row = dict(zip(result.columns, result.rows[0], strict=False))
     return (
         f"{row['name']} struck out the side {row['career_strikeout_side_count']} times "
         "in his career by Retrosheet event-derived count. "
         f"That is {row['strict_started_half_count']} if requiring he began the half-inning."
     )
+
+
+def _format_pitcher_strikeout_side_year_count_result(result: GroundedDatabaseResult) -> str:
+    row = dict(zip(result.columns, result.rows[0], strict=False))
+    return (
+        f"{row['name']} struck out the side {row['strikeout_side_count']} times "
+        f"in {row['year']} by Retrosheet event-derived count. "
+        f"That is {row['strict_started_half_count']} if requiring he began the half-inning."
+    )
+
+
+def _format_pitcher_strikeout_side_leaderboard_result(result: GroundedDatabaseResult) -> str:
+    lines = ["Career strikeout-side leaders by Retrosheet event-derived count:"]
+    for index, values in enumerate(result.rows[:100], start=1):
+        row = dict(zip(result.columns, values, strict=False))
+        lines.append(f"{index}. {row['name']}: {row['career_strikeout_side_count']}")
+    return "\n".join(lines)
 
 
 def _result_count_line(result: GroundedDatabaseResult, noun: str) -> str:

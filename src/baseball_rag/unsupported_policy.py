@@ -48,6 +48,18 @@ _POLICY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"\btriple-a\b|\btriple a\b|\bminor leagues?\b"),
         "Minor-league leaderboards are outside the local MLB-focused dataset.",
     ),
+    (
+        re.compile(
+            r"\b(?:enter(?:ed|s)?|came in|come in|came into|come into|inherited|inherit)"
+            r"\b.*\b(?:runners?|men) on(?: base)?\b|"
+            r"\b(?:inherited|inherit) runners?\b"
+        ),
+        (
+            "Retrosheet event data is local, but this event query is not modeled yet. "
+            "Supported Retrosheet event queries currently cover pitcher strikeout-side "
+            "career counts, year counts, and career leaderboards."
+        ),
+    ),
 )
 
 

@@ -368,6 +368,53 @@ class TestApi:
 
         assert match_template("which pitchers have struck out the side in their career") is None
 
+    def test_query_endpoint_answers_strikeout_side_year_and_leaders_without_llm(self, monkeypatch):
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("Retrosheet event-derived questions must not call the LLM")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+        year_response = client.post(
+            "/query",
+            json={"question": "how many times did Rollie Fingers strike out the side in 1972"},
+        )
+        assert year_response.status_code == 200
+        year_data = year_response.json()
+        assert year_data["unsupported"] is False
+        assert "Rollie Fingers struck out the side 8 times in 1972" in year_data["answer"]
+        assert year_data["sources"][0]["rows"][0]["strikeout_side_count"] == 8
+
+        leaders_response = client.post(
+            "/query",
+            json={"question": "which pitchers struck out the side the most in their careers"},
+        )
+        assert leaders_response.status_code == 200
+        leaders_data = leaders_response.json()
+        assert leaders_data["unsupported"] is False
+        assert "Nolan Ryan: 324" in leaders_data["answer"]
+        assert "Randy Johnson: 320" in leaders_data["answer"]
+        assert leaders_data["sources"][0]["rows"][0]["name"] == "Nolan Ryan"
+        assert leaders_data["sources"][0]["rows"][0]["career_strikeout_side_count"] == 324
+
+    def test_query_endpoint_rejects_unmodeled_retrosheet_event_queries(self, monkeypatch):
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("unmodeled Retrosheet event queries must not call the LLM")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+        for question in (
+            "how often did Rollie Fingers enter with runners on",
+            "how often did Rollie Fingers inherit runners",
+            "how often did Rollie Fingers come in with men on base",
+        ):
+            response = client.post("/query", json={"question": question})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["unsupported"] is True
+            assert data["unsupported_reason"] == "unsupported"
+            assert "Retrosheet event data is local" in data["answer"]
+
     def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
 
