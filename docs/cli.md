@@ -16,6 +16,12 @@ The module form (`uv run python -m baseball_rag.cli ...`) and legacy `baseball-r
 uv run groundball "who was Babe Ruth"
 ```
 
+Inspect local Retrosheet event support without asking the language model:
+
+```bash
+uv run groundball capabilities retrosheet-events
+```
+
 ### Examples
 
 ```bash

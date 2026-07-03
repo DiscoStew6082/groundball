@@ -205,6 +205,8 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
     if result.row_count == 0:
         return f"No results found for '{question}'."
 
+    if _is_pitcher_strikeout_side_game_log_result(result):
+        return _format_pitcher_strikeout_side_game_log_result(result)
     if _is_pitcher_strikeout_side_count_result(result):
         return _format_pitcher_strikeout_side_count_result(result)
     if _is_player_name_result(result):
@@ -223,6 +225,37 @@ def _is_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> b
     } <= set(result.columns) and (
         "career_strikeout_side_count" in result.columns or "strikeout_side_count" in result.columns
     )
+
+
+def _is_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -> bool:
+    return {
+        "name",
+        "year",
+        "game_id",
+        "inning",
+        "half_inning",
+        "started_half_inning",
+    } <= set(result.columns)
+
+
+def _format_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -> str:
+    first_row = dict(zip(result.columns, result.rows[0], strict=False))
+    years = sorted({dict(zip(result.columns, row, strict=False))["year"] for row in result.rows})
+    year_text = str(years[0]) if len(years) == 1 else "his career"
+    showing = (
+        f", showing first 100 of {result.row_count}"
+        if result.truncated or result.row_count > 100
+        else ""
+    )
+    lines = [
+        f"{first_row['name']} strikeout-side games in {year_text} "
+        f"by Retrosheet event-derived game log{showing}:"
+    ]
+    for values in result.rows[:100]:
+        row = dict(zip(result.columns, values, strict=False))
+        started = "started half-inning" if row["started_half_inning"] else "entered mid-inning"
+        lines.append(f"- {row['game_id']}: {row['half_inning']} {row['inning']} ({started})")
+    return "\n".join(lines)
 
 
 def _format_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> str:

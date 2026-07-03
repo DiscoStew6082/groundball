@@ -6,6 +6,8 @@ the all-time career leaderboard. Explicit years still route to season leaders.
 
 from unittest.mock import patch
 
+import pytest
+
 # The CLI adapts the shared request execution path into text.
 
 
@@ -69,3 +71,22 @@ class TestCliRequestSpine:
 
         execute.assert_called_once_with("who led in made-up stat", adapter_component_id="cli")
         assert result == "No result\n\nWarning: Try a more specific year."
+
+    def test_cli_prints_retrosheet_event_capabilities(self, capsys, monkeypatch):
+        """The CLI exposes the Retrosheet event support matrix directly."""
+        from baseball_rag.cli import main
+
+        monkeypatch.setattr(
+            "sys.argv",
+            ["groundball", "capabilities", "retrosheet-events"],
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        output = capsys.readouterr().out
+        assert exc_info.value.code == 0
+        assert "Retrosheet event capabilities" in output
+        assert "Pitcher strikeout-side counts" in output
+        assert "retrosheet_pitcher_strikeout_side_events" in output
+        assert "Named pitcher career strikeout-side count" in output

@@ -427,7 +427,7 @@ def _qualified_season_era_route_owner(
 
 
 def _has_strikeout_side_phrase(q: str) -> bool:
-    return bool(re.search(r"\b(?:strike|struck) out the side\b", q))
+    return bool(re.search(r"\b(?:strike|struck) out the side\b|\bstrikeout side\b", q))
 
 
 def _match_pitcher_strikeout_side_leaders(q: str) -> Mapping[str, Any] | None:
@@ -471,6 +471,33 @@ def _match_pitcher_strikeout_side_count(q: str) -> Mapping[str, Any] | None:
     }
 
 
+def _match_pitcher_strikeout_side_game_log(q: str) -> Mapping[str, Any] | None:
+    if "postseason" in q or "playoff" in q or not _has_strikeout_side_phrase(q):
+        return None
+    if re.search(r"\b(?:how many|how often|count)\b", q):
+        return None
+    if not re.search(r"\b(?:when|show|list|games?|game log|game by game)\b", q):
+        return None
+
+    match = re.search(
+        r"\b(?:when did|show|list|which games did|what games did)?\s*"
+        r"(?P<player>[a-z][a-z .'\\-]+?)\s+"
+        r"(?:(?:strike|struck) out the side|strikeout side)\b",
+        q,
+    )
+    if match is None:
+        return None
+
+    player_name = match.group("player").strip()
+    if not player_name or player_name in {"which pitchers", "who"}:
+        return None
+    return {
+        "pattern": "pitcher strikeout-side game log",
+        "player_name": player_name,
+        "year": _extract_year(q),
+    }
+
+
 def _assemble_pitcher_strikeout_side_count(
     facts: Mapping[str, Any],
     _question: str,
@@ -483,6 +510,13 @@ def _assemble_pitcher_strikeout_side_leaders(
     _question: str,
 ) -> AssembledSQL:
     return _pitcher_strikeout_side_leaders_sql(int(facts["limit"]))
+
+
+def _assemble_pitcher_strikeout_side_game_log(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    return _pitcher_strikeout_side_game_log_sql(str(facts["player_name"]), facts["year"])
 
 
 _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
@@ -566,6 +600,15 @@ _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
             "Matched local qualified season ERA leader template with an innings guard."
         ),
         route_owner=_qualified_season_era_route_owner,
+    ),
+    GroundedDatabaseTemplate(
+        template_id="pitcher_strikeout_side_game_log",
+        description="Retrosheet event-derived pitcher strikeout-side game log",
+        matcher=_match_pitcher_strikeout_side_game_log,
+        assemble=_assemble_pitcher_strikeout_side_game_log,
+        source_detail=_source_detail(
+            "Matched local Retrosheet event-derived strikeout-side game log template."
+        ),
     ),
     GroundedDatabaseTemplate(
         template_id="pitcher_strikeout_side_count",
@@ -918,6 +961,36 @@ def _pitcher_strikeout_side_leaders_sql(limit: int) -> AssembledSQL:
         LIMIT ?
         """,
         [limit],
+    )
+
+
+def _pitcher_strikeout_side_game_log_sql(player_name: str, year: Any | None) -> AssembledSQL:
+    year_filter = "AND e.year = ?" if year is not None else ""
+    params: list[object] = [player_name.lower()]
+    if year is not None:
+        params.append(int(year))
+    return AssembledSQL(
+        """
+        SELECT
+            p.nameFirst,
+            p.nameLast,
+            e.year,
+            e.game_id,
+            e.inning,
+            CASE WHEN e.batting_home = 1 THEN 'bottom' ELSE 'top' END AS half_inning,
+            e.started_half_inning,
+            e.event_sequence,
+            CONCAT(
+                'All three outs recorded by the pitcher in a half-inning were strikeouts; ',
+                'game_id is the Retrosheet game identifier.'
+            ) AS definition
+        FROM retrosheet_pitcher_strikeout_side_events e
+        JOIN people p ON lower(p.retroID) = lower(e.retroID)
+        WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
+            {year_filter}
+        ORDER BY e.year, e.game_id, e.inning, e.batting_home
+        """.format(year_filter=year_filter),
+        params,
     )
 
 

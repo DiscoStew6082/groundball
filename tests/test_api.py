@@ -396,6 +396,57 @@ class TestApi:
         assert leaders_data["sources"][0]["rows"][0]["name"] == "Nolan Ryan"
         assert leaders_data["sources"][0]["rows"][0]["career_strikeout_side_count"] == 324
 
+        count_like_response = client.post(
+            "/query",
+            json={
+                "question": (
+                    "how many times did Rollie Fingers strike out the side in a game in 1972"
+                )
+            },
+        )
+        assert count_like_response.status_code == 200
+        count_like_data = count_like_response.json()
+        assert count_like_data["unsupported"] is False
+        assert "Rollie Fingers struck out the side 8 times in 1972" in count_like_data["answer"]
+
+        how_often_response = client.post(
+            "/query",
+            json={"question": "how often did Rollie Fingers strike out the side in a game in 1972"},
+        )
+        assert how_often_response.status_code == 200
+        how_often_data = how_often_response.json()
+        assert how_often_data["unsupported"] is False
+        assert "Rollie Fingers struck out the side 8 times in 1972" in how_often_data["answer"]
+
+    def test_query_endpoint_answers_strikeout_side_game_log_without_llm(self, monkeypatch):
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("Retrosheet event-derived questions must not call the LLM")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+
+        response = client.post(
+            "/query",
+            json={"question": "show Rollie Fingers strikeout side games in 1972"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is False
+        assert "Rollie Fingers strikeout-side games in 1972" in data["answer"]
+        assert "CAL197205160" in data["answer"]
+        assert "OAK197208100" in data["answer"]
+        assert data["sources"][0]["rows"][0]["game_id"] == "CAL197205160"
+        assert data["sources"][0]["rows"][0]["inning"] == 6
+
+        career_response = client.post(
+            "/query",
+            json={"question": "show Nolan Ryan strikeout side games"},
+        )
+        assert career_response.status_code == 200
+        career_data = career_response.json()
+        assert career_data["unsupported"] is False
+        assert "showing first 100 of 324" in career_data["answer"]
+
     def test_query_endpoint_rejects_unmodeled_retrosheet_event_queries(self, monkeypatch, tmp_path):
         def fail_llm(*_args, **_kwargs):
             raise AssertionError("unmodeled Retrosheet event queries must not call the LLM")
@@ -409,7 +460,7 @@ class TestApi:
             "how often did Rollie Fingers come in with men on base",
             "how often did Rollie Fingers strike out the side in the postseason",
             "how many called strikeout-side innings did Rollie Fingers have",
-            "how many times did Rollie Fingers strike out the side in a game in 1972",
+            "show Rollie Fingers strikeout side games at Yankee Stadium in 1972",
         ):
             response = client.post("/query", json={"question": question})
 
