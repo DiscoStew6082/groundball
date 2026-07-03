@@ -2,8 +2,8 @@
 
 ## System Overview
 
-Groundball is organized around one request lifecycle used by the CLI, API, and
-Gradio UI. The lifecycle returns a `StructuredAnswer` with answer text, intent,
+Groundball uses one request lifecycle for its modern sports almanac engine across
+the CLI, API, and Gradio UI. The lifecycle returns a `StructuredAnswer` with answer text, intent,
 sources, warnings, unsupported state, metadata, and trace information.
 
 For a non-linear visual overview, see the

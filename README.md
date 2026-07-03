@@ -1,24 +1,26 @@
-# Groundball: Eval-Gated Baseball Analytics With Audit-Ready Provenance
+# Groundball: A Modern Sports Almanac With Audit-Ready Provenance
 
 [![CI](https://github.com/DiscoStew6082/groundball/actions/workflows/ci.yml/badge.svg)](https://github.com/DiscoStew6082/groundball/actions/workflows/ci.yml)
 
-Groundball is a local-first MLB history assistant that turns natural-language baseball questions into grounded, auditable answers instead of unsupported LLM prose.
+Groundball is a local-first modern sports almanac for MLB history: natural-language questions in, grounded answers with stats, context, and audit-ready evidence out.
 
 ## 30-second proof
 
-- **Problem:** general-purpose LLMs can confidently hallucinate baseball stats, player identities, old team names, and year ranges.
-- **System:** typed intent routing sends structured questions to DuckDB, uses a local LLM only where prose is appropriate, and returns the rows, SQL, checksums, dataset license metadata, and verification results behind each answer.
+- **Problem:** classic sports almanacs are trusted but static; general-purpose LLMs are flexible but can confidently hallucinate baseball stats, player identities, old team names, and year ranges.
+- **System:** a modern almanac engine routes structured questions to DuckDB, uses a local LLM only where prose is appropriate, and returns the rows, SQL, checksums, dataset license metadata, and verification results behind each answer.
 - **Safety boundary:** stat SQL is generated from a whitelist and typed query specs; ambiguous, live, future, or unsupported questions fail closed instead of guessing.
 - **Proof:** deterministic eval gates run in CI, publish Markdown/JSON evidence, compare against a baseline, and expose release-blocking guardrail coverage.
 - **Stack:** Python, FastAPI, DuckDB, Typer, Gradio, pytest, local/open-weight LLM workflow.
 
-**Recruiter signal:** this is not a chatbot wrapper. It is an AI systems project focused on grounded generation, provenance, deterministic release gates, and operational failure modes.
+**Recruiter signal:** this is not a chatbot wrapper. It is a modern sports almanac system focused on grounded generation, provenance, deterministic release gates, and operational failure modes.
 
 ![Groundball CLI demo showing a grounded RBI leaderboard answer](docs/assets/groundball-cli-demo.svg)
 
 ## What it does
 
-Groundball routes natural-language questions to grounded sources, answers structured questions from DuckDB, uses the local LLM only where prose is appropriate, and returns provenance with the rows, SQL, checksums, dataset license metadata, and verification results used to support the answer.
+Groundball is built like a modern sports almanac: it combines historical MLB stat tables, player identity resolution, local stat definitions, selective LLM narration, and visible provenance behind one natural-language interface.
+
+It routes questions to grounded sources, answers structured questions from DuckDB, uses the local LLM only where prose is appropriate, and returns provenance with the rows, SQL, checksums, dataset license metadata, and verification results used to support the answer.
 
 The interesting part is not that an LLM can sound fluent about baseball, but that the system prevents unsupported stat claims, constrains where facts come from, gates releases with deterministic evals, and leaves audit-ready evidence for review.
 

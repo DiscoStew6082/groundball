@@ -2,7 +2,7 @@
 
 ## `groundball`
 
-Single command for ad-hoc queries against the shared answer pipeline.
+Single command for ad-hoc queries against the shared almanac query pipeline.
 
 ### Usage
 

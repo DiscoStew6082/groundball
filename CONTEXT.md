@@ -17,7 +17,7 @@ Use these words consistently:
 
 ## Domain Contract
 
-- Groundball answers historical MLB questions with natural language in and grounded evidence out.
+- Groundball is positioned as a local-first modern sports almanac for historical MLB questions: natural language in, grounded answer plus evidence out.
 - DuckDB/Lahman remains the primary factual/stat authority for structured stat answers, grounded database answers, player identity, and primary biography stat-claim verification.
 - Retrosheet remains optional secondary consensus evidence for biography stat claims, not a replacement factual authority for all query paths.
 - LLMs may classify, narrate, and generate biography prose, but structured baseball facts must stay verified against DuckDB/Lahman and optional Retrosheet evidence where supported.

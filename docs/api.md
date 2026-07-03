@@ -1,6 +1,6 @@
 # API Reference
 
-FastAPI server exposing the RAG pipeline over HTTP.
+FastAPI server exposing Groundball's almanac query pipeline over HTTP.
 
 ## Start the Server
 

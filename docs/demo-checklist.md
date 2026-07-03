@@ -44,4 +44,4 @@ uv run groundball-ui
 
 ## Close
 
-The takeaway: language is used for routing and narration, while deterministic code owns database execution and every answer carries inspectable evidence.
+The takeaway: Groundball is a modern sports almanac, not a generic chatbot. Language is used for routing and narration, while deterministic code owns database execution and every answer carries inspectable evidence.
