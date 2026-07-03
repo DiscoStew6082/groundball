@@ -173,7 +173,10 @@ def _grounded_database_data_manifest(query_result: GroundedDatabaseResult) -> di
         return manifest
 
     manifest["secondary_manifests"] = {
-        "retrosheet": compact_secondary_data_manifest("retrosheet"),
+        "retrosheet": compact_secondary_data_manifest(
+            "retrosheet",
+            required_tables=["retrosheet_pitcher_strikeout_side_events"],
+        ),
     }
     manifest["source_authorities"] = _retrosheet_event_authorities()
     return manifest

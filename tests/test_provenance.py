@@ -173,6 +173,49 @@ def test_consensus_manifest_includes_available_retrosheet_manifest(tmp_path, mon
     ]
 
 
+def test_consensus_manifest_does_not_treat_event_projection_as_stat_consensus(
+    tmp_path, monkeypatch
+):
+    primary = tmp_path / "manifest.json"
+    secondary = tmp_path / "secondary_sources" / "retrosheet" / "manifest.json"
+    _write_manifest(
+        primary,
+        {
+            "dataset": {"name": "NeuML/baseballdata", "upstream": "Lahman Baseball Database"},
+            "download": {},
+            "coverage": {},
+            "files": [],
+        },
+    )
+    _write_manifest(
+        secondary,
+        {
+            "dataset": {"name": "Retrosheet event-derived local aggregates"},
+            "download": {"downloaded_at": "2026-07-03"},
+            "coverage": {"year_coverage": {"min": 1910, "max": 2025}},
+            "files": [
+                {
+                    "path": "data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv",
+                    "table": "retrosheet_pitcher_strikeout_side_events",
+                    "rows": 49608,
+                    "year_coverage": {"min": 1910, "max": 2025},
+                    "sha256": "abc",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr("baseball_rag.provenance.manifest_path", lambda: primary)
+    monkeypatch.setattr(
+        "baseball_rag.provenance.secondary_manifest_path",
+        lambda source: secondary,
+    )
+
+    retrosheet = compact_consensus_data_manifest()["secondary_manifests"]["retrosheet"]
+
+    assert retrosheet["available"] is False
+    assert "retrosheet_batting" in retrosheet["unavailable_reason"]
+
+
 def test_structured_answer_serializes_metadata():
     answer = StructuredAnswer(
         answer="Tommy Davis led MLB with 153 RBI.",
