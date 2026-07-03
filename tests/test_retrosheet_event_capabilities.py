@@ -19,15 +19,16 @@ def test_retrosheet_event_matrix_documents_strikeout_side_projection():
     assert capability.supported_query_families == (
         "Named pitcher career strikeout-side count",
         "Named pitcher season strikeout-side count",
+        "Named pitcher strikeout-side game log",
         "Pitcher career strikeout-side leaderboard",
     )
-    assert capability.supported_filters == ("pitcher full name", "career", "year")
+    assert capability.supported_filters == ("pitcher full name", "career", "year", "game log")
     assert capability.unsupported_nearby_families == (
         "Inherited runners or entering with runners on base",
         "Pitch counts or immaculate innings",
         "Called/swinging strikeout splits",
         "Postseason-only splits",
-        "Opponent, batter, team, park, game-specific, or game-log filters",
+        "Opponent, batter, team, or park filters",
     )
 
 
@@ -39,7 +40,6 @@ def test_retrosheet_event_matrix_documents_strikeout_side_projection():
         "how many called strikeout-side innings did Rollie Fingers have",
         "how often did Rollie Fingers strike out the side in the postseason",
         "how many times did Rollie Fingers strike out the side against the Yankees",
-        "how many times did Rollie Fingers strike out the side in a game in 1972",
     ],
 )
 def test_retrosheet_event_matrix_builds_policy_reason_for_nearby_queries(question):
