@@ -181,6 +181,8 @@ def _grounded_database_data_manifest(query_result: GroundedDatabaseResult) -> di
     required_tables = []
     if "retrosheet_pitcher_strikeout_side_events" in source_text:
         required_tables.append("retrosheet_pitcher_strikeout_side_events")
+    if "retrosheet_pitching" in source_text:
+        required_tables.append("retrosheet_pitching")
     if "retrosheet_batting" in source_text:
         required_tables.append("retrosheet_batting")
     if not required_tables:

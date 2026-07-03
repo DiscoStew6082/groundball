@@ -209,8 +209,10 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
         return _format_pitcher_strikeout_side_game_log_result(result)
     if _is_pitcher_strikeout_side_count_result(result):
         return _format_pitcher_strikeout_side_count_result(result)
-    if _is_stolen_base_streak_result(result):
-        return _format_stolen_base_streak_result(result)
+    if _is_retrosheet_player_game_log_result(result):
+        return _format_retrosheet_player_game_log_result(result)
+    if _is_batting_streak_result(result):
+        return _format_batting_streak_result(result)
     if _is_player_name_result(result):
         return _format_player_name_result(result)
     return _format_labeled_result(result)
@@ -240,26 +242,80 @@ def _is_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -
     } <= set(result.columns)
 
 
-def _is_stolen_base_streak_result(result: GroundedDatabaseResult) -> bool:
+def _is_batting_streak_result(result: GroundedDatabaseResult) -> bool:
     return {
         "name",
-        "stolen_base_streak_games",
+        "stat",
+        "streak_games",
         "start_date",
         "end_date",
         "gametype",
     } <= set(result.columns)
 
 
-def _format_stolen_base_streak_result(result: GroundedDatabaseResult) -> str:
+def _is_retrosheet_player_game_log_result(result: GroundedDatabaseResult) -> bool:
+    columns = set(result.columns)
+    return {
+        "date",
+        "game_id",
+        "name",
+        "team",
+        "stat",
+        "stat_value",
+        "gametype",
+    } <= columns or (
+        {
+            "game_date",
+            "game_id",
+            "name",
+            "team",
+            "stat",
+            "stat_value",
+            "gametype",
+        }
+        <= columns
+    )
+
+
+def _format_batting_streak_result(result: GroundedDatabaseResult) -> str:
     row = dict(zip(result.columns, result.rows[0], strict=False))
     game_type = "postseason" if row["gametype"] == "playoff" else "regular-season"
     team = f" while with {row['team']}" if row.get("team") else ""
+    stat_label = str(row["stat_label"])
+    streak_label = str(row.get("streak_label") or f"{stat_label} streak")
+    event_label = str(row.get("event_label") or stat_label)
     return (
-        f"{row['name']} had the longest stolen-base streak: "
-        f"{row['stolen_base_streak_games']} consecutive {game_type} games"
-        f"{team}, each with at least one stolen base, from {row['start_date']} through "
+        f"{row['name']} had the longest {streak_label}: "
+        f"{row['streak_games']} consecutive {game_type} games"
+        f"{team}, each with at least one {event_label}, from {row['start_date']} through "
         f"{row['end_date']}, by Retrosheet game-level batting logs."
     )
+
+
+def _format_retrosheet_player_game_log_result(result: GroundedDatabaseResult) -> str:
+    first_row = dict(zip(result.columns, result.rows[0], strict=False))
+    row_dicts = [dict(zip(result.columns, row, strict=False)) for row in result.rows]
+    date_column = "date" if "date" in result.columns else "game_date"
+    opponent_column = "opponent_team" if "opponent_team" in result.columns else "opponent"
+    years = sorted({str(row[date_column])[:4] for row in row_dicts if row.get(date_column)})
+    year_text = years[0] if len(years) == 1 else "his career"
+    showing = (
+        f", showing first 100 of {result.row_count}"
+        if result.truncated or result.row_count > 100
+        else ""
+    )
+    lines = [
+        f"{first_row['name']} {first_row['stat']} game log in {year_text} "
+        f"by Retrosheet game-level logs{showing}:"
+    ]
+    for values in result.rows[:100]:
+        row = dict(zip(result.columns, values, strict=False))
+        opponent = f" vs {row[opponent_column]}" if row.get(opponent_column) else ""
+        lines.append(
+            f"- {row[date_column]} {row['game_id']}: {row['stat_value']} "
+            f"{row['stat']}, {row['team']}{opponent}"
+        )
+    return "\n".join(lines)
 
 
 def _format_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -> str:

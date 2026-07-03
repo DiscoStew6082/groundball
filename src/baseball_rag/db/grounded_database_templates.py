@@ -45,6 +45,29 @@ TemplateRouteOwner = Callable[[Mapping[str, Any], str, str | None], bool]
 
 
 @dataclass(frozen=True)
+class BattingStreakStat:
+    """Whitelisted Retrosheet batting-log stat that can define player-game streaks."""
+
+    stat_key: str
+    column: str
+    streak_column: str
+    total_column: str
+    streak_label: str
+    event_label: str
+    source_label: str
+    definition_label: str
+
+
+_BATTING_GAME_LOG_STAT_CODES = {
+    "stolen_base": "SB",
+    "hit": "H",
+    "home_run": "HR",
+    "rbi": "RBI",
+    "run": "R",
+}
+
+
+@dataclass(frozen=True)
 class GroundedDatabaseTemplate:
     """Local owner for one deterministic grounded database template."""
 
@@ -86,6 +109,17 @@ def _normalize_question(question: str) -> str:
 def _extract_threshold(text: str, *, default: int) -> int:
     match = re.search(r"\b(\d{2,4})\b", text)
     return int(match.group(1)) if match else default
+
+
+def _extract_game_stat_threshold(text: str, *, default: int = 1) -> int:
+    match = re.search(
+        r"\b(?:at least|minimum|min|with|had|have|steal|stole|strike out|struck out)\s+"
+        r"(\d{1,3})\b",
+        text,
+    )
+    if match:
+        return int(match.group(1))
+    return default
 
 
 def _extract_explicit_wins_threshold(text: str) -> int | None:
@@ -440,6 +474,73 @@ def _has_strikeout_side_phrase(q: str) -> bool:
     return bool(re.search(r"\b(?:strike|struck) out the side\b|\bstrikeout side\b", q))
 
 
+def _has_pitcher_daily_strikeout_game_log_phrase(q: str) -> bool:
+    return (
+        bool(re.search(r"\b(?:strikeout|strikeouts|struck out|strike out)\b", q))
+        and bool(re.search(r"\b(?:games?|game log|game by game)\b", q))
+        and not _has_strikeout_side_phrase(q)
+    )
+
+
+def _unsupported_pitcher_daily_game_log_reason(q: str) -> str | None:
+    if re.search(r"\b(?:team|teams)\b", q):
+        return "Team pitching game logs are not modeled by this player game-log template."
+    if re.search(r"\b(?:pitch by pitch|pitch-level|pitch level|pitch counts?|pitches)\b", q):
+        return "Pitch-level details are not modeled in Retrosheet daily pitching logs."
+    if re.search(r"\b(?:inning by inning|inning-level|inning level|innings?)\b", q):
+        return "Inning-level pitching events are not modeled in Retrosheet daily pitching logs."
+    return None
+
+
+def _extract_pitcher_daily_game_log_player_name(q: str) -> str | None:
+    for pattern in (
+        r"\b(?:show|list)\s+(?P<player>[a-z][a-z .'\\-]+?)\s+"
+        r"(?:(?:postseason|playoff|regular season)\s+)?games?\s+with\b",
+        r"\bwhat games did\s+(?P<player>[a-z][a-z .'\\-]+?)\s+"
+        r"(?:strike|struck) out\b",
+        r"\b(?P<player>[a-z][a-z .'\\-]+?)\s+strikeout\s+game log\b",
+    ):
+        match = re.search(pattern, q)
+        if match is None:
+            continue
+        player_name = re.sub(r"^(?:show|list)\s+", "", match.group("player").strip())
+        if player_name and player_name not in {"what", "who", "which pitchers"}:
+            return player_name
+    return None
+
+
+def _extract_pitcher_daily_game_log_threshold(q: str) -> int:
+    match = re.search(
+        r"\b(?:at least|minimum|min|with|>=)\s+(?P<threshold>\d{1,2})\s+"
+        r"(?:strikeouts?|ks?|batters)\b",
+        q,
+    )
+    if match is not None:
+        return int(match.group("threshold"))
+    match = re.search(
+        r"\b(?:strike|struck) out\s+(?P<threshold>\d{1,2})\s+(?:batters|hitters)\b",
+        q,
+    )
+    return int(match.group("threshold")) if match is not None else 0
+
+
+def _match_pitcher_daily_strikeout_game_log(q: str) -> Mapping[str, Any] | None:
+    if not _has_pitcher_daily_strikeout_game_log_phrase(q):
+        return None
+    unsupported_reason = _unsupported_pitcher_daily_game_log_reason(q)
+    player_name = _extract_pitcher_daily_game_log_player_name(q)
+    if unsupported_reason is None and player_name is None:
+        return None
+    return {
+        "pattern": "pitcher daily strikeout game log",
+        "unsupported_reason": unsupported_reason,
+        "player_name": player_name,
+        "threshold": _extract_pitcher_daily_game_log_threshold(q),
+        "year": _extract_year(q),
+        "gametype": "playoff" if _mentions_postseason(q) else "regular",
+    }
+
+
 def _match_pitcher_strikeout_side_leaders(q: str) -> Mapping[str, Any] | None:
     if not _has_strikeout_side_phrase(q):
         return None
@@ -528,18 +629,147 @@ def _extract_opponent_team_pattern(q: str) -> str | None:
     return match.group("team_id") if match else None
 
 
+_BATTING_STREAK_STATS: dict[str, BattingStreakStat] = {
+    "stolen_base": BattingStreakStat(
+        stat_key="stolen_base",
+        column="b_sb",
+        streak_column="stolen_base_streak_games",
+        total_column="stolen_bases",
+        streak_label="stolen-base streak",
+        event_label="stolen base",
+        source_label="stolen-base",
+        definition_label="stolen base",
+    ),
+    "hit": BattingStreakStat(
+        stat_key="hit",
+        column="b_h",
+        streak_column="hit_streak_games",
+        total_column="hits",
+        streak_label="hit streak",
+        event_label="hit",
+        source_label="hit",
+        definition_label="hit",
+    ),
+    "home_run": BattingStreakStat(
+        stat_key="home_run",
+        column="b_hr",
+        streak_column="home_run_streak_games",
+        total_column="home_runs",
+        streak_label="home-run game streak",
+        event_label="home run",
+        source_label="home-run game",
+        definition_label="home run",
+    ),
+    "rbi": BattingStreakStat(
+        stat_key="rbi",
+        column="b_rbi",
+        streak_column="rbi_streak_games",
+        total_column="rbi",
+        streak_label="RBI game streak",
+        event_label="RBI",
+        source_label="RBI game",
+        definition_label="RBI",
+    ),
+    "run": BattingStreakStat(
+        stat_key="run",
+        column="b_r",
+        streak_column="run_scored_streak_games",
+        total_column="runs_scored",
+        streak_label="run-scored streak",
+        event_label="run scored",
+        source_label="run-scored",
+        definition_label="run scored",
+    ),
+}
+
+
 def _match_stolen_base_streak(q: str) -> Mapping[str, Any] | None:
-    if not re.search(r"\bstolen bases?\b", q) or "streak" not in q:
+    return _match_batting_stat_streak(q)
+
+
+def _match_player_batting_game_log(q: str) -> Mapping[str, Any] | None:
+    detected_stats = _detect_batting_game_log_stats(q)
+    if not detected_stats or "streak" in q:
+        return None
+    if not re.search(r"\b(?:show|list|what games|which games|games?|game log|game by game)\b", q):
+        return None
+
+    stat = detected_stats[0]
+    unsupported_reason = _unsupported_player_batting_game_log_reason(q, stat)
+    player_name = _extract_player_batting_game_log_player_name(q, stat)
+    if unsupported_reason is None and player_name is None:
+        return None
+    return {
+        "pattern": "player batting game log",
+        "stat_key": stat.stat_key,
+        "unsupported_reason": unsupported_reason,
+        "player_name": player_name,
+        "threshold": _extract_player_batting_game_log_threshold(q, stat),
+        "year": _extract_year(q),
+        "gametype": "playoff" if _mentions_postseason(q) else "regular",
+    }
+
+
+def _match_batting_stat_streak(q: str) -> Mapping[str, Any] | None:
+    stat = _detect_batting_streak_stat(q)
+    if stat is None or "streak" not in q:
         return None
     if not re.search(r"\b(?:longest|best|record|most|leader)\b", q):
         return None
-    unsupported_reason = _unsupported_stolen_base_streak_reason(q)
+    unsupported_reason = _unsupported_batting_stat_streak_reason(q, stat)
     return {
-        "pattern": "stolen-base streak",
+        "pattern": stat.streak_label,
+        "stat_key": stat.stat_key,
         "unsupported_reason": unsupported_reason,
-        "player_name": _extract_stolen_base_streak_player_name(q),
+        "player_name": _extract_batting_stat_streak_player_name(q, stat),
         "gametype": "playoff" if _mentions_postseason(q) else "regular",
     }
+
+
+def _detect_batting_streak_stat(q: str) -> BattingStreakStat | None:
+    detected: list[BattingStreakStat] = []
+    if re.search(r"\bstolen bases?\b|\bsteal(?:ing)? streak\b", q):
+        detected.append(_BATTING_STREAK_STATS["stolen_base"])
+    if re.search(r"\bhitting streak\b|\bhit streak\b|\bhits? streak\b", q):
+        detected.append(_BATTING_STREAK_STATS["hit"])
+    if re.search(r"\bhome runs?\b|\bhomers?\b|\bhrs?\b", q):
+        detected.append(_BATTING_STREAK_STATS["home_run"])
+    if re.search(r"\brbis?\b|\bruns? batted in\b", q):
+        detected.append(_BATTING_STREAK_STATS["rbi"])
+    if re.search(r"\bruns?[- ]scored\b|\bruns? scored\b|\bscored runs?\b", q):
+        detected.append(_BATTING_STREAK_STATS["run"])
+    if len({stat.stat_key for stat in detected}) != 1:
+        return None
+    return detected[0]
+
+
+def _detect_batting_game_log_stat(q: str) -> BattingStreakStat | None:
+    detected = _detect_batting_game_log_stats(q)
+    if len({stat.stat_key for stat in detected}) != 1:
+        return None
+    return detected[0]
+
+
+def _detect_batting_game_log_stats(q: str) -> list[BattingStreakStat]:
+    return [
+        stat
+        for stat in _BATTING_STREAK_STATS.values()
+        if _detect_batting_game_log_stat_for_key(q, stat)
+    ]
+
+
+def _detect_batting_game_log_stat_for_key(q: str, stat: BattingStreakStat) -> bool:
+    if stat.stat_key == "stolen_base":
+        return bool(re.search(r"\bstolen bases?\b|\bsteal(?:s|ing)?\b|\bstole\b", q))
+    if stat.stat_key == "hit":
+        return bool(
+            re.search(
+                r"\bhits\b|\bhit\s+game log\b|\bhit\s+games\b|"
+                r"\bwith\s+(?:at least\s+)?\d{1,2}\s+hits?\b",
+                q,
+            )
+        )
+    return _detect_batting_streak_stat_for_key(q, stat)
 
 
 def _mentions_postseason(q: str) -> bool:
@@ -547,15 +777,20 @@ def _mentions_postseason(q: str) -> bool:
 
 
 def _extract_stolen_base_streak_player_name(q: str) -> str | None:
+    return _extract_batting_stat_streak_player_name(q, _BATTING_STREAK_STATS["stolen_base"])
+
+
+def _extract_batting_stat_streak_player_name(q: str, stat: BattingStreakStat) -> str | None:
+    stat_phrase = _batting_streak_stat_phrase(stat)
     for pattern in (
         r"\b(?:what (?:was|is) )?(?P<player>[a-z][a-z .'\\-]+?)'s\s+"
-        r"(?:longest|best)\s+(?:postseason\s+)?stolen bases?\s+streak\b",
+        rf"(?:longest|best)\s+(?:postseason\s+)?{stat_phrase}\s+streak\b",
         r"\b(?:what (?:was|is) )?(?P<player>[a-z][a-z .'\\-]+?)\s+s\s+"
-        r"(?:longest|best)\s+(?:postseason\s+)?stolen bases?\s+streak\b",
+        rf"(?:longest|best)\s+(?:postseason\s+)?{stat_phrase}\s+streak\b",
         r"\b(?P<player>[a-z][a-z .'\\-]+?)\s+"
-        r"(?:longest|best)\s+(?:postseason\s+)?stolen bases?\s+streak\b",
+        rf"(?:longest|best)\s+(?:postseason\s+)?{stat_phrase}\s+streak\b",
         r"\b(?:longest|best|record|most|leader)\s+(?:postseason\s+)?"
-        r"stolen bases?\s+streak\s+(?:for|by)\s+(?P<player>[a-z][a-z .'\\-]+?)\b",
+        rf"{stat_phrase}\s+streak\s+(?:for|by)\s+(?P<player>[a-z][a-z .'\\-]+?)\b",
     ):
         match = re.search(pattern, q)
         if match is None:
@@ -568,17 +803,135 @@ def _extract_stolen_base_streak_player_name(q: str) -> str | None:
     return None
 
 
+def _batting_streak_stat_phrase(stat: BattingStreakStat) -> str:
+    if stat.stat_key == "stolen_base":
+        return r"stolen bases?"
+    if stat.stat_key == "hit":
+        return r"(?:hitting|hits?)"
+    if stat.stat_key == "home_run":
+        return r"(?:home runs?|homers?|hrs?)"
+    if stat.stat_key == "rbi":
+        return r"(?:rbis?|runs? batted in)"
+    return r"(?:runs?[- ]scored|runs? scored|scored runs?)"
+
+
+def _batting_game_log_stat_phrase(stat: BattingStreakStat) -> str:
+    if stat.stat_key == "stolen_base":
+        return r"(?:stolen bases?|steals?|stole)"
+    return _batting_streak_stat_phrase(stat)
+
+
 def _unsupported_stolen_base_streak_reason(q: str) -> str | None:
+    return _unsupported_batting_stat_streak_reason(q, _BATTING_STREAK_STATS["stolen_base"])
+
+
+def _unsupported_batting_stat_streak_reason(q: str, stat: BattingStreakStat) -> str | None:
     if re.search(r"\b(?:team|teams)\b", q):
-        return "Team stolen-base streaks are not modeled yet."
-    if re.search(r"\b(?:caught stealing|without being caught|without getting caught)\b", q):
+        return f"Team {stat.source_label} streaks are not modeled yet."
+    detected_stats = {
+        detected.stat_key
+        for detected in _BATTING_STREAK_STATS.values()
+        if _detect_batting_streak_stat_for_key(q, detected)
+    }
+    if len(detected_stats) > 1:
+        return "Multi-stat batting streaks are not modeled yet."
+    if re.search(r"\b(?:play|plays|plate appearance|at bat|inning|innings)\b", q):
+        return "Play-level or inning-level batting streaks are not modeled yet."
+    if stat.stat_key == "stolen_base" and re.search(
+        r"\b(?:caught stealing|without being caught|without getting caught)\b",
+        q,
+    ):
         return (
             "Consecutive successful stolen-base attempt streaks need caught-stealing-aware "
             "attempt modeling, not just games with at least one stolen base."
         )
-    if re.search(r"\b(?:stealing|steal|stolen)\s+(?:second|third|home)\b", q):
+    if stat.stat_key == "stolen_base" and re.search(
+        r"\b(?:stealing|steal|stolen)\s+(?:second|third|home)\b",
+        q,
+    ):
         return "Base-specific stolen-base streaks are not modeled yet."
     return None
+
+
+def _unsupported_player_batting_game_log_reason(q: str, stat: BattingStreakStat) -> str | None:
+    if re.search(r"\b(?:team|teams)\b", q):
+        return "Team batting game logs are not modeled by this player game-log template."
+    detected_stats = {
+        detected.stat_key
+        for detected in _BATTING_STREAK_STATS.values()
+        if _detect_batting_game_log_stat_for_key(q, detected)
+    }
+    if len(detected_stats) > 1:
+        return "Multi-stat batting game logs are not modeled yet."
+    if re.search(r"\b(?:play|plays|plate appearance|at bat|inning|innings)\b", q):
+        return (
+            "Play-level or inning-level batting details are not modeled in Retrosheet daily logs."
+        )
+    if stat.stat_key == "stolen_base" and re.search(
+        r"\b(?:caught stealing|without being caught|without getting caught)\b",
+        q,
+    ):
+        return (
+            "Caught-stealing-aware stolen-base attempt logs need play-level attempt modeling, "
+            "not just Retrosheet daily batting totals."
+        )
+    if stat.stat_key == "stolen_base" and re.search(
+        r"\b(?:stealing|steal|stolen)\s+(?:second|third|home)\b",
+        q,
+    ):
+        return "Base-specific stolen-base details are not modeled in Retrosheet daily logs."
+    return None
+
+
+def _detect_batting_streak_stat_for_key(q: str, stat: BattingStreakStat) -> bool:
+    phrase = _batting_streak_stat_phrase(stat)
+    return bool(re.search(rf"\b{phrase}\b", q))
+
+
+def _extract_player_batting_game_log_player_name(
+    q: str,
+    stat: BattingStreakStat,
+) -> str | None:
+    stat_phrase = _batting_game_log_stat_phrase(stat)
+    for pattern in (
+        r"\b(?:show|list)\s+(?P<player>[a-z][a-z .'\\-]+?)\s+s\s+games?\s+with\b",
+        r"\b(?:show|list)\s+(?P<player>[a-z][a-z .'\\-]+?)\s+games?\s+with\b",
+        r"\bwhat games did\s+(?P<player>[a-z][a-z .'\\-]+?)\s+hit\s+\d{1,2}\s+"
+        r"(?:home runs?|homers?|hrs?)\b",
+        rf"\bwhat games did\s+(?P<player>[a-z][a-z .'\\-]+?)\s+{stat_phrase}\b",
+        rf"\bwhich games did\s+(?P<player>[a-z][a-z .'\\-]+?)\s+{stat_phrase}\b",
+        rf"\b(?P<player>[a-z][a-z .'\\-]+?)\s+{stat_phrase}\s+game log\b",
+    ):
+        match = re.search(pattern, q)
+        if match is None:
+            continue
+        player_name = re.sub(r"^(?:show|list)\s+", "", match.group("player").strip())
+        if player_name and player_name not in {"what", "who", "which players"}:
+            return player_name
+    return None
+
+
+def _extract_player_batting_game_log_threshold(q: str, stat: BattingStreakStat) -> int:
+    stat_phrase = _batting_game_log_stat_phrase(stat)
+    match = re.search(
+        rf"\b(?:at least|minimum|min|with|>=)\s+(?P<threshold>\d{{1,2}})\s+"
+        rf"{stat_phrase}\b",
+        q,
+    )
+    if match is not None:
+        return int(match.group("threshold"))
+    if stat.stat_key == "stolen_base":
+        match = re.search(r"\b(?:steal|stole)\s+(?P<threshold>\d{1,2})\s+bases?\b", q)
+        if match is not None:
+            return int(match.group("threshold"))
+    if stat.stat_key == "home_run":
+        match = re.search(
+            r"\bhit\s+(?P<threshold>\d{1,2})\s+(?:home runs?|homers?|hrs?)\b",
+            q,
+        )
+        if match is not None:
+            return int(match.group("threshold"))
+    return 1
 
 
 def _assemble_stolen_base_streak(
@@ -587,9 +940,30 @@ def _assemble_stolen_base_streak(
 ) -> AssembledSQL:
     if facts.get("unsupported_reason"):
         return _unsupported_sql(str(facts["unsupported_reason"]))
+    stat = _BATTING_STREAK_STATS[str(facts.get("stat_key", "stolen_base"))]
     player_name = facts.get("player_name")
-    return _stolen_base_streak_sql(
+    return _batting_stat_streak_sql(
+        stat,
         str(player_name) if player_name else None,
+        str(facts["gametype"]),
+    )
+
+
+def _assemble_player_batting_game_log(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    if facts.get("unsupported_reason"):
+        return _unsupported_sql(str(facts["unsupported_reason"]))
+    player_name = facts.get("player_name")
+    if player_name is None:
+        return _unsupported_sql("Player batting game logs need a player full name.")
+    stat = _BATTING_STREAK_STATS[str(facts["stat_key"])]
+    return _player_batting_game_log_sql(
+        stat,
+        str(player_name),
+        int(facts["threshold"]),
+        facts["year"],
         str(facts["gametype"]),
     )
 
@@ -628,6 +1002,23 @@ def _assemble_pitcher_strikeout_side_game_log(
         str(facts["player_name"]),
         facts["year"],
         facts.get("opponent_team_pattern"),
+    )
+
+
+def _assemble_pitcher_daily_strikeout_game_log(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    if facts.get("unsupported_reason"):
+        return _unsupported_sql(str(facts["unsupported_reason"]))
+    player_name = facts.get("player_name")
+    if player_name is None:
+        return _unsupported_sql("Pitcher game-log queries need a player full name.")
+    return _pitcher_daily_strikeout_game_log_sql(
+        str(player_name),
+        int(facts["threshold"]),
+        facts["year"],
+        str(facts["gametype"]),
     )
 
 
@@ -714,12 +1105,30 @@ _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
         route_owner=_qualified_season_era_route_owner,
     ),
     GroundedDatabaseTemplate(
-        template_id="stolen_base_streak",
-        description="Retrosheet game-log stolen-base streaks",
+        template_id="batting_stat_streak",
+        description="Retrosheet game-log batting stat streaks",
         matcher=_match_stolen_base_streak,
         assemble=_assemble_stolen_base_streak,
         source_detail=_source_detail(
-            "Matched local Retrosheet game-level batting log stolen-base streak template."
+            "Matched local Retrosheet game-level batting log batting stat streak template."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="player_batting_game_log",
+        description="Retrosheet daily batting player game log",
+        matcher=_match_player_batting_game_log,
+        assemble=_assemble_player_batting_game_log,
+        source_detail=_source_detail(
+            "Matched local Retrosheet daily batting player game-log template."
+        ),
+    ),
+    GroundedDatabaseTemplate(
+        template_id="pitcher_daily_strikeout_game_log",
+        description="Retrosheet daily pitching strikeout game log",
+        matcher=_match_pitcher_daily_strikeout_game_log,
+        assemble=_assemble_pitcher_daily_strikeout_game_log,
+        source_detail=_source_detail(
+            "Matched local Retrosheet daily pitching strikeout game-log template."
         ),
     ),
     GroundedDatabaseTemplate(
@@ -1016,11 +1425,34 @@ def _qualified_season_avg_sql(year: int | None, min_ab: int) -> AssembledSQL:
     )
 
 
+def _retrosheet_date_expr(alias: str) -> str:
+    return (
+        "CAST(COALESCE("
+        f"try_strptime(CAST({alias}.date AS VARCHAR), '%Y%m%d'), "
+        f"try_strptime(CAST({alias}.date AS VARCHAR), '%Y-%m-%d')"
+        ") AS DATE)"
+    )
+
+
 def _stolen_base_streak_sql(player_name: str | None, gametype: str) -> AssembledSQL:
+    return _batting_stat_streak_sql(
+        _BATTING_STREAK_STATS["stolen_base"],
+        player_name,
+        gametype,
+    )
+
+
+def _batting_stat_streak_sql(
+    stat: BattingStreakStat,
+    player_name: str | None,
+    gametype: str,
+) -> AssembledSQL:
     player_filter = "AND lower(p.nameFirst || ' ' || p.nameLast) = ?" if player_name else ""
     params: list[object] = [gametype.lower()]
     if player_name:
         params.append(player_name.lower())
+    streak_column = stat.streak_column
+    total_column = stat.total_column
     return AssembledSQL(
         """
         WITH player_games AS (
@@ -1031,7 +1463,7 @@ def _stolen_base_streak_sql(player_name: str | None, gametype: str) -> Assembled
                 COALESCE(team.name, rb.team) AS team_name,
                 rb.gid AS game_id,
                 CAST(strptime(CAST(rb.date AS VARCHAR), '%Y%m%d') AS DATE) AS game_date,
-                COALESCE(TRY_CAST(rb.b_sb AS INTEGER), 0) AS stolen_bases,
+                COALESCE(TRY_CAST(rb.{stat_column} AS INTEGER), 0) AS stat_value,
                 ROW_NUMBER() OVER (
                     PARTITION BY p.playerID
                     ORDER BY CAST(strptime(CAST(rb.date AS VARCHAR), '%Y%m%d') AS DATE), rb.gid
@@ -1050,7 +1482,7 @@ def _stolen_base_streak_sql(player_name: str | None, gametype: str) -> Assembled
                     ORDER BY player_game_number
                 ) AS steal_game_number
             FROM player_games
-            WHERE stolen_bases >= 1
+            WHERE stat_value >= 1
         ),
         streak_games AS (
             SELECT
@@ -1064,11 +1496,11 @@ def _stolen_base_streak_sql(player_name: str | None, gametype: str) -> Assembled
                 nameFirst,
                 nameLast,
                 streak_group,
-                COUNT(*) AS stolen_base_streak_games,
+                COUNT(*) AS {streak_column},
                 MIN(game_date) AS start_date,
                 MAX(game_date) AS end_date,
                 MIN(team_name) AS team,
-                SUM(stolen_bases) AS stolen_bases,
+                SUM(stat_value) AS {total_column},
                 STRING_AGG(game_id, ', ' ORDER BY game_date, game_id) AS game_ids
             FROM streak_games
             GROUP BY playerID, nameFirst, nameLast, streak_group
@@ -1076,19 +1508,102 @@ def _stolen_base_streak_sql(player_name: str | None, gametype: str) -> Assembled
         SELECT
             nameFirst,
             nameLast,
-            stolen_base_streak_games,
+            {streak_column} AS streak_games,
             strftime(start_date, '%Y-%m-%d') AS start_date,
             strftime(end_date, '%Y-%m-%d') AS end_date,
             team,
             ? AS gametype,
-            stolen_bases,
+            ? AS stat,
+            {total_column} AS stat_total,
+            ? AS stat_label,
+            ? AS streak_label,
+            ? AS event_label,
             game_ids,
-            'Consecutive player games appeared in with at least one stolen base.' AS definition
+            ? AS definition,
+            {streak_column} AS {streak_column}
         FROM streaks
-        ORDER BY stolen_base_streak_games DESC, end_date ASC, nameLast, nameFirst
+        ORDER BY {streak_column} DESC, end_date ASC, nameLast, nameFirst
         LIMIT 1
-        """.format(player_filter=player_filter),
-        [*params, gametype.lower()],
+        """.format(
+            player_filter=player_filter,
+            stat_column=stat.column,
+            streak_column=streak_column,
+            total_column=total_column,
+        ),
+        [
+            *params,
+            gametype.lower(),
+            stat.stat_key,
+            stat.event_label,
+            stat.streak_label,
+            stat.event_label,
+            (f"Consecutive player games appeared in with at least one {stat.definition_label}."),
+        ],
+    )
+
+
+def _player_batting_game_log_sql(
+    stat: BattingStreakStat,
+    player_name: str,
+    threshold: int,
+    year: Any | None,
+    gametype: str,
+) -> AssembledSQL:
+    year_filter = "AND date_part('year', game_date) = ?" if year is not None else ""
+    stat_code = _BATTING_GAME_LOG_STAT_CODES[stat.stat_key]
+    params: list[object] = [player_name.lower(), gametype.lower()]
+    if year is not None:
+        params.append(int(year))
+    params.append(threshold)
+    game_date = _retrosheet_date_expr("rb")
+    return AssembledSQL(
+        """
+        WITH player_games AS (
+            SELECT
+                {game_date} AS game_date,
+                rb.gid AS game_id,
+                p.nameFirst,
+                p.nameLast,
+                COALESCE(team.name, rb.team) AS team,
+                COALESCE(
+                    NULLIF(upper(rb.opp), ''),
+                    CASE
+                        WHEN upper(rb.team) <> upper(substr(rb.gid, 1, 3))
+                        THEN upper(substr(rb.gid, 1, 3))
+                        ELSE NULL
+                    END
+                ) AS opponent_team_id,
+                TRY_CAST(rb.{stat_column} AS INTEGER) AS stat_value,
+                lower(rb.gametype) AS gametype
+            FROM retrosheet_batting rb
+            JOIN people p ON lower(p.retroID) = lower(rb.id)
+            LEFT JOIN teams team ON team.teamID = rb.team
+            WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
+                AND lower(rb.gametype) = ?
+        )
+        SELECT
+            strftime(game_date, '%Y-%m-%d') AS date,
+            game_id,
+            nameFirst,
+            nameLast,
+            team,
+            COALESCE(opponent.name, opponent_team_id) AS opponent_team,
+            '{stat_code}' AS stat,
+            stat_value,
+            gametype
+        FROM player_games
+        LEFT JOIN teams opponent ON opponent.teamID = opponent_team_id
+        WHERE TRUE
+            {year_filter}
+            AND stat_value >= ?
+        ORDER BY game_date, game_id
+        """.format(
+            game_date=game_date,
+            stat_column=stat.column,
+            stat_code=stat_code,
+            year_filter=year_filter,
+        ),
+        params,
     )
 
 
@@ -1251,6 +1766,47 @@ def _pitcher_strikeout_side_game_log_sql(
             {opponent_filter}
         ORDER BY e.year, e.game_id, e.inning, e.batting_home
         """.format(year_filter=year_filter, opponent_filter=opponent_filter),
+        params,
+    )
+
+
+def _pitcher_daily_strikeout_game_log_sql(
+    player_name: str,
+    threshold: int,
+    year: Any | None,
+    gametype: str,
+) -> AssembledSQL:
+    year_filter = (
+        "AND TRY_CAST(SUBSTR(CAST(rp.date AS VARCHAR), 1, 4) AS INTEGER) = ?"
+        if year is not None
+        else ""
+    )
+    params: list[object] = [player_name.lower(), threshold, gametype.lower()]
+    if year is not None:
+        params.append(int(year))
+    return AssembledSQL(
+        """
+        SELECT
+            strftime(
+                CAST(strptime(CAST(rp.date AS VARCHAR), '%Y%m%d') AS DATE),
+                '%Y-%m-%d'
+            ) AS game_date,
+            rp.gid AS game_id,
+            p.nameFirst,
+            p.nameLast,
+            rp.team AS team,
+            rp.opp AS opponent,
+            'SO' AS stat,
+            TRY_CAST(rp.p_k AS INTEGER) AS stat_value,
+            lower(rp.gametype) AS gametype
+        FROM retrosheet_pitching rp
+        JOIN people p ON lower(p.retroID) = lower(rp.id)
+        WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
+            AND TRY_CAST(rp.p_k AS INTEGER) >= ?
+            AND lower(rp.gametype) = ?
+            {year_filter}
+        ORDER BY game_date, game_id
+        """.format(year_filter=year_filter),
         params,
     )
 

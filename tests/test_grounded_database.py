@@ -24,7 +24,9 @@ def _write_core_csvs_with_retro_ids(data_dir):
     (data_dir / "People.csv").write_text(
         "playerID,retroID,nameFirst,nameLast\n"
         "campbe01,campb101,Bert,Campaneris\n"
-        "hendrri01,hendr001,Rickey,Henderson\n",
+        "hendrri01,hendr001,Rickey,Henderson\n"
+        "ryanno01,ryann001,Nolan,Ryan\n"
+        "clemero02,clemr001,Roger,Clemens\n",
         encoding="utf-8",
     )
 
@@ -33,18 +35,37 @@ def _write_retrosheet_batting_streak_fixture(data_dir):
     retrosheet_dir = data_dir / "secondary_sources" / "retrosheet"
     retrosheet_dir.mkdir(parents=True)
     campy_rows = "\n".join(
-        f"OAK196906{day:02d}0,campb101,OAK,value,1,196906{day:02d},regular" for day in range(10, 22)
+        f"OAK196906{day:02d}0,campb101,OAK,value,1,1,"
+        f"{1 if day <= 12 else 0},{1 if day <= 13 else 0},"
+        f"{1 if day <= 14 else 0},196906{day:02d},regular,KCA"
+        for day in range(10, 22)
     )
     (retrosheet_dir / "batting.csv").write_text(
-        "gid,id,team,stattype,b_sb,date,gametype\n"
-        "OAK196906090,campb101,OAK,value,0,19690609,regular\n"
+        "gid,id,team,stattype,b_sb,b_h,b_hr,b_rbi,b_r,date,gametype,opp\n"
+        "OAK196906090,campb101,OAK,value,0,0,0,0,0,19690609,regular,KCA\n"
         f"{campy_rows}\n"
-        "OAK196906220,campb101,OAK,value,0,19690622,regular\n"
-        "OAK198205010,hendr001,OAK,value,1,19820501,regular\n"
-        "OAK198205020,hendr001,OAK,value,1,19820502,regular\n"
-        "OAK198205030,hendr001,OAK,value,0,19820503,regular\n"
-        "OAK198210100,hendr001,OAK,value,1,19821010,playoff\n"
-        "OAK198210110,hendr001,OAK,value,1,19821011,playoff\n",
+        "OAK196906220,campb101,OAK,value,0,0,0,0,0,19690622,regular,KCA\n"
+        "OAK198205010,hendr001,OAK,value,1,1,1,0,1,19820501,regular,SEA\n"
+        "OAK198205020,hendr001,OAK,value,1,2,2,1,0,19820502,regular,SEA\n"
+        "OAK198205030,hendr001,OAK,value,0,0,0,0,0,19820503,regular,SEA\n"
+        "NYA198205040,hendr001,OAK,value,2,1,0,1,1,19820504,regular,NYA\n"
+        "OAK198205050,hendr001,OAK,value,3,1,0,1,1,19820505,regular,SEA\n"
+        "OAK198210100,hendr001,OAK,value,1,1,1,1,1,19821010,playoff,KCA\n"
+        "OAK198210110,hendr001,OAK,value,1,1,1,1,1,19821011,playoff,KCA\n",
+        encoding="utf-8",
+    )
+
+
+def _write_retrosheet_pitching_game_log_fixture(data_dir):
+    retrosheet_dir = data_dir / "secondary_sources" / "retrosheet"
+    retrosheet_dir.mkdir(parents=True, exist_ok=True)
+    (retrosheet_dir / "pitching.csv").write_text(
+        "gid,id,team,p_seq,stattype,p_ipouts,p_k,date,number,site,vishome,opp,gametype\n"
+        "CAL197305150,ryann001,CAL,1,value,27,12,19730515,0,CAL01,h,BAL,regular\n"
+        "CAL197306010,ryann001,CAL,1,value,27,9,19730601,0,CAL01,h,DET,regular\n"
+        "CAL197307150,ryann001,CAL,1,value,27,17,19730715,0,CAL01,h,DET,regular\n"
+        "BOS198609180,clemr001,BOS,1,value,27,15,19860918,0,BOS07,h,NYA,regular\n"
+        "BOS198610080,clemr001,BOS,1,value,27,10,19861008,0,BOS07,h,CAL,playoff\n",
         encoding="utf-8",
     )
 
@@ -198,10 +219,224 @@ class TestDeterministicTemplates:
             all_time, "question"
         )
 
+    def test_batting_stat_streak_template_answers_hit_streaks(self, tmp_path, monkeypatch):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import format_result, query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_batting_streak_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            all_time = query(
+                "what is the longest hit streak in MLB history",
+                conn,
+                request_fn=mock_call,
+            )
+            player_specific = query(
+                "what was Rickey Henderson's longest hitting streak",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert all_time.rows[0][:4] == ("Bert Campaneris", 12, "1969-06-10", "1969-06-21")
+        assert player_specific.rows[0][0:2] == ("Rickey Henderson", 2)
+        assert "Bert Campaneris had the longest hit streak" in format_result(all_time, "question")
+
+    @pytest.mark.parametrize(
+        ("question", "expected_name", "expected_games", "formatted"),
+        [
+            (
+                "what is the longest home run game streak in MLB history",
+                "Bert Campaneris",
+                3,
+                "Bert Campaneris had the longest home-run game streak",
+            ),
+            (
+                "what was Rickey Henderson's longest RBI streak",
+                "Rickey Henderson",
+                2,
+                "Rickey Henderson had the longest RBI game streak",
+            ),
+            (
+                "what was Rickey Henderson's longest run-scored streak",
+                "Rickey Henderson",
+                2,
+                "Rickey Henderson had the longest run-scored streak",
+            ),
+            (
+                "what was Rickey Henderson's longest postseason home run streak",
+                "Rickey Henderson",
+                2,
+                "Rickey Henderson had the longest home-run game streak: "
+                "2 consecutive postseason games",
+            ),
+        ],
+    )
+    def test_batting_stat_streak_template_answers_other_stat_families(
+        self, tmp_path, monkeypatch, question, expected_name, expected_games, formatted
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import format_result, query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_batting_streak_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            result = query(question, conn, request_fn=mock_call)
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert result.rows[0][0:2] == (expected_name, expected_games)
+        assert formatted in format_result(result, "question")
+
+    def test_pitcher_daily_strikeout_game_log_uses_retrosheet_pitching(self, tmp_path, monkeypatch):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import format_result, query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_pitching_game_log_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            result = query(
+                "show Nolan Ryan games with at least 10 strikeouts",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert result.source_label == "Deterministic template query"
+        assert result.params == ["nolan ryan", 10, "regular"]
+        assert result.columns == [
+            "game_date",
+            "game_id",
+            "name",
+            "team",
+            "opponent",
+            "stat",
+            "stat_value",
+            "gametype",
+        ]
+        assert result.rows == [
+            ("1973-05-15", "CAL197305150", "Nolan Ryan", "CAL", "BAL", "SO", 12, "regular"),
+            ("1973-07-15", "CAL197307150", "Nolan Ryan", "CAL", "DET", "SO", 17, "regular"),
+        ]
+        formatted = format_result(result, "question")
+        assert "Nolan Ryan SO game log" in formatted
+        assert "Retrosheet game-level logs" in formatted
+
+    def test_pitcher_daily_strikeout_game_log_accepts_show_game_log_prefix(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_pitching_game_log_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            result = query("show Nolan Ryan strikeout game log in 1973", conn, request_fn=mock_call)
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert result.params == ["nolan ryan", 0, "regular", 1973]
+        assert result.row_count == 3
+
+    def test_pitcher_daily_strikeout_game_log_supports_postseason_filter(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_pitching_game_log_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            result = query(
+                "show Roger Clemens postseason games with at least 10 strikeouts",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert result.params == ["roger clemens", 10, "playoff"]
+        assert result.rows == [
+            ("1986-10-08", "BOS198610080", "Roger Clemens", "BOS", "CAL", "SO", 10, "playoff")
+        ]
+
+    @pytest.mark.parametrize(
+        ("question", "reason"),
+        [
+            ("show Nolan Ryan pitch-by-pitch strikeout game logs", "Pitch-level details"),
+            ("show Nolan Ryan inning by inning strikeout game logs", "Inning-level"),
+            ("show team pitching game logs with at least 10 strikeouts", "Team pitching game logs"),
+        ],
+    )
+    def test_pitcher_daily_strikeout_game_log_rejects_unmodeled_variants(self, question, reason):
+        from baseball_rag.db.grounded_database_templates import match_template
+
+        matched = match_template(question)
+
+        assert matched is not None
+        assert matched.template_id == "pitcher_daily_strikeout_game_log"
+        assert matched.unsupported_reason == "unsupported"
+        assert reason in matched.assembled.params[0]
+
     @pytest.mark.parametrize(
         ("question", "reason"),
         [
             ("what team has the longest stolen base streak", "Team stolen-base streaks"),
+            ("what team has the longest hitting streak", "Team hit streaks"),
+            (
+                "what is the longest hit and home run streak",
+                "Multi-stat batting streaks",
+            ),
+            (
+                "what is the longest home run streak by plate appearance",
+                "Play-level or inning-level batting streaks",
+            ),
+            (
+                "what is the longest RBI streak by inning",
+                "Play-level or inning-level batting streaks",
+            ),
             (
                 "what is the longest stolen base streak without being caught stealing",
                 "caught-stealing-aware attempt modeling",
@@ -209,12 +444,198 @@ class TestDeterministicTemplates:
             ("longest stolen base streak stealing third base", "Base-specific"),
         ],
     )
-    def test_stolen_base_streak_template_rejects_unmodeled_variants(self, question, reason):
+    def test_batting_stat_streak_template_rejects_unmodeled_variants(self, question, reason):
         from baseball_rag.db.grounded_database_templates import match_template
 
         matched = match_template(question)
 
         assert matched is not None
+        assert matched.unsupported_reason == "unsupported"
+        assert reason in matched.assembled.params[0]
+
+    def test_player_batting_game_log_template_answers_stolen_base_threshold(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_batting_streak_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            result = query(
+                "show Rickey Henderson's games with at least 2 stolen bases",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert result.source_label == "Deterministic template query"
+        assert "retrosheet_batting" in result.sql
+        assert result.params == ["rickey henderson", "regular", 2]
+        assert result.columns == [
+            "date",
+            "game_id",
+            "name",
+            "team",
+            "opponent_team",
+            "stat",
+            "stat_value",
+            "gametype",
+        ]
+        assert result.rows == [
+            (
+                "1982-05-04",
+                "NYA198205040",
+                "Rickey Henderson",
+                "Oakland Athletics",
+                "New York Yankees",
+                "SB",
+                2,
+                "regular",
+            ),
+            (
+                "1982-05-05",
+                "OAK198205050",
+                "Rickey Henderson",
+                "Oakland Athletics",
+                "Seattle Mariners",
+                "SB",
+                3,
+                "regular",
+            ),
+        ]
+
+    def test_player_batting_game_log_template_answers_stolen_base_variants(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_batting_streak_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            three_steals = query(
+                "what games did Rickey Henderson steal 3 bases",
+                conn,
+                request_fn=mock_call,
+            )
+            season_log = query(
+                "Rickey Henderson stolen base game log in 1982",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert three_steals.params == ["rickey henderson", "regular", 3]
+        assert three_steals.rows == [
+            (
+                "1982-05-05",
+                "OAK198205050",
+                "Rickey Henderson",
+                "Oakland Athletics",
+                "Seattle Mariners",
+                "SB",
+                3,
+                "regular",
+            )
+        ]
+        assert season_log.params == ["rickey henderson", "regular", 1982, 1]
+        assert [row[0] for row in season_log.rows] == [
+            "1982-05-01",
+            "1982-05-02",
+            "1982-05-04",
+            "1982-05-05",
+        ]
+
+    def test_player_batting_game_log_template_accepts_show_prefix_and_home_run_verb(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.db import duckdb_schema
+        from baseball_rag.db.duckdb_schema import get_duckdb
+        from baseball_rag.db.grounded_database_runtime import query
+
+        _write_core_csvs_with_retro_ids(tmp_path)
+        _write_retrosheet_batting_streak_fixture(tmp_path)
+        monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
+        duckdb_schema._cached_conn = None
+        mock_call = MagicMock(side_effect=AssertionError("template should not call the LLM"))
+        conn = get_duckdb()
+
+        try:
+            prefixed = query(
+                "show Rickey Henderson hit game log in 1982",
+                conn,
+                request_fn=mock_call,
+            )
+            home_runs = query(
+                "what games did Rickey Henderson hit 2 home runs",
+                conn,
+                request_fn=mock_call,
+            )
+        finally:
+            conn.close()
+            duckdb_schema._cached_conn = None
+
+        assert mock_call.call_count == 0
+        assert prefixed.params == ["rickey henderson", "regular", 1982, 1]
+        assert prefixed.row_count == 4
+        assert home_runs.params == ["rickey henderson", "regular", 2]
+        assert home_runs.rows == [
+            (
+                "1982-05-02",
+                "OAK198205020",
+                "Rickey Henderson",
+                "Oakland Athletics",
+                "Seattle Mariners",
+                "HR",
+                2,
+                "regular",
+            )
+        ]
+
+    @pytest.mark.parametrize(
+        ("question", "reason"),
+        [
+            ("show team stolen base game logs", "Team batting game logs"),
+            (
+                "show Rickey Henderson games with stolen bases and home runs",
+                "Multi-stat batting game logs",
+            ),
+            (
+                "show Rickey Henderson play by play stolen base game log",
+                "Play-level or inning-level batting details",
+            ),
+            (
+                "show Rickey Henderson games stealing third base",
+                "Base-specific stolen-base details",
+            ),
+        ],
+    )
+    def test_player_batting_game_log_template_rejects_unmodeled_variants(self, question, reason):
+        from baseball_rag.db.grounded_database_templates import match_template
+
+        matched = match_template(question)
+
+        assert matched is not None
+        assert matched.template_id == "player_batting_game_log"
         assert matched.unsupported_reason == "unsupported"
         assert reason in matched.assembled.params[0]
 
