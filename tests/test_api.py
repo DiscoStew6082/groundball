@@ -418,6 +418,37 @@ class TestApi:
         assert how_often_data["unsupported"] is False
         assert "Rollie Fingers struck out the side 8 times in 1972" in how_often_data["answer"]
 
+        opponent_response = client.post(
+            "/query",
+            json={
+                "question": (
+                    "how many times did Rollie Fingers strike out the side "
+                    "against the White Sox in 1972"
+                )
+            },
+        )
+        assert opponent_response.status_code == 200
+        opponent_data = opponent_response.json()
+        assert opponent_data["unsupported"] is False
+        assert (
+            "Rollie Fingers struck out the side 3 times in 1972 against Chicago White Sox"
+            in opponent_data["answer"]
+        )
+        assert opponent_data["sources"][0]["rows"][0]["opponent_team"] == "Chicago White Sox"
+
+        team_code_response = client.post(
+            "/query",
+            json={
+                "question": (
+                    "how many times did Rollie Fingers strike out the side against CHA in 1972"
+                )
+            },
+        )
+        assert team_code_response.status_code == 200
+        team_code_data = team_code_response.json()
+        assert team_code_data["unsupported"] is False
+        assert "Rollie Fingers struck out the side 3 times in 1972" in team_code_data["answer"]
+
     def test_query_endpoint_answers_strikeout_side_game_log_without_llm(self, monkeypatch):
         def fail_llm(*_args, **_kwargs):
             raise AssertionError("Retrosheet event-derived questions must not call the LLM")
@@ -437,6 +468,31 @@ class TestApi:
         assert "OAK197208100" in data["answer"]
         assert data["sources"][0]["rows"][0]["game_id"] == "CAL197205160"
         assert data["sources"][0]["rows"][0]["inning"] == 6
+
+        opponent_response = client.post(
+            "/query",
+            json={
+                "question": "show Rollie Fingers strikeout side games against the White Sox in 1972"
+            },
+        )
+        assert opponent_response.status_code == 200
+        opponent_data = opponent_response.json()
+        assert opponent_data["unsupported"] is False
+        assert "against Chicago White Sox in 1972" in opponent_data["answer"]
+        assert "CHA197206300" in opponent_data["answer"]
+        assert len(opponent_data["sources"][0]["rows"]) == 3
+        assert opponent_data["sources"][0]["rows"][0]["opponent_team"] == "Chicago White Sox"
+
+        rare_team_response = client.post(
+            "/query",
+            json={
+                "question": "show Satchel Paige strikeout side games against PIR in 1943",
+            },
+        )
+        assert rare_team_response.status_code == 200
+        rare_team_data = rare_team_response.json()
+        assert rare_team_data["unsupported"] is False
+        assert rare_team_data["sources"][0]["rows"][0]["pitcher_team"] == "BCG"
 
         career_response = client.post(
             "/query",
@@ -469,6 +525,16 @@ class TestApi:
             assert data["unsupported"] is True
             assert data["unsupported_reason"] == "unsupported"
             assert "Retrosheet event data is local" in data["answer"]
+
+        ambiguous_opponent = client.post(
+            "/query",
+            json={"question": "show Rollie Fingers strikeout side games against Chicago in 1972"},
+        )
+        assert ambiguous_opponent.status_code == 200
+        ambiguous_data = ambiguous_opponent.json()
+        assert ambiguous_data["unsupported"] is True
+        assert ambiguous_data["unsupported_reason"] == "unsupported"
+        assert "recognized team nickname or Retrosheet team code" in ambiguous_data["answer"]
 
     def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))

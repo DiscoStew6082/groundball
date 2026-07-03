@@ -6,7 +6,7 @@
     "license_notes": "Retrosheet data is free to use with required attribution. Retrosheet makes no guarantees of accuracy and updates data as corrections arrive."
   },
   "download": {
-    "downloaded_at": "2026-07-03T02:55:40-04:00",
+    "downloaded_at": "2026-07-03T13:52:15-04:00",
     "download_tool": "python -m baseball_rag.db.secondary_sources.retrosheet_events",
     "notes": "Generated pitcher strikeout-side evidence from Retrosheet event archives."
   },
@@ -27,7 +27,7 @@
         "min": 1910,
         "max": 2025
       },
-      "sha256": "63875d942e69935d860ea9a43444f331c4529d72e8377708da8047c7c1004f06"
+      "sha256": "df5af662813817d8cfe5a93668614b463fded249714858159826ce50097aa0b5"
     }
   ]
 }

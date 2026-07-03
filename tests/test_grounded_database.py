@@ -738,7 +738,7 @@ class TestGroundedDatabaseProvenance:
         from baseball_rag.service import _answer_grounded_database_question
 
         decision = GroundedDatabaseQuestionCase(
-            raw_question="Who played for the Mariners in 1977?",
+            raw_question="Which Mariners hitters had batting records in 1977?",
         )
         mock_resp = MagicMock()
         mock_resp.content = (
@@ -856,11 +856,35 @@ class TestGroundedDatabaseProvenance:
         assert answer.sources[0].data_manifest["dataset"]["name"] == "NeuML/baseballdata"
 
     @pytest.mark.parametrize(
-        ("unsupported_reason", "columns", "expected_reason", "expected_review_reason"),
+        (
+            "unsupported_reason",
+            "columns",
+            "expected_reason",
+            "expected_review_reason",
+            "expected_answer_text",
+        ),
         [
-            ("ambiguous", ["unsupported_reason"], "ambiguous", "ambiguous"),
-            ("unsupported", ["unsupported_reason"], "unsupported", "unsupported"),
-            (None, ["name"], "no_data", "unsupported"),
+            (
+                "ambiguous",
+                ["unsupported_reason"],
+                "ambiguous",
+                "ambiguous",
+                "unsupported detail",
+            ),
+            (
+                "unsupported",
+                ["unsupported_reason"],
+                "unsupported",
+                "unsupported",
+                "unsupported detail",
+            ),
+            (
+                None,
+                ["name"],
+                "no_data",
+                "unsupported",
+                "Try rephrasing with a specific team, player, stat, or year.",
+            ),
         ],
     )
     def test_grounded_database_zero_row_answer_preserves_unsupported_mapping(
@@ -869,6 +893,7 @@ class TestGroundedDatabaseProvenance:
         columns: list[str],
         expected_reason: str,
         expected_review_reason: str,
+        expected_answer_text: str,
     ):
         from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
         from baseball_rag.routing import GroundedDatabaseQuestionCase
@@ -893,7 +918,7 @@ class TestGroundedDatabaseProvenance:
         assert answer.unsupported is True
         assert answer.unsupported_reason == expected_reason
         assert answer.review_reason == expected_review_reason
-        assert "Try rephrasing with a specific team, player, stat, or year." in answer.answer
+        assert expected_answer_text in answer.answer
         assert answer.sources[0].label == "Deterministic template query"
         assert answer.sources[0].rows == []
 

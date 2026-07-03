@@ -53,15 +53,22 @@ def retrosheet_event_capabilities() -> tuple[RetrosheetEventCapability, ...]:
                 "Named pitcher career strikeout-side count",
                 "Named pitcher season strikeout-side count",
                 "Named pitcher strikeout-side game log",
+                "Named pitcher strikeout-side count or game log by opponent team",
                 "Pitcher career strikeout-side leaderboard",
             ),
-            supported_filters=("pitcher full name", "career", "year", "game log"),
+            supported_filters=(
+                "pitcher full name",
+                "career",
+                "year",
+                "game log",
+                "opponent team",
+            ),
             unsupported_nearby_families=(
                 "Inherited runners or entering with runners on base",
                 "Pitch counts or immaculate innings",
                 "Called/swinging strikeout splits",
                 "Postseason-only splits",
-                "Opponent, batter, team, or park filters",
+                "Batter or park filters",
             ),
             unsupported_patterns=(
                 re.compile(
@@ -87,10 +94,8 @@ def retrosheet_event_capabilities() -> tuple[RetrosheetEventCapability, ...]:
                     r"\b(?:postseason|playoffs?|world series)\b.*" + _STRIKEOUT_SIDE_PHRASE
                 ),
                 re.compile(
-                    _STRIKEOUT_SIDE_PHRASE + r".*\b(?:against|versus|vs|"
-                    r"opponent|batter|team|park|stadium|ballpark)\b|"
-                    r"\b(?:against|versus|vs|opponent|batter|team|park|stadium|"
-                    r"ballpark)\b.*" + _STRIKEOUT_SIDE_PHRASE
+                    _STRIKEOUT_SIDE_PHRASE + r".*\b(?:batter|park|stadium|ballpark)\b|"
+                    r"\b(?:batter|park|stadium|ballpark)\b.*" + _STRIKEOUT_SIDE_PHRASE
                 ),
             ),
         ),

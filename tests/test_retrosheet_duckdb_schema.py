@@ -5,6 +5,7 @@ from __future__ import annotations
 import duckdb
 
 from baseball_rag.db import duckdb_schema
+from baseball_rag.db.duckdb_schema import get_team_name
 
 
 def _write_core_lahman_csvs(data_dir):
@@ -82,8 +83,10 @@ def test_duckdb_loads_optional_retrosheet_tables_with_stat_filters(tmp_path, mon
         encoding="utf-8",
     )
     (retrosheet_dir / "pitcher_strikeout_side_events.csv").write_text(
-        "retroID,year,game_id,inning,batting_home,started_half_inning,strikeout_outs,total_outs_recorded,event_sequence\n"
-        "ruthb101,1916,BOS191604180,9,0,true,3,3,K|K|K\n",
+        "retroID,year,game_id,inning,batting_home,started_half_inning,"
+        "strikeout_outs,total_outs_recorded,event_sequence,game_date,home_team_id,"
+        "away_team_id,pitcher_team_id,opponent_team_id,site\n"
+        "ruthb101,1916,BOS191604180,9,0,true,3,3,K|K|K,1916-04-18,BOS,NYA,BOS,NYA,BOS01\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(duckdb_schema, "DATA_DIR", tmp_path)
@@ -102,7 +105,18 @@ def test_duckdb_loads_optional_retrosheet_tables_with_stat_filters(tmp_path, mon
             ).fetchone()[0]
             == 1
         )
+        assert (
+            conn.execute(
+                "SELECT opponent_team_id FROM retrosheet_pitcher_strikeout_side_events"
+            ).fetchone()[0]
+            == "NYA"
+        )
         assert conn.execute("SELECT count(*) FROM batting").fetchone()[0] == 1
     finally:
         conn.close()
         duckdb_schema._cached_conn = None
+
+
+def test_team_map_includes_retrosheet_event_team_aliases():
+    assert get_team_name("MLN") == "Milwaukee Braves"
+    assert get_team_name("KC1") == "Kansas City Athletics"

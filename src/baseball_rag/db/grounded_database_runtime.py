@@ -240,15 +240,22 @@ def _is_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -
 
 def _format_pitcher_strikeout_side_game_log_result(result: GroundedDatabaseResult) -> str:
     first_row = dict(zip(result.columns, result.rows[0], strict=False))
-    years = sorted({dict(zip(result.columns, row, strict=False))["year"] for row in result.rows})
+    row_dicts = [dict(zip(result.columns, row, strict=False)) for row in result.rows]
+    years = sorted({row["year"] for row in row_dicts})
     year_text = str(years[0]) if len(years) == 1 else "his career"
+    opponents = {row.get("opponent_team") for row in row_dicts if row.get("opponent_team")}
+    opponent_text = (
+        f" against {next(iter(opponents))}"
+        if len(opponents) == 1 and result.row_count == len(row_dicts)
+        else ""
+    )
     showing = (
         f", showing first 100 of {result.row_count}"
         if result.truncated or result.row_count > 100
         else ""
     )
     lines = [
-        f"{first_row['name']} strikeout-side games in {year_text} "
+        f"{first_row['name']} strikeout-side games{opponent_text} in {year_text} "
         f"by Retrosheet event-derived game log{showing}:"
     ]
     for values in result.rows[:100]:
@@ -265,18 +272,20 @@ def _format_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) 
         return _format_pitcher_strikeout_side_leaderboard_result(result)
 
     row = dict(zip(result.columns, result.rows[0], strict=False))
+    opponent_text = f" against {row['opponent_team']}" if row.get("opponent_team") else ""
     return (
         f"{row['name']} struck out the side {row['career_strikeout_side_count']} times "
-        "in his career by Retrosheet event-derived count. "
+        f"in his career{opponent_text} by Retrosheet event-derived count. "
         f"That is {row['strict_started_half_count']} if requiring he began the half-inning."
     )
 
 
 def _format_pitcher_strikeout_side_year_count_result(result: GroundedDatabaseResult) -> str:
     row = dict(zip(result.columns, result.rows[0], strict=False))
+    opponent_text = f" against {row['opponent_team']}" if row.get("opponent_team") else ""
     return (
         f"{row['name']} struck out the side {row['strikeout_side_count']} times "
-        f"in {row['year']} by Retrosheet event-derived count. "
+        f"in {row['year']}{opponent_text} by Retrosheet event-derived count. "
         f"That is {row['strict_started_half_count']} if requiring he began the half-inning."
     )
 

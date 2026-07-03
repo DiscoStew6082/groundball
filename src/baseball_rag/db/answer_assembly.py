@@ -50,11 +50,17 @@ def answer_grounded_database_result(
     if query_result.row_count == 0:
         reason = _grounded_database_unsupported_reason(query_result)
         review_reason: ReviewReason = "ambiguous" if reason == "ambiguous" else "unsupported"
-        return unsupported_outcome(
-            answer=(
+        unsupported_detail = _grounded_database_unsupported_detail(query_result)
+        answer = (
+            f"I can't answer that from the grounded local baseball data. {unsupported_detail}"
+            if unsupported_detail
+            else (
                 f"No results found for '{raw_question}'.\n"
                 "Try rephrasing with a specific team, player, stat, or year."
-            ),
+            )
+        )
+        return unsupported_outcome(
+            answer=answer,
             intent=intent,
             sources=[source],
             reason=reason,
@@ -205,3 +211,14 @@ def _grounded_database_unsupported_reason(
     if "unsupported_reason" not in query_result.columns:
         return "no_data"
     return "unsupported"
+
+
+def _grounded_database_unsupported_detail(
+    query_result: GroundedDatabaseResult,
+) -> str | None:
+    if "unsupported_reason" not in query_result.columns:
+        return None
+    if not query_result.params:
+        return None
+    detail = str(query_result.params[0]).strip()
+    return detail or None

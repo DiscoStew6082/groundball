@@ -49,6 +49,12 @@ class PitcherHalfInning:
     strikeout_outs: int
     total_outs_recorded: int
     event_sequence: tuple[str, ...]
+    game_date: str
+    home_team_id: str
+    away_team_id: str
+    pitcher_team_id: str
+    opponent_team_id: str
+    site: str
 
     @property
     def is_strikeout_side(self) -> bool:
@@ -109,12 +115,14 @@ def _derive_year_pitcher_strikeout_side_events(
     archive_bytes: bytes,
 ) -> Iterable[PitcherHalfInning]:
     half_innings: dict[tuple[str, int, int], _HalfInningBuilder] = defaultdict(_HalfInningBuilder)
+    game_info_by_id: dict[str, dict[str, str]] = {}
     with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
         for member_name in archive.namelist():
             if not member_name.upper().endswith((".EVA", ".EVN", ".EVF", ".EVR")):
                 continue
             current_pitcher: dict[int, str | None] = {0: None, 1: None}
             game_id: str | None = None
+            game_info: dict[str, str] = {}
             for raw_line in archive.read(member_name).decode("latin1").splitlines():
                 if not raw_line:
                     continue
@@ -123,6 +131,10 @@ def _derive_year_pitcher_strikeout_side_events(
                 if row_type == "id":
                     game_id = fields[1]
                     current_pitcher = {0: None, 1: None}
+                    game_info = {}
+                    game_info_by_id[game_id] = game_info
+                elif row_type == "info" and len(fields) >= 3:
+                    game_info[fields[1]] = fields[2]
                 elif row_type in {"start", "sub"} and len(fields) >= 6 and fields[5] == "1":
                     current_pitcher[int(fields[3])] = fields[1]
                 elif row_type == "play" and len(fields) >= 7 and game_id is not None:
@@ -148,6 +160,7 @@ def _derive_year_pitcher_strikeout_side_events(
             game_id=game_id,
             inning=inning,
             batting_home=batting_home,
+            game_info=game_info_by_id.get(game_id, {}),
         ):
             if row.is_strikeout_side:
                 yield row
@@ -176,7 +189,13 @@ class _HalfInningBuilder:
         game_id: str,
         inning: int,
         batting_home: int,
+        game_info: dict[str, str],
     ) -> Iterable[PitcherHalfInning]:
+        home_team_id = game_info.get("hometeam") or game_id[:3]
+        away_team_id = game_info.get("visteam") or ""
+        site = game_info.get("site") or ""
+        batting_team_id = home_team_id if batting_home == 1 else away_team_id
+        fielding_team_id = away_team_id if batting_home == 1 else home_team_id
         for pitcher_id, events in self.events_by_pitcher.items():
             total_outs = sum(total for _event, (total, _strikeout) in events)
             strikeout_outs = sum(strikeout for _event, (_total, strikeout) in events)
@@ -190,6 +209,12 @@ class _HalfInningBuilder:
                 strikeout_outs=strikeout_outs,
                 total_outs_recorded=total_outs,
                 event_sequence=tuple(event for event, _outs in events),
+                game_date=_game_date(game_id),
+                home_team_id=home_team_id,
+                away_team_id=away_team_id,
+                pitcher_team_id=fielding_team_id,
+                opponent_team_id=batting_team_id,
+                site=site,
             )
 
 
@@ -257,6 +282,12 @@ def _write_pitcher_strikeout_side_events(
                 "strikeout_outs",
                 "total_outs_recorded",
                 "event_sequence",
+                "game_date",
+                "home_team_id",
+                "away_team_id",
+                "pitcher_team_id",
+                "opponent_team_id",
+                "site",
             ],
             lineterminator="\n",
         )
@@ -273,6 +304,12 @@ def _write_pitcher_strikeout_side_events(
                     "strikeout_outs": row.strikeout_outs,
                     "total_outs_recorded": row.total_outs_recorded,
                     "event_sequence": "|".join(row.event_sequence),
+                    "game_date": row.game_date,
+                    "home_team_id": row.home_team_id,
+                    "away_team_id": row.away_team_id,
+                    "pitcher_team_id": row.pitcher_team_id,
+                    "opponent_team_id": row.opponent_team_id,
+                    "site": row.site,
                 }
             )
 
@@ -335,6 +372,11 @@ def _requests_get(url: str, timeout: int) -> requests.Response:
 
 def _parse_csv_line(raw_line: str) -> list[str]:
     return next(csv.reader([raw_line]))
+
+
+def _game_date(game_id: str) -> str:
+    raw_date = game_id[3:11]
+    return f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
 
 
 def _sha256(path: Path) -> str:

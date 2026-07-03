@@ -215,9 +215,19 @@ _TEAM_NICKNAMES = (
     "twins",
     "rangers",
     "angels",
+    "astros",
+    "blue jays",
+    "brewers",
+    "diamondbacks",
+    "guardians",
+    "mariners",
     "marlins",
     "mets",
+    "nationals",
+    "padres",
     "phillies",
+    "rays",
+    "royals",
 )
 
 
@@ -468,6 +478,9 @@ def _match_pitcher_strikeout_side_count(q: str) -> Mapping[str, Any] | None:
         "pattern": "pitcher strikeout-side count",
         "player_name": player_name,
         "year": year,
+        "opponent_team_pattern": _extract_opponent_team_pattern(q),
+        "unrecognized_opponent_filter": _has_opponent_clause(q)
+        and _extract_opponent_team_pattern(q) is None,
     }
 
 
@@ -495,14 +508,39 @@ def _match_pitcher_strikeout_side_game_log(q: str) -> Mapping[str, Any] | None:
         "pattern": "pitcher strikeout-side game log",
         "player_name": player_name,
         "year": _extract_year(q),
+        "opponent_team_pattern": _extract_opponent_team_pattern(q),
+        "unrecognized_opponent_filter": _has_opponent_clause(q)
+        and _extract_opponent_team_pattern(q) is None,
     }
+
+
+def _has_opponent_clause(q: str) -> bool:
+    return bool(re.search(r"\b(?:against|versus|vs)\b", q))
+
+
+def _extract_opponent_team_pattern(q: str) -> str | None:
+    if not _has_opponent_clause(q):
+        return None
+    nickname = _extract_team_nickname(q)
+    if nickname is not None:
+        return nickname
+    match = re.search(r"\b(?:against|versus|vs)\s+(?:the\s+)?(?P<team_id>[a-z0-9]{2,3})\b", q)
+    return match.group("team_id") if match else None
 
 
 def _assemble_pitcher_strikeout_side_count(
     facts: Mapping[str, Any],
     _question: str,
 ) -> AssembledSQL:
-    return _pitcher_strikeout_side_count_sql(str(facts["player_name"]), facts["year"])
+    if bool(facts.get("unrecognized_opponent_filter")):
+        return _unsupported_sql(
+            "Opponent filters need a recognized team nickname or Retrosheet team code."
+        )
+    return _pitcher_strikeout_side_count_sql(
+        str(facts["player_name"]),
+        facts["year"],
+        facts.get("opponent_team_pattern"),
+    )
 
 
 def _assemble_pitcher_strikeout_side_leaders(
@@ -516,7 +554,15 @@ def _assemble_pitcher_strikeout_side_game_log(
     facts: Mapping[str, Any],
     _question: str,
 ) -> AssembledSQL:
-    return _pitcher_strikeout_side_game_log_sql(str(facts["player_name"]), facts["year"])
+    if bool(facts.get("unrecognized_opponent_filter")):
+        return _unsupported_sql(
+            "Opponent filters need a recognized team nickname or Retrosheet team code."
+        )
+    return _pitcher_strikeout_side_game_log_sql(
+        str(facts["player_name"]),
+        facts["year"],
+        facts.get("opponent_team_pattern"),
+    )
 
 
 _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
@@ -895,14 +941,39 @@ def _qualified_season_avg_sql(year: int | None, min_ab: int) -> AssembledSQL:
     )
 
 
-def _pitcher_strikeout_side_count_sql(player_name: str, year: Any | None) -> AssembledSQL:
+def _pitcher_strikeout_side_count_sql(
+    player_name: str,
+    year: Any | None,
+    opponent_team_pattern: Any | None = None,
+) -> AssembledSQL:
+    opponent_join = (
+        "LEFT JOIN teams opponent ON opponent.teamID = e.opponent_team_id"
+        if opponent_team_pattern is not None
+        else ""
+    )
+    opponent_filter = (
+        "AND (lower(opponent.name) LIKE ? OR lower(e.opponent_team_id) = ?)"
+        if opponent_team_pattern is not None
+        else ""
+    )
+    opponent_select = (
+        "opponent.name AS opponent_team,"
+        if opponent_team_pattern is not None
+        else "NULL AS opponent_team,"
+    )
+    opponent_group = ", opponent.name" if opponent_team_pattern is not None else ""
     if year is not None:
+        params: list[object] = [player_name.lower(), int(year)]
+        if opponent_team_pattern is not None:
+            team_pattern = str(opponent_team_pattern).lower()
+            params.extend([f"%{team_pattern}%", team_pattern])
         return AssembledSQL(
             """
             SELECT
                 p.nameFirst,
                 p.nameLast,
                 e.year,
+                {opponent_select}
                 COUNT(*) AS strikeout_side_count,
                 SUM(CASE WHEN e.started_half_inning THEN 1 ELSE 0 END) AS strict_started_half_count,
                 CONCAT(
@@ -911,18 +982,30 @@ def _pitcher_strikeout_side_count_sql(player_name: str, year: Any | None) -> Ass
                 ) AS definition
             FROM retrosheet_pitcher_strikeout_side_events e
             JOIN people p ON lower(p.retroID) = lower(e.retroID)
+            {opponent_join}
             WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
                 AND e.year = ?
-            GROUP BY p.playerID, p.nameFirst, p.nameLast, e.year
-            """,
-            [player_name.lower(), int(year)],
+                {opponent_filter}
+            GROUP BY p.playerID, p.nameFirst, p.nameLast, e.year{opponent_group}
+            """.format(
+                opponent_join=opponent_join,
+                opponent_filter=opponent_filter,
+                opponent_select=opponent_select,
+                opponent_group=opponent_group,
+            ),
+            params,
         )
 
+    params = [player_name.lower()]
+    if opponent_team_pattern is not None:
+        team_pattern = str(opponent_team_pattern).lower()
+        params.extend([f"%{team_pattern}%", team_pattern])
     return AssembledSQL(
         """
         SELECT
             p.nameFirst,
             p.nameLast,
+            {opponent_select}
             COUNT(*) AS career_strikeout_side_count,
             SUM(CASE WHEN e.started_half_inning THEN 1 ELSE 0 END) AS strict_started_half_count,
             MIN(e.year) AS first_year,
@@ -933,10 +1016,17 @@ def _pitcher_strikeout_side_count_sql(player_name: str, year: Any | None) -> Ass
             ) AS definition
         FROM retrosheet_pitcher_strikeout_side_events e
         JOIN people p ON lower(p.retroID) = lower(e.retroID)
+        {opponent_join}
         WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
-        GROUP BY p.playerID, p.nameFirst, p.nameLast
-        """,
-        [player_name.lower()],
+            {opponent_filter}
+        GROUP BY p.playerID, p.nameFirst, p.nameLast{opponent_group}
+        """.format(
+            opponent_join=opponent_join,
+            opponent_filter=opponent_filter,
+            opponent_select=opponent_select,
+            opponent_group=opponent_group,
+        ),
+        params,
     )
 
 
@@ -964,11 +1054,23 @@ def _pitcher_strikeout_side_leaders_sql(limit: int) -> AssembledSQL:
     )
 
 
-def _pitcher_strikeout_side_game_log_sql(player_name: str, year: Any | None) -> AssembledSQL:
+def _pitcher_strikeout_side_game_log_sql(
+    player_name: str,
+    year: Any | None,
+    opponent_team_pattern: Any | None = None,
+) -> AssembledSQL:
     year_filter = "AND e.year = ?" if year is not None else ""
     params: list[object] = [player_name.lower()]
     if year is not None:
         params.append(int(year))
+    opponent_filter = (
+        "AND (lower(opponent.name) LIKE ? OR lower(e.opponent_team_id) = ?)"
+        if opponent_team_pattern is not None
+        else ""
+    )
+    if opponent_team_pattern is not None:
+        team_pattern = str(opponent_team_pattern).lower()
+        params.extend([f"%{team_pattern}%", team_pattern])
     return AssembledSQL(
         """
         SELECT
@@ -979,6 +1081,11 @@ def _pitcher_strikeout_side_game_log_sql(player_name: str, year: Any | None) -> 
             e.inning,
             CASE WHEN e.batting_home = 1 THEN 'bottom' ELSE 'top' END AS half_inning,
             e.started_half_inning,
+            e.opponent_team_id,
+            COALESCE(opponent.name, e.opponent_team_id) AS opponent_team,
+            e.pitcher_team_id,
+            COALESCE(pitcher_team.name, e.pitcher_team_id) AS pitcher_team,
+            e.site,
             e.event_sequence,
             CONCAT(
                 'All three outs recorded by the pitcher in a half-inning were strikeouts; ',
@@ -986,10 +1093,13 @@ def _pitcher_strikeout_side_game_log_sql(player_name: str, year: Any | None) -> 
             ) AS definition
         FROM retrosheet_pitcher_strikeout_side_events e
         JOIN people p ON lower(p.retroID) = lower(e.retroID)
+        LEFT JOIN teams opponent ON opponent.teamID = e.opponent_team_id
+        LEFT JOIN teams pitcher_team ON pitcher_team.teamID = e.pitcher_team_id
         WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
             {year_filter}
+            {opponent_filter}
         ORDER BY e.year, e.game_id, e.inning, e.batting_home
-        """.format(year_filter=year_filter),
+        """.format(year_filter=year_filter, opponent_filter=opponent_filter),
         params,
     )
 
