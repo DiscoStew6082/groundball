@@ -19,6 +19,9 @@ RETROSHEET_STAT_TABLES = {
     "retrosheet_pitching": "pitching.csv",
     "retrosheet_fielding": "fielding.csv",
 }
+RETROSHEET_DERIVED_TABLES = {
+    "retrosheet_pitcher_strikeout_side_events": "pitcher_strikeout_side_events.csv",
+}
 RETROSHEET_BIOFILE = ("retrosheet_biofile", "biofile0.csv")
 
 # Try to load Teams.csv at module init; fall back to {} if not present.
@@ -214,6 +217,17 @@ def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: 
             FROM read_csv_auto('{_sql_string(csv_path)}')
             """
         )
+
+    for table_name, csv_name in RETROSHEET_DERIVED_TABLES.items():
+        csv_path = retrosheet_dir / csv_name
+        if csv_path.exists():
+            conn.execute(
+                f"""
+                CREATE TABLE {table_name} AS
+                SELECT *
+                FROM read_csv_auto('{_sql_string(csv_path)}')
+                """
+            )
 
 
 def _sql_string(path: Path) -> str:

@@ -426,6 +426,35 @@ def _qualified_season_era_route_owner(
     return not (competing_stat == "ERA" and bool(facts["plain_leaderboard"]))
 
 
+def _match_pitcher_strikeout_side_count(q: str) -> Mapping[str, Any] | None:
+    if "career" not in q:
+        return None
+    if _extract_year(q) is not None or "postseason" in q or "playoff" in q:
+        return None
+    match = re.search(
+        r"\b(?:how many times\s+)?(?:did|has)\s+(?P<player>[a-z][a-z .'\\-]+?)\s+"
+        r"(?:strike|struck) out the side\b",
+        q,
+    )
+    if match is None:
+        return None
+
+    player_name = match.group("player").strip()
+    if not player_name or player_name in {"which pitchers", "who"}:
+        return None
+    return {
+        "pattern": "pitcher strikeout-side count",
+        "player_name": player_name,
+    }
+
+
+def _assemble_pitcher_strikeout_side_count(
+    facts: Mapping[str, Any],
+    _question: str,
+) -> AssembledSQL:
+    return _pitcher_strikeout_side_count_sql(str(facts["player_name"]))
+
+
 _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
     GroundedDatabaseTemplate(
         template_id="ambiguous_500_club",
@@ -507,6 +536,15 @@ _TEMPLATES: tuple[GroundedDatabaseTemplate, ...] = (
             "Matched local qualified season ERA leader template with an innings guard."
         ),
         route_owner=_qualified_season_era_route_owner,
+    ),
+    GroundedDatabaseTemplate(
+        template_id="pitcher_strikeout_side_count",
+        description="Retrosheet event-derived pitcher strikeout-side career counts",
+        matcher=_match_pitcher_strikeout_side_count,
+        assemble=_assemble_pitcher_strikeout_side_count,
+        source_detail=_source_detail(
+            "Matched local Retrosheet event-derived strikeout-side count template."
+        ),
     ),
 )
 
@@ -772,6 +810,29 @@ def _qualified_season_avg_sql(year: int | None, min_ab: int) -> AssembledSQL:
         ORDER BY b.yearID, b.lgID, AVG DESC, p.nameLast, p.nameFirst
         """,
         [year, min_ab, min_ab],
+    )
+
+
+def _pitcher_strikeout_side_count_sql(player_name: str) -> AssembledSQL:
+    return AssembledSQL(
+        """
+        SELECT
+            p.nameFirst,
+            p.nameLast,
+            COUNT(*) AS career_strikeout_side_count,
+            SUM(CASE WHEN e.started_half_inning THEN 1 ELSE 0 END) AS strict_started_half_count,
+            MIN(e.year) AS first_year,
+            MAX(e.year) AS last_year,
+            CONCAT(
+                'All three outs recorded by the pitcher in a half-inning were strikeouts; ',
+                'strict_started_half_count requires the pitcher to have begun the half-inning.'
+            ) AS definition
+        FROM retrosheet_pitcher_strikeout_side_events e
+        JOIN people p ON lower(p.retroID) = lower(e.retroID)
+        WHERE lower(p.nameFirst || ' ' || p.nameLast) = ?
+        GROUP BY p.playerID, p.nameFirst, p.nameLast
+        """,
+        [player_name.lower()],
     )
 
 
