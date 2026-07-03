@@ -320,6 +320,32 @@ class TestApi:
         assert data["review"]["queued"] is True
         assert data["review"]["reason"] == "unsupported"
 
+    def test_query_endpoint_rejects_struck_out_the_side_without_llm(self, tmp_path, monkeypatch):
+        def fail_llm(*_args, **_kwargs):
+            raise AssertionError("event-level unsupported questions must not call the LLM")
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fail_llm)
+        monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
+
+        response = client.post(
+            "/query",
+            json={
+                "question": "how many times did Rollie Fingers strike out the side in his career"
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "unsupported"
+        assert "inning-level play or event data" in data["answer"]
+        assert data["sources"][0]["type"] == "system"
+        assert data["sources"][0]["label"] == "Unsupported question policy"
+        assert data["metadata"]["unsupported"] is True
+        assert data["metadata"]["source_types"] == ["system"]
+        assert data["review"]["queued"] is True
+        assert data["review"]["reason"] == "unsupported"
+
     def test_query_endpoint_rejects_reversed_stat_year_range(self, tmp_path, monkeypatch):
         monkeypatch.setenv("BASEBALL_RAG_REVIEW_QUEUE_PATH", str(tmp_path / "review.jsonl"))
 

@@ -48,6 +48,15 @@ _POLICY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"\btriple-a\b|\btriple a\b|\bminor leagues?\b"),
         "Minor-league leaderboards are outside the local MLB-focused dataset.",
     ),
+    (
+        re.compile(r"\bhow\s+many\s+times\b.*\b(?:strike|struck)\s+out\s+the\s+side\b"),
+        (
+            "Strikeout-side counts require inning-level play or event data. The local "
+            "Lahman-derived data stores season and career aggregates, and current "
+            "Retrosheet support is optional aggregate biography-claim evidence, not "
+            "loaded play-by-play event data."
+        ),
+    ),
 )
 
 
