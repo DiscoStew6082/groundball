@@ -13,9 +13,10 @@ client = TestClient(app)
 WEBSITE_CORS_ORIGINS = "https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321"
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def website_cors_origins(monkeypatch):
     monkeypatch.setenv("GROUNDBALL_CORS_ORIGINS", WEBSITE_CORS_ORIGINS)
+    monkeypatch.delenv("GROUNDBALL_ORIGIN_PROXY_TOKEN", raising=False)
 
 
 class TestApi:
@@ -24,6 +25,27 @@ class TestApi:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+
+    def test_query_endpoint_requires_origin_proxy_token_when_configured(self, monkeypatch):
+        """Direct tunnel callers need the server-side proxy token when configured."""
+        monkeypatch.setenv("GROUNDBALL_ORIGIN_PROXY_TOKEN", "secret-token")
+
+        response = client.post("/query", json={"question": "who had the most RBIs in 1962"})
+
+        assert response.status_code == 403
+        assert response.json() == {"error": "groundball_origin_proxy_token_required"}
+
+    def test_query_endpoint_accepts_origin_proxy_token_when_configured(self, monkeypatch):
+        """The Pages Function can still reach /query with the shared proxy token."""
+        monkeypatch.setenv("GROUNDBALL_ORIGIN_PROXY_TOKEN", "secret-token")
+
+        response = client.post(
+            "/query",
+            headers={"X-Groundball-Proxy-Token": "secret-token"},
+            json={},
+        )
+
+        assert response.status_code == 422
 
     def test_query_endpoint_allows_blog_origin_preflight(self, website_cors_origins):
         """Browser clients from the public blog can POST questions to the API."""

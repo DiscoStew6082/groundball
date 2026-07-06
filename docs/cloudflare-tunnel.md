@@ -27,6 +27,7 @@ Start LM Studio's OpenAI-compatible server first. The hosted profile uses Gemma
 export LMSTUDIO_BASE_URL=http://localhost:1234/v1
 export LMSTUDIO_MODEL=unsloth/gemma-4-12b-it
 export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
+export GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared Pages Function secret>
 
 uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8000
 ```
@@ -56,6 +57,7 @@ variables:
 ```text
 GROUNDBALL_API_ORIGIN=https://groundball.discostew.dev
 GROUNDBALL_ALLOWED_IPS=<Stewart public IPv4 or IPv6 address>
+GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared local API proxy token>
 GROUNDBALL_ACCESS_CLIENT_ID=<service token client id>
 GROUNDBALL_ACCESS_CLIENT_SECRET=<service token client secret>
 ```
@@ -64,6 +66,13 @@ The browser should not authenticate to `groundball.discostew.dev` directly.
 The blog calls same-origin `/groundball/query`; the Pages Function forwards the
 request and adds the Access service-token headers server-side. LM Studio stays
 local and is never routed through Cloudflare.
+
+If the Cloudflare API token available on the machine cannot manage Access
+applications, use `GROUNDBALL_ORIGIN_PROXY_TOKEN` as the private origin guard.
+Set the same high-entropy value in the local API LaunchAgent and the Pages
+Function secrets. Direct Tunnel callers without `X-Groundball-Proxy-Token`
+receive `403`, while the blog remains automatic because the Pages Function adds
+the header server-side.
 
 `GROUNDBALL_ALLOWED_IPS` is required. If it is empty, `/groundball/query`
 returns `503` instead of forwarding traffic, so the automatic browser path does
@@ -89,6 +98,7 @@ curl -i -X OPTIONS http://127.0.0.1:8000/query \
   -H 'Access-Control-Request-Headers: content-type'
 
 curl -sS http://127.0.0.1:8000/query \
+  -H "X-Groundball-Proxy-Token: $GROUNDBALL_ORIGIN_PROXY_TOKEN" \
   -H 'content-type: application/json' \
   -H 'Origin: https://discostew.dev' \
   -d '{"question":"who had the most RBIs in 1962","answer_mode":"stats_only"}'
@@ -100,9 +110,23 @@ Direct Tunnel check with Access Service Auth:
 curl -sS https://groundball.discostew.dev/query \
   -H "CF-Access-Client-Id: $GROUNDBALL_ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $GROUNDBALL_ACCESS_CLIENT_SECRET" \
+  -H "X-Groundball-Proxy-Token: $GROUNDBALL_ORIGIN_PROXY_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"question":"who had the most RBIs in 1962","answer_mode":"stats_only"}'
 ```
+
+Direct Tunnel check without the origin proxy token:
+
+```bash
+curl -i https://groundball.discostew.dev/query \
+  -H "CF-Access-Client-Id: $GROUNDBALL_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $GROUNDBALL_ACCESS_CLIENT_SECRET" \
+  -H 'content-type: application/json' \
+  -d '{"question":"who had the most RBIs in 1962","answer_mode":"stats_only"}'
+```
+
+When `GROUNDBALL_ORIGIN_PROXY_TOKEN` is configured locally, expect `403` with
+`{"error":"groundball_origin_proxy_token_required"}`.
 
 Public website route:
 

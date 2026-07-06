@@ -159,9 +159,9 @@ The public blog integration keeps `https://discostew.dev` on Cloudflare Pages
 and uses a same-origin Pages Function at `/groundball/query` to call
 `https://groundball.discostew.dev/query` through Cloudflare Tunnel. The browser
 does not need a Cloudflare Access sign-in link; any Tunnel Access service token
-stays in Pages Function secrets. The Pages Function also requires
-`GROUNDBALL_ALLOWED_IPS` so the automatic private demo only forwards from
-Stewart's current public IPs.
+or origin proxy token stays in Pages Function secrets. The Pages Function also
+requires `GROUNDBALL_ALLOWED_IPS` so the automatic private demo only forwards
+from Stewart's current public IPs.
 
 Use Gemma 4 12B for the hosted local-model profile:
 
@@ -169,8 +169,13 @@ Use Gemma 4 12B for the hosted local-model profile:
 export LMSTUDIO_BASE_URL=http://localhost:1234/v1
 export LMSTUDIO_MODEL=unsloth/gemma-4-12b-it
 export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
+export GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared Pages Function secret>
 uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8000
 ```
+
+When `GROUNDBALL_ORIGIN_PROXY_TOKEN` is set, direct Tunnel callers must send
+`X-Groundball-Proxy-Token`; the blog's Pages Function adds that header
+server-side so the browser path remains automatic.
 
 See [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) for the Tunnel,
 Pages Function, Access service-token, and smoke-test runbook.

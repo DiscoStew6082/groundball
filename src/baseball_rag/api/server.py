@@ -1,5 +1,6 @@
 """FastAPI server for Groundball."""
 
+import hmac
 import logging
 import os
 from dataclasses import asdict
@@ -7,13 +8,16 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from baseball_rag.answer_mode import AnswerMode
 
 app = FastAPI(title="Groundball API")
 logger = logging.getLogger(__name__)
 _CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
+_ORIGIN_PROXY_TOKEN_ENV_VAR = "GROUNDBALL_ORIGIN_PROXY_TOKEN"
+_ORIGIN_PROXY_TOKEN_HEADER = "x-groundball-proxy-token"
+_PUBLIC_HEALTH_PATH = "/health"
 _CORS_QUERY_PATH = "/query"
 _CORS_ALLOWED_METHOD = "POST"
 _CORS_ALLOWED_HEADERS = ("content-type",)
@@ -67,6 +71,23 @@ def _requested_headers_are_allowed(raw_headers: str) -> bool:
     allowed_headers = set(_CORS_ALLOWED_HEADERS)
     requested_headers = {header.strip().lower() for header in raw_headers.split(",")}
     return requested_headers <= allowed_headers
+
+
+def _origin_proxy_token_is_valid(request: Request, configured_token: str) -> bool:
+    supplied_token = request.headers.get(_ORIGIN_PROXY_TOKEN_HEADER, "")
+    return hmac.compare_digest(supplied_token, configured_token)
+
+
+@app.middleware("http")
+async def _origin_proxy_token_middleware(request: Request, call_next):
+    configured_token = os.environ.get(_ORIGIN_PROXY_TOKEN_ENV_VAR)
+    if not configured_token or request.url.path == _PUBLIC_HEALTH_PATH:
+        return await call_next(request)
+
+    if not _origin_proxy_token_is_valid(request, configured_token):
+        return JSONResponse({"error": "groundball_origin_proxy_token_required"}, status_code=403)
+
+    return await call_next(request)
 
 
 @app.middleware("http")

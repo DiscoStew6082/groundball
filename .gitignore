@@ -35,6 +35,7 @@ data/secondary_sources/retrosheet/*
 # IDE
 .vscode/
 .idea/
+.wrangler/
 
 # Misc
 .depeval/
