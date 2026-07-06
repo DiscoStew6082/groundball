@@ -159,9 +159,12 @@ The public blog integration keeps `https://discostew.dev` on Cloudflare Pages
 and uses a same-origin Pages Function at `/groundball/query` to call
 `https://groundball.discostew.dev/query` through Cloudflare Tunnel. The browser
 does not need a Cloudflare Access sign-in link; any Tunnel Access service token
-or origin proxy token stays in Pages Function secrets. The Pages Function also
-requires `GROUNDBALL_ALLOWED_IPS` so the automatic private demo only forwards
-from Stewart's current public IPs.
+or origin proxy token stays in Pages Function secrets. The private website path
+uses a high-entropy URL-safe `GROUNDBALL_VISITOR_TOKEN`, for example from
+`openssl rand -hex 32`: opening
+`https://discostew.dev/groundball/?groundball_token=<token>` sets an automatic
+`groundball_session` cookie, strips the token from the address bar, and then
+lets the same-origin `/groundball/query` proxy call the local tunnel.
 
 Use Gemma 4 12B for the hosted local-model profile:
 

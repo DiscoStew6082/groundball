@@ -56,7 +56,7 @@ variables:
 
 ```text
 GROUNDBALL_API_ORIGIN=https://groundball.discostew.dev
-GROUNDBALL_ALLOWED_IPS=<Stewart public IPv4 or IPv6 address>
+GROUNDBALL_VISITOR_TOKEN=<private mobile session token>
 GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared local API proxy token>
 GROUNDBALL_ACCESS_CLIENT_ID=<service token client id>
 GROUNDBALL_ACCESS_CLIENT_SECRET=<service token client secret>
@@ -74,9 +74,9 @@ Function secrets. Direct Tunnel callers without `X-Groundball-Proxy-Token`
 receive `403`, while the blog remains automatic because the Pages Function adds
 the header server-side.
 
-`GROUNDBALL_ALLOWED_IPS` is required. If it is empty, `/groundball/query`
-returns `503` instead of forwarding traffic, so the automatic browser path does
-not quietly become public.
+`GROUNDBALL_VISITOR_TOKEN` is required. If it is empty, `/groundball/*` returns
+a noindex `404` instead of serving the UI or forwarding queries, so the
+automatic browser path does not quietly become public.
 
 ### CORS Boundary
 
@@ -128,30 +128,43 @@ curl -i https://groundball.discostew.dev/query \
 When `GROUNDBALL_ORIGIN_PROXY_TOKEN` is configured locally, expect `403` with
 `{"error":"groundball_origin_proxy_token_required"}`.
 
-Public website route:
+Private website route:
 
 ```text
-https://discostew.dev/groundball/
+https://discostew.dev/groundball/?groundball_token=<private mobile session token>
 ```
 
-Public same-origin function check:
+The first request sets an `HttpOnly` `groundball_session` cookie scoped to
+`/groundball` and redirects to `https://discostew.dev/groundball/`. Use a
+URL-safe token such as `openssl rand -hex 32`, or URL-encode the token when
+building the private link.
+
+Create a curl cookie jar from the private link before running same-origin query
+checks:
 
 ```bash
-curl -sS https://discostew.dev/groundball/query \
+curl -sS -i -c cookies.txt 'https://discostew.dev/groundball/?groundball_token=<private mobile session token>'
+```
+
+Private same-origin function check:
+
+```bash
+curl -sS -b cookies.txt https://discostew.dev/groundball/query \
   -H 'content-type: application/json' \
   -d '{"question":"who had the most RBIs in 1962","answer_mode":"stats_only"}'
 ```
 
-From any IP not listed in `GROUNDBALL_ALLOWED_IPS`, expect `403` with
-`{"error":"groundball_query_not_allowed"}`.
+Without a valid `groundball_session` cookie, expect a noindex `404` and no
+upstream fetch.
 
 Unsupported method check:
 
 ```bash
-curl -i https://discostew.dev/groundball/query
+curl -i -b cookies.txt https://discostew.dev/groundball/query
 ```
 
-Expect `405` with `{"error":"method_not_allowed"}`.
+With a valid cookie, expect `405` with `{"error":"method_not_allowed"}`.
+Without a valid cookie, expect the private noindex `404` instead.
 
 The page should return an answer, rows, provenance JSON, and SQL for the default
 question. If the browser reports `local almanac is not ready`, check Tunnel
@@ -163,8 +176,8 @@ Studio.
 Before opening this beyond Stewart:
 
 - keep `/evals/*`, `/review-queue`, and other operator endpoints behind Access
-- keep `GROUNDBALL_ALLOWED_IPS` narrowed to Stewart's current public IPs while
-  the demo is private
+- keep `/groundball/*` behind the visitor-token middleware while the demo is
+  private
 - add Cloudflare rate limiting or WAF rules for `/groundball/query`
 - set a request-size/question-length policy
 - keep the Pages Function limited to the public query route
