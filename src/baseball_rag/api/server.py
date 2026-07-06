@@ -1,16 +1,102 @@
 """FastAPI server for Groundball."""
 
 import logging
+import os
 from dataclasses import asdict
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import PlainTextResponse, Response
 
 from baseball_rag.answer_mode import AnswerMode
 
 app = FastAPI(title="Groundball API")
 logger = logging.getLogger(__name__)
+_CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
+_CORS_QUERY_PATH = "/query"
+_CORS_ALLOWED_METHOD = "POST"
+_CORS_ALLOWED_HEADERS = ("content-type",)
+_DEFAULT_CORS_ORIGINS = (
+    "https://discostew.dev",
+    "http://localhost:4321",
+    "http://127.0.0.1:4321",
+)
+
+
+def _cors_allowed_origins() -> list[str]:
+    raw_origins = os.environ.get(_CORS_ORIGINS_ENV_VAR)
+    if raw_origins is None:
+        return list(_DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+
+def _cors_origin_is_allowed(origin: str | None) -> bool:
+    return bool(origin and origin in _cors_allowed_origins())
+
+
+def _append_vary_origin(response: Response) -> None:
+    vary = response.headers.get("vary")
+    if vary is None:
+        response.headers["vary"] = "Origin"
+    elif "origin" not in {part.strip().lower() for part in vary.split(",")}:
+        response.headers["vary"] = f"{vary}, Origin"
+
+
+def _add_query_cors_headers(response: Response, origin: str) -> Response:
+    response.headers["access-control-allow-origin"] = origin
+    response.headers["access-control-allow-credentials"] = "true"
+    _append_vary_origin(response)
+    return response
+
+
+def _preflight_headers(origin: str) -> dict[str, str]:
+    return {
+        "access-control-allow-origin": origin,
+        "access-control-allow-credentials": "true",
+        "access-control-allow-methods": _CORS_ALLOWED_METHOD,
+        "access-control-allow-headers": ", ".join(_CORS_ALLOWED_HEADERS),
+        "access-control-max-age": "600",
+        "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+    }
+
+
+def _requested_headers_are_allowed(raw_headers: str) -> bool:
+    if not raw_headers:
+        return True
+    allowed_headers = set(_CORS_ALLOWED_HEADERS)
+    requested_headers = {header.strip().lower() for header in raw_headers.split(",")}
+    return requested_headers <= allowed_headers
+
+
+@app.middleware("http")
+async def _query_cors_middleware(request: Request, call_next):
+    origin = request.headers.get("origin")
+    is_preflight = (
+        request.method == "OPTIONS" and "access-control-request-method" in request.headers
+    )
+
+    if is_preflight:
+        requested_method = request.headers.get("access-control-request-method", "").upper()
+        if (
+            request.url.path != _CORS_QUERY_PATH
+            or not _cors_origin_is_allowed(origin)
+            or requested_method != _CORS_ALLOWED_METHOD
+            or not _requested_headers_are_allowed(
+                request.headers.get("access-control-request-headers", "")
+            )
+        ):
+            return PlainTextResponse("Disallowed CORS request", status_code=400)
+        return PlainTextResponse("OK", headers=_preflight_headers(origin or ""))
+
+    response = await call_next(request)
+    if (
+        request.url.path == _CORS_QUERY_PATH
+        and request.method == _CORS_ALLOWED_METHOD
+        and _cors_origin_is_allowed(origin)
+    ):
+        return _add_query_cors_headers(response, origin or "")
+    return response
 
 
 class QueryRequest(BaseModel):

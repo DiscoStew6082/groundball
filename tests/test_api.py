@@ -10,6 +10,12 @@ from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.provenance import StructuredAnswer
 
 client = TestClient(app)
+WEBSITE_CORS_ORIGINS = "https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321"
+
+
+@pytest.fixture
+def website_cors_origins(monkeypatch):
+    monkeypatch.setenv("GROUNDBALL_CORS_ORIGINS", WEBSITE_CORS_ORIGINS)
 
 
 class TestApi:
@@ -18,6 +24,67 @@ class TestApi:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+
+    def test_query_endpoint_allows_blog_origin_preflight(self, website_cors_origins):
+        """Browser clients from the public blog can POST questions to the API."""
+        response = client.options(
+            "/query",
+            headers={
+                "Origin": "https://discostew.dev",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "https://discostew.dev"
+        assert response.headers["access-control-allow-credentials"] == "true"
+        assert "POST" in response.headers["access-control-allow-methods"]
+        assert "content-type" in response.headers["access-control-allow-headers"].lower()
+
+    def test_query_endpoint_rejects_untrusted_cors_origin(self, website_cors_origins):
+        """Only configured website origins receive browser CORS permission."""
+        response = client.options(
+            "/query",
+            headers={
+                "Origin": "https://example.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 400
+        assert "access-control-allow-origin" not in response.headers
+
+    @pytest.mark.parametrize(
+        ("path", "method"),
+        [
+            ("/review-queue", "GET"),
+            ("/evals/run", "POST"),
+        ],
+    )
+    def test_operator_endpoints_reject_blog_origin_preflight(
+        self, path, method, website_cors_origins
+    ):
+        """Allowed website origins should not receive CORS access to operator APIs."""
+        response = client.options(
+            path,
+            headers={
+                "Origin": "https://discostew.dev",
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 400
+        assert "access-control-allow-origin" not in response.headers
+
+    def test_health_endpoint_does_not_add_blog_origin_cors_headers(self, website_cors_origins):
+        """Non-query endpoints stay same-origin/server-only from browser JavaScript."""
+        response = client.get("/health", headers={"Origin": "https://discostew.dev"})
+
+        assert response.status_code == 200
+        assert "access-control-allow-origin" not in response.headers
 
     def test_verification_health_endpoint_reports_operational_checks(self):
         """GET /health/verification reports deterministic runtime readiness."""
@@ -113,6 +180,19 @@ class TestApi:
         assert audit["sql_visible"] is True
         assert audit["latency_ms"] >= 0
         assert audit["query_id"] == data["metadata"]["query_id"]
+
+    def test_query_endpoint_returns_cors_headers_for_blog_post_validation_errors(
+        self, website_cors_origins
+    ):
+        response = client.post(
+            "/query",
+            headers={"Origin": "https://discostew.dev"},
+            json={},
+        )
+
+        assert response.status_code == 422
+        assert response.headers["access-control-allow-origin"] == "https://discostew.dev"
+        assert response.headers["access-control-allow-credentials"] == "true"
 
     def test_query_endpoint_accepts_stats_only_answer_mode(self):
         response = client.post(

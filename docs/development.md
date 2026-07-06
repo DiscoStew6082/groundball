@@ -45,6 +45,7 @@ uv run python -m baseball_rag.db.download
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | OpenAI-compatible LM Studio base URL |
 | `LMSTUDIO_MODEL` | `google/gemma-4-26b-a4b` | Model name sent to LM Studio |
 | `LMSTUDIO_TIMEOUT_SECONDS` | `20` | Request timeout for LM Studio calls |
+| `GROUNDBALL_CORS_ORIGINS` | `https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321` | Comma-separated browser origins allowed to call `POST /query`; set this for Cloudflare Tunnel or local Astro review |
 | `GROUNDBALL_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue; `BASEBALL_RAG_REVIEW_QUEUE_PATH` remains a compatibility alias |
 | `GROUNDBALL_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias; `0` disables it |
 | `GROUNDBALL_CURRENT_YEAR` | current system year | Optional deterministic override for relative-year query parsing; `BASEBALL_RAG_CURRENT_YEAR` remains a compatibility alias |

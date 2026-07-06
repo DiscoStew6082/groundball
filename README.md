@@ -153,6 +153,28 @@ the TTL.
 
 The UI shows the answer, evidence table, source JSON, and SQL for query paths that generate SQL.
 
+## Website Integration
+
+The public blog integration keeps `https://discostew.dev` on Cloudflare Pages
+and uses a same-origin Pages Function at `/groundball/query` to call
+`https://groundball.discostew.dev/query` through Cloudflare Tunnel. The browser
+does not need a Cloudflare Access sign-in link; any Tunnel Access service token
+stays in Pages Function secrets. The Pages Function also requires
+`GROUNDBALL_ALLOWED_IPS` so the automatic private demo only forwards from
+Stewart's current public IPs.
+
+Use Gemma 4 12B for the hosted local-model profile:
+
+```bash
+export LMSTUDIO_BASE_URL=http://localhost:1234/v1
+export LMSTUDIO_MODEL=unsloth/gemma-4-12b-it
+export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
+uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8000
+```
+
+See [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) for the Tunnel,
+Pages Function, Access service-token, and smoke-test runbook.
+
 ## Try These Questions
 
 These make a compact demo script for the CLI, API, or Gradio UI:

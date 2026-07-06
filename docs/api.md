@@ -10,6 +10,25 @@ uv run uvicorn baseball_rag.api.server:app --reload
 
 Default port: **8000** (--reload enables auto-reload on code changes).
 
+## Browser Origins
+
+The production website calls Groundball through a same-origin Cloudflare Pages
+Function at `/groundball/query`, so the browser does not need to call the Tunnel
+hostname directly. For local or direct-review paths, the API allows browser CORS
+requests to `POST /query` from `GROUNDBALL_CORS_ORIGINS`. By default that
+includes `https://discostew.dev` and local Astro review origins on port `4321`.
+
+For the Cloudflare Tunnel profile:
+
+```bash
+export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
+```
+
+The browser-facing page should call only same-origin `/groundball/query`;
+that Pages Function forwards to `https://groundball.discostew.dev/query`. LM
+Studio remains local-only. Operator endpoints such as `/evals/*` and
+`/review-queue` do not receive browser CORS headers.
+
 ## Endpoints
 
 ### `GET /health`
