@@ -1494,6 +1494,53 @@ class TestGroundedDatabaseResultFormatting:
         assert text == "1 result matched:\n- name: Babe Ruth; career_HR: 714"
         assert "('Babe Ruth', 714)" not in text
 
+    def test_triple_crown_result_formats_winners_for_reading(self):
+        from baseball_rag.db.grounded_database_runtime import format_result
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+
+        result = GroundedDatabaseResult(
+            sql="select name, yearID, lgID, HR, RBI, AVG from triple_crown",
+            rows=[
+                ("Nap Lajoie", 1901, "AL", 14, 125, 0.426),
+                ("Rogers Hornsby", 1922, "NL", 42, 152, 0.401),
+            ],
+            columns=["name", "yearID", "lgID", "HR", "RBI", "AVG"],
+            row_count=2,
+            truncated=False,
+            source_detail="Matched local Triple Crown template.",
+        )
+
+        text = format_result(result, "who won the Triple Crown and which years")
+
+        assert text == (
+            "2 Triple Crown seasons matched:\n"
+            "- Nap Lajoie (AL, 1901): 14 HR, 125 RBI, .426 AVG\n"
+            "- Rogers Hornsby (NL, 1922): 42 HR, 152 RBI, .401 AVG"
+        )
+        assert "yearID:" not in text
+
+    def test_triple_crown_formatter_requires_question_or_source_context(self):
+        from baseball_rag.db.grounded_database_runtime import format_result
+        from baseball_rag.db.grounded_database_types import GroundedDatabaseResult
+
+        result = GroundedDatabaseResult(
+            sql="select name, yearID, lgID, HR, RBI, AVG from batting",
+            rows=[("Babe Ruth", 1921, "AL", 59, 168, 0.378)],
+            columns=["name", "yearID", "lgID", "HR", "RBI", "AVG"],
+            row_count=1,
+            truncated=False,
+            source_label="LLM-backed typed grounded database query",
+            source_detail="Player batting season stats.",
+        )
+
+        text = format_result(result, "show Babe Ruth's stats during his Triple Crown chase")
+
+        assert text == (
+            "1 result matched:\n"
+            "- name: Babe Ruth; yearID: 1921; lgID: AL; HR: 59; RBI: 168; AVG: 0.378"
+        )
+        assert "Triple Crown" not in text
+
     def test_large_result_notes_display_limit_even_when_not_runtime_truncated(self):
         from baseball_rag.db.grounded_database_runtime import format_result
         from baseball_rag.db.grounded_database_types import GroundedDatabaseResult

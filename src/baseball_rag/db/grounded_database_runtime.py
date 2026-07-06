@@ -213,6 +213,8 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
         return _format_retrosheet_player_game_log_result(result)
     if _is_batting_streak_result(result):
         return _format_batting_streak_result(result)
+    if _is_triple_crown_result(result):
+        return _format_triple_crown_result(result)
     if _is_player_name_result(result):
         return _format_player_name_result(result)
     return _format_labeled_result(result)
@@ -220,6 +222,32 @@ def format_result(result: GroundedDatabaseResult, question: str) -> str:
 
 def _is_player_name_result(result: GroundedDatabaseResult) -> bool:
     return result.columns == ["name"]
+
+
+def _is_triple_crown_result(result: GroundedDatabaseResult) -> bool:
+    if result.columns != ["name", "yearID", "lgID", "HR", "RBI", "AVG"]:
+        return False
+    context = " ".join(part for part in (result.source_label, result.source_detail) if part).lower()
+    return "triple crown" in context
+
+
+def _format_average(value: Any) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{numeric:.3f}".lstrip("0")
+
+
+def _format_triple_crown_result(result: GroundedDatabaseResult) -> str:
+    lines = [_result_count_line(result, "Triple Crown season")]
+    for values in result.rows[:100]:
+        row = dict(zip(result.columns, values, strict=False))
+        lines.append(
+            f"- {row['name']} ({row['lgID']}, {row['yearID']}): "
+            f"{row['HR']} HR, {row['RBI']} RBI, {_format_average(row['AVG'])} AVG"
+        )
+    return "\n".join(lines)
 
 
 def _is_pitcher_strikeout_side_count_result(result: GroundedDatabaseResult) -> bool:

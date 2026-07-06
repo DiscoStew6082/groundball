@@ -63,10 +63,12 @@ _LOWERCASE_NAME_STOP_WORDS = {
     "doubles",
     "figure",
     "for",
+    "following",
     "from",
     "had",
     "has",
     "her",
+    "here",
     "his",
     "hit",
     "home",
@@ -108,9 +110,13 @@ _LOWERCASE_NAME_STOP_WORDS = {
     "that",
     "the",
     "their",
+    "these",
+    "season",
+    "seasons",
     "to",
     "total",
     "totals",
+    "below",
     "triple",
     "triples",
     "walk",
@@ -119,9 +125,13 @@ _LOWERCASE_NAME_STOP_WORDS = {
     "were",
     "verified",
     "win",
+    "winner",
+    "winners",
     "wins",
     "with",
     "won",
+    "year",
+    "years",
 }
 _UNIT_VALUE_CONNECTOR_PATTERN = (
     r"(?:(?:[:;=-]\s*)|"
@@ -179,21 +189,40 @@ class VerifiedEvidence:
     name_claims: tuple[VerifiedEvidenceClaim, ...]
 
 
+@dataclass(frozen=True)
+class LLMNarrationResult:
+    """Verified narration outcome surfaced to callers."""
+
+    answer: str
+    status: str
+    message: str | None = None
+
+
 def apply_llm_flavored_narration(question: str, result: StructuredAnswer) -> StructuredAnswer:
     """Apply verified LLM narration to DuckDB-backed answer results."""
     if result.unsupported:
+        result.metadata["llm_narration"] = {"status": "skipped", "reason": "unsupported"}
         return result
     if result.intent not in {"stat_query", "grounded_database_question"}:
+        result.metadata["llm_narration"] = {"status": "skipped", "reason": "unsupported_intent"}
         return result
     source = _primary_duckdb_source(result)
     if source is None:
+        result.metadata["llm_narration"] = {"status": "skipped", "reason": "missing_duckdb_source"}
         return result
     prompt_question = str(result.metadata.get("context_question") or question)
-    result.answer = _llm_flavored_grounded_database_answer(
+    narration = _llm_flavored_grounded_database_answer(
         question=prompt_question,
         formatted_answer=result.answer,
         source=source,
     )
+    result.answer = narration.answer
+    result.metadata["llm_narration"] = {
+        "status": narration.status,
+        **({"message": narration.message} if narration.message else {}),
+    }
+    if narration.message:
+        result.warnings.append(narration.message)
     return result
 
 
@@ -209,7 +238,7 @@ def _llm_flavored_grounded_database_answer(
     question: str,
     formatted_answer: str,
     source: SourceRecord,
-) -> str:
+) -> LLMNarrationResult:
     from baseball_rag.generation.llm import LLMError, make_request
 
     try:
@@ -223,19 +252,29 @@ def _llm_flavored_grounded_database_answer(
             temperature=0.2,
         )
     except (ConnectionError, TimeoutError, LLMError):
-        return (
-            f"{formatted_answer}\n\n"
-            "Note: LLM unavailable, so this response is the verified DuckDB stats only."
+        message = "Gemma prose is unavailable; showing verified DuckDB stats."
+        return LLMNarrationResult(
+            answer=(
+                f"{formatted_answer}\n\n"
+                "Note: LLM unavailable, so this response is the verified DuckDB stats only."
+            ),
+            status="unavailable",
+            message=message,
         )
     answer = response.content.strip()
     evidence = _verified_evidence(formatted_answer=formatted_answer, source=source)
     if not _uses_only_verified_numbers(answer, evidence=evidence):
-        return (
-            f"{formatted_answer}\n\n"
-            "Note: LLM-flavored text included unverified numbers, so this response is the "
-            "verified DuckDB stats only."
+        message = "Gemma prose did not pass verification; showing verified DuckDB stats."
+        return LLMNarrationResult(
+            answer=(
+                f"{formatted_answer}\n\n"
+                "Note: LLM-flavored text included unverified numbers, so this response is the "
+                "verified DuckDB stats only."
+            ),
+            status="verification_failed",
+            message=message,
         )
-    return answer
+    return LLMNarrationResult(answer=answer, status="accepted")
 
 
 def _grounded_database_flavor_prompt(
@@ -563,14 +602,22 @@ def _normalize_claim_text(text: str) -> str:
 
 
 def _mentions_name_like_phrase(text: str) -> bool:
-    if re.search(rf"\b{_NAME_TOKEN_RE}\s+{_NAME_TOKEN_RE}\b", text):
-        return True
     generic_words = _GENERIC_NAME_TOKENS
-    if any(token not in generic_words for token in re.findall(rf"\b{_NAME_TOKEN_RE}\b", text)):
+    generic_lower = {token.lower() for token in generic_words}
+    for match in re.finditer(rf"\b{_NAME_TOKEN_RE}\s+{_NAME_TOKEN_RE}\b", text):
+        if not _is_generic_name_phrase(
+            _normalize_claim_text(match.group(0)),
+            generic_words=generic_lower,
+        ):
+            return True
+    if any(
+        token not in generic_words and token.lower() not in _LOWERCASE_NAME_STOP_WORDS
+        for token in re.findall(rf"\b{_NAME_TOKEN_RE}\b", text)
+    ):
         return True
     return _contains_lowercase_name_phrase(
         _normalize_claim_text(text),
-        generic_words={token.lower() for token in generic_words},
+        generic_words=generic_lower,
     )
 
 

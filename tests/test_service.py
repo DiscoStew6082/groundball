@@ -516,6 +516,57 @@ def test_llm_flavored_grounded_template_accepts_verified_stat_claims(monkeypatch
     assert result.answer == ("Rogers Hornsby won in 1922 with 42 HR, 152 RBI, and a .401 AVG.")
 
 
+def test_llm_flavored_grounded_template_accepts_live_style_triple_crown_list(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content=(
+                "The following players won the Triple Crown in these years:\n\n"
+                "*   **Nap Lajoie**: 1901 (AL)\n"
+                "*   **Ty Cobb**: 1909 (AL)\n"
+                "*   **Rogers Hornsby**: 1922 (NL) and 1925 (NL)\n"
+                "*   **Ted Williams**: 1942 (AL) and 1947 (AL)\n"
+                "*   **Miguel Cabrera**: 2012 (AL)"
+            ),
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who won the Triple Crown and which years", answer_mode="llm_flavored")
+
+    assert "The following players won the Triple Crown in these years" in result.answer
+    assert "**Nap Lajoie**: 1901 (AL)" in result.answer
+    assert "unverified numbers" not in result.answer
+    assert result.metadata["llm_narration"]["status"] == "accepted"
+
+
+def test_llm_flavored_grounded_template_accepts_common_generic_opener(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content=(
+                "Here are the Triple Crown winners:\n\n"
+                "* Nap Lajoie: 1901\n"
+                "* Ty Cobb: 1909\n"
+                "* Rogers Hornsby: 1922 and 1925"
+            ),
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who won the Triple Crown and which years", answer_mode="llm_flavored")
+
+    assert "Here are the Triple Crown winners" in result.answer
+    assert "unverified numbers" not in result.answer
+    assert result.metadata["llm_narration"]["status"] == "accepted"
+
+
 def test_llm_flavored_grounded_template_rejects_cross_row_year_stat_claim(
     monkeypatch,
 ):
@@ -531,8 +582,12 @@ def test_llm_flavored_grounded_template_rejects_cross_row_year_stat_claim(
     result = answer("who won the Triple Crown and which years", answer_mode="llm_flavored")
 
     assert "Rogers Hornsby won in 1942" not in result.answer
-    assert "Rogers Hornsby; yearID: 1922; lgID: NL; HR: 42; RBI: 152; AVG: 0.401" in result.answer
+    assert "14 Triple Crown seasons matched:" in result.answer
+    assert "Rogers Hornsby (NL, 1922): 42 HR, 152 RBI, .401 AVG" in result.answer
+    assert "yearID:" not in result.answer
     assert "unverified numbers" in result.answer
+    assert any("Gemma prose did not pass verification" in warning for warning in result.warnings)
+    assert result.metadata["llm_narration"]["status"] == "verification_failed"
 
 
 def test_llm_flavored_grounded_name_only_result_rejects_unverified_name(
@@ -680,6 +735,8 @@ def test_llm_flavored_returns_stats_when_llm_unavailable(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "LLM unavailable" in result.answer
+    assert any("Gemma prose is unavailable" in warning for warning in result.warnings)
+    assert result.metadata["llm_narration"]["status"] == "unavailable"
     assert result.metadata["answer_mode"] == "llm_flavored"
     assert result.sources[0].type == "duckdb"
 
