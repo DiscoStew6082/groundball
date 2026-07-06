@@ -266,7 +266,7 @@ class TestApi:
         assert data["sources"][0]["rows"]
         assert data["sources"][0]["sql"]
 
-    def test_query_endpoint_llm_flavored_falls_back_to_verified_stats_when_llm_unavailable(
+    def test_query_endpoint_llm_flavored_returns_verified_answer_when_llm_unavailable(
         self, monkeypatch
     ):
         def unavailable_llm(_prompt, **_kwargs):
@@ -285,8 +285,11 @@ class TestApi:
         assert response.status_code == 200
         data = response.json()
         assert "Davis, Tommy: 153 RBI" in data["answer"]
-        assert "LLM unavailable" in data["answer"]
+        assert "LLM unavailable" not in data["answer"]
         assert data["metadata"]["answer_mode"] == "llm_flavored"
+        assert data["metadata"]["llm_narration"]["status"] == "unavailable"
+        assert "Gemma prose is unavailable" in data["metadata"]["llm_narration"]["message"]
+        assert data["warnings"] == []
         assert data["sources"][0]["type"] == "duckdb"
         assert data["sources"][0]["sql"]
         assert data["sources"][0]["rows"]

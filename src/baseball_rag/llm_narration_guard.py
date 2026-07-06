@@ -167,6 +167,37 @@ _SPELLED_UNIT_STAT_CLAIM_RE = re.compile(
     rf"{_SPELLED_NUMBER_PATTERN}\b",
     re.IGNORECASE,
 )
+_UNVERIFIED_ROLE_CLAIM_RE = re.compile(
+    r"\b(?:(?:is|are|was|were|became|played\s+as|served\s+as)\s+"
+    r"(?:an?\s+)?"
+    r"(?:pitcher|catcher|infielder|outfielder|"
+    r"first\s+baseman|second\s+baseman|third\s+baseman|shortstop|"
+    r"manager|coach|rookie|hall\s+of\s+famer)|"
+    r"(?:pitched|managed|coached|caught|injured|traded|signed|released|"
+    r"drafted|suspended|retired|born))\b",
+    re.IGNORECASE,
+)
+_BE_PREDICATE_RE = re.compile(
+    r"\b(?:is|are|was|were|became)\s+(?:an?\s+|the\s+)?(?P<token>[A-Za-z][A-Za-z-]*)",
+    re.IGNORECASE,
+)
+_ALLOWED_BE_PREDICATE_TOKENS = {
+    "first",
+    "following",
+    "included",
+    "leader",
+    "leaders",
+    "league",
+    "listed",
+    "matched",
+    "mlb",
+    "one",
+    "only",
+    "top",
+    "triple",
+    "winner",
+    "winners",
+}
 
 
 @dataclass(frozen=True)
@@ -221,8 +252,6 @@ def apply_llm_flavored_narration(question: str, result: StructuredAnswer) -> Str
         "status": narration.status,
         **({"message": narration.message} if narration.message else {}),
     }
-    if narration.message:
-        result.warnings.append(narration.message)
     return result
 
 
@@ -241,6 +270,7 @@ def _llm_flavored_grounded_database_answer(
 ) -> LLMNarrationResult:
     from baseball_rag.generation.llm import LLMError, make_request
 
+    evidence = _verified_evidence(formatted_answer=formatted_answer, source=source)
     try:
         response = make_request(
             _grounded_database_flavor_prompt(
@@ -252,29 +282,45 @@ def _llm_flavored_grounded_database_answer(
             temperature=0.2,
         )
     except (ConnectionError, TimeoutError, LLMError):
-        message = "Gemma prose is unavailable; showing verified DuckDB stats."
+        message = "Gemma prose is unavailable; showing verified DuckDB answer."
         return LLMNarrationResult(
-            answer=(
-                f"{formatted_answer}\n\n"
-                "Note: LLM unavailable, so this response is the verified DuckDB stats only."
-            ),
+            answer=formatted_answer,
             status="unavailable",
             message=message,
         )
     answer = response.content.strip()
-    evidence = _verified_evidence(formatted_answer=formatted_answer, source=source)
-    if not _uses_only_verified_numbers(answer, evidence=evidence):
-        message = "Gemma prose did not pass verification; showing verified DuckDB stats."
-        return LLMNarrationResult(
-            answer=(
-                f"{formatted_answer}\n\n"
-                "Note: LLM-flavored text included unverified numbers, so this response is the "
-                "verified DuckDB stats only."
+    if _uses_only_verified_numbers(answer, evidence=evidence):
+        return LLMNarrationResult(answer=answer, status="accepted")
+
+    try:
+        repaired_response = make_request(
+            _grounded_database_repair_prompt(
+                question=question,
+                formatted_answer=formatted_answer,
+                source=source,
+                rejected_answer=answer,
             ),
-            status="verification_failed",
-            message=message,
+            max_tokens=700,
+            temperature=0.1,
         )
-    return LLMNarrationResult(answer=answer, status="accepted")
+    except (ConnectionError, TimeoutError, LLMError):
+        repaired_answer = ""
+    else:
+        repaired_answer = repaired_response.content.strip()
+
+    if repaired_answer and _repaired_answer_is_grounded(
+        repaired_answer,
+        evidence=evidence,
+        source=source,
+    ):
+        return LLMNarrationResult(answer=repaired_answer, status="accepted_after_repair")
+
+    message = "Gemma prose did not pass verification; showing verified DuckDB answer."
+    return LLMNarrationResult(
+        answer=formatted_answer,
+        status="verification_failed",
+        message=message,
+    )
 
 
 def _grounded_database_flavor_prompt(
@@ -306,11 +352,46 @@ def _grounded_database_flavor_prompt(
     return system_prompt, user_prompt
 
 
+def _grounded_database_repair_prompt(
+    *,
+    question: str,
+    formatted_answer: str,
+    source: SourceRecord,
+    rejected_answer: str,
+) -> tuple[str, str]:
+    system_prompt = (
+        "Rewrite the baseball answer in natural language using only the verified DuckDB "
+        "stats provided. Treat the DuckDB rows as the only source of truth. Do not mention "
+        "verification, failures, or rejected drafts. Do not add outside names, years, or "
+        "numbers."
+    )
+    context = {
+        "question": question,
+        "rejected_answer_to_rewrite": rejected_answer,
+        "formatted_stats": formatted_answer,
+        "duckdb_source": {
+            "label": source.label,
+            "detail": source.detail,
+            "sql": source.sql,
+            "columns": source.columns,
+            "rows": source.rows,
+        },
+    }
+    user_prompt = (
+        "Rewrite the rejected answer so every claim is supported by this verified database "
+        "result:\n"
+        f"{json.dumps(context, indent=2, default=str)}"
+    )
+    return system_prompt, user_prompt
+
+
 def _uses_only_verified_numbers(
     answer: str,
     *,
     evidence: VerifiedEvidence,
 ) -> bool:
+    if _mentions_unverified_predicate(answer, evidence=evidence):
+        return False
     if _SPELLED_STAT_CLAIM_RE.search(answer) or _SPELLED_UNIT_STAT_CLAIM_RE.search(answer):
         return False
     answer_numbers = _numeric_tokens(answer)
@@ -322,6 +403,50 @@ def _uses_only_verified_numbers(
         and answer_claims <= evidence.claims
         and _uses_verified_name_stat_claims(answer, evidence=evidence)
     )
+
+
+def _mentions_unverified_predicate(answer: str, *, evidence: VerifiedEvidence) -> bool:
+    if _UNVERIFIED_ROLE_CLAIM_RE.search(answer):
+        return True
+
+    known_name_starts = {
+        variant.split()[0]
+        for item in evidence.name_claims
+        for variant in item.name_variants
+        if variant.split()
+    }
+    for match in _BE_PREDICATE_RE.finditer(answer):
+        token = _normalize_claim_text(match.group("token"))
+        if not token or token in _ALLOWED_BE_PREDICATE_TOKENS or token in known_name_starts:
+            continue
+        return True
+    return False
+
+
+def _repaired_answer_is_grounded(
+    answer: str,
+    *,
+    evidence: VerifiedEvidence,
+    source: SourceRecord,
+) -> bool:
+    if not _uses_only_verified_numbers(answer, evidence=evidence):
+        return False
+    if _digit_stat_claims(answer):
+        return True
+
+    answer_years = _year_numbers(_numeric_tokens(answer))
+    source_context = _normalize_claim_text(f"{source.label} {source.detail or ''}")
+    normalized_answer = _normalize_claim_text(answer)
+    if answer_years and "triple crown" in source_context and "triple crown" in normalized_answer:
+        return True
+
+    if not evidence.numbers and any(
+        token in normalized_answer
+        for token in ("listed", "roster", "matched", "played", "included")
+    ):
+        return True
+
+    return False
 
 
 def _numeric_tokens(text: str) -> set[str]:

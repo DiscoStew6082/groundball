@@ -99,7 +99,7 @@ def test_llm_flavored_stat_value_rejects_ambiguous_source_stat(monkeypatch):
     )
 
     assert "153 home runs" not in flavored.answer
-    assert "unverified numbers" in flavored.answer
+    assert "unverified numbers" not in flavored.answer
 
 
 def test_llm_flavored_stat_query_rejects_unverified_numbers(monkeypatch):
@@ -116,7 +116,7 @@ def test_llm_flavored_stat_query_rejects_unverified_numbers(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "300 home runs" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_reused_number_wrong_stat(monkeypatch):
@@ -133,7 +133,7 @@ def test_llm_flavored_stat_query_rejects_reused_number_wrong_stat(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "153 home runs" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_spelled_out_numeric_claims(monkeypatch):
@@ -150,7 +150,7 @@ def test_llm_flavored_stat_query_rejects_spelled_out_numeric_claims(monkeypatch)
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "one hundred fifty three RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_unit_before_reused_number(monkeypatch):
@@ -167,7 +167,7 @@ def test_llm_flavored_stat_query_rejects_unit_before_reused_number(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "home runs with 153" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_stat_total_wrong_stat(monkeypatch):
@@ -184,7 +184,7 @@ def test_llm_flavored_stat_query_rejects_stat_total_wrong_stat(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "home run total was 153" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_row_misattributed_claim(monkeypatch):
@@ -201,7 +201,7 @@ def test_llm_flavored_stat_query_rejects_row_misattributed_claim(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Frank Robinson led MLB with 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_unitless_row_misattribution(monkeypatch):
@@ -218,7 +218,7 @@ def test_llm_flavored_stat_query_rejects_unitless_row_misattribution(monkeypatch
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Frank Robinson led MLB with 153" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_unknown_name_stat_claim(monkeypatch):
@@ -235,7 +235,7 @@ def test_llm_flavored_stat_query_rejects_unknown_name_stat_claim(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Mickey Mantle led MLB with 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_unknown_single_name_stat_claim(monkeypatch):
@@ -252,7 +252,7 @@ def test_llm_flavored_stat_query_rejects_unknown_single_name_stat_claim(monkeypa
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Mantle led MLB with 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_same_surname_wrong_player(monkeypatch):
@@ -269,7 +269,7 @@ def test_llm_flavored_stat_query_rejects_same_surname_wrong_player(monkeypatch):
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Jackie Robinson had 136 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_last_name_misattributed_claim(monkeypatch):
@@ -286,7 +286,7 @@ def test_llm_flavored_stat_query_rejects_last_name_misattributed_claim(monkeypat
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Robinson led MLB with 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_non_numeric_wrong_player_claim(monkeypatch):
@@ -303,7 +303,7 @@ def test_llm_flavored_stat_query_rejects_non_numeric_wrong_player_claim(monkeypa
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Frank Robinson led MLB" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_multi_name_non_leader_claim(monkeypatch):
@@ -320,7 +320,7 @@ def test_llm_flavored_stat_query_rejects_multi_name_non_leader_claim(monkeypatch
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Tommy Davis, Willie Mays led MLB" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_bad_clause_after_good_clause(monkeypatch):
@@ -337,7 +337,7 @@ def test_llm_flavored_stat_query_rejects_bad_clause_after_good_clause(monkeypatc
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Frank Robinson had 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_bad_clause_without_semicolon_space(
@@ -356,7 +356,7 @@ def test_llm_flavored_stat_query_rejects_bad_clause_without_semicolon_space(
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Mickey Mantle had 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_bad_and_clause_after_good_clause(
@@ -375,7 +375,7 @@ def test_llm_flavored_stat_query_rejects_bad_and_clause_after_good_clause(
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "Mickey Mantle had 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_lowercase_bad_and_clause(
@@ -394,7 +394,7 @@ def test_llm_flavored_stat_query_rejects_lowercase_bad_and_clause(
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "mickey mantle had 153 RBI" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_number_before_punctuated_wrong_stat(
@@ -413,7 +413,7 @@ def test_llm_flavored_stat_query_rejects_number_before_punctuated_wrong_stat(
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "153-HR" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_supported_stat_unit_swap(monkeypatch):
@@ -430,7 +430,7 @@ def test_llm_flavored_stat_query_rejects_supported_stat_unit_swap(monkeypatch):
 
     assert "Webb, Earl: 67 2B" in result.answer
     assert "67 triples" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_does_not_verify_number_inside_stat_unit(monkeypatch):
@@ -447,7 +447,7 @@ def test_llm_flavored_stat_query_does_not_verify_number_inside_stat_unit(monkeyp
 
     assert "Webb, Earl: 67 2B" in result.answer
     assert "2 triples" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_punctuated_unit_before_reused_number(
@@ -466,7 +466,7 @@ def test_llm_flavored_stat_query_rejects_punctuated_unit_before_reused_number(
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "home runs, with 153" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_rejects_spelled_unit_before_number(monkeypatch):
@@ -483,7 +483,7 @@ def test_llm_flavored_stat_query_rejects_spelled_unit_before_number(monkeypatch)
 
     assert "Davis, Tommy: 153 RBI" in result.answer
     assert "home runs with one hundred fifty three" not in result.answer
-    assert "unverified numbers" in result.answer
+    assert "unverified numbers" not in result.answer
 
 
 def test_llm_flavored_stat_query_accepts_verified_unit_before_number(monkeypatch):
@@ -499,6 +499,66 @@ def test_llm_flavored_stat_query_accepts_verified_unit_before_number(monkeypatch
     result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
 
     assert result.answer == "Tommy Davis led MLB in RBI with 153 in 1962."
+
+
+def test_llm_flavored_stat_query_rejects_unverified_role_claim_with_verified_stat(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis was a pitcher in 1962 with 153 RBI.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Tommy Davis was a pitcher" not in result.answer
+    assert result.warnings == []
+    assert result.metadata["llm_narration"]["status"] == "verification_failed"
+
+
+def test_llm_flavored_stat_query_rejects_unverified_role_verb_with_verified_stat(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis pitched in 1962 with 153 RBI.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Tommy Davis pitched" not in result.answer
+    assert result.warnings == []
+    assert result.metadata["llm_narration"]["status"] == "verification_failed"
+
+
+def test_llm_flavored_stat_query_rejects_unverified_state_claim_with_verified_stat(
+    monkeypatch,
+):
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content="Tommy Davis was injured in 1962 with 153 RBI.",
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Tommy Davis was injured" not in result.answer
+    assert result.warnings == []
+    assert result.metadata["llm_narration"]["status"] == "verification_failed"
 
 
 def test_llm_flavored_grounded_template_accepts_verified_stat_claims(monkeypatch):
@@ -585,8 +645,63 @@ def test_llm_flavored_grounded_template_rejects_cross_row_year_stat_claim(
     assert "14 Triple Crown seasons matched:" in result.answer
     assert "Rogers Hornsby (NL, 1922): 42 HR, 152 RBI, .401 AVG" in result.answer
     assert "yearID:" not in result.answer
-    assert "unverified numbers" in result.answer
-    assert any("Gemma prose did not pass verification" in warning for warning in result.warnings)
+    assert "unverified numbers" not in result.answer
+    assert "did not pass verification" not in result.answer
+    assert result.warnings == []
+    assert result.metadata["llm_narration"]["status"] == "verification_failed"
+    assert "Gemma prose did not pass verification" in result.metadata["llm_narration"]["message"]
+
+
+def test_llm_flavored_grounded_template_repairs_unverified_prose_with_verified_stats(
+    monkeypatch,
+):
+    responses = iter(
+        [
+            "Rogers Hornsby won in 1942 with 42 HR, 152 RBI, and a .401 AVG.",
+            "Rogers Hornsby won Triple Crown seasons in 1922 and 1925.",
+        ]
+    )
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content=next(responses),
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who won the Triple Crown and which years", answer_mode="llm_flavored")
+
+    assert result.answer == "Rogers Hornsby won Triple Crown seasons in 1922 and 1925."
+    assert result.warnings == []
+    assert result.metadata["llm_narration"]["status"] == "accepted_after_repair"
+
+
+def test_llm_flavored_stat_query_rejects_repaired_name_only_prose_for_stat_answer(
+    monkeypatch,
+):
+    responses = iter(
+        [
+            "Frank Robinson led MLB with 153 RBI in 1962.",
+            "Tommy Davis was a pitcher in 1962 with 153 RBI.",
+        ]
+    )
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content=next(responses),
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
+
+    assert "Davis, Tommy: 153 RBI" in result.answer
+    assert "Tommy Davis was a pitcher" not in result.answer
+    assert result.warnings == []
     assert result.metadata["llm_narration"]["status"] == "verification_failed"
 
 
@@ -618,7 +733,7 @@ def test_llm_flavored_grounded_name_only_result_rejects_unverified_name(
 
     assert "Davis, Tommy" in answer_result.answer
     assert "Mickey Mantle" not in answer_result.answer
-    assert "unverified numbers" in answer_result.answer
+    assert "unverified numbers" not in answer_result.answer
 
 
 def test_llm_flavored_grounded_name_only_result_accepts_verified_name_prose(
@@ -709,7 +824,7 @@ def test_llm_flavored_grounded_name_only_result_rejects_lowercase_unverified_nam
 
     assert "Davis, Tommy" in answer_result.answer
     assert "mickey mantle" not in answer_result.answer
-    assert "unverified numbers" in answer_result.answer
+    assert "unverified numbers" not in answer_result.answer
 
 
 def test_llm_flavored_unsupported_answer_skips_final_narration(monkeypatch):
@@ -734,9 +849,10 @@ def test_llm_flavored_returns_stats_when_llm_unavailable(monkeypatch):
     result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
 
     assert "Davis, Tommy: 153 RBI" in result.answer
-    assert "LLM unavailable" in result.answer
-    assert any("Gemma prose is unavailable" in warning for warning in result.warnings)
+    assert "LLM unavailable" not in result.answer
+    assert result.warnings == []
     assert result.metadata["llm_narration"]["status"] == "unavailable"
+    assert "Gemma prose is unavailable" in result.metadata["llm_narration"]["message"]
     assert result.metadata["answer_mode"] == "llm_flavored"
     assert result.sources[0].type == "duckdb"
 
@@ -752,6 +868,6 @@ def test_llm_flavored_returns_stats_when_connection_error_marks_llm_unavailable(
     result = answer("who had the most RBIs in 1962", answer_mode="llm_flavored")
 
     assert "Davis, Tommy: 153 RBI" in result.answer
-    assert "LLM unavailable" in result.answer
+    assert "LLM unavailable" not in result.answer
     assert result.metadata["answer_mode"] == "llm_flavored"
     assert result.sources[0].type == "duckdb"
