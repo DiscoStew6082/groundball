@@ -61,9 +61,14 @@ _LOWERCASE_NAME_STOP_WORDS = {
     "crown",
     "double",
     "doubles",
+    "eighth",
     "figure",
+    "finished",
+    "first",
+    "fifth",
     "for",
     "following",
+    "fourth",
     "from",
     "had",
     "has",
@@ -87,30 +92,42 @@ _LOWERCASE_NAME_STOP_WORDS = {
     "matched",
     "matches",
     "mark",
+    "most",
+    "ninth",
     "number",
     "of",
     "on",
     "player",
     "players",
+    "placed",
     "putout",
     "putouts",
+    "ranked",
     "recorded",
     "result",
     "results",
     "roster",
     "run",
     "runs",
+    "rbi",
+    "rbis",
     "save",
     "saves",
+    "second",
+    "seventh",
+    "sixth",
     "stolen",
     "stat",
     "stats",
     "strikeout",
     "strikeouts",
     "that",
+    "tenth",
     "the",
     "their",
     "these",
+    "third",
+    "top",
     "season",
     "seasons",
     "to",
@@ -127,6 +144,8 @@ _LOWERCASE_NAME_STOP_WORDS = {
     "win",
     "winner",
     "winners",
+    "leader",
+    "leaders",
     "wins",
     "with",
     "won",
@@ -149,6 +168,13 @@ _UNIT_DIGIT_STAT_CLAIM_RE = re.compile(
     rf"(?P<value>{_DIGIT_VALUE_PATTERN})",
     re.IGNORECASE,
 )
+_UNIT_CONTEXT_DIGIT_STAT_CLAIM_RE = re.compile(
+    rf"\b(?P<unit>{_STAT_UNIT_PATTERN})\b"
+    rf"(?:(?![.!?;\n]).){{0,80}}"
+    rf"\b(?:with(?:\s+(?:a\s+)?total\s+of)?|totaling|totaled)\s+"
+    rf"(?P<value>{_DIGIT_VALUE_PATTERN})",
+    re.IGNORECASE,
+)
 _SPELLED_NUMBER_PATTERN = (
     r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
     r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
@@ -167,6 +193,10 @@ _SPELLED_UNIT_STAT_CLAIM_RE = re.compile(
     rf"{_SPELLED_NUMBER_PATTERN}\b",
     re.IGNORECASE,
 )
+_LEADERSHIP_CLAIM_RE = re.compile(
+    r"\b(?:led|leader|topped|paced)\b|\b(?:had|has|recorded|posted)\s+the\s+most\b",
+    re.IGNORECASE,
+)
 _UNVERIFIED_ROLE_CLAIM_RE = re.compile(
     r"\b(?:(?:is|are|was|were|became|played\s+as|served\s+as)\s+"
     r"(?:an?\s+)?"
@@ -175,6 +205,13 @@ _UNVERIFIED_ROLE_CLAIM_RE = re.compile(
     r"manager|coach|rookie|hall\s+of\s+famer)|"
     r"(?:pitched|managed|coached|caught|injured|traded|signed|released|"
     r"drafted|suspended|retired|born))\b",
+    re.IGNORECASE,
+)
+_UNVERIFIED_QUALITATIVE_CLAIM_RE = re.compile(
+    r"\b(?:had|has|enjoyed|put\s+together|delivered)\s+(?:an?\s+)?"
+    r"(?:remarkable|great|excellent|outstanding|historic|stellar|dominant|"
+    r"impressive|memorable|breakout)\s+"
+    r"(?:season|year|campaign|performance)\b",
     re.IGNORECASE,
 )
 _BE_PREDICATE_RE = re.compile(
@@ -210,12 +247,25 @@ _TOP_COUNT_WORDS = {
     "nine": 9,
     "ten": 10,
 }
+_ORDINAL_RANK_WORDS = {
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+}
 
 
 @dataclass(frozen=True)
 class VerifiedEvidenceClaim:
     """A verified fact bundle associated with one result row."""
 
+    display_name: str
     name_variants: frozenset[str]
     claims: frozenset[tuple[str, str]]
     numbers: frozenset[str]
@@ -230,6 +280,17 @@ class VerifiedEvidence:
     claims: frozenset[tuple[str, str]]
     numbers: frozenset[str]
     name_claims: tuple[VerifiedEvidenceClaim, ...]
+
+
+@dataclass(frozen=True)
+class VerifiedRowFact:
+    """Human-readable verified fact for one DuckDB result row."""
+
+    display_name: str
+    name_variants: frozenset[str]
+    stat: str
+    value: str
+    rank: int
 
 
 @dataclass(frozen=True)
@@ -294,14 +355,9 @@ def _llm_flavored_grounded_database_answer(
             temperature=0.2,
         )
     except (ConnectionError, TimeoutError, LLMError):
-        fallback = _verified_stat_leaderboard_prose_fallback(
-            question=question,
-            formatted_answer=formatted_answer,
-            source=source,
-        )
         message = "Gemma prose is unavailable; showing verified DuckDB answer."
         return LLMNarrationResult(
-            answer=fallback or formatted_answer,
+            answer=formatted_answer,
             status="unavailable",
             message=message,
         )
@@ -332,87 +388,370 @@ def _llm_flavored_grounded_database_answer(
     ):
         return LLMNarrationResult(answer=repaired_answer, status="accepted_after_repair")
 
-    fallback = _verified_stat_leaderboard_prose_fallback(
-        question=question,
-        formatted_answer=formatted_answer,
-        source=source,
-    )
-    message = "Gemma prose did not pass verification; showing verified DuckDB answer."
+    message = "Gemma prose did not pass verification; see verification footnotes."
     return LLMNarrationResult(
-        answer=fallback or formatted_answer,
+        answer=_footnoted_unverified_llm_answer(answer=answer, evidence=evidence, source=source),
         status="verification_failed",
         message=message,
     )
 
 
-def _verified_stat_leaderboard_prose_fallback(
+def _footnoted_unverified_llm_answer(
     *,
-    question: str,
-    formatted_answer: str,
+    answer: str,
+    evidence: VerifiedEvidence,
     source: SourceRecord,
-) -> str | None:
-    top_count = _requested_top_count(question)
-    if top_count != 5:
-        return None
-    source_stat = _source_stat(source)
-    if source_stat is None or "leaderboard" not in _normalize_claim_text(source.label):
-        return None
-
-    rows = _verified_leaderboard_rows(source.rows, source_stat=source_stat, limit=top_count)
-    if len(rows) < top_count:
-        return None
-
-    leader_name, leader_value = rows[0]
-    year_text = _formatted_answer_year_text(formatted_answer)
-    prefix = f"In {year_text}, " if year_text else ""
-    answer = (
-        f"{prefix}{leader_name} led the {source_stat} leaderboard with "
-        f"{leader_value} {source_stat}."
-    )
-    if len(rows) == 1:
-        return answer
-
-    remaining = _format_series([f"{name} ({value})" for name, value in rows[1:]])
-    count_label = _top_count_label(top_count)
-    return f"{answer} The rest of the top {count_label} were {remaining}."
+) -> str:
+    footnotes = _verification_footnotes(answer, evidence=evidence, source=source)
+    if not footnotes:
+        footnotes = ["The Gemma draft did not pass verification against the DuckDB rows."]
+    formatted_footnotes = "\n".join(f"[{index}] {note}" for index, note in enumerate(footnotes, 1))
+    return f"{answer.rstrip()}\n\nVerification footnotes:\n{formatted_footnotes}"
 
 
-def _requested_top_count(question: str) -> int | None:
-    match = re.search(
-        r"\btop\s+(?P<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
-        question,
-        re.IGNORECASE,
-    )
-    if match is None:
-        return None
-    raw_count = match.group("count").lower()
-    if raw_count.isdigit():
-        return int(raw_count)
-    return _TOP_COUNT_WORDS.get(raw_count)
-
-
-def _verified_leaderboard_rows(
-    rows: list[Any],
+def _verification_footnotes(
+    answer: str,
     *,
-    source_stat: str,
-    limit: int,
-) -> list[tuple[str, str]]:
-    verified_rows = []
-    for row in rows[:limit]:
+    evidence: VerifiedEvidence,
+    source: SourceRecord,
+) -> list[str]:
+    facts = _verified_row_facts(source)
+    leader = next((fact for fact in facts if fact.rank == 1), None)
+    footnotes: list[str] = []
+
+    def append_once(note: str) -> None:
+        if note not in footnotes:
+            footnotes.append(note)
+
+    if leader:
+        for fact in _leadership_claim_targets(answer, facts):
+            if fact.rank != 1:
+                append_once(
+                    f"{fact.display_name} is not the verified leader; "
+                    f"{leader.display_name} leads with {leader.value} {leader.stat}."
+                )
+
+    for segment in _stat_claim_segments(answer):
+        clean_segment = segment.strip()
+        if not clean_segment:
+            continue
+        if _mentions_unverified_predicate(clean_segment, evidence=evidence):
+            append_once(
+                f'"{clean_segment}" includes descriptive claims that are not present in '
+                "the verified DuckDB rows."
+            )
+        has_spelled_stat_claim = _has_spelled_stat_claim(clean_segment)
+        if has_spelled_stat_claim:
+            append_once(
+                f'"{clean_segment}" uses a spelled-out stat number; verified stat claims '
+                "must use numeric values from the DuckDB rows."
+            )
+
+        normalized_segment = _normalize_claim_text(clean_segment)
+        matched_name_claims = [
+            item
+            for item in evidence.name_claims
+            if any(variant in normalized_segment for variant in item.name_variants)
+        ]
+        matched_facts = [
+            fact
+            for fact in facts
+            if any(variant in normalized_segment for variant in fact.name_variants)
+        ]
+        segment_claims = _digit_stat_claims(clean_segment)
+        segment_claims |= _contextual_pairwise_stat_claims(clean_segment, matched_facts)
+        segment_numbers = _numeric_tokens(clean_segment)
+        segment_row_numbers = _non_year_numbers(segment_numbers)
+        segment_years = _year_numbers(segment_numbers)
+        leadership_targets = _leadership_claim_targets(clean_segment, matched_facts)
+        if matched_name_claims:
+            if not has_spelled_stat_claim and _mentions_unmatched_name(
+                clean_segment,
+                matched_name_claims,
+                scan_lowercase_names=True,
+            ):
+                append_once(
+                    f'"{clean_segment}" mentions a name that is not present in the verified rows.'
+                )
+            for item in matched_name_claims:
+                if segment_years and item.years and not segment_years <= set(item.years):
+                    append_once(
+                        f'"{clean_segment}" links a year to '
+                        f"{item.display_name} that is not "
+                        "supported by the same verified row."
+                    )
+            matched_context_claims = _matched_claims_for_segment(
+                matched_name_claims,
+                segment_years=segment_years,
+            )
+            for item in matched_context_claims:
+                item_paired_numbers = _paired_numbers_for_name_variants(
+                    clean_segment,
+                    item.name_variants,
+                )
+                if (
+                    len(matched_context_claims) > 1
+                    and segment_claims
+                    and not item_paired_numbers
+                    and item not in leadership_targets
+                ):
+                    continue
+                for value, stat in segment_claims:
+                    if (value, stat) in item.claims:
+                        continue
+                    verified_values = sorted(
+                        {
+                            claim_value
+                            for claim_value, claim_stat in item.claims
+                            if claim_stat == stat
+                        },
+                        key=_sort_number,
+                    )
+                    if verified_values:
+                        append_once(
+                            f"{item.display_name} is verified with "
+                            f"{_format_verified_values(verified_values, stat)} in this row, "
+                            f"not {value} {stat}."
+                        )
+        for fact in matched_facts:
+            paired_numbers = _paired_numbers_for_name_variants(
+                clean_segment,
+                fact.name_variants,
+            )
+            if not segment_claims:
+                numbers_to_check = paired_numbers if paired_numbers else segment_row_numbers
+                for number in sorted(numbers_to_check, key=_sort_number):
+                    if number != fact.value:
+                        append_once(
+                            f"{fact.display_name} is verified with {fact.value} {fact.stat} "
+                            f"in this result, not {number} {fact.stat}."
+                        )
+            if (
+                len(matched_facts) > 1
+                and segment_claims
+                and not paired_numbers
+                and fact not in leadership_targets
+            ):
+                continue
+            for value, stat in segment_claims:
+                if stat == fact.stat and value != fact.value:
+                    append_once(
+                        f"{fact.display_name} is verified with {fact.value} {fact.stat} "
+                        f"in this result, not {value} {stat}."
+                    )
+                elif stat != fact.stat and value == fact.value:
+                    append_once(
+                        f"{value} {stat} is not supported for {fact.display_name}; "
+                        f"this result verifies {fact.value} {fact.stat}."
+                    )
+            if fact in leadership_targets and fact.rank != 1 and leader:
+                append_once(
+                    f"{fact.display_name} is not the verified leader; "
+                    f"{leader.display_name} leads with {leader.value} {leader.stat}."
+                )
+            rank = _rank_marker(clean_segment)
+            if rank is None:
+                rank = _ordinal_rank_claim(clean_segment)
+            if rank is not None and rank != fact.rank:
+                append_once(
+                    f"{fact.display_name} appears as rank {rank} in the draft, "
+                    f"but the verified rank is {fact.rank}."
+                )
+        for fact, draft_rank in _ordered_pairwise_rank_mismatches(clean_segment, matched_facts):
+            append_once(
+                f"{fact.display_name} appears as rank {draft_rank} in the draft, "
+                f"but the verified rank is {fact.rank}."
+            )
+
+        if (
+            not has_spelled_stat_claim
+            and _mentions_name_like_phrase(clean_segment)
+            and not matched_name_claims
+        ):
+            append_once(
+                f'"{clean_segment}" mentions a name that is not present in the verified rows.'
+            )
+
+        for value, stat in sorted(segment_claims - evidence.claims):
+            append_once(f"{value} {stat} is not a verified stat claim for this result.")
+        for number in sorted(_numeric_tokens(clean_segment) - evidence.numbers, key=_sort_number):
+            append_once(f"{number} is not present in the verified DuckDB rows.")
+    for clean_segment in _ranked_list_segments(answer):
+        normalized_segment = _normalize_claim_text(clean_segment)
+        rank = _rank_marker(clean_segment)
+        if rank is None:
+            continue
+        for fact in facts:
+            if rank == fact.rank:
+                continue
+            if any(variant in normalized_segment for variant in fact.name_variants):
+                append_once(
+                    f"{fact.display_name} appears as rank {rank} in the draft, "
+                    f"but the verified rank is {fact.rank}."
+                )
+    return footnotes
+
+
+def _verified_row_facts(source: SourceRecord) -> list[VerifiedRowFact]:
+    source_stat = _source_stat(source)
+    if source_stat is None:
+        return []
+
+    facts = []
+    for rank, row in enumerate(source.rows, 1):
         if not isinstance(row, dict):
-            return []
+            continue
         raw_name = row.get("name")
         raw_value = row.get("stat_value")
         if not isinstance(raw_name, str) or raw_value is None:
-            return []
+            continue
         normalized_value = _normalize_numeric_token(str(raw_value))
         if normalized_value is None:
-            return []
+            continue
         row_claims = _row_stat_claims(row, source_stat=source_stat)
         if (normalized_value, source_stat) not in row_claims:
-            return []
-        verified_rows.append((_display_player_name(raw_name), _display_stat_value(raw_value)))
-    return verified_rows
+            continue
+        facts.append(
+            VerifiedRowFact(
+                display_name=_display_player_name(raw_name),
+                name_variants=frozenset(_name_variants(raw_name)),
+                stat=source_stat,
+                value=_display_stat_value(raw_value),
+                rank=rank,
+            )
+        )
+    return facts
+
+
+def _sort_number(value: str) -> tuple[int, Decimal | str]:
+    try:
+        return (0, Decimal(value))
+    except InvalidOperation:
+        return (1, value)
+
+
+def _matched_claims_for_segment(
+    items: list[VerifiedEvidenceClaim],
+    *,
+    segment_years: set[str],
+) -> list[VerifiedEvidenceClaim]:
+    if not segment_years:
+        return items
+    year_matched = [item for item in items if item.years and segment_years <= set(item.years)]
+    return year_matched or items
+
+
+def _format_verified_values(values: list[str], stat: str) -> str:
+    if len(values) == 1:
+        return f"{values[0]} {stat}"
+    return ", ".join(f"{value} {stat}" for value in values[:-1]) + f", and {values[-1]} {stat}"
+
+
+def _has_spelled_stat_claim(text: str) -> bool:
+    for pattern in (_SPELLED_STAT_CLAIM_RE, _SPELLED_UNIT_STAT_CLAIM_RE):
+        for match in pattern.finditer(text):
+            if _is_top_count_context(text[: match.start()]):
+                continue
+            return True
+    return False
+
+
+def _is_top_count_context(prefix: str) -> bool:
+    return bool(re.search(r"\btop(?:\s+|-)$", prefix, re.IGNORECASE))
+
+
+def _has_rank_mismatch(answer: str, *, evidence: VerifiedEvidence) -> bool:
+    for segment in [*_stat_claim_segments(answer), *_ranked_list_segments(answer)]:
+        rank = _rank_marker(segment)
+        if rank is None:
+            rank = _ordinal_rank_claim(segment)
+        if rank is None:
+            continue
+        normalized_segment = _normalize_claim_text(segment)
+        matched_items = [
+            item
+            for item in evidence.name_claims
+            if any(variant in normalized_segment for variant in item.name_variants)
+        ]
+        if any(item.rank != rank for item in matched_items):
+            return True
+    return False
+
+
+def _has_leadership_rank_mismatch(answer: str, *, evidence: VerifiedEvidence) -> bool:
+    for segment in [answer, *_stat_claim_segments(answer)]:
+        targets = _leadership_claim_targets(segment, list(evidence.name_claims))
+        if any(item.rank != 1 for item in targets):
+            return True
+    return False
+
+
+def _rank_marker(text: str) -> int | None:
+    match = re.match(r"\s*(?P<rank>\d{1,2})[.)]\s+", text)
+    if match is None:
+        return None
+    return int(match.group("rank"))
+
+
+def _ordinal_rank_claim(text: str) -> int | None:
+    for word, rank in _ORDINAL_RANK_WORDS.items():
+        if re.search(
+            rf"\b(?:was|were|finished|ranked|placed)\s+(?:(?:the|number)\s+)?{word}\b",
+            text,
+            re.IGNORECASE,
+        ):
+            return rank
+    for word, rank in _TOP_COUNT_WORDS.items():
+        if re.search(
+            rf"\b(?:was|were|finished|ranked|placed)\s+number\s+{word}\b",
+            text,
+            re.IGNORECASE,
+        ):
+            return rank
+    match = re.search(
+        r"\b(?:was|were|finished|ranked|placed)\s+(?:the\s+)?"
+        r"(?P<rank>\d{1,2})(?:st|nd|rd|th)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if match is not None:
+        return int(match.group("rank"))
+    return None
+
+
+def _leadership_claim_targets(text: str, items: list[Any]) -> list[Any]:
+    match = _LEADERSHIP_CLAIM_RE.search(_normalize_claim_text(text))
+    if match is None:
+        return []
+
+    occurrences: list[tuple[int, int, Any]] = []
+    normalized_text = _normalize_claim_text(text)
+    for item in items:
+        for variant in sorted(item.name_variants, key=len, reverse=True):
+            if not variant:
+                continue
+            for name_match in re.finditer(
+                rf"(?<![a-z0-9]){re.escape(variant)}(?![a-z0-9])",
+                normalized_text,
+            ):
+                occurrences.append((name_match.start(), name_match.end(), item))
+
+    if not occurrences:
+        return []
+
+    before_marker = [occurrence for occurrence in occurrences if occurrence[1] <= match.start()]
+    if before_marker:
+        return [occurrence[2] for occurrence in before_marker]
+
+    after_marker = [occurrence for occurrence in occurrences if occurrence[0] >= match.end()]
+    if after_marker:
+        return [min(after_marker, key=lambda occurrence: occurrence[0])[2]]
+
+    return []
+
+
+def _ranked_list_segments(text: str) -> list[str]:
+    return re.findall(r"(?m)^\s*\d{1,2}[.)]\s+.+$", text)
 
 
 def _display_player_name(name: str) -> str:
@@ -528,7 +867,11 @@ def _uses_only_verified_numbers(
 ) -> bool:
     if _mentions_unverified_predicate(answer, evidence=evidence):
         return False
-    if _SPELLED_STAT_CLAIM_RE.search(answer) or _SPELLED_UNIT_STAT_CLAIM_RE.search(answer):
+    if _has_spelled_stat_claim(answer):
+        return False
+    if _has_rank_mismatch(answer, evidence=evidence):
+        return False
+    if _has_leadership_rank_mismatch(answer, evidence=evidence):
         return False
     answer_numbers = _numeric_tokens(answer)
     if not answer_numbers:
@@ -543,6 +886,8 @@ def _uses_only_verified_numbers(
 
 def _mentions_unverified_predicate(answer: str, *, evidence: VerifiedEvidence) -> bool:
     if _UNVERIFIED_ROLE_CLAIM_RE.search(answer):
+        return True
+    if _UNVERIFIED_QUALITATIVE_CLAIM_RE.search(answer):
         return True
 
     known_name_starts = {
@@ -606,7 +951,11 @@ def _normalize_numeric_token(value: str) -> str | None:
 
 def _digit_stat_claims(text: str) -> set[tuple[str, str]]:
     claims: set[tuple[str, str]] = set()
-    for pattern in (_DIGIT_STAT_CLAIM_RE, _UNIT_DIGIT_STAT_CLAIM_RE):
+    for pattern in (
+        _DIGIT_STAT_CLAIM_RE,
+        _UNIT_DIGIT_STAT_CLAIM_RE,
+        _UNIT_CONTEXT_DIGIT_STAT_CLAIM_RE,
+    ):
         for match in pattern.finditer(text):
             value = _normalize_numeric_token(match.group("value"))
             stat = _normalize_stat_unit(match.group("unit"))
@@ -646,10 +995,10 @@ def _uses_verified_name_stat_claims(
             if any(variant in normalized_segment for variant in item.name_variants)
         ]
         if matched_items:
-            if (
-                _mentions_leadership_claim(segment)
-                and not (segment_claims or segment_row_numbers)
-                and (len(matched_items) != 1 or matched_items[0].rank != 1)
+            segment_claims |= _contextual_pairwise_stat_claims(segment, matched_items)
+            leadership_targets = _leadership_claim_targets(segment, matched_items)
+            if any(item.rank != 1 for item in leadership_targets) or (
+                _mentions_leadership_claim(segment) and not leadership_targets
             ):
                 return False
             if _mentions_unmatched_name(
@@ -658,6 +1007,16 @@ def _uses_verified_name_stat_claims(
                 scan_lowercase_names=True,
             ):
                 return False
+            if _ordered_pairwise_rank_mismatches(segment, matched_items):
+                return False
+            if _uses_verified_pairwise_name_numbers(
+                segment,
+                matched_items=matched_items,
+                segment_claims=segment_claims,
+                segment_row_numbers=segment_row_numbers,
+                segment_years=segment_years,
+            ):
+                continue
             validating_items = [
                 item
                 for item in matched_items
@@ -678,6 +1037,148 @@ def _uses_verified_name_stat_claims(
         if mentions_name_like_phrase:
             return False
     return True
+
+
+def _uses_verified_pairwise_name_numbers(
+    segment: str,
+    *,
+    matched_items: list[VerifiedEvidenceClaim],
+    segment_claims: set[tuple[str, str]],
+    segment_row_numbers: set[str],
+    segment_years: set[str],
+) -> bool:
+    if len(matched_items) < 2 or not segment_row_numbers:
+        return False
+
+    paired_items: list[VerifiedEvidenceClaim] = []
+    paired_numbers: set[str] = set()
+    paired_claims: set[tuple[str, str]] = set()
+    for item in matched_items:
+        item_numbers = _paired_numbers_for_name_variants(segment, item.name_variants)
+        if not item_numbers:
+            continue
+        if not item_numbers <= item.numbers:
+            return False
+        paired_items.append(item)
+        paired_numbers |= item_numbers
+        paired_claims |= {(value, stat) for value, stat in item.claims if value in item_numbers}
+
+    return (
+        bool(paired_items)
+        and segment_row_numbers <= paired_numbers
+        and segment_claims <= paired_claims
+        and _years_match_segment(
+            segment_years,
+            paired_items,
+            require_single_item=False,
+        )
+    )
+
+
+def _contextual_pairwise_stat_claims(text: str, items: list[Any]) -> set[tuple[str, str]]:
+    stat = _pairwise_context_stat(text)
+    if stat is None:
+        return set()
+    claims: set[tuple[str, str]] = set()
+    for item in items:
+        for value in _paired_numbers_for_name_variants(text, item.name_variants):
+            claims.add((value, stat))
+    return claims
+
+
+def _pairwise_context_stat(text: str) -> str | None:
+    normalized_text = _normalize_claim_text(text)
+    if not _has_ordered_pairwise_rank_context(normalized_text):
+        return None
+    heading_stat = _leader_heading_stat(normalized_text)
+    if heading_stat is not None:
+        return heading_stat
+    return _unique_source_stat(normalized_text)
+
+
+def _leader_heading_stat(normalized_text: str) -> str | None:
+    for match in re.finditer(r"(?P<prefix>(?:[a-z0-9.]+\s+){0,8})leaders\b", normalized_text):
+        stat = _unique_source_stat(match.group("prefix").strip())
+        if stat is not None:
+            return stat
+    return None
+
+
+def _ordered_pairwise_rank_mismatches(text: str, items: list[Any]) -> list[tuple[Any, int]]:
+    if not _has_ordered_pairwise_rank_context(_normalize_claim_text(text)):
+        return []
+    ordered_items = _ordered_pairwise_items(text, items)
+    if len(ordered_items) < 2:
+        return []
+
+    start_rank = (
+        1
+        if any(item.rank == 1 for item in ordered_items)
+        else min(item.rank for item in ordered_items)
+    )
+    mismatches: list[tuple[Any, int]] = []
+    for offset, item in enumerate(ordered_items):
+        draft_rank = start_rank + offset
+        if item.rank != draft_rank:
+            mismatches.append((item, draft_rank))
+    return mismatches
+
+
+def _ordered_pairwise_items(text: str, items: list[Any]) -> list[Any]:
+    normalized_text = _normalize_claim_text(text)
+    occurrences: list[tuple[int, Any]] = []
+    seen_items: set[Any] = set()
+    for item in items:
+        item_positions: list[int] = []
+        for variant in sorted(item.name_variants, key=len, reverse=True):
+            if not variant:
+                continue
+            match = re.search(
+                rf"(?<![a-z0-9]){re.escape(variant)}(?![a-z0-9])",
+                normalized_text,
+            )
+            if match is not None:
+                item_positions.append(match.start())
+        if item_positions and item not in seen_items:
+            occurrences.append((min(item_positions), item))
+            seen_items.add(item)
+    return [item for _position, item in sorted(occurrences, key=lambda occurrence: occurrence[0])]
+
+
+def _has_ordered_pairwise_rank_context(normalized_text: str) -> bool:
+    return bool(
+        re.search(r"\btop(?:\s+|-)\w+(?:\s+\w+){0,4}\s+leaders\b", normalized_text)
+        or re.search(r"\btop(?:\s+|-)\w+\s+(?:were|are|include|included)\b", normalized_text)
+        or re.search(r"\bleaders\s+(?:were|are|include|included)\b", normalized_text)
+        or re.search(r"\bfollowed\s+by\b", normalized_text)
+        or re.search(r"\brest\s+of\s+the\s+top\b", normalized_text)
+    )
+
+
+def _paired_numbers_for_name_variants(text: str, name_variants: frozenset[str]) -> set[str]:
+    normalized_text = _normalize_claim_text(text)
+    numbers: set[str] = set()
+    for variant in sorted(name_variants, key=len, reverse=True):
+        if not variant:
+            continue
+        pattern = re.compile(
+            rf"(?<![a-z0-9]){re.escape(variant)}(?![a-z0-9])\s+"
+            rf"(?P<value>{_DIGIT_VALUE_PATTERN})(?![a-z0-9])",
+            re.IGNORECASE,
+        )
+        context_pattern = re.compile(
+            rf"(?<![a-z0-9]){re.escape(variant)}(?![a-z0-9])"
+            rf"(?:(?![.!?;\n]).){{0,80}}"
+            rf"\b(?:with|at|of|totaling|totaled|had|hit|recorded|posted)\s+"
+            rf"(?:a\s+)?(?:total\s+of\s+)?(?P<value>{_DIGIT_VALUE_PATTERN})(?![a-z0-9])",
+            re.IGNORECASE,
+        )
+        for claim_pattern in (pattern, context_pattern):
+            for match in claim_pattern.finditer(normalized_text):
+                value = _normalize_numeric_token(match.group("value"))
+                if value is not None:
+                    numbers.add(value)
+    return numbers
 
 
 def _verified_evidence(
@@ -724,6 +1225,7 @@ def _verified_evidence(
             all_numbers |= years
             evidence.append(
                 VerifiedEvidenceClaim(
+                    display_name=_display_player_name(raw_name),
                     name_variants=frozenset(variants),
                     claims=frozenset(claims),
                     numbers=frozenset(row_numbers),
@@ -769,10 +1271,18 @@ def _unique_source_stat(text: str) -> str | None:
     normalized_text = _normalize_claim_text(text)
     aliases = sorted(_STAT_UNIT_ALIASES.items(), key=lambda item: len(item[0]), reverse=True)
     stats: set[str] = set()
+    covered = [False] * len(normalized_text)
     for alias, stat in aliases:
         normalized_alias = _normalize_claim_text(alias)
-        if re.search(rf"(?<![a-z0-9]){re.escape(normalized_alias)}(?![a-z0-9])", normalized_text):
+        for match in re.finditer(
+            rf"(?<![a-z0-9]){re.escape(normalized_alias)}(?![a-z0-9])",
+            normalized_text,
+        ):
+            if any(covered[match.start() : match.end()]):
+                continue
             stats.add(stat)
+            for index in range(match.start(), match.end()):
+                covered[index] = True
     return next(iter(stats)) if len(stats) == 1 else None
 
 
@@ -883,7 +1393,7 @@ def _mentions_name_like_phrase(text: str) -> bool:
 
 
 def _mentions_leadership_claim(text: str) -> bool:
-    return bool(re.search(r"\b(?:led|leader|leaders)\b", text, re.IGNORECASE))
+    return bool(_LEADERSHIP_CLAIM_RE.search(text))
 
 
 def _mentions_unmatched_name(
@@ -895,7 +1405,7 @@ def _mentions_unmatched_name(
     known_variants = {variant for item in matched_items for variant in item.name_variants}
     generic_words = {token.lower() for token in _GENERIC_NAME_TOKENS}
     for match in re.finditer(rf"\b{_NAME_TOKEN_RE}\s+{_NAME_TOKEN_RE}\b", text):
-        normalized = _normalize_claim_text(match.group(0))
+        normalized = _normalize_claim_text(match.group(0)).strip(".")
         if normalized not in known_variants and not _is_generic_name_phrase(
             normalized,
             generic_words=generic_words,
@@ -904,10 +1414,14 @@ def _mentions_unmatched_name(
 
     normalized_text = f" {_normalize_claim_text(text)} "
     for variant in sorted(known_variants, key=len, reverse=True):
-        normalized_text = normalized_text.replace(f" {variant} ", " ")
+        normalized_text = re.sub(
+            rf"(?<![a-z0-9]){re.escape(variant)}\.?(?![a-z0-9])",
+            " ",
+            normalized_text,
+        )
 
     for token in re.findall(rf"\b{_NAME_TOKEN_RE}\b", text):
-        normalized = _normalize_claim_text(token)
+        normalized = _normalize_claim_text(token).strip(".")
         if (
             normalized
             and normalized not in generic_words
@@ -916,7 +1430,7 @@ def _mentions_unmatched_name(
         ):
             return True
     return scan_lowercase_names and _contains_lowercase_name_phrase(
-        normalized_text,
+        normalized_text.replace(".", " "),
         generic_words=generic_words,
     )
 

@@ -266,6 +266,47 @@ class TestApi:
         assert data["sources"][0]["rows"]
         assert data["sources"][0]["sql"]
 
+    def test_query_endpoint_llm_flavored_preserves_rejected_prose_with_footnotes(self, monkeypatch):
+        responses = iter(
+            [
+                "Frank Robinson led MLB with 153 RBI in 1962.",
+                "Tommy Davis was a pitcher in 1962 with 153 RBI.",
+            ]
+        )
+
+        def fake_llm(_prompt, **_kwargs):
+            return LLMResponse(
+                content=next(responses),
+                model="test-model",
+                done=True,
+            )
+
+        monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+        response = client.post(
+            "/query",
+            json={
+                "question": "who had the most RBIs in 1962",
+                "answer_mode": "llm_flavored",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "Frank Robinson led MLB with 153 RBI in 1962." in data["answer"]
+        assert "Verification footnotes:" in data["answer"]
+        assert (
+            "Frank Robinson is verified with 136 RBI in this result, not 153 RBI." in data["answer"]
+        )
+        assert (
+            "Frank Robinson is not the verified leader; Tommy Davis leads with 153 RBI."
+            in data["answer"]
+        )
+        assert data["metadata"]["answer_mode"] == "llm_flavored"
+        assert data["metadata"]["llm_narration"]["status"] == "verification_failed"
+        assert data["warnings"] == []
+        assert data["sources"][0]["type"] == "duckdb"
+
     def test_query_endpoint_llm_flavored_returns_verified_answer_when_llm_unavailable(
         self, monkeypatch
     ):
