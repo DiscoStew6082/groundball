@@ -198,6 +198,18 @@ _ALLOWED_BE_PREDICATE_TOKENS = {
     "winner",
     "winners",
 }
+_TOP_COUNT_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
 
 
 @dataclass(frozen=True)
@@ -282,9 +294,14 @@ def _llm_flavored_grounded_database_answer(
             temperature=0.2,
         )
     except (ConnectionError, TimeoutError, LLMError):
+        fallback = _verified_stat_leaderboard_prose_fallback(
+            question=question,
+            formatted_answer=formatted_answer,
+            source=source,
+        )
         message = "Gemma prose is unavailable; showing verified DuckDB answer."
         return LLMNarrationResult(
-            answer=formatted_answer,
+            answer=fallback or formatted_answer,
             status="unavailable",
             message=message,
         )
@@ -315,12 +332,131 @@ def _llm_flavored_grounded_database_answer(
     ):
         return LLMNarrationResult(answer=repaired_answer, status="accepted_after_repair")
 
+    fallback = _verified_stat_leaderboard_prose_fallback(
+        question=question,
+        formatted_answer=formatted_answer,
+        source=source,
+    )
     message = "Gemma prose did not pass verification; showing verified DuckDB answer."
     return LLMNarrationResult(
-        answer=formatted_answer,
+        answer=fallback or formatted_answer,
         status="verification_failed",
         message=message,
     )
+
+
+def _verified_stat_leaderboard_prose_fallback(
+    *,
+    question: str,
+    formatted_answer: str,
+    source: SourceRecord,
+) -> str | None:
+    top_count = _requested_top_count(question)
+    if top_count != 5:
+        return None
+    source_stat = _source_stat(source)
+    if source_stat is None or "leaderboard" not in _normalize_claim_text(source.label):
+        return None
+
+    rows = _verified_leaderboard_rows(source.rows, source_stat=source_stat, limit=top_count)
+    if len(rows) < top_count:
+        return None
+
+    leader_name, leader_value = rows[0]
+    year_text = _formatted_answer_year_text(formatted_answer)
+    prefix = f"In {year_text}, " if year_text else ""
+    answer = (
+        f"{prefix}{leader_name} led the {source_stat} leaderboard with "
+        f"{leader_value} {source_stat}."
+    )
+    if len(rows) == 1:
+        return answer
+
+    remaining = _format_series([f"{name} ({value})" for name, value in rows[1:]])
+    count_label = _top_count_label(top_count)
+    return f"{answer} The rest of the top {count_label} were {remaining}."
+
+
+def _requested_top_count(question: str) -> int | None:
+    match = re.search(
+        r"\btop\s+(?P<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
+        question,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    raw_count = match.group("count").lower()
+    if raw_count.isdigit():
+        return int(raw_count)
+    return _TOP_COUNT_WORDS.get(raw_count)
+
+
+def _verified_leaderboard_rows(
+    rows: list[Any],
+    *,
+    source_stat: str,
+    limit: int,
+) -> list[tuple[str, str]]:
+    verified_rows = []
+    for row in rows[:limit]:
+        if not isinstance(row, dict):
+            return []
+        raw_name = row.get("name")
+        raw_value = row.get("stat_value")
+        if not isinstance(raw_name, str) or raw_value is None:
+            return []
+        normalized_value = _normalize_numeric_token(str(raw_value))
+        if normalized_value is None:
+            return []
+        row_claims = _row_stat_claims(row, source_stat=source_stat)
+        if (normalized_value, source_stat) not in row_claims:
+            return []
+        verified_rows.append((_display_player_name(raw_name), _display_stat_value(raw_value)))
+    return verified_rows
+
+
+def _display_player_name(name: str) -> str:
+    if "," not in name:
+        return name.strip()
+    last, first = [part.strip() for part in name.split(",", 1)]
+    if not first or not last:
+        return name.strip()
+    return f"{first} {last}"
+
+
+def _display_stat_value(value: Any) -> str:
+    normalized = _normalize_numeric_token(str(value))
+    if normalized is None:
+        return str(value)
+    return normalized
+
+
+def _formatted_answer_year_text(formatted_answer: str) -> str | None:
+    match = re.search(r"\((?P<start>\d{4})(?:-(?P<end>\d{4}))?\)", formatted_answer)
+    if match is None:
+        return None
+    start = match.group("start")
+    end = match.group("end")
+    if end is None or end == start:
+        return start
+    return f"{start}-{end}"
+
+
+def _top_count_label(count: int) -> str:
+    for word, value in _TOP_COUNT_WORDS.items():
+        if value == count:
+            return word
+    return str(count)
+
+
+def _format_series(items: list[str]) -> str:
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def _grounded_database_flavor_prompt(

@@ -705,6 +705,44 @@ def test_llm_flavored_stat_query_rejects_repaired_name_only_prose_for_stat_answe
     assert result.metadata["llm_narration"]["status"] == "verification_failed"
 
 
+def test_llm_flavored_top_five_stat_query_uses_verified_prose_when_repair_fails(
+    monkeypatch,
+):
+    responses = iter(
+        [
+            "Tommy Davis was a pitcher in 1962 with 153 RBI.",
+            "Tommy Davis was injured in 1962 with 153 RBI.",
+        ]
+    )
+
+    def fake_llm(_prompt, **_kwargs):
+        return LLMResponse(
+            content=next(responses),
+            model="test-model",
+            done=True,
+        )
+
+    monkeypatch.setattr("baseball_rag.generation.llm.make_request", fake_llm)
+
+    result = answer(
+        "who had the most RBIs in 1962 and tell me a little bit about the top five",
+        answer_mode="llm_flavored",
+    )
+
+    assert result.answer == (
+        "In 1962, Tommy Davis led the RBI leaderboard with 153 RBI. "
+        "The rest of the top five were Willie Mays (141), Frank Robinson (136), "
+        "Hank Aaron (128), and Harmon Killebrew (126)."
+    )
+    assert "Davis, Tommy" not in result.answer
+    assert "6." not in result.answer
+    assert "pitcher" not in result.answer
+    assert "injured" not in result.answer
+    assert result.warnings == []
+    assert result.sources[0].type == "duckdb"
+    assert result.metadata["llm_narration"]["status"] == "verification_failed"
+
+
 def test_llm_flavored_grounded_name_only_result_rejects_unverified_name(
     monkeypatch,
 ):
