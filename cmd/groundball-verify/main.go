@@ -25,7 +25,7 @@ func run(
 ) int {
 	flags := flag.NewFlagSet("groundball-verify", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	baseURL := flags.String("base-url", "http://127.0.0.1:8000", "Groundball API base URL")
+	baseURL := flags.String("base-url", groundballverify.DefaultBaseURL, "Groundball API base URL")
 	question := flags.String(
 		"question",
 		groundballverify.DefaultQuestion,

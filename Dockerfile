@@ -13,6 +13,6 @@ RUN uv sync --frozen --no-install-project
 COPY src/baseball_rag/ ./src/baseball_rag/
 ENV PYTHONPATH=/app/src
 
-EXPOSE 8000 7860
+EXPOSE 8001 7860
 
-CMD ["uv", "run", "python", "-m", "uvicorn", "baseball_rag.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "python", "-m", "uvicorn", "baseball_rag.api.server:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+const DefaultBaseURL = "http://127.0.0.1:8001"
 const DefaultQuestion = "who had the most RBIs in 1962"
 const DefaultEvalCase = "stat_rbi_1962"
 
@@ -37,7 +38,7 @@ type Check struct {
 func Verify(ctx context.Context, cfg Config) (Report, error) {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
-		baseURL = "http://127.0.0.1:8000"
+		baseURL = DefaultBaseURL
 	}
 	question := cfg.Question
 	if question == "" {

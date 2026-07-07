@@ -5,10 +5,10 @@ FastAPI server exposing Groundball's almanac query pipeline over HTTP.
 ## Start the Server
 
 ```bash
-uv run uvicorn baseball_rag.api.server:app --reload
+uv run uvicorn baseball_rag.api.server:app --reload --port 8001
 ```
 
-Default port: **8000** (--reload enables auto-reload on code changes).
+Groundball local API port: **8001** (`--reload` enables auto-reload on code changes).
 
 ## Browser Origins
 

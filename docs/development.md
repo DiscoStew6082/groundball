@@ -56,8 +56,8 @@ uv run python -m baseball_rag.db.download
 # CLI (stat query — DuckDB)
 uv run groundball "who had the most RBIs in 1962"
 
-# API server (port 8000)
-uv run uvicorn baseball_rag.api.server:app --reload
+# API server (port 8001)
+uv run uvicorn baseball_rag.api.server:app --reload --port 8001
 
 # Web UI (port 7860)
 uv run python -m baseball_rag.web_app
@@ -192,7 +192,7 @@ go test ./...
 go run ./cmd/groundball-verify --json
 ```
 
-The verifier expects the API to be running at `http://127.0.0.1:8000` by
+The verifier expects the API to be running at `http://127.0.0.1:8001` by
 default. Use `--base-url` for another server. The built-in query checks the
 `stat_rbi_1962` eval case; custom queries can opt into a different eval
 expectation with `--expected-eval-case`.

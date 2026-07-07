@@ -70,13 +70,13 @@ Key choices:
 Start the server:
 
 ```bash
-uv run uvicorn baseball_rag.api.server:app --reload
+uv run uvicorn baseball_rag.api.server:app --reload --port 8001
 ```
 
 Ask a question:
 
 ```bash
-curl -s http://127.0.0.1:8000/query \
+curl -s http://127.0.0.1:8001/query \
   -H 'content-type: application/json' \
   -d '{"question":"who had the most RBIs in 1962"}'
 ```
@@ -122,7 +122,7 @@ Response shape:
 Dataset provenance is also available directly:
 
 ```bash
-curl -s http://127.0.0.1:8000/sources
+curl -s http://127.0.0.1:8001/sources
 ```
 
 ## CLI And UI
@@ -173,7 +173,7 @@ export LMSTUDIO_BASE_URL=http://localhost:1234/v1
 export LMSTUDIO_MODEL=unsloth/gemma-4-12b-it
 export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
 export GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared Pages Function secret>
-uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8000
+uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8001
 ```
 
 When `GROUNDBALL_ORIGIN_PROXY_TOKEN` is set, direct Tunnel callers must send

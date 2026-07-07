@@ -10,7 +10,7 @@ https://discostew.dev/groundball/
   -> same-origin Cloudflare Pages Function at /groundball/query
   -> https://groundball.discostew.dev/query with optional Access service token
   -> Cloudflare Tunnel
-  -> http://127.0.0.1:8000/query on the local Mac
+  -> http://127.0.0.1:8001/query on the local Mac
   -> local DuckDB data and local LM Studio
 ```
 
@@ -29,7 +29,7 @@ export LMSTUDIO_MODEL=unsloth/gemma-4-12b-it
 export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
 export GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared Pages Function secret>
 
-uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8000
+uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8001
 ```
 
 The local model endpoint currently also lists `google/gemma-4-12b`; keep the
@@ -42,7 +42,7 @@ Create a Cloudflare Tunnel from the Zero Trust dashboard or `cloudflared`. The
 public hostname should be:
 
 ```text
-groundball.discostew.dev -> http://127.0.0.1:8000
+groundball.discostew.dev -> http://127.0.0.1:8001
 ```
 
 For a persistent Mac setup, install `cloudflared` as a service using the
@@ -90,14 +90,14 @@ fallback only, and keep it limited to `POST /query`. Operator endpoints such as
 Local origin:
 
 ```bash
-curl -sS http://127.0.0.1:8000/health
+curl -sS http://127.0.0.1:8001/health
 
-curl -i -X OPTIONS http://127.0.0.1:8000/query \
+curl -i -X OPTIONS http://127.0.0.1:8001/query \
   -H 'Origin: https://discostew.dev' \
   -H 'Access-Control-Request-Method: POST' \
   -H 'Access-Control-Request-Headers: content-type'
 
-curl -sS http://127.0.0.1:8000/query \
+curl -sS http://127.0.0.1:8001/query \
   -H "X-Groundball-Proxy-Token: $GROUNDBALL_ORIGIN_PROXY_TOKEN" \
   -H 'content-type: application/json' \
   -H 'Origin: https://discostew.dev' \

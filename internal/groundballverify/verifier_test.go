@@ -99,6 +99,58 @@ func TestVerifyAcceptsHealthyGroundballAPIContract(t *testing.T) {
 	}
 }
 
+func TestVerifyDefaultsToNonConflictingLocalAPIBaseURL(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/health/verification":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"status": "ok",
+					"checks": []map[string]any{{"name": "data_manifest", "status": "ok"}},
+				}), nil
+			case "/sources":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"dataset": map[string]any{"name": "NeuML/baseballdata"},
+					"files":   []map[string]any{{"path": "data/Batting.csv", "sha256": "abc123"}},
+				}), nil
+			case "/query":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"answer":      "Davis, Tommy: 153 RBI",
+					"intent":      "stat_query",
+					"unsupported": false,
+					"sources": []map[string]any{
+						{
+							"type": "duckdb",
+							"sql":  "SELECT * FROM batting WHERE yearID = ?",
+							"rows": []map[string]any{{"name": "Davis, Tommy", "stat_value": 153}},
+							"data_manifest": map[string]any{
+								"source_authorities": []map[string]any{
+									{"name": "Lahman", "role": "primary"},
+								},
+							},
+						},
+					},
+					"metadata": map[string]any{
+						"sql_visible": true,
+						"sql":         map[string]any{"parameterized": true},
+						"eval":        map[string]any{"case_id": "stat_rbi_1962"},
+					},
+				}), nil
+			default:
+				return jsonResponse(t, http.StatusNotFound, map[string]any{"error": "not found"}), nil
+			}
+		}),
+	}
+
+	report, err := Verify(context.Background(), Config{Client: client})
+	if err != nil {
+		t.Fatalf("Verify returned error: %v", err)
+	}
+	if report.BaseURL != "http://127.0.0.1:8001" {
+		t.Fatalf("BaseURL = %q, want http://127.0.0.1:8001", report.BaseURL)
+	}
+}
+
 func TestVerifyReportsActionableContractFailures(t *testing.T) {
 	client := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
