@@ -27,10 +27,10 @@ Yes. Commit `3a762cd` replaces Gradio everywhere with one dark Svelte/Vite appli
 
 ### Protected Vercel proof
 
-- Retained preview: `https://ground-ball-831kompxc-discostew6082s-projects.vercel.app`
-- Deployment: `dpl_AEHV8CZrKn3cgTwcnfcsSjBqZpGJ`
-- Inspector: `https://vercel.com/discostew6082s-projects/ground-ball/AEHV8CZrKn3cgTwcnfcsSjBqZpGJ`
-- State: protected Preview, Ready, not production; Vercel reported the container function at 132.86 MB.
+- Retained preview: `https://ground-ball-itrrf26kl-discostew6082s-projects.vercel.app`
+- Deployment: `dpl_HYrrDJvGRqDLk2ZfYPnyPaPP8mBY`
+- Inspector: `https://vercel.com/discostew6082s-projects/ground-ball/HYrrDJvGRqDLk2ZfYPnyPaPP8mBY`
+- State: protected Preview, Ready, not production; Vercel reported the container function at 132.84 MB. Commits `56b75b6` and `db27e0a` add the 360-430px mobile presentation contract while preserving the public capability boundary.
 - The cold container served capabilities in about three seconds and the default query in about five seconds. The current initial cold start plus the earlier same-project sleep/wake proof establish that no warm instance or session affinity is required; the self-contained request contract was then exercised under repeated concurrency.
 - `GET /api/capabilities` returned public mode with query enabled and LLM, architecture, and developer tools disabled. The hosted HTML referenced the final compiled Svelte assets.
 - The default query returned HTTP 200, Tommy Davis with 153 RBI, ten rows, SQL and Lahman provenance, `public_demo=true`, `llm_access=disabled`, and `architecture_trace=null`.
@@ -41,6 +41,6 @@ Yes. Commit `3a762cd` replaces Gradio everywhere with one dark Svelte/Vite appli
 
 ### Cleanup and decision
 
-The superseded Gradio preview `dpl_BBFiiTud1dKpCDWdg4aKWL3s6GeN` and intermediate Svelte previews `dpl_nbfw8ua41ZS3bC2q5eTZdhxfBp6W` and `dpl_DdGxFWZokBti1Zi6hpT5Munx5hbf` were removed. They are recoverable only by redeployment from their recorded source state. The verified final Svelte preview above is the only retained deployment.
+The superseded Gradio preview `dpl_BBFiiTud1dKpCDWdg4aKWL3s6GeN`, intermediate Svelte previews `dpl_nbfw8ua41ZS3bC2q5eTZdhxfBp6W` and `dpl_DdGxFWZokBti1Zi6hpT5Munx5hbf`, and pre-mobile Svelte preview `dpl_AEHV8CZrKn3cgTwcnfcsSjBqZpGJ` were removed. They are recoverable only by redeployment from their recorded source state. The verified mobile Svelte preview above is the only retained deployment.
 
 The stateless Vercel Hobby application shape passes. Keep the Cloudflare Container proof postponed. This does not authorize public promotion: packaged-data release choice, abuse/rate controls, parity gates, visual acceptance, and cutover remain separate tickets.
