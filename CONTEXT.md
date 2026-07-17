@@ -98,6 +98,12 @@ Completed entries must not ask future agents to finish anything. If future work 
   architecture-source, or developer-tool route. The protected 132.86 MB Vercel
   proof passed two repeated `8/8 + 4/4` concurrent waves. Evidence is recorded
   in Wayfinder ticket 12.
+- 2026-07-17, commit `56b75b6`: Ground Ball Mobile Presentation Adapter.
+  Public contract: at 360-430px the app keeps its launched-window frame,
+  prevents page-level horizontal overflow while preserving intentional internal
+  scrollers, exposes 44-48px primary touch targets, stacks the query composer
+  and conversation labels, wraps long evidence and history content, and accounts
+  for device safe-area insets without changing desktop layout.
 - 2026-05-26, commit `7137788`: Gradio Query Tab Wiring Module. Public contract:
   `GradioQueryTabWiring` owns Query tab callback order, Gradio session-hash
   extraction, pending/completed component mapping, stale completion no-ops, and
