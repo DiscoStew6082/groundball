@@ -14,7 +14,11 @@ import gradio as gr
 from baseball_rag.arch.test_status import ArchitectureTestStatusResult as _TestResult
 from baseball_rag.arch.test_status import collect_and_apply_test_status
 from baseball_rag.arch.trace_publication import ArchitectureTracePublisher
-from baseball_rag.request_execution import RequestExecution, execute_request
+from baseball_rag.request_execution import (
+    RequestExecution,
+    execute_public_demo_request,
+    execute_request,
+)
 from baseball_rag.service import render_text
 from baseball_rag.ui.gradio_adapter import GradioQueryAdapter
 from baseball_rag.ui.presentation import AnswerPresenter
@@ -70,12 +74,22 @@ def _execute_for_gradio(
     conversation: list[dict[str, Any]] | None = None,
 ) -> RequestExecution:
     """Run one Gradio request."""
-    return execute_request(
+    execute = execute_public_demo_request if _public_demo_enabled() else execute_request
+    return execute(
         question,
         adapter_component_id="gradio",
         adapter_label="Gradio Query",
         conversation=conversation,
     )
+
+
+def _public_demo_enabled() -> bool:
+    return os.environ.get("GROUNDBALL_PUBLIC_DEMO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _diagram_execution_recorder(

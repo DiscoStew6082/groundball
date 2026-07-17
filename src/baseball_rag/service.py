@@ -12,6 +12,7 @@ from baseball_rag.db.answer_assembly import answer_grounded_database_result
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.general_explanation import GeneralExplanationPolicy
 from baseball_rag.llm_narration_guard import apply_llm_flavored_narration
+from baseball_rag.outcomes import llm_unavailable_outcome
 from baseball_rag.player_biography import (
     PlayerBiographyCaseAnswerer,
     duckdb_source,
@@ -24,6 +25,7 @@ from baseball_rag.routing import (
     GroundedDatabaseQuestionCase,
     PlayerBiographyCase,
     route,
+    route_deterministically,
 )
 from baseball_rag.stat_query import answer_stat_query
 
@@ -53,6 +55,42 @@ def answer(
         _apply_llm_flavor(question, result)
     result.metadata["answer_mode"] = validated_answer_mode
     return result
+
+
+def answer_public_demo(
+    question: str,
+    *,
+    conversation: list[dict[str, Any]] | None = None,
+    answer_mode: str = "stats_only",
+) -> StructuredAnswer:
+    """Answer only through the public demo's deterministic capabilities."""
+    validate_answer_mode(answer_mode)
+    dispatcher = RequestAnswerDispatcher(
+        resolve_followup=resolve_followup,
+        route_question=route_deterministically,
+        handlers=AnswerHandlers(
+            stat_query=answer_stat_query,
+            player_biography=_public_demo_llm_dependent_answer,
+            grounded_database_question=_answer_grounded_database_question,
+            general_explanation=_public_demo_llm_dependent_answer,
+        ),
+    )
+    result = dispatcher.answer(question, conversation=conversation)
+    result.metadata["answer_mode"] = "stats_only"
+    return result
+
+
+def _public_demo_llm_dependent_answer(
+    _question: str,
+    decision: PlayerBiographyCase | GeneralExplanationCase,
+) -> StructuredAnswer:
+    return llm_unavailable_outcome(
+        answer=(
+            "This question needs an LLM-backed capability that is disabled in the public demo. "
+            "Ask a deterministic MLB stat or database question instead."
+        ),
+        intent=decision.intent,
+    )
 
 
 def render_text(result: StructuredAnswer) -> str:

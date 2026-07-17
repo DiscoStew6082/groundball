@@ -13,6 +13,7 @@ from baseball_rag.routing.contracts import (
 )
 from baseball_rag.routing.query_router import (
     route,
+    route_deterministically,
     route_with_evidence,
 )
 
@@ -26,6 +27,7 @@ __all__ = [
     "TimePeriod",
     "TimePeriodType",
     "route",
+    "route_deterministically",
     "route_with_evidence",
     "routed_case",
 ]

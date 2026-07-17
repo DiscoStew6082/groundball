@@ -75,6 +75,7 @@ __all__ = [
     "TimePeriod",
     "TimePeriodType",
     "route",
+    "route_deterministically",
     "route_with_evidence",
     "routed_case",
 ]
@@ -252,33 +253,57 @@ def route_with_evidence(question: str) -> RouteDecisionOutcome:
     """Classify a question and return ordered decision evidence."""
     deterministic = _heuristic_route(question)
     return RouteDecisionChain(
-        decisions=(
-            RouteDecisionStep(
-                "player_bio_followup",
-                lambda: _player_bio_followup_route(question),
-            ),
-            RouteDecisionStep(
-                "claim_verification",
-                lambda: _claim_verification_route(question),
-            ),
-            RouteDecisionStep(
-                "player_bio_name",
-                lambda: _player_bio_name_route(question),
-            ),
-            RouteDecisionStep(
-                "deterministic_stat_or_grounded",
-                lambda: _deterministic_route_decision(question, deterministic),
-            ),
-            RouteDecisionStep(
-                "grounded_database",
-                lambda: _grounded_database_route(question),
-            ),
-        ),
+        decisions=_deterministic_route_steps(question, deterministic),
         fallback=RouteDecisionStep(
             "llm_router_or_heuristic",
             lambda: _llm_route_or_heuristic_attempt(question, deterministic),
         ),
     ).decide_with_evidence()
+
+
+def route_deterministically(question: str) -> RoutedCase:
+    """Classify a public-demo question without invoking the LLM router."""
+    with traced(component_id="query-router", label="Route Query") as route_stage:
+        deterministic = _heuristic_route(question)
+        decision = RouteDecisionChain(
+            decisions=_deterministic_route_steps(question, deterministic),
+            fallback=RouteDecisionStep(
+                "deterministic_heuristic",
+                lambda: deterministic,
+            ),
+        ).decide()
+        route_stage.set_output_summary(
+            f"routed to {decision.intent} via deterministic public-demo routing"
+        )
+        return decision
+
+
+def _deterministic_route_steps(
+    question: str,
+    deterministic: RoutedCase,
+) -> tuple[RouteDecisionStep, ...]:
+    return (
+        RouteDecisionStep(
+            "player_bio_followup",
+            lambda: _player_bio_followup_route(question),
+        ),
+        RouteDecisionStep(
+            "claim_verification",
+            lambda: _claim_verification_route(question),
+        ),
+        RouteDecisionStep(
+            "player_bio_name",
+            lambda: _player_bio_name_route(question),
+        ),
+        RouteDecisionStep(
+            "deterministic_stat_or_grounded",
+            lambda: _deterministic_route_decision(question, deterministic),
+        ),
+        RouteDecisionStep(
+            "grounded_database",
+            lambda: _grounded_database_route(question),
+        ),
+    )
 
 
 def _player_bio_followup_route(question: str) -> RoutedCase | None:

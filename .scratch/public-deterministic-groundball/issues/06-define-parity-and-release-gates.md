@@ -1,7 +1,7 @@
 # Define parity and release gates
 
 Type: `grilling`
-Blocked by: 02, 04, 05
+Blocked by: 11, 04, 05
 
 ## Question
 

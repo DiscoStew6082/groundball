@@ -23,15 +23,16 @@ Reach an implementation-ready, reviewed decision set for a genuinely interactive
 - [Approve the zero-Mac deterministic Ground Ball public demo contract](issues/01-approve-zero-mac-public-demo-contract.md) — Preserve the existing deterministic Python/Gradio/DuckDB behavior in a packaged public runtime, use Vercel Hobby as the $0 proof target, retain Cloudflare Containers as the $5 fallback, and expose no Mac or LLM route.
 - [Confirm current public container hosting constraints](issues/09-confirm-current-public-container-hosting-constraints.md) — Vercel Hobby now supports OCI containers within hard free limits and personal-use terms; Cloudflare Containers remain the paid, scale-to-zero fallback, while Hugging Face requires a PRO subscription for this app shape.
 - [Provision the Vercel Hobby proof target](issues/10-provision-vercel-hobby-proof-target.md) — The CLI is authenticated as `discostew6082`; the verified empty `discostew6082s-projects/ground-ball` project is reserved for the bounded compatibility proof, with no deployment, Git integration, domain, or paid usage enabled.
+- [Prove Vercel Hobby container fit](issues/02-prove-vercel-hobby-container-fit.md) — Vercel built and protected the 278.29 MB deterministic container and passed cold, sequential, fail-closed, data-integrity, and scale-to-zero checks, but concurrent Gradio sessions repeatedly lost in-memory queue/SSE state across stateless instances. Vercel fails the current-app compatibility proof, so the Cloudflare Container fallback is activated.
 
 ## Not yet specified
 
-- The implementation slices and commit sequence can be specified only after the Vercel proof, packaged data release, public guardrails, hosted parity gates, app prototype, and cutover proof are resolved.
-- A Cloudflare Container proof ticket should graduate only if the Vercel Hobby prototype fails a named acceptance criterion or Hobby terms cease to fit the demo.
+- The implementation slices and commit sequence can be specified only after the Cloudflare Container proof, packaged data release, public guardrails, hosted parity gates, app prototype, and cutover proof are resolved.
+- [Prove session-affine Cloudflare Container fit](issues/11-prove-session-affine-cloudflare-container-fit.md) is now the required host proof. It cannot claim or mutate paid Cloudflare resources until Stewart explicitly approves the Workers Paid activation.
 
 ## Out of scope
 
-- Implementing or deploying the production Vercel container, Cloudflare fallback, website integration, or redesigned UI while this map is still finding the way; the explicitly bounded private Vercel compatibility proof remains in scope.
+- Implementing or deploying a production container, website integration, or redesigned UI while this map is still finding the way. The bounded private Cloudflare compatibility proof in ticket 11 enters scope only after Stewart explicitly approves the paid-plan activation.
 - [The Worker/D1 runtime investigation](issues/08-confirm-current-cloudflare-runtime-constraints.md) and reimplementation of the proven deterministic Python query engine as a TypeScript Worker/D1 system; hosting the existing application is the narrower route.
 - Paid Hugging Face, Vercel PRO, Google Cloud, or an unbounded pay-as-you-go host.
 - Public LLM inference, Workers AI, LM Studio access, or narrative generation.
