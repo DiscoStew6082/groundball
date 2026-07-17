@@ -22,6 +22,7 @@ Reach an implementation-ready, reviewed decision set for a genuinely interactive
 
 - [Approve the zero-Mac deterministic Ground Ball public demo contract](issues/01-approve-zero-mac-public-demo-contract.md) — Preserve the existing deterministic Python/Gradio/DuckDB behavior in a packaged public runtime, use Vercel Hobby as the $0 proof target, retain Cloudflare Containers as the $5 fallback, and expose no Mac or LLM route.
 - [Confirm current public container hosting constraints](issues/09-confirm-current-public-container-hosting-constraints.md) — Vercel Hobby now supports OCI containers within hard free limits and personal-use terms; Cloudflare Containers remain the paid, scale-to-zero fallback, while Hugging Face requires a PRO subscription for this app shape.
+- [Provision the Vercel Hobby proof target](issues/10-provision-vercel-hobby-proof-target.md) — The CLI is authenticated as `discostew6082`; the verified empty `discostew6082s-projects/ground-ball` project is reserved for the bounded compatibility proof, with no deployment, Git integration, domain, or paid usage enabled.
 
 ## Not yet specified
 
