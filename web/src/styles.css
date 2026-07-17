@@ -216,6 +216,106 @@ pre { max-height: 260px; margin: 0; padding: 13px; overflow: auto; border-top: 1
   .ask-button { min-height: 44px; }
 }
 
+@media (max-width: 480px) {
+  .desktop-shell {
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .app-window {
+    min-height: calc(100dvh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)));
+    border: 1px solid #344d3f;
+    border-radius: 14px;
+  }
+
+  .title-bar { min-height: 56px; padding: 9px 11px; }
+  .app-identity { min-width: 0; }
+  .app-identity > div { min-width: 0; }
+  .app-identity p { overflow-wrap: anywhere; }
+  .ball-mark { width: 34px; height: 34px; flex: 0 0 auto; }
+
+  .sidebar { padding: 7px 9px; }
+  nav { gap: 3px; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+
+  .main-column { padding: 16px 10px 24px; gap: 14px; }
+  .history-panel { padding: 18px 10px; }
+  .answer-card, .conversation-card, .results-card, .evidence-card, .architecture-card, .developer-card {
+    min-width: 0;
+  }
+
+  .section-heading,
+  .card-kicker,
+  .download-row,
+  .trace-summary,
+  .component-detail-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .section-heading h2 { font-size: clamp(25px, 8.5vw, 31px); }
+  .mode-badge, .intent-chip { max-width: 100%; overflow-wrap: anywhere; }
+
+  form { margin-top: 18px; }
+  .answer-mode-row {
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0 8px;
+  }
+  .answer-mode-row select {
+    flex: 1 1 190px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .query-input-row { gap: 8px; }
+  .query-input-row input { min-height: 48px; }
+  .ask-button { width: 100%; min-height: 48px; }
+
+  .nav-item,
+  .examples button,
+  .download-row a,
+  .component-grid button,
+  .developer-body button {
+    min-height: 44px;
+  }
+  .nav-item,
+  .download-row a {
+    display: grid;
+    place-items: center;
+  }
+  .examples { overscroll-behavior-inline: contain; }
+
+  .answer-copy,
+  .conversation-turn p,
+  .history-list span {
+    overflow-wrap: anywhere;
+  }
+  .answer-copy { font-size: clamp(19px, 6vw, 23px); }
+  .conversation-turn p { grid-template-columns: 1fr; gap: 3px; }
+
+  .table-scroll { max-width: 100%; overscroll-behavior-inline: contain; }
+  th, td { padding: 10px; white-space: nowrap; }
+  pre { overflow-wrap: anywhere; word-break: break-word; }
+
+  .download-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .download-row a { padding: 8px; text-align: center; }
+
+  .component-grid { display: grid; grid-template-columns: 1fr; }
+  .component-grid button { width: 100%; }
+  .trace-path li { grid-template-columns: 16px minmax(0, 1fr) auto; }
+  .trace-path strong, .trace-path small { overflow-wrap: anywhere; }
+
+  .disclosures summary,
+  .developer-card > summary {
+    min-height: 44px;
+  }
+  .history-list { grid-template-columns: 1fr; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
