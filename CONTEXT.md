@@ -45,12 +45,9 @@ Purpose: lower startup context by listing all active opportunities, completed Mo
 
 ### Current Opportunities
 
-- 2026-07-17 explicit product decision: replace Gradio everywhere with one
-  Svelte/FastAPI application. The server owns local versus public capability
-  enforcement; the browser owns conversation and history; the hosted public
-  Adapter is deterministic, zero-Mac, and has no LLM route. The current proof
-  target is a bounded private Vercel Hobby preview. The paid Cloudflare
-  Container proof is postponed unless this stateless shape fails.
+- No active architecture implementation opportunity is recorded. Public release
+  work remains governed by the unresolved Wayfinder data, guardrail, parity,
+  visual-acceptance, and cutover tickets.
 
 ### Completed Modules
 
@@ -94,6 +91,13 @@ Completed entries must not ask future agents to finish anything. If future work 
 
 #### UI and Output Presentation
 
+- 2026-07-17, commit `3a762cd`: Unified Svelte/FastAPI Application Module.
+  Public contract: one dark browser application serves local and hosted use;
+  the server owns capability enforcement; browser-owned history and conversation
+  are bounded; the public Adapter is deterministic, zero-Mac, and has no LLM,
+  architecture-source, or developer-tool route. The protected 132.86 MB Vercel
+  proof passed two repeated `8/8 + 4/4` concurrent waves. Evidence is recorded
+  in Wayfinder ticket 12.
 - 2026-05-26, commit `7137788`: Gradio Query Tab Wiring Module. Public contract:
   `GradioQueryTabWiring` owns Query tab callback order, Gradio session-hash
   extraction, pending/completed component mapping, stale completion no-ops, and

@@ -24,11 +24,11 @@ Reach a reviewed, proven zero-Mac Ground Ball application that preserves the det
 - [Confirm current public container hosting constraints](issues/09-confirm-current-public-container-hosting-constraints.md) — Vercel Hobby now supports OCI containers within hard free limits and personal-use terms; Cloudflare Containers remain the paid, scale-to-zero fallback, while Hugging Face requires a PRO subscription for this app shape.
 - [Provision the Vercel Hobby proof target](issues/10-provision-vercel-hobby-proof-target.md) — The CLI is authenticated as `discostew6082`; the verified empty `discostew6082s-projects/ground-ball` project is reserved for the bounded compatibility proof, with no deployment, Git integration, domain, or paid usage enabled.
 - [Prove Vercel Hobby container fit](issues/02-prove-vercel-hobby-container-fit.md) — Vercel built and protected the 278.29 MB deterministic container and passed cold, sequential, fail-closed, data-integrity, and scale-to-zero checks, but concurrent Gradio sessions repeatedly lost in-memory queue/SSE state across stateless instances. That result rejects the historical Gradio Adapter only; the 2026-07-17 decision supersedes its Cloudflare activation by testing one stateless Svelte/FastAPI request per query first.
+- [Prove the stateless Svelte/FastAPI Vercel fit](issues/12-prove-stateless-svelte-fastapi-vercel-fit.md) — The unified 132.86 MB protected preview passed the server-enforced zero-Mac boundary, deterministic cold/default/fail-closed checks, two repeated `8/8 + 4/4` concurrent waves, packaged UI and export contracts, and final-preview cleanup. Vercel Hobby is the selected application shape; Cloudflare remains postponed.
 
 ## Not yet specified
 
-- [Prove the stateless Svelte/FastAPI Vercel fit](issues/12-prove-stateless-svelte-fastapi-vercel-fit.md) is the current frontier: migrate the one application, prove its server-enforced public boundary locally, then run the bounded private Vercel concurrency proof.
-- [Prove session-affine Cloudflare Container fit](issues/11-prove-session-affine-cloudflare-container-fit.md) is postponed and blocked by the stateless Vercel proof. It becomes relevant only if that proof fails and still cannot claim or mutate paid Cloudflare resources without Stewart's explicit Workers Paid approval.
+- [Prove session-affine Cloudflare Container fit](issues/11-prove-session-affine-cloudflare-container-fit.md) is postponed because the stateless Vercel proof passed. It becomes relevant only if future evidence invalidates that result and still cannot claim or mutate paid Cloudflare resources without Stewart's explicit Workers Paid approval.
 
 ## Out of scope
 
