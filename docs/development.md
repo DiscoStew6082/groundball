@@ -6,6 +6,7 @@
 git clone https://github.com/DiscoStew6082/groundball.git
 cd groundball
 uv sync
+npm --prefix web ci
 ```
 
 ### Data Dependencies
@@ -45,9 +46,10 @@ uv run python -m baseball_rag.db.download
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | OpenAI-compatible LM Studio base URL |
 | `LMSTUDIO_MODEL` | `google/gemma-4-26b-a4b` | Model name sent to LM Studio |
 | `LMSTUDIO_TIMEOUT_SECONDS` | `20` | Request timeout for LM Studio calls |
-| `GROUNDBALL_CORS_ORIGINS` | `https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321` | Comma-separated browser origins allowed to call `POST /query`; set this for Cloudflare Tunnel or local Astro review |
+| `GROUNDBALL_CORS_ORIGINS` | `https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321` | Comma-separated browser origins allowed to call the JSON query routes; the Svelte application uses same-origin requests |
 | `GROUNDBALL_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue; `BASEBALL_RAG_REVIEW_QUEUE_PATH` remains a compatibility alias |
-| `GROUNDBALL_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias; `0` disables it |
+| `GROUNDBALL_WEB_APP_TTL_SECONDS` | unset | Optional unified web-app process time to live; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias; `0` disables it |
+| `GROUNDBALL_PUBLIC_DEMO` | unset | Set to `1` to enforce deterministic public mode: stats-only queries, no LLM route, and no local developer operations |
 | `GROUNDBALL_CURRENT_YEAR` | current system year | Optional deterministic override for relative-year query parsing; `BASEBALL_RAG_CURRENT_YEAR` remains a compatibility alias |
 
 ## Running Locally
@@ -56,18 +58,21 @@ uv run python -m baseball_rag.db.download
 # CLI (stat query — DuckDB)
 uv run groundball "who had the most RBIs in 1962"
 
-# API server (port 8001)
-uv run uvicorn baseball_rag.api.server:app --reload --port 8001
-
-# Web UI (port 7860)
-uv run python -m baseball_rag.web_app
-
-# Short local UI entrypoint used by the Codex workflow (port 7861)
+# Build the Svelte assets and run the unified Svelte/FastAPI app (port 7861)
+npm --prefix web run build
 uv run groundball-ui
 
-# Web UI with a one-hour process TTL
-uv run python -m baseball_rag.web_app --ttl-seconds 3600
+# Run the same application with the server-enforced public contract
+env GROUNDBALL_PUBLIC_DEMO=1 uv run groundball-ui
+
+# Unified app with a one-hour process TTL
+uv run groundball-ui --ttl-seconds 3600
 ```
+
+For frontend iteration, keep `uv run groundball-ui` running and use
+`npm --prefix web run dev`; Vite serves the development UI on port 5173 and
+proxies `/api` to the FastAPI process on port 7861. The integrated smoke and
+deployment artifact remain the single-origin application on port 7861.
 
 ## Code Quality
 
@@ -87,6 +92,8 @@ uv run mypy src/
 
 ```bash
 uv run pytest tests/ -v
+npm --prefix web test
+npm --prefix web run build
 ```
 
 ### Coverage Report
@@ -131,7 +138,7 @@ CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporti
 
 Use this checklist for PRs touching `service.py`, routing, stat queries, grounded
 database templates/runtime, biography generation or verification, API payloads,
-or the Gradio UI:
+or the unified Svelte/FastAPI application:
 
 1. Run the full local gates:
 
@@ -156,11 +163,12 @@ or the Gradio UI:
 4. Smoke the live UI in the Codex in-app Browser:
 
    ```bash
+   npm --prefix web run build
    uv run groundball-ui
    ```
 
    Open `http://127.0.0.1:7861/`, run `who had the most RBIs in 1962`,
-   and verify the answer, DuckDB source, SQL, rows, and Ask-button lifecycle.
+   and verify the answer, DuckDB source, SQL, rows, and submit-button lifecycle.
 
 5. Run a code review subagent and explicitly state whether intent names, API
    payload fields, SQL/source visibility, or eval baselines changed.
@@ -178,7 +186,9 @@ The API exposes release and review surfaces for local demos:
 - `GET /guardrails/coverage` returns manifest-only guardrail coverage through the package-safe eval manifest adapter, returning explicit unavailable metadata when the repo manifest is absent in a package-only runtime.
 - `GET /review-queue` and `PATCH /review-queue/{item_id}` list, resolve, or dismiss API-created review items.
 
-Only `/query` writes review queue items. CLI and Gradio calls do not persist review state.
+Local `/query` and `/api/query` requests may write review queue items. Public
+demo requests use the deterministic Request Adapter and do not persist review
+state. CLI calls also do not persist review state.
 
 ## Go Contract Verifier
 
@@ -192,8 +202,8 @@ go test ./...
 go run ./cmd/groundball-verify --json
 ```
 
-The verifier expects the API to be running at `http://127.0.0.1:8001` by
-default. Use `--base-url` for another server. The built-in query checks the
+The verifier still defaults to `http://127.0.0.1:8001`; point it at the unified
+local app with `--base-url http://127.0.0.1:7861`. The built-in query checks the
 `stat_rbi_1962` eval case; custom queries can opt into a different eval
 expectation with `--expected-eval-case`.
 

@@ -1,3 +1,14 @@
+FROM node:22-alpine AS web-build
+
+WORKDIR /web
+
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -7,8 +18,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.0 /uv /usr/local/bin/uv
 ENV PYTHONPATH=/app/src \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    GROUNDBALL_PUBLIC_DEMO=1 \
-    GRADIO_ANALYTICS_ENABLED=False
+    GROUNDBALL_PUBLIC_DEMO=1
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
@@ -27,6 +37,8 @@ COPY data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv ./data/
 RUN /app/.venv/bin/python -m baseball_rag.db.packaged_data \
     /app/data/secondary_sources/retrosheet/manifest.json \
     /app/data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv
+
+COPY --from=web-build /web/dist /app/web/dist
 
 EXPOSE 80
 

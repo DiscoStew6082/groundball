@@ -1,7 +1,7 @@
 # Set public query, export, and abuse guardrails
 
 Type: `grilling`
-Blocked by: 11, 04
+Blocked by: 12, 04
 
 ## Question
 

@@ -39,6 +39,14 @@ class TestRegistryTracksComponents:
         assert expected.issubset(ids)
         assert "corpus-grounding" not in ids
 
+    def test_web_app_component_names_the_svelte_frontend(self) -> None:
+        component = get_registry().get("web-app")
+
+        assert component is not None
+        assert component.label == "Svelte Web App"
+        assert component.file_path == "web/src/App.svelte"
+        assert get_registry().get("gradio") is None
+
     def test_get_by_id(self) -> None:
         reg = get_registry()
         comp = reg.get("query-router")

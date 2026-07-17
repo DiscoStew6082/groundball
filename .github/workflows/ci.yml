@@ -67,9 +67,25 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  web-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+
   test:
     runs-on: ubuntu-latest
-    needs: [security, lint, typecheck]
+    needs: [security, lint, typecheck, web-test]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6

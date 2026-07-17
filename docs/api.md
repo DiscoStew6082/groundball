@@ -1,35 +1,53 @@
 # API Reference
 
-FastAPI server exposing Groundball's almanac query pipeline over HTTP.
+The unified Ground Ball application serves its Svelte interface and FastAPI
+almanac query pipeline from one origin.
 
 ## Start the Server
 
 ```bash
-uv run uvicorn baseball_rag.api.server:app --reload --port 8001
+npm --prefix web run build
+uv run groundball-ui
 ```
 
-Groundball local API port: **8001** (`--reload` enables auto-reload on code changes).
+The local application and JSON routes share `http://127.0.0.1:7861/`.
 
-## Browser Origins
+## Runtime Modes
 
-The production website calls Groundball through a same-origin Cloudflare Pages
-Function at `/groundball/query`, so the browser does not need to call the Tunnel
-hostname directly. For local or direct-review paths, the API allows browser CORS
-requests to `POST /query` from `GROUNDBALL_CORS_ORIGINS`. By default that
-includes `https://discostew.dev` and local Astro review origins on port `4321`.
+The Svelte application calls same-origin `/api/*` routes, so it requires no
+cross-origin browser configuration. `GET /api/capabilities` is the server's
+authoritative feature declaration.
 
-For the Cloudflare Tunnel profile:
+With `GROUNDBALL_PUBLIC_DEMO=1`, `/api/query` uses the deterministic public
+Request Adapter and accepts only `stats_only`. The server does not expose an LLM
+or Mac-backed fallback, and local-only developer operations return `404` even if
+a caller ignores the capabilities response. Without the flag, the same app
+enables local LLM answer modes and developer tools.
 
-```bash
-export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
-```
-
-The browser-facing page should call only same-origin `/groundball/query`;
-that Pages Function forwards to `https://groundball.discostew.dev/query`. LM
-Studio remains local-only. Operator endpoints such as `/evals/*` and
-`/review-queue` do not receive browser CORS headers.
+The legacy `/query` route and its configured CORS allowlist remain available to
+programmatic clients, but the first-party Svelte application uses `/api/query`.
 
 ## Endpoints
+
+### `GET /api/capabilities`
+
+Return the runtime mode and server-enforced capabilities used by the Svelte UI.
+
+**Response excerpt**
+
+```json
+{
+  "name": "Ground Ball",
+  "mode": "public",
+  "query": true,
+  "llm": false,
+  "architecture": false,
+  "developer_tools": false,
+  "history": "browser_local"
+}
+```
+
+---
 
 ### `GET /health`
 
@@ -79,9 +97,11 @@ deterministic and does not call the LLM.
 
 ---
 
-### `POST /query`
+### `POST /api/query`
 
-Ask a baseball question and get a grounded answer with provenance metadata.
+Ask a baseball question and get one self-contained, display-ready response with
+provenance metadata. `/query` remains a compatibility route with the canonical
+structured-answer payload.
 
 **Request**
 
@@ -196,6 +216,10 @@ Ask a baseball question and get a grounded answer with provenance metadata.
 | `review` | object/null | Human review queue hint for unsupported or ambiguous answers |
 | `metadata` | object | Additive audit metadata for request ID, timestamp, route, unsupported reason, source summary, SQL template/hash, dataset/model versions, exact eval match when available, latency, and trace stages |
 | `sources[].data_manifest` | object/null | Dataset source, checksums, row counts, coverage, download metadata, license notes, `source_authorities`, and optional `consensus_sources` plus `secondary_manifests.retrosheet` availability details for biography stat-claim evidence |
+| `rows` | object/array | Display-ready evidence rows selected from the grounded sources |
+| `sql` | string | Visible SQL for the selected grounded source, or an empty string |
+| `conversation_turn` | object | Compact browser-owned turn to resubmit with a follow-up question |
+| `architecture_trace` | object/null | Rendering-neutral trace for a local request; `null` in public mode |
 
 `metadata.eval.status` is omitted for normal repo-manifest matches. If the eval
 manifest is absent in a package-only runtime, `metadata.eval.status` is
@@ -418,11 +442,12 @@ Return the complete local dataset provenance manifest.
 | Status | Condition |
 |--------|-----------|
 | 422 Unprocessable Entity | Missing or invalid request body |
+| 404 Not Found | A public runtime caller requested a local-only operation |
 | 500 Internal Server Error | Unexpected DuckDB, LLM, or server error |
 
 ## Architecture Note
 
-The `/query` endpoint calls the shared answer service. The CLI renders the same
+The `/api/query` and compatibility `/query` endpoints call the shared answer service. The CLI renders the same
 structured answer as text, while the API returns the full JSON payload:
 
 1. **Stat query** -> DuckDB lookup with registered stat whitelist

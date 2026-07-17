@@ -4,7 +4,7 @@ from baseball_rag.provenance import SourceRecord, StructuredAnswer
 from baseball_rag.ui.presentation import AnswerPresenter
 
 
-def test_presenter_builds_gradio_payload_and_compact_conversation_turn():
+def test_presenter_builds_browser_payload_and_compact_conversation_turn():
     """A StructuredAnswer becomes display panels plus compact follow-up context."""
     answer = StructuredAnswer(
         answer="Tommy Davis led MLB with 153 RBI.",

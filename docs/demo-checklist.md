@@ -6,15 +6,21 @@ Use this when walking a reviewer through the project in five minutes.
 
 ```bash
 uv sync
+npm --prefix web ci
+npm --prefix web run build
 uv run python -m baseball_rag.db.download
 uv run python -m evals.questions
 ```
 
-Optional UI:
+Start the unified Svelte/FastAPI application:
 
 ```bash
 uv run groundball-ui
 ```
+
+Open `http://127.0.0.1:7861/`. To demonstrate the zero-Mac public contract,
+restart with `GROUNDBALL_PUBLIC_DEMO=1`; the server then advertises only
+deterministic capabilities and rejects LLM and local developer operations.
 
 ## Script
 

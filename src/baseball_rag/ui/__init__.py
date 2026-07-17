@@ -1,1 +1,1 @@
-"""UI-facing policy helpers for adapters such as Gradio."""
+"""UI-facing presentation policy for browser adapters."""

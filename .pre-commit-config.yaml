@@ -21,8 +21,8 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: "^src/mlb_api_mcp/"
+        exclude: "^(src/mlb_api_mcp/|src/baseball_rag/web_dist/)"
       - id: end-of-file-fixer
-        exclude: "^src/mlb_api_mcp/"
+        exclude: "^(src/mlb_api_mcp/|src/baseball_rag/web_dist/)"
       - id: check-yaml
       - id: check-merge-conflict

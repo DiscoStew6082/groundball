@@ -1,5 +1,8 @@
 """Tests for the shared request-to-answer execution spine."""
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +19,30 @@ from baseball_rag.routing import (
     StatQueryCase,
 )
 from baseball_rag.service import answer
+
+
+def test_execute_request_serializes_the_shared_local_runtime(monkeypatch):
+    """Overlapping local HTTP requests cannot share DuckDB concurrently."""
+    guard = threading.Lock()
+    active = 0
+    max_active = 0
+
+    def fake_lifecycle(*_args, **_kwargs):
+        nonlocal active, max_active
+        with guard:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+        return object()
+
+    monkeypatch.setattr("baseball_rag.request_execution.run_request_lifecycle", fake_lifecycle)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(execute_request, ("first", "second")))
+
+    assert max_active == 1
 
 
 def test_answer_and_execute_request_expose_same_answer_mode_metadata():
@@ -214,7 +241,7 @@ def test_execute_request_passes_conversation_to_answer_service():
 
         execution = execute_request(
             "tell me about the second player",
-            adapter_component_id="gradio",
+            adapter_component_id="web-app",
             conversation=prior_turns,
         )
 
@@ -267,7 +294,7 @@ def test_execute_request_resolves_followup_dispatches_and_attaches_context(monke
 
     execution = execute_request(
         "tell me about the second player",
-        adapter_component_id="gradio",
+        adapter_component_id="web-app",
         conversation=prior_turns,
     )
 
@@ -327,7 +354,7 @@ def test_execute_request_resolves_fifth_player_followup_from_prior_leaderboard(m
 
     execution = execute_request(
         "Tell me more about the fifth player in the list",
-        adapter_component_id="gradio",
+        adapter_component_id="web-app",
         conversation=prior_turns,
     )
 
@@ -383,7 +410,7 @@ def test_execute_request_does_not_rewrite_fifth_player_achievement_question(monk
 
     execution = execute_request(
         "Tell me about the fifth player to hit 500 home runs",
-        adapter_component_id="gradio",
+        adapter_component_id="web-app",
         conversation=prior_turns,
     )
 

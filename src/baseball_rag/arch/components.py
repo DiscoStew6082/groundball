@@ -85,6 +85,20 @@ class DiagramComponent:
             return "\u26aa"  # ⚪
         return self.test_status.emoji()
 
+    def to_catalog_dict(self) -> dict[str, str | None]:
+        """Return rendering-neutral fields safe for the public architecture catalog."""
+        return {
+            "id": self.id,
+            "label": self.label,
+            "description": self.description,
+            "layer": self.layer.value,
+            "test_status": self.test_status.value if self.test_status is not None else None,
+        }
+
+    def to_detail_dict(self) -> dict[str, str | None]:
+        """Return local operator details for one registered component."""
+        return {**self.to_catalog_dict(), "file_path": self.file_path}
+
 
 # ---------------------------------------------------------------------------
 # ComponentRegistry
@@ -187,11 +201,11 @@ class ComponentRegistry:
         )
         self.register(
             DiagramComponent(
-                id="gradio",
-                label="Gradio UI",
-                description="Browser dashboard where a user submits questions and views results.",
+                id="web-app",
+                label="Svelte Web App",
+                description="Unified browser app for questions, evidence, and architecture traces.",
                 layer=Layer.API,
-                file_path="src/baseball_rag/web_app.py",
+                file_path="web/src/App.svelte",
             )
         )
         self.register(

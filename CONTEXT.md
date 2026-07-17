@@ -45,9 +45,12 @@ Purpose: lower startup context by listing all active opportunities, completed Mo
 
 ### Current Opportunities
 
-No active architecture-deepening opportunities are open from the 2026-05-26
-review. Reopen only with fresh public-behavior evidence or an explicit product
-decision.
+- 2026-07-17 explicit product decision: replace Gradio everywhere with one
+  Svelte/FastAPI application. The server owns local versus public capability
+  enforcement; the browser owns conversation and history; the hosted public
+  Adapter is deterministic, zero-Mac, and has no LLM route. The current proof
+  target is a bounded private Vercel Hobby preview. The paid Cloudflare
+  Container proof is postponed unless this stateless shape fails.
 
 ### Completed Modules
 
@@ -97,7 +100,9 @@ Completed entries must not ask future agents to finish anything. If future work 
   component id validation while preserving source JSON, SQL, rows, chat state,
   conversation state, Ask-button state, callback API names, Browser smoke, and
   Architecture tab trace publication. Verification is recorded in
-  `docs/architecture-current-opportunities-handoff-plan.md`.
+  `docs/architecture-current-opportunities-handoff-plan.md`. This historical
+  rendering contract was explicitly superseded by the 2026-07-17 Svelte
+  cutover decision; the domain presentation policy remains in `AnswerPresenter`.
 - 2026-05-23, commit `148ddd3`: Visible Evidence Presentation Module. Public contract: `AnswerPresenter` owns useful verification rows and SQL selection for multi-source answers while preserving common DuckDB stat display.
 - 2026-05-24, commits `fee989d` and `8f569f1`: Query Output Contract Module. Public contract: Gradio pending, completed, and stale callback payload order lives behind a named output Adapter and the Browser smoke remains the visible proof.
 
@@ -124,7 +129,9 @@ Completed entries must not ask future agents to finish anything. If future work 
 - Preserve `route(question)` caller behavior and deterministic route precedence unless a fresh public-behavior test or explicit product decision requires a change.
 - Preserve DuckDB/Lahman as the primary factual/stat authority.
 - Preserve Retrosheet as optional secondary consensus evidence, not a replacement authority for all query paths.
-- Preserve CLI, FastAPI, Gradio, source JSON, SQL, metadata, review, and eval payload shapes unless a public-behavior test proves intentional alignment.
+- Preserve CLI, FastAPI compatibility routes, the unified Svelte `/api/*`
+  contracts, source JSON, SQL, metadata, review, and eval payload shapes unless
+  a public-behavior test proves intentional alignment.
 - Preserve `execute_request(...)` as the public request Adapter over the shared request lifecycle.
 - Do not add a stored corpus, vector index, or Chroma replacement unless the product contract changes explicitly.
 - Preserve the Browser smoke at `http://127.0.0.1:7861/` with `who had the most RBIs in 1962` for UI-affecting changes.
@@ -150,7 +157,9 @@ These candidates were reviewed but should not be reopened without a fresh public
 - Use TDD for code-changing slices: one public-behavior test, minimal implementation, then refactor while green.
 - Use subagents wherever possible, and run a code-review subagent after every task.
 - Keep DuckDB/Lahman as the primary factual/stat authority.
-- Preserve CLI, HTTP Adapter, Gradio, source JSON, SQL, metadata, review, and eval payload shapes unless a public-behavior test proves an intentional change.
+- Preserve CLI, HTTP Adapters, the Svelte application, source JSON, SQL,
+  metadata, review, and eval payload shapes unless a public-behavior test proves
+  an intentional change.
 - Run focused verification after each slice. For broader changes, run `uv run ruff check src/ tests/ evals/`, `uv run mypy src/`, `uv run pytest -q`, and the deterministic eval gate.
 - For UI-affecting changes, start the local UI when needed with `uv run groundball-ui`, use the Codex in-app Browser at `http://127.0.0.1:7861/`, smoke `who had the most RBIs in 1962`, and keep the dev server running.
 - A code-changing task is complete only after review, commit, and an explanation of any unstaged changes.

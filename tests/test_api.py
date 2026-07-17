@@ -3,9 +3,12 @@
 from unittest.mock import patch
 
 import pytest
+import requests
 from fastapi.testclient import TestClient
 
 from baseball_rag.api.server import app
+from baseball_rag.arch.components import TestStatus
+from baseball_rag.arch.test_status import ArchitectureTestStatusResult
 from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.provenance import StructuredAnswer
 
@@ -20,6 +23,252 @@ def website_cors_origins(monkeypatch):
 
 
 class TestApi:
+    def test_capabilities_report_public_server_owned_features(self, monkeypatch):
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+
+        response = client.get("/api/capabilities")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "name": "Ground Ball",
+            "mode": "public",
+            "query": True,
+            "llm": False,
+            "architecture": False,
+            "developer_tools": False,
+            "history": "browser_local",
+        }
+
+    def test_capabilities_report_local_server_owned_features(self, monkeypatch):
+        monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+
+        response = client.get("/api/capabilities")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "name": "Ground Ball",
+            "mode": "local",
+            "query": True,
+            "llm": True,
+            "architecture": True,
+            "developer_tools": True,
+            "history": "browser_local",
+        }
+
+    def test_local_capabilities_can_disable_unavailable_container_tools(self, monkeypatch):
+        monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+        monkeypatch.setenv("GROUNDBALL_ARCHITECTURE_ENABLED", "0")
+        monkeypatch.setenv("GROUNDBALL_DEVELOPER_TOOLS_ENABLED", "0")
+
+        response = client.get("/api/capabilities")
+
+        assert response.status_code == 200
+        assert response.json()["architecture"] is False
+        assert response.json()["developer_tools"] is False
+        assert client.get("/api/architecture").status_code == 404
+        assert client.post("/api/developer/tests").status_code == 404
+
+    def test_public_api_query_is_self_contained_and_never_calls_network(self, monkeypatch):
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+
+        def deny_network(*_args, **_kwargs):
+            raise AssertionError("public API query attempted outbound network access")
+
+        monkeypatch.setattr(requests.sessions.Session, "request", deny_network)
+
+        response = client.post(
+            "/api/query",
+            json={"question": "who had the most RBIs in 1962"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["intent"] == "stat_query"
+        assert "Davis, Tommy: 153 RBI" in data["answer"]
+        assert data["rows"]["headers"]
+        assert data["rows"]["data"][0][0] == "Davis, Tommy"
+        assert data["sources"][0]["type"] == "duckdb"
+        assert data["sql"]
+        assert data["unsupported"] is False
+        assert data["metadata"]["public_demo"] is True
+        assert data["conversation_turn"]["question"] == "who had the most RBIs in 1962"
+        assert data["architecture_trace"] is None
+
+    @pytest.mark.parametrize("path", ["/query", "/api/query"])
+    def test_public_query_routes_reject_llm_flavored_mode(self, path, monkeypatch):
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "true")
+
+        response = client.post(
+            path,
+            json={"question": "who had the most RBIs in 1962", "answer_mode": "llm_flavored"},
+        )
+
+        assert response.status_code == 422
+        assert "public demo supports only" in response.json()["detail"]
+
+    @pytest.mark.parametrize("path", ["/query", "/api/query"])
+    def test_public_query_routes_fail_closed_for_llm_questions(self, path, monkeypatch):
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+
+        def deny_network(*_args, **_kwargs):
+            raise AssertionError("public query attempted outbound network access")
+
+        monkeypatch.setattr(requests.sessions.Session, "request", deny_network)
+
+        response = client.post(path, json={"question": "who was Babe Ruth"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unsupported"] is True
+        assert data["unsupported_reason"] == "llm_unavailable"
+
+    @pytest.mark.parametrize("public_demo", [False, True])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"question": "x" * 501},
+            {
+                "question": "who had the most RBIs in 1962",
+                "conversation": [{"question": "q", "answer": "a"}] * 21,
+            },
+        ],
+    )
+    def test_query_request_bounds_are_enforced(self, public_demo, payload, monkeypatch):
+        if public_demo:
+            monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+        else:
+            monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+
+        response = client.post("/api/query", json=payload)
+
+        assert response.status_code == 422
+
+    def test_architecture_catalog_is_local_and_rendering_neutral(self, monkeypatch):
+        monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+
+        response = client.get("/api/architecture")
+
+        assert response.status_code == 200
+        components = response.json()["components"]
+        web_app = next(component for component in components if component["id"] == "web-app")
+        assert web_app == {
+            "id": "web-app",
+            "label": "Svelte Web App",
+            "description": "Unified browser app for questions, evidence, and architecture traces.",
+            "layer": "api",
+            "test_status": None,
+        }
+        assert all("file_path" not in component for component in components)
+
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+        assert client.get("/api/architecture").status_code == 404
+
+    def test_architecture_component_detail_is_local_only(self, monkeypatch):
+        monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+
+        response = client.get("/api/architecture/query-router")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["component"]["id"] == "query-router"
+        assert data["component"]["file_path"] == "src/baseball_rag/routing/query_router.py"
+        assert "Query routing" in data["source_excerpt"]
+
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+        public_response = client.get("/api/architecture/query-router")
+        assert public_response.status_code == 404
+
+    def test_developer_test_action_is_fixed_and_local_only(self, monkeypatch):
+        result = ArchitectureTestStatusResult(
+            passed=3,
+            failed=0,
+            component_statuses={"query-router": TestStatus.PASS},
+        )
+        monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+
+        with patch(
+            "baseball_rag.arch.test_status.collect_and_apply_test_status",
+            return_value=result,
+        ) as collect:
+            response = client.post("/api/developer/tests")
+
+        assert response.status_code == 200
+        assert response.json()["component_statuses"] == {"query-router": "pass"}
+        collect.assert_called_once()
+
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+        with patch("baseball_rag.arch.test_status.collect_and_apply_test_status") as collect_public:
+            public_response = client.post("/api/developer/tests")
+        assert public_response.status_code == 404
+        collect_public.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("method", "path", "json"),
+        [
+            ("get", "/review-queue", None),
+            ("patch", "/review-queue/review_123", {"status": "dismissed"}),
+            ("patch", "/review-queue/review_123", {}),
+            ("get", "/evals/report", None),
+            ("post", "/evals/run", {"include_live": False}),
+        ],
+    )
+    def test_public_mode_hides_existing_operator_routes(self, method, path, json, monkeypatch):
+        monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+
+        response = client.request(method, path, json=json)
+
+        assert response.status_code == 404
+
+    def test_web_shell_returns_clear_diagnostic_when_assets_are_missing(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("GROUNDBALL_WEB_DIST", str(tmp_path / "missing-dist"))
+
+        response = client.get("/")
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "error": "groundball_web_assets_unavailable",
+            "detail": "Build the Ground Ball web assets before starting the server.",
+        }
+
+    def test_web_shell_falls_back_to_assets_bundled_in_the_python_package(
+        self, tmp_path, monkeypatch
+    ):
+        from baseball_rag.api import server
+
+        repository_dist = tmp_path / "repository-dist"
+        package_dist = tmp_path / "package-dist"
+        package_dist.mkdir()
+        (package_dist / "index.html").write_text("<h1>Packaged Ground Ball</h1>", encoding="utf-8")
+        monkeypatch.delenv("GROUNDBALL_WEB_DIST", raising=False)
+        monkeypatch.setattr(server, "_REPOSITORY_WEB_DIST", repository_dist)
+        monkeypatch.setattr(server, "_PACKAGE_WEB_DIST", package_dist)
+
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert response.text == "<h1>Packaged Ground Ball</h1>"
+
+    def test_web_shell_serves_assets_and_spa_routes_without_shadowing_api(
+        self, tmp_path, monkeypatch
+    ):
+        web_dist = tmp_path / "dist"
+        assets = web_dist / "assets"
+        assets.mkdir(parents=True)
+        (web_dist / "index.html").write_text("<h1>Ground Ball</h1>", encoding="utf-8")
+        (assets / "app.js").write_text("window.GROUND_BALL = true;", encoding="utf-8")
+        monkeypatch.setenv("GROUNDBALL_WEB_DIST", str(web_dist))
+
+        assert client.get("/").text == "<h1>Ground Ball</h1>"
+        assert client.get("/architecture").text == "<h1>Ground Ball</h1>"
+        assert client.get("/assets/app.js").text == "window.GROUND_BALL = true;"
+        assert (
+            client.get("/api/capabilities").headers["content-type"].startswith("application/json")
+        )
+        assert client.get("/api/not-a-route").status_code == 404
+
     def test_health_endpoint(self):
         """GET /health returns 200 with {"status": "ok"}."""
         response = client.get("/health")

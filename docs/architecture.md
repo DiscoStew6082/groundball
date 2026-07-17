@@ -3,7 +3,7 @@
 ## System Overview
 
 Groundball uses one request lifecycle for its modern sports almanac engine across
-the CLI, API, and Gradio UI. The lifecycle returns a `StructuredAnswer` with answer text, intent,
+the CLI and unified Svelte/FastAPI application. The lifecycle returns a `StructuredAnswer` with answer text, intent,
 sources, warnings, unsupported state, metadata, and trace information.
 
 For a non-linear visual overview, see the
@@ -23,8 +23,8 @@ request_lifecycle.py
 StructuredAnswer(answer, intent, sources, warnings, unsupported, metadata)
   |
   +--> CLI text renderer
-  +--> API JSON payload
-  +--> AnswerPresenter -> Gradio answer, rows, sources, and SQL
+  +--> compatibility API JSON payload
+  +--> AnswerPresenter -> Svelte answer, rows, sources, SQL, and conversation turn
 ```
 
 `src/baseball_rag/request_execution.py` keeps the public
@@ -104,9 +104,10 @@ answer. This keeps coverage and player ambiguity out of the execution path.
 `request_lifecycle.py` keeps answer-mode validation, trace ownership, answer
 dispatch, metadata attachment, and governance observation in one local
 implementation. Conversation context is still passed into the answer service for
-follow-up handling. The public API and Gradio adapters call the same lifecycle
-through `execute_request(...)`, so trace and review behavior stays consistent
-across surfaces.
+follow-up handling. Local HTTP requests call `execute_request(...)`; hosted
+requests call the fail-closed `execute_public_demo_request(...)`. The server,
+not the browser, owns that choice and rejects public LLM modes and operator
+routes before execution.
 
 Operational verification readiness is exposed by
 `src/baseball_rag/verification_health.py` and the FastAPI
@@ -145,26 +146,26 @@ The LLM narration guard uses a `VerifiedEvidence` read model derived from DuckDB
 source rows before accepting LLM-flavored prose. The public source JSON remains
 unchanged; the read model is only the verification Interface for narration.
 
-The Gradio Query tab uses a named output contract in
-`src/baseball_rag/ui/gradio_adapter.py` so pending, completed, and stale callback
-tuples map to component names in one Adapter instead of leaking tuple slots into
-dashboard code. `src/baseball_rag/ui/query_tab_wiring.py` owns the browser-facing
-Query tab callback order, session-hash extraction, stale completion no-ops, and
-component map validation while `build_dashboard()` stays layout-oriented.
+`POST /api/query` is the browser output contract. It returns the presented
+answer, visible rows, sources, SQL, compact conversation turn, and a local-only
+trace in one response. Svelte owns pending state, latest-request-wins behavior,
+conversation, and browser-local history, so no queue id, SSE join, cookie, or
+server-side browser session is required.
 
 ## Architecture Explorer
 
-The Architecture tab includes a Developer tools accordion with Run All Tests.
-That control delegates to `src/baseball_rag/arch/test_status.py`, which runs
-pytest from the repo root and maps results to per-component status badges.
+The local-only Architecture Explorer renders the component catalog and completed
+query trace in Svelte. Component source details and the Developer Tools
+**Run All Tests** action are separate FastAPI endpoints that return `404` in public mode. The test
+action delegates to `src/baseball_rag/arch/test_status.py`, which runs pytest
+from the repo root and maps results to per-component status badges.
 Mapped test failures mark the owning component as failing, pytest collection
 errors do not create false pass badges, and unmapped or incomplete status stays
 UNKNOWN.
 
-Completed Query tab executions publish to the Architecture Explorer through
-`src/baseball_rag/arch/trace_publication.py`. The publication adapter owns
-animate-vs-record policy, session-scoped latest-run publication, and failure
-isolation while `ArchitectureDiagram` remains the rendering adapter.
+Completed local queries serialize their rendering-neutral `PipelineTrace` in
+the same `/api/query` response. The browser owns the latest visible trace; the
+server retains no Architecture Explorer session state.
 
 ## Eval Reporting
 

@@ -9,6 +9,8 @@ htmlcov/
 *.md
 tests/
 .env
+web/node_modules/
+web/dist/
 data/*
 !data/manifest.json
 !data/secondary_sources

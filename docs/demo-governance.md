@@ -38,20 +38,21 @@ Talking point: the release gate and core tests do not depend on LM Studio or ext
 ## 3. Start The API
 
 ```bash
-uv run uvicorn baseball_rag.api.server:app --reload --port 8001
+npm --prefix web run build
+uv run groundball-ui
 ```
 
 ## 4. Show Governance Endpoints
 
 ```bash
-curl -s http://127.0.0.1:8001/evals/report | jq '.summary'
-curl -s http://127.0.0.1:8001/guardrails/coverage | jq '.summary'
+curl -s http://127.0.0.1:7861/evals/report | jq '.summary'
+curl -s http://127.0.0.1:7861/guardrails/coverage | jq '.summary'
 ```
 
 Show the explicit live eval opt-in:
 
 ```bash
-curl -s http://127.0.0.1:8001/evals/run \
+curl -s http://127.0.0.1:7861/evals/run \
   -H 'content-type: application/json' \
   -d '{"include_live": true}' | jq '.warnings'
 ```
@@ -61,7 +62,7 @@ Talking point: non-deterministic eval modes are explicit opt-ins, not accidental
 ## 5. Show Audit-Ready Query Metadata
 
 ```bash
-curl -s http://127.0.0.1:8001/query \
+curl -s http://127.0.0.1:7861/api/query \
   -H 'content-type: application/json' \
   -d '{"question":"who had the most RBIs in 1962"}' | jq '.metadata'
 ```
@@ -81,7 +82,7 @@ Call out:
 Create an unsupported item:
 
 ```bash
-curl -s http://127.0.0.1:8001/query \
+curl -s http://127.0.0.1:7861/api/query \
   -H 'content-type: application/json' \
   -d '{"question":"which team should I bet on tonight"}' | jq '.review'
 ```
@@ -89,13 +90,13 @@ curl -s http://127.0.0.1:8001/query \
 List the queue:
 
 ```bash
-curl -s http://127.0.0.1:8001/review-queue | jq
+curl -s http://127.0.0.1:7861/review-queue | jq
 ```
 
 Resolve the item:
 
 ```bash
-curl -s -X PATCH http://127.0.0.1:8001/review-queue/<item_id> \
+curl -s -X PATCH http://127.0.0.1:7861/review-queue/<item_id> \
   -H 'content-type: application/json' \
   -d '{"status":"resolved","note":"Correctly rejected betting advice"}' | jq
 ```

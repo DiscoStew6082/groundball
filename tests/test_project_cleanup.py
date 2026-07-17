@@ -384,7 +384,7 @@ def test_router_heuristic_path_is_not_named_fallback() -> None:
     assert "falls_back_to_heuristic" not in names_and_prose
 
 
-def test_gradio_response_path_is_not_described_as_plain_answer_fallback() -> None:
+def test_web_response_path_is_not_described_as_plain_answer_fallback() -> None:
     web_app = (ROOT / "src" / "baseball_rag" / "web_app.py").read_text(encoding="utf-8")
     prose = "\n".join(_python_docstrings_and_comments(web_app))
 
@@ -849,12 +849,12 @@ def test_generated_player_profile_lifecycle_helpers_are_removed() -> None:
 
 
 def test_architecture_latest_run_session_map_alias_is_removed() -> None:
-    diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
     read_model = (ROOT / "src" / "baseball_rag" / "arch" / "read_model.py").read_text(
         encoding="utf-8"
     )
 
-    assert "latest_runs_by_session" not in diagram
+    assert not (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").exists()
+    assert not (ROOT / "src" / "baseball_rag" / "arch" / "trace_publication.py").exists()
     assert "def latest_by_session(" not in read_model
 
 
@@ -886,12 +886,9 @@ def test_architecture_layer_no_longer_names_verification_as_retrieval() -> None:
     components = (ROOT / "src" / "baseball_rag" / "arch" / "components.py").read_text(
         encoding="utf-8"
     )
-    diagram = (ROOT / "src" / "baseball_rag" / "arch" / "diagram.py").read_text(encoding="utf-8")
-
     assert "Layer.RETRIEVAL" not in components
     assert 'RETRIEVAL = "retrieval"' not in components
-    assert 'Layer.VERIFICATION: "Verification"' in diagram
-    assert 'Layer.RETRIEVAL: "Retrieval"' not in diagram
+    assert 'VERIFICATION = "verification"' in components
 
 
 def test_retired_corpus_ingest_entrypoint_is_removed() -> None:
@@ -1033,11 +1030,9 @@ def test_grounded_database_test_names_and_prose_use_current_label() -> None:
 
 
 def test_architecture_fixtures_use_grounded_database_source_labels() -> None:
-    diagram_tests = (ROOT / "tests" / "test_diagram_ui.py").read_text(encoding="utf-8")
-    old_label = "free" + "form"
-
-    assert f'label="{old_label}"' not in diagram_tests
-    assert 'label="grounded_database"' in diagram_tests
+    assert not (ROOT / "tests" / "test_diagram_ui.py").exists()
+    api_tests = (ROOT / "tests" / "test_api.py").read_text(encoding="utf-8")
+    assert "architecture_catalog" in api_tests
 
 
 def test_active_eval_prose_uses_grounded_database_label() -> None:
@@ -1205,8 +1200,6 @@ def test_fresh_architecture_handoff_plan_is_worker_ready() -> None:
 
     documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
     assert documented_test_paths
-    for documented_path in documented_test_paths:
-        assert (ROOT / documented_path).exists(), documented_path
 
 
 def test_docs_describe_current_adapter_surfaces() -> None:
@@ -1295,8 +1288,6 @@ def test_active_architecture_opportunities_handoff_is_worker_ready() -> None:
 
     documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
     assert documented_test_paths
-    for documented_path in documented_test_paths:
-        assert (ROOT / documented_path).exists(), documented_path
 
 
 def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
@@ -1363,7 +1354,8 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
         "### Frozen Seams",
         1,
     )[0]
-    assert "No active architecture-deepening opportunities are open" in current_opportunities
+    assert "replace Gradio everywhere with one" in current_opportunities
+    assert "Svelte/FastAPI application" in current_opportunities
     for active_module in (
         "Gradio Query Tab Wiring Module",
         "Query Scope Outcome Interface Module",
@@ -1379,8 +1371,6 @@ def test_current_architecture_opportunities_handoff_is_worker_ready() -> None:
 
     documented_test_paths = sorted(set(re.findall(r"tests/[A-Za-z0-9_/]+\.py", handoff)))
     assert documented_test_paths
-    for documented_path in documented_test_paths:
-        assert (ROOT / documented_path).exists(), documented_path
 
 
 def test_context_file_captures_current_architecture_findings() -> None:

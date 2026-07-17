@@ -10,7 +10,7 @@ Groundball is a local-first modern sports almanac for MLB history: natural-langu
 - **System:** a modern almanac engine routes structured questions to DuckDB, uses a local LLM only where prose is appropriate, and returns the rows, SQL, checksums, dataset license metadata, and verification results behind each answer.
 - **Safety boundary:** stat SQL is generated from a whitelist and typed query specs; ambiguous, live, future, or unsupported questions fail closed instead of guessing.
 - **Proof:** deterministic eval gates run in CI, publish Markdown/JSON evidence, compare against a baseline, and expose release-blocking guardrail coverage.
-- **Stack:** Python, FastAPI, DuckDB, Typer, Gradio, pytest, local/open-weight LLM workflow.
+- **Stack:** Python, FastAPI, DuckDB, Typer, Svelte, Vite, pytest, Vitest, and a local/open-weight LLM workflow.
 
 **Recruiter signal:** this is not a chatbot wrapper. It is a modern sports almanac system focused on grounded generation, provenance, deterministic release gates, and operational failure modes.
 
@@ -67,16 +67,18 @@ Key choices:
 
 ## API Example
 
-Start the server:
+Build and start the unified Svelte/FastAPI application:
 
 ```bash
-uv run uvicorn baseball_rag.api.server:app --reload --port 8001
+npm --prefix web ci
+npm --prefix web run build
+uv run groundball-ui
 ```
 
 Ask a question:
 
 ```bash
-curl -s http://127.0.0.1:8001/query \
+curl -s http://127.0.0.1:7861/api/query \
   -H 'content-type: application/json' \
   -d '{"question":"who had the most RBIs in 1962"}'
 ```
@@ -122,7 +124,7 @@ Response shape:
 Dataset provenance is also available directly:
 
 ```bash
-curl -s http://127.0.0.1:8001/sources
+curl -s http://127.0.0.1:7861/sources
 ```
 
 ## CLI And UI
@@ -134,13 +136,13 @@ uv run groundball "career home run leaders"
 uv run groundball "who was Babe Ruth"
 ```
 
-Gradio UI:
+Svelte web application:
 
 ```bash
 uv run groundball-ui
 ```
 
-The short UI command binds to `127.0.0.1:7861` and runs until you stop it with
+The UI and JSON backend share `http://127.0.0.1:7861/` and run until you stop them with
 Ctrl-C. Add a TTL only for short smoke tests where you want the process to exit
 automatically:
 
@@ -151,41 +153,33 @@ uv run groundball-ui --ttl-seconds 300
 You can also set `GROUNDBALL_WEB_APP_TTL_SECONDS`; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias. `0` or an unset value disables
 the TTL.
 
-The UI shows the answer, evidence table, source JSON, and SQL for query paths that generate SQL.
+The UI shows the answer, evidence table, source JSON, SQL, browser-local history,
+and local-only architecture and developer tools. The browser submits one
+self-contained JSON request for each question; it does not depend on an
+in-memory queue or server-side browser session.
 
-## Website Integration
+## Public Demo Mode
 
-The public blog integration keeps `https://discostew.dev` on Cloudflare Pages
-and uses a same-origin Pages Function at `/groundball/query` to call
-`https://groundball.discostew.dev/query` through Cloudflare Tunnel. The browser
-does not need a Cloudflare Access sign-in link; any Tunnel Access service token
-or origin proxy token stays in Pages Function secrets. The private website path
-uses a high-entropy URL-safe `GROUNDBALL_VISITOR_TOKEN`, for example from
-`openssl rand -hex 32`: opening
-`https://discostew.dev/groundball/?groundball_token=<token>` sets an automatic
-`groundball_session` cookie, strips the token from the address bar, and then
-lets the same-origin `/groundball/query` proxy call the local tunnel.
+The same Svelte/FastAPI application runs locally and in the zero-Mac public
+container. `GROUNDBALL_PUBLIC_DEMO=1` is enforced by the server: `/api/query`
+uses the deterministic public Request Adapter, accepts only `stats_only`, and
+does not expose an LLM or Mac-backed route. The capabilities response drives
+what the Svelte application displays, while local-only endpoints independently
+reject public requests rather than relying on hidden controls.
 
-Use Gemma 4 12B for the hosted local-model profile:
+Run the local build under the public contract with:
 
 ```bash
-export LMSTUDIO_BASE_URL=http://localhost:1234/v1
-export LMSTUDIO_MODEL=unsloth/gemma-4-12b-it
-export GROUNDBALL_CORS_ORIGINS=https://discostew.dev,http://localhost:4321,http://127.0.0.1:4321
-export GROUNDBALL_ORIGIN_PROXY_TOKEN=<shared Pages Function secret>
-uv run uvicorn baseball_rag.api.server:app --host 127.0.0.1 --port 8001
+env GROUNDBALL_PUBLIC_DEMO=1 uv run groundball-ui
 ```
 
-When `GROUNDBALL_ORIGIN_PROXY_TOKEN` is set, direct Tunnel callers must send
-`X-Groundball-Proxy-Token`; the blog's Pages Function adds that header
-server-side so the browser path remains automatic.
-
-See [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) for the Tunnel,
-Pages Function, Access service-token, and smoke-test runbook.
+`Dockerfile.vercel` builds the Svelte assets with Node, copies only `web/dist`
+into the final Python image, verifies its immutable data, and starts the same
+application on Vercel's `$PORT`.
 
 ## Try These Questions
 
-These make a compact demo script for the CLI, API, or Gradio UI:
+These make a compact demo script for the CLI, JSON interface, or Svelte UI:
 
 - "who had the most RBIs in 1962" - deterministic stat query from DuckDB.
 - "who won the Triple Crown and which years" - deterministic grounded database template with a visible provenance badge.
@@ -260,7 +254,7 @@ Live LLM-assisted evals remain opt-in local/manual commands and do not block CI.
 
 ## Governance API
 
-The FastAPI app exposes deterministic governance surfaces alongside `/query`:
+The FastAPI app exposes deterministic governance surfaces alongside `/api/query`:
 
 - `GET /evals/report` runs the deterministic eval gate and returns JSON plus Markdown without writing docs files.
 - `POST /evals/run` runs the deterministic gate by default; `include_live=true` opts into cases that may require LM Studio.

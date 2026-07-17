@@ -30,11 +30,11 @@ class PresentedAnswer:
 
 
 class AnswerPresenter:
-    """Build Gradio-compatible displays from structured domain answers."""
+    """Build browser-compatible displays from structured domain answers."""
 
     def present(self, result: StructuredAnswer) -> PresentedAnswer:
         payload = result.to_dict()
-        sources = _json_safe_for_gradio(payload["sources"])
+        sources = _json_safe(payload["sources"])
         visible_rows_source = _source_for_visible_rows(sources)
         visible_sql_source = _source_for_visible_sql(sources, preferred=visible_rows_source)
         return PresentedAnswer(
@@ -48,20 +48,19 @@ class AnswerPresenter:
         )
 
 
-def _json_safe_for_gradio(value: Any) -> Any:
-    """Avoid file-shaped JSON objects that Gradio tries to download."""
+def _json_safe(value: Any) -> Any:
+    """Return recursively JSON-safe source metadata for browser adapters."""
     if isinstance(value, list):
-        return [_json_safe_for_gradio(item) for item in value]
+        return [_json_safe(item) for item in value]
     if isinstance(value, dict):
         return {
-            ("file_path" if key == "path" else key): _json_safe_for_gradio(item)
-            for key, item in value.items()
+            ("file_path" if key == "path" else key): _json_safe(item) for key, item in value.items()
         }
     return value
 
 
 def _rows_for_dataframe(source: dict[str, Any]) -> RowsPayload:
-    """Return source rows in a shape Gradio Dataframe renders as scalar cells."""
+    """Return source rows as scalar headers and cells for browser tables."""
     rows = source.get("rows") or []
     if not rows or not all(isinstance(row, dict) for row in rows):
         return rows

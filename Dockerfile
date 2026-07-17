@@ -1,18 +1,46 @@
+FROM node:22-alpine AS web-build
+
+WORKDIR /web
+
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install uv for fast package installs
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.10.0 /uv /usr/local/bin/uv
 
-# Copy pyproject.toml + lockfile and install deps (layer cache friendly)
-COPY pyproject.toml uv.lock .
-RUN uv sync --frozen --no-install-project
+ENV PYTHONPATH=/app/src \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    GROUNDBALL_ARCHITECTURE_ENABLED=0 \
+    GROUNDBALL_DEVELOPER_TOOLS_ENABLED=0
 
-# Copy only the default app package; optional MCP source is intentionally not bundled.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
 COPY src/baseball_rag/ ./src/baseball_rag/
-ENV PYTHONPATH=/app/src
+COPY data/manifest.json /tmp/groundball-expected-manifest.json
 
-EXPOSE 8001 7860
+RUN mkdir -p /app/data \
+    && cp /tmp/groundball-expected-manifest.json /app/data/manifest.json \
+    && /app/.venv/bin/python -m baseball_rag.db.download \
+    && /app/.venv/bin/python -c 'import json; from pathlib import Path; expected=json.loads(Path("/tmp/groundball-expected-manifest.json").read_text()); actual=json.loads(Path("/app/data/manifest.json").read_text()); expected_files={item["path"]:(item["rows"],item["sha256"]) for item in expected["files"]}; actual_files={item["path"]:(item["rows"],item["sha256"]) for item in actual["files"]}; assert actual_files == expected_files, (expected_files, actual_files)' \
+    && cp /tmp/groundball-expected-manifest.json /app/data/manifest.json
 
-CMD ["uv", "run", "python", "-m", "uvicorn", "baseball_rag.api.server:app", "--host", "0.0.0.0", "--port", "8001"]
+COPY data/secondary_sources/retrosheet/manifest.json ./data/secondary_sources/retrosheet/manifest.json
+COPY data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv ./data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv
+RUN /app/.venv/bin/python -m baseball_rag.db.packaged_data \
+    /app/data/secondary_sources/retrosheet/manifest.json \
+    /app/data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv
+
+COPY --from=web-build /web/dist /app/web/dist
+
+EXPOSE 7860
+
+CMD ["/app/.venv/bin/python", "-m", "baseball_rag.web_app", "--server-name", "0.0.0.0", "--server-port", "7860"]
