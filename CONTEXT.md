@@ -18,6 +18,10 @@ Use these words consistently:
 ## Domain Contract
 
 - Groundball is positioned as a local-first modern sports almanac for historical MLB questions: natural language in, grounded answer plus evidence out.
+- Queryable Data Contract: every loaded primary Lahman table and field is discoverable, every loaded primary Lahman row is reachable through filtering, pagination, or export, and the synthesized team reference lookup is equally reachable. Secondary evidence sources are governed separately.
+- Published Query Catalog: the reviewed capability cap that promotes fields, statistics, calculations, relationships, and operations in each runtime profile without hiding the raw loaded Lahman surface.
+- Query Recipe: the visible, editable user expression of a question. Natural-language interpretation and manual refinement produce the same recipe.
+- Query Plan: the deterministic typed meaning of a Query Recipe that Ground Ball validates and executes against its published data surface.
 - DuckDB/Lahman remains the primary factual/stat authority for structured stat answers, grounded database answers, player identity, and primary biography stat-claim verification.
 - Retrosheet remains optional secondary consensus evidence for biography stat claims, not a replacement factual authority for all query paths.
 - LLMs may classify, narrate, and generate biography prose, but structured baseball facts must stay verified against DuckDB/Lahman and optional Retrosheet evidence where supported.
