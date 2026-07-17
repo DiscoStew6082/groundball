@@ -1,8 +1,8 @@
 # Set public query, export, and abuse guardrails
 
 Type: `grilling`
-Blocked by: 02, 04, 08
+Blocked by: 02, 04
 
 ## Question
 
-What concrete request, execution-cost, result, export, burst, and sustained-use limits protect D1 and the Worker without making normal exploration frustrating, and what user-visible behavior applies when each limit is reached?
+What concrete request, execution-time, result, export, burst, sustained-use, concurrency, and monthly-allowance limits protect the hosted Python application without making normal exploration frustrating, prevent any automatic paid upgrade, and define honest user-visible behavior when Vercel pauses or rejects work?

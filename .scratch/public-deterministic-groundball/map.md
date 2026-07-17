@@ -1,35 +1,40 @@
-# Find the Way to a Zero-Mac Interactive Groundball Demo
+# Find the Way to a Zero-Mac Interactive Ground Ball Demo
 
 Label: `wayfinder:map`
 
 ## Destination
 
-Reach an implementation-ready, reviewed decision set for a genuinely interactive public Groundball application that preserves full deterministic query behavior on Cloudflare while providing no network route to Stewart's Mac and no public LLM access.
+Reach an implementation-ready, reviewed decision set for a genuinely interactive public Ground Ball application that deploys the existing deterministic Python/Gradio/DuckDB behavior to a zero-Mac public runtime, preferring a $0 Vercel Hobby deployment and retaining Cloudflare Containers as the bounded $5 fallback.
 
 ## Notes
 
-- Domain: Groundball is a local-first historical MLB almanac. DuckDB/Lahman remains the primary local factual authority; the public deployment will use a versioned D1 read model plus compact Retrosheet projections.
-- Consult the `codebase-design`, `domain-modeling`, `cloudflare`, `tdd`, and `browser-tool-call-hygiene` skills while working this map.
+- Domain: Ground Ball is a local-first historical MLB almanac. The public deployment should package the proven Python router, Gradio application, DuckDB query path, Lahman data, and only the compact reviewed Retrosheet projections needed by supported deterministic routes.
+- Consult the `prototype`, `codebase-design`, `domain-modeling`, `tdd`, and `browser-tool-call-hygiene` skills while working this map. Consult `cloudflare` and `wrangler` only if the Cloudflare fallback is activated.
 - Refer to Modules, Interfaces, Implementations, Seams, and Adapters using the vocabulary in `CONTEXT.md`.
 - Ask HITL questions one at a time and include a recommended answer.
-- Preserve the website's dark, window-framed visual language. Groundball should look like an application launched from the Start menu, while its interior may be redesigned freely.
+- Preserve the website's dark, window-framed visual language. Ground Ball should look like an application launched from the Start menu, while its interior may be redesigned freely.
 - The existing Mac LaunchAgents and tunnel are disabled. They must never be used as a fallback during design, preview, cutover, or rollback.
-- This map plans decisions. It does not authorize implementation, deployment, secret changes, tunnel deletion, or other production mutations.
+- Hosting budget: Vercel Hobby at $0 is the first proof target. Cloudflare Containers on Workers Paid at approximately $5 per month is the fallback. Hugging Face PRO, Vercel PRO, Google Cloud, and other paid hosting are not approved.
+- Vercel Hobby is acceptable only for this personal, non-commercial public demo. If the product becomes commercial, hosting must be decided again rather than silently violating Hobby terms.
+- This map plans decisions. It authorizes only the empty Vercel Hobby account/project setup and bounded private preview deployment required to resolve the named task and prototype tickets. It does not authorize a public or production deployment, paid-plan activation, production-domain changes, secret changes, tunnel deletion, or other production mutations.
 
 ## Decisions so far
 
-- [Approve the zero-Mac deterministic public demo contract](issues/01-approve-zero-mac-public-demo-contract.md) — The public app will be a discoverable, free-tier-compatible Cloudflare Worker and D1 deployment with full deterministic parity, a private Pages service binding, evidence-first UX, bounded exports, privacy-minimal telemetry, and no Mac or LLM route.
-- [Confirm current Cloudflare runtime constraints](issues/08-confirm-current-cloudflare-runtime-constraints.md) — Official platform constraints validate the private service-binding topology and require measured D1 size, indexed rows-read, query-cost, rate-limit, serialization, and export gates.
+- [Approve the zero-Mac deterministic Ground Ball public demo contract](issues/01-approve-zero-mac-public-demo-contract.md) — Preserve the existing deterministic Python/Gradio/DuckDB behavior in a packaged public runtime, use Vercel Hobby as the $0 proof target, retain Cloudflare Containers as the $5 fallback, and expose no Mac or LLM route.
+- [Confirm current public container hosting constraints](issues/09-confirm-current-public-container-hosting-constraints.md) — Vercel Hobby now supports OCI containers within hard free limits and personal-use terms; Cloudflare Containers remain the paid, scale-to-zero fallback, while Hugging Face requires a PRO subscription for this app shape.
 
 ## Not yet specified
 
-- The implementation slices and commit sequence can be specified only after the query contract, D1 read model, public guardrails, parity gates, app prototype, and cutover proof are resolved.
+- The implementation slices and commit sequence can be specified only after the Vercel proof, packaged data release, public guardrails, hosted parity gates, app prototype, and cutover proof are resolved.
+- A Cloudflare Container proof ticket should graduate only if the Vercel Hobby prototype fails a named acceptance criterion or Hobby terms cease to fit the demo.
 
 ## Out of scope
 
-- Implementing or deploying the Worker, D1 database, Pages Adapter, or redesigned UI while this map is still finding the way.
+- Implementing or deploying the production Vercel container, Cloudflare fallback, website integration, or redesigned UI while this map is still finding the way; the explicitly bounded private Vercel compatibility proof remains in scope.
+- [The Worker/D1 runtime investigation](issues/08-confirm-current-cloudflare-runtime-constraints.md) and reimplementation of the proven deterministic Python query engine as a TypeScript Worker/D1 system; hosting the existing application is the narrower route.
+- Paid Hugging Face, Vercel PRO, Google Cloud, or an unbounded pay-as-you-go host.
 - Public LLM inference, Workers AI, LM Studio access, or narrative generation.
 - Uploading the full raw Retrosheet corpus; only compact projections required by supported deterministic queries are in scope.
 - Authentication, accounts, or server-side query history for the public demo.
-- Any tunnel, origin proxy, public Worker hostname, or Mac-backed emergency fallback.
+- Any tunnel, origin proxy, or Mac-backed emergency fallback.
 - Retiring LLM support from the existing local Python application.

@@ -5,4 +5,4 @@ Blocked by: 03, 06
 
 ## Question
 
-What preview topology, production switch, previously verified Cloudflare-only rollback mechanism, tunnel and secret retirement sequence, and external verification evidence are sufficient to prove the public demo works with zero route to Stewart's Mac?
+What Vercel preview topology, website integration switch, previously verified hosted rollback mechanism, tunnel and secret retirement sequence, and external verification evidence are sufficient to prove the public demo works with zero route to Stewart's Mac, and what exact failed acceptance criterion would authorize activating the Cloudflare Container fallback?
