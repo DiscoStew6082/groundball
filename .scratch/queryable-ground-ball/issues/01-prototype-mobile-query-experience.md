@@ -1,7 +1,7 @@
 # Prototype the mobile Query Recipe experience
 
 Type: `prototype`
-Status: open
+Status: claimed
 Blocked by: none
 
 ## Question
