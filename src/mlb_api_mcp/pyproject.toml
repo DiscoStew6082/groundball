@@ -11,7 +11,7 @@ dependencies = [
     "fastmcp>=2.10.6",
     "fastapi>=0.115.12",
     "python-mlb-statsapi>=0.5.26",
-    "uvicorn[standard]>=0.24.0",
+    "uvicorn[standard]>=0.51.0",
     "pybaseball>=2.2.7",
 ]
 
