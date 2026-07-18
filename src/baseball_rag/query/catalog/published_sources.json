@@ -1,0 +1,47 @@
+{
+  "registry_revision": "lahman-sources-v1",
+  "sources": [
+    {
+      "identity": "People",
+      "kind": "packaged_lahman_table",
+      "relation": "people",
+      "asset": "People.csv",
+      "manifest_table": "people",
+      "primary_key": ["ID", "playerID"]
+    },
+    {
+      "identity": "Batting",
+      "kind": "packaged_lahman_table",
+      "relation": "batting",
+      "asset": "Batting.csv",
+      "manifest_table": "batting",
+      "primary_key": ["playerID", "yearID", "stint"]
+    },
+    {
+      "identity": "Pitching",
+      "kind": "packaged_lahman_table",
+      "relation": "pitching",
+      "asset": "Pitching.csv",
+      "manifest_table": "pitching",
+      "primary_key": ["playerID", "yearID", "stint"]
+    },
+    {
+      "identity": "Fielding",
+      "kind": "packaged_lahman_table",
+      "relation": "fielding",
+      "asset": "Fielding.csv",
+      "manifest_table": "fielding",
+      "primary_key": ["playerID", "yearID", "stint", "POS"]
+    },
+    {
+      "identity": "TeamReference",
+      "kind": "synthesized_team_reference",
+      "relation": "team_reference",
+      "asset": "assets/team_reference.csv",
+      "manifest_table": null,
+      "primary_key": ["yearID", "teamID"],
+      "reference_manifest": "assets/team_reference.manifest.json",
+      "reference_version": "season-aware-v1"
+    }
+  ]
+}

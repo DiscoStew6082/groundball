@@ -1,0 +1,40 @@
+{
+  "inventory_revision": "raw-fields-v1",
+  "fields": [
+    {
+      "identity": "People.playerID",
+      "source": "People",
+      "column": "playerID",
+      "data_type": "text",
+      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+    },
+    {
+      "identity": "People.birthCity",
+      "source": "People",
+      "column": "birthCity",
+      "data_type": "text",
+      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+    },
+    {
+      "identity": "TeamReference.yearID",
+      "source": "TeamReference",
+      "column": "yearID",
+      "data_type": "integer",
+      "operations": ["select", "equals", "range", "group", "sort", "export"]
+    },
+    {
+      "identity": "TeamReference.teamID",
+      "source": "TeamReference",
+      "column": "teamID",
+      "data_type": "text",
+      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+    },
+    {
+      "identity": "TeamReference.name",
+      "source": "TeamReference",
+      "column": "name",
+      "data_type": "text",
+      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+    }
+  ]
+}

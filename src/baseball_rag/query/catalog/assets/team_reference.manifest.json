@@ -1,0 +1,20 @@
+{
+  "columns": [
+    "yearID",
+    "teamID",
+    "name"
+  ],
+  "fact_sources": [
+    "Batting.csv",
+    "Pitching.csv",
+    "Fielding.csv"
+  ],
+  "reference_version": "season-aware-v1",
+  "rows": 3613,
+  "sha256": "d1d3965b27f20e848e0b9141bf3b3509918147e133f1dc8217a0a8fcf6eebc8b",
+  "source": {
+    "name": "SABR Lahman Baseball Database Teams.csv",
+    "sha256": "0e7afdd8b837d0edaca770a28817eec6613bd8255979c1be6e3f5827f4b88fd6",
+    "url": "https://sabr.org/lahman-database/"
+  }
+}
