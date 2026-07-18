@@ -1,7 +1,7 @@
 # Specify the implementation handoff
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Prototype the mobile Query Recipe experience](01-prototype-mobile-query-experience.md), [Define completeness and verification gates](04-define-completeness-and-verification-gates.md), [Specify the Lahman source-expansion Seam](06-specify-lahman-source-expansion-seam.md), [Choose the initial promoted query surface](07-choose-initial-promoted-query-surface.md)
 
 ## Question
