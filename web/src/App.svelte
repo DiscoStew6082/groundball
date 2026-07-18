@@ -268,8 +268,9 @@
     {#if capabilityError}
       <div class="startup-error" role="alert">{capabilityError}</div>
     {:else}
-      <div class="workspace">
-        <aside class="sidebar">
+      <div class:prototype-workspace={prototypeMode} class="workspace">
+        {#if !prototypeMode}
+          <aside class="sidebar">
           <div class="brand-block">
             <span class="eyebrow">Historical MLB</span>
             <strong>Ask the record.</strong>
@@ -294,7 +295,8 @@
               <small>{llmEnabled ? 'Local narration enabled' : 'No LLM access'}</small>
             </div>
           </div>
-        </aside>
+          </aside>
+        {/if}
 
         <div class:prototype-column={prototypeMode} class="main-column">
           {#if prototypeMode}
@@ -505,7 +507,7 @@
           {/if}
         </div>
 
-        {#if historyEnabled}
+        {#if historyEnabled && !prototypeMode}
           <aside class="history-panel" id="history">
             <div class="card-kicker"><span>Recent questions</span><span>On this device</span></div>
             {#if history.length}

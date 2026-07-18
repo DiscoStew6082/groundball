@@ -6,6 +6,10 @@
   background: #07100c;
 }
 
+.prototype-workspace {
+  display: block;
+}
+
 .prototype-host {
   width: 100%;
   min-width: 0;
@@ -390,6 +394,14 @@
   font-size: 10px;
 }
 
+.feed-context {
+  padding: 16px 4px 0;
+  color: #71897b;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
 .feed-answer {
   padding: 22px 4px;
 }
@@ -479,6 +491,10 @@
   gap: 6px;
 }
 
+.chat-composer.with-settings {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+}
+
 .chat-composer textarea {
   width: 100%;
   min-height: 40px;
@@ -521,6 +537,98 @@
   background: #e4b94a;
   font-size: 20px;
   font-weight: 900;
+}
+
+.composer-settings {
+  border: 1px solid #3a5143;
+  color: #a9b8ae;
+  background: transparent;
+  font-size: 17px;
+}
+
+.composer-settings[aria-expanded="true"] {
+  border-color: #e4b94a;
+  color: #f3d878;
+  background: #342c14;
+}
+
+.settings-popover {
+  position: fixed;
+  left: max(calc(50% - 350px), calc(12px + env(safe-area-inset-left)));
+  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 72px);
+  z-index: 23;
+  width: min(270px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  max-height: min(390px, calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  overflow-y: auto;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #3a5143;
+  border-radius: 16px;
+  background: rgba(13, 25, 17, .98);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .58);
+  backdrop-filter: blur(16px);
+}
+
+.settings-popover > small {
+  padding: 5px 7px 3px;
+  color: #758b7e;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.settings-popover button {
+  position: relative;
+  width: 100%;
+  min-height: 50px;
+  display: grid;
+  align-content: center;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 10px;
+  color: #dce7df;
+  background: transparent;
+  text-align: left;
+}
+
+.settings-popover button.active::after {
+  content: '✓';
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  color: #e4b94a;
+  font-weight: 900;
+  transform: translateY(-50%);
+}
+
+.settings-popover button.active {
+  color: #fff0af;
+  background: #2d2814;
+}
+
+.settings-popover button span,
+.settings-popover button small {
+  display: block;
+}
+
+.settings-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 17;
+  border: 0;
+  background: transparent;
+}
+
+.settings-popover button span {
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.settings-popover button small {
+  margin-top: 3px;
+  color: #7f9688;
+  font-size: 9px;
 }
 
 .details-backdrop {

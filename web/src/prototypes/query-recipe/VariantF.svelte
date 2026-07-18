@@ -1,6 +1,9 @@
 <script>
+  import { tick } from 'svelte';
+
   import ChatComposer from './ChatComposer.svelte';
   import DetailsSheet from './DetailsSheet.svelte';
+  import SettingsMenu from './SettingsMenu.svelte';
   import { CLARIFICATION_QUESTION, EXAMPLE_QUESTION, RESULTS } from './fixtures.js';
 
   export let previewState = 'answer';
@@ -8,6 +11,9 @@
 
   let draft = previewState === 'start' ? EXAMPLE_QUESTION : '';
   let priorPreviewState = previewState;
+  let settingsOpen = new URLSearchParams(window.location.search).get('menu') === '1';
+  let selectedSection = 'Query';
+  let composer;
   $: if (previewState !== priorPreviewState) {
     draft = previewState === 'start' ? EXAMPLE_QUESTION : '';
     priorPreviewState = previewState;
@@ -16,11 +22,27 @@
   function submit() {
     setPreviewState('answer');
     draft = '';
+    settingsOpen = false;
+  }
+
+  function toggleSettings() {
+    settingsOpen = !settingsOpen;
+  }
+
+  async function closeSettings() {
+    settingsOpen = false;
+    await tick();
+    composer?.focusSettings();
+  }
+
+  function chooseSection(section) {
+    selectedSection = section;
+    closeSettings();
   }
 </script>
 
 <article class="chat-variant feed-variant">
-  <header class="feed-header"><strong>Ground Ball</strong><span>Historical MLB</span></header>
+  <div class="feed-context">Historical MLB</div>
 
   {#if previewState === 'start'}
     <section class="feed-welcome"><h1>Ask the record.</h1><p>Edit the example in the chat box and send it when you’re ready.</p></section>
@@ -42,6 +64,19 @@
     </section>
   {/if}
 
-  <div class="chat-dock"><ChatComposer bind:value={draft} onSubmit={submit} /></div>
+  {#if settingsOpen}
+    <button class="settings-popover-backdrop" type="button" tabindex="-1" aria-label="Close sections and settings" on:click={closeSettings}></button>
+    <SettingsMenu selected={selectedSection} onSelect={chooseSection} onClose={closeSettings} />
+  {/if}
+  <div class="chat-dock">
+    <ChatComposer
+      bind:this={composer}
+      bind:value={draft}
+      onSubmit={submit}
+      showSettings={true}
+      {settingsOpen}
+      onToggleSettings={toggleSettings}
+    />
+  </div>
   {#if previewState === 'details'}<DetailsSheet onClose={() => setPreviewState('answer')} />{/if}
 </article>
