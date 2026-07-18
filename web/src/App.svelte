@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   import { csvDataUrl, jsonDataUrl, tableRows } from './lib/downloads.js';
 
@@ -43,6 +43,9 @@
   let testsResult = null;
   let testsError = '';
   let PrototypeComponent = null;
+  let prototypeSettingsOpen =
+    prototypeMode && new URLSearchParams(window.location.search).get('menu') === '1';
+  let prototypeSettingsButton;
 
   $: table = tableRows(result?.rows);
   $: queryEnabled = capabilityEnabled(capabilities?.query);
@@ -92,6 +95,16 @@
       capabilityError = messageFrom(caught, 'Could not start Ground Ball.');
     }
   });
+
+  function togglePrototypeSettings() {
+    prototypeSettingsOpen = !prototypeSettingsOpen;
+  }
+
+  async function closePrototypeSettings() {
+    prototypeSettingsOpen = false;
+    await tick();
+    prototypeSettingsButton?.focus({ preventScroll: true });
+  }
 
   function readHistory() {
     try {
@@ -243,10 +256,22 @@
 </svelte:head>
 
 <main class="desktop-shell">
-  <section class="app-window" aria-label="Ground Ball application window">
+  <section class:prototype-window={prototypeMode} class="app-window" aria-label="Ground Ball application window">
     <header class="title-bar">
       <div class="app-identity">
-        <span class="ball-mark" aria-hidden="true">GB</span>
+        {#if prototypeMode}
+          <button
+            bind:this={prototypeSettingsButton}
+            class="prototype-settings-trigger"
+            type="button"
+            aria-label="Open application sections"
+            aria-expanded={prototypeSettingsOpen}
+            aria-controls="app-sections-menu"
+            on:click={togglePrototypeSettings}
+          ><span class="ball-mark" aria-hidden="true">GB</span></button>
+        {:else}
+          <span class="ball-mark" aria-hidden="true">GB</span>
+        {/if}
         <div>
           <h1>{capabilities?.name ?? 'Ground Ball'}</h1>
           <p>
@@ -301,7 +326,10 @@
         <div class:prototype-column={prototypeMode} class="main-column">
           {#if prototypeMode}
             {#if PrototypeComponent}
-              <PrototypeComponent />
+              <PrototypeComponent
+                settingsOpen={prototypeSettingsOpen}
+                onCloseSettings={closePrototypeSettings}
+              />
             {:else}
               <p class="empty-copy">Loading mobile prototype…</p>
             {/if}

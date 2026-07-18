@@ -7,4 +7,4 @@ Generated from the throwaway `prototype/mobile-query-recipe` branch with Chrome 
 - `E`: search-style answer page controlled by the bottom chat composer.
 - `F`: compact sports-feed answer.
 
-The `D`–`F` captures cover start, answer, clarification, and hidden-details states. `F-settings.png` captures the selected direction's expandable bottom navigation. Presentation captures omit the prototype-only evaluator and variant switcher.
+The `D`–`F` captures cover start, answer, clarification, and hidden-details states. `F-settings.png` captures the selected direction's expandable navigation beneath the yellow title-bar button. Presentation captures omit the prototype-only evaluator and variant switcher.

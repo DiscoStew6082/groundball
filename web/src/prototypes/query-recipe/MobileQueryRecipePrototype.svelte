@@ -3,7 +3,11 @@
   import VariantE from './VariantE.svelte';
   import VariantF from './VariantF.svelte';
   import PrototypeSwitcher from './PrototypeSwitcher.svelte';
+  import SettingsMenu from './SettingsMenu.svelte';
   import './chat-prototype.css';
+
+  export let settingsOpen = false;
+  export let onCloseSettings = () => {};
 
   // Three answer-first chat variants, switchable via ?variant=, on the existing app route.
   const variants = [
@@ -21,6 +25,7 @@
   const presentationMode = new URLSearchParams(window.location.search).get('presentation') === '1';
   let variant = readChoice('variant', variants.map((item) => item.key), 'D');
   let previewState = readChoice('state', states.map((item) => item.key), 'answer');
+  let selectedSection = 'Query';
 
   function readChoice(key, allowed, fallback) {
     const value = new URLSearchParams(window.location.search).get(key);
@@ -49,6 +54,11 @@
     setVariant(variants[nextIndex].key);
   }
 
+  function chooseSection(section) {
+    selectedSection = section;
+    onCloseSettings();
+  }
+
   function handleKeydown(event) {
     const tag = event.target?.tagName?.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || event.target?.isContentEditable) return;
@@ -60,6 +70,17 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <section class="prototype-host" aria-label="Answer-first mobile chat prototype">
+  {#if settingsOpen}
+    <button
+      class="settings-popover-backdrop"
+      type="button"
+      tabindex="-1"
+      aria-label="Close application sections"
+      on:click={onCloseSettings}
+    ></button>
+    <SettingsMenu selected={selectedSection} onSelect={chooseSection} onClose={onCloseSettings} />
+  {/if}
+
   {#if !presentationMode}
     <aside class="prototype-evaluator" aria-label="Prototype preview state">
       <span>Prototype state</span>

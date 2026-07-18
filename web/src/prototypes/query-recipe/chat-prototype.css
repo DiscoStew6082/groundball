@@ -10,6 +10,30 @@
   display: block;
 }
 
+.prototype-window {
+  position: relative;
+}
+
+.prototype-settings-trigger {
+  position: relative;
+  z-index: 24;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.prototype-settings-trigger[aria-expanded="true"] .ball-mark {
+  border-color: #f0cf67;
+  box-shadow: 0 0 0 3px rgba(228, 185, 74, .16), 0 0 20px rgba(228, 185, 74, .3);
+}
+
 .prototype-host {
   width: 100%;
   min-width: 0;
@@ -491,10 +515,6 @@
   gap: 6px;
 }
 
-.chat-composer.with-settings {
-  grid-template-columns: 40px minmax(0, 1fr) 40px;
-}
-
 .chat-composer textarea {
   width: 100%;
   min-height: 40px;
@@ -539,26 +559,13 @@
   font-weight: 900;
 }
 
-.composer-settings {
-  border: 1px solid #3a5143;
-  color: #a9b8ae;
-  background: transparent;
-  font-size: 17px;
-}
-
-.composer-settings[aria-expanded="true"] {
-  border-color: #e4b94a;
-  color: #f3d878;
-  background: #342c14;
-}
-
 .settings-popover {
-  position: fixed;
-  left: max(calc(50% - 350px), calc(12px + env(safe-area-inset-left)));
-  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 72px);
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  top: calc(68px + env(safe-area-inset-top));
   z-index: 23;
   width: min(270px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
-  max-height: min(390px, calc(100dvh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  max-height: min(390px, calc(100dvh - 86px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
   overflow-y: auto;
   display: grid;
   gap: 5px;
