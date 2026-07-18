@@ -2,8 +2,7 @@
 .venv/
 venv/
 
-# uv lock and cache files
-uv.lock
+# uv cache files
 .uv/
 
 # Byte-compiled / optimized / DLL files
