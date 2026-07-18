@@ -1,7 +1,7 @@
 # Choose the initial promoted query surface
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Prototype the mobile Query Recipe experience](01-prototype-mobile-query-experience.md), [Specify the Published Query Catalog Interface](02-specify-published-query-catalog-interface.md), [Specify the deterministic Query Plan Interface](03-specify-deterministic-query-plan-interface.md), [Define completeness and verification gates](04-define-completeness-and-verification-gates.md)
 
 ## Question
