@@ -1,11 +1,17 @@
 """Published catalog-driven query interfaces."""
 
 from baseball_rag.query.contracts import (
+    All,
+    Any,
     Compare,
     ExecutionFailed,
     ExecutionUnavailable,
+    Export,
+    Exported,
+    InteractivePage,
     NeedsClarification,
     NoData,
+    Not,
     QueryEvidence,
     QueryPlanV1,
     QueryRecipe,
@@ -25,11 +31,17 @@ from baseball_rag.query.registry import (
 from baseball_rag.query.service import execute, prepare
 
 __all__ = [
+    "All",
+    "Any",
     "Compare",
     "ExecutionFailed",
     "ExecutionUnavailable",
+    "Export",
+    "Exported",
+    "InteractivePage",
     "NeedsClarification",
     "NoData",
+    "Not",
     "PublishedSourceView",
     "QueryEvidence",
     "QueryPlanV1",

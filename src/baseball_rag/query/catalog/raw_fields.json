@@ -1,40 +1,1934 @@
 {
-  "inventory_revision": "raw-fields-v1",
   "fields": [
     {
-      "identity": "People.playerID",
-      "source": "People",
+      "column": "ID",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.ID",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 0,
+      "source": "People"
+    },
+    {
       "column": "playerID",
       "data_type": "text",
-      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+      "duckdb_type": "VARCHAR",
+      "identity": "People.playerID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 1,
+      "source": "People"
     },
     {
-      "identity": "People.birthCity",
-      "source": "People",
+      "column": "birthYear",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.birthYear",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 2,
+      "source": "People"
+    },
+    {
+      "column": "birthMonth",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.birthMonth",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 3,
+      "source": "People"
+    },
+    {
+      "column": "birthDay",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.birthDay",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 4,
+      "source": "People"
+    },
+    {
       "column": "birthCity",
       "data_type": "text",
-      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+      "duckdb_type": "VARCHAR",
+      "identity": "People.birthCity",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 5,
+      "source": "People"
     },
     {
-      "identity": "TeamReference.yearID",
-      "source": "TeamReference",
+      "column": "birthCountry",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.birthCountry",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 6,
+      "source": "People"
+    },
+    {
+      "column": "birthState",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.birthState",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 7,
+      "source": "People"
+    },
+    {
+      "column": "deathYear",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.deathYear",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 8,
+      "source": "People"
+    },
+    {
+      "column": "deathMonth",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.deathMonth",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 9,
+      "source": "People"
+    },
+    {
+      "column": "deathDay",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.deathDay",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 10,
+      "source": "People"
+    },
+    {
+      "column": "deathCountry",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.deathCountry",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 11,
+      "source": "People"
+    },
+    {
+      "column": "deathState",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.deathState",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 12,
+      "source": "People"
+    },
+    {
+      "column": "deathCity",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.deathCity",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 13,
+      "source": "People"
+    },
+    {
+      "column": "nameFirst",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.nameFirst",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 14,
+      "source": "People"
+    },
+    {
+      "column": "nameLast",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.nameLast",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 15,
+      "source": "People"
+    },
+    {
+      "column": "nameGiven",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.nameGiven",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 16,
+      "source": "People"
+    },
+    {
+      "column": "weight",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.weight",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 17,
+      "source": "People"
+    },
+    {
+      "column": "height",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "People.height",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 18,
+      "source": "People"
+    },
+    {
+      "column": "bats",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.bats",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 19,
+      "source": "People"
+    },
+    {
+      "column": "throws",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.throws",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 20,
+      "source": "People"
+    },
+    {
+      "column": "debut",
+      "data_type": "date",
+      "duckdb_type": "DATE",
+      "identity": "People.debut",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 21,
+      "source": "People"
+    },
+    {
+      "column": "bbrefID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.bbrefID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 22,
+      "source": "People"
+    },
+    {
+      "column": "finalGame",
+      "data_type": "date",
+      "duckdb_type": "DATE",
+      "identity": "People.finalGame",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 23,
+      "source": "People"
+    },
+    {
+      "column": "retroID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "People.retroID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 24,
+      "source": "People"
+    },
+    {
+      "column": "playerID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Batting.playerID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 0,
+      "source": "Batting"
+    },
+    {
       "column": "yearID",
       "data_type": "integer",
-      "operations": ["select", "equals", "range", "group", "sort", "export"]
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.yearID",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 1,
+      "source": "Batting"
     },
     {
-      "identity": "TeamReference.teamID",
-      "source": "TeamReference",
+      "column": "stint",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.stint",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 2,
+      "source": "Batting"
+    },
+    {
       "column": "teamID",
       "data_type": "text",
-      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+      "duckdb_type": "VARCHAR",
+      "identity": "Batting.teamID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 3,
+      "source": "Batting"
     },
     {
-      "identity": "TeamReference.name",
-      "source": "TeamReference",
+      "column": "lgID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Batting.lgID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 4,
+      "source": "Batting"
+    },
+    {
+      "column": "G",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.G",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 5,
+      "source": "Batting"
+    },
+    {
+      "column": "AB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.AB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 6,
+      "source": "Batting"
+    },
+    {
+      "column": "R",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.R",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 7,
+      "source": "Batting"
+    },
+    {
+      "column": "H",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.H",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 8,
+      "source": "Batting"
+    },
+    {
+      "column": "2B",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.2B",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 9,
+      "source": "Batting"
+    },
+    {
+      "column": "3B",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.3B",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 10,
+      "source": "Batting"
+    },
+    {
+      "column": "HR",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.HR",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 11,
+      "source": "Batting"
+    },
+    {
+      "column": "RBI",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.RBI",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 12,
+      "source": "Batting"
+    },
+    {
+      "column": "SB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.SB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 13,
+      "source": "Batting"
+    },
+    {
+      "column": "CS",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.CS",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 14,
+      "source": "Batting"
+    },
+    {
+      "column": "BB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.BB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 15,
+      "source": "Batting"
+    },
+    {
+      "column": "SO",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.SO",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 16,
+      "source": "Batting"
+    },
+    {
+      "column": "IBB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.IBB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 17,
+      "source": "Batting"
+    },
+    {
+      "column": "HBP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.HBP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 18,
+      "source": "Batting"
+    },
+    {
+      "column": "SH",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.SH",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 19,
+      "source": "Batting"
+    },
+    {
+      "column": "SF",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.SF",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 20,
+      "source": "Batting"
+    },
+    {
+      "column": "GIDP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Batting.GIDP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 21,
+      "source": "Batting"
+    },
+    {
+      "column": "playerID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Pitching.playerID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 0,
+      "source": "Pitching"
+    },
+    {
+      "column": "yearID",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.yearID",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 1,
+      "source": "Pitching"
+    },
+    {
+      "column": "stint",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.stint",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 2,
+      "source": "Pitching"
+    },
+    {
+      "column": "teamID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Pitching.teamID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 3,
+      "source": "Pitching"
+    },
+    {
+      "column": "lgID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Pitching.lgID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 4,
+      "source": "Pitching"
+    },
+    {
+      "column": "W",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.W",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 5,
+      "source": "Pitching"
+    },
+    {
+      "column": "L",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.L",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 6,
+      "source": "Pitching"
+    },
+    {
+      "column": "G",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.G",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 7,
+      "source": "Pitching"
+    },
+    {
+      "column": "GS",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.GS",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 8,
+      "source": "Pitching"
+    },
+    {
+      "column": "CG",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.CG",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 9,
+      "source": "Pitching"
+    },
+    {
+      "column": "SHO",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.SHO",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 10,
+      "source": "Pitching"
+    },
+    {
+      "column": "SV",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.SV",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 11,
+      "source": "Pitching"
+    },
+    {
+      "column": "IPouts",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.IPouts",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 12,
+      "source": "Pitching"
+    },
+    {
+      "column": "H",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.H",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 13,
+      "source": "Pitching"
+    },
+    {
+      "column": "ER",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.ER",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 14,
+      "source": "Pitching"
+    },
+    {
+      "column": "HR",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.HR",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 15,
+      "source": "Pitching"
+    },
+    {
+      "column": "BB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.BB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 16,
+      "source": "Pitching"
+    },
+    {
+      "column": "SO",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.SO",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 17,
+      "source": "Pitching"
+    },
+    {
+      "column": "BAOpp",
+      "data_type": "number",
+      "duckdb_type": "DOUBLE",
+      "identity": "Pitching.BAOpp",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 18,
+      "source": "Pitching"
+    },
+    {
+      "column": "ERA",
+      "data_type": "number",
+      "duckdb_type": "DOUBLE",
+      "identity": "Pitching.ERA",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 19,
+      "source": "Pitching"
+    },
+    {
+      "column": "IBB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.IBB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 20,
+      "source": "Pitching"
+    },
+    {
+      "column": "WP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.WP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 21,
+      "source": "Pitching"
+    },
+    {
+      "column": "HBP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.HBP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 22,
+      "source": "Pitching"
+    },
+    {
+      "column": "BK",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.BK",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 23,
+      "source": "Pitching"
+    },
+    {
+      "column": "BFP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.BFP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 24,
+      "source": "Pitching"
+    },
+    {
+      "column": "GF",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.GF",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 25,
+      "source": "Pitching"
+    },
+    {
+      "column": "R",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.R",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 26,
+      "source": "Pitching"
+    },
+    {
+      "column": "SH",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.SH",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 27,
+      "source": "Pitching"
+    },
+    {
+      "column": "SF",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.SF",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 28,
+      "source": "Pitching"
+    },
+    {
+      "column": "GIDP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Pitching.GIDP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 29,
+      "source": "Pitching"
+    },
+    {
+      "column": "playerID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Fielding.playerID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 0,
+      "source": "Fielding"
+    },
+    {
+      "column": "yearID",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.yearID",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 1,
+      "source": "Fielding"
+    },
+    {
+      "column": "stint",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.stint",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 2,
+      "source": "Fielding"
+    },
+    {
+      "column": "teamID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Fielding.teamID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 3,
+      "source": "Fielding"
+    },
+    {
+      "column": "lgID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Fielding.lgID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 4,
+      "source": "Fielding"
+    },
+    {
+      "column": "POS",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "Fielding.POS",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 5,
+      "source": "Fielding"
+    },
+    {
+      "column": "G",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.G",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 6,
+      "source": "Fielding"
+    },
+    {
+      "column": "GS",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.GS",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 7,
+      "source": "Fielding"
+    },
+    {
+      "column": "InnOuts",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.InnOuts",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 8,
+      "source": "Fielding"
+    },
+    {
+      "column": "PO",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.PO",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 9,
+      "source": "Fielding"
+    },
+    {
+      "column": "A",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.A",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 10,
+      "source": "Fielding"
+    },
+    {
+      "column": "E",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.E",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 11,
+      "source": "Fielding"
+    },
+    {
+      "column": "DP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.DP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 12,
+      "source": "Fielding"
+    },
+    {
+      "column": "PB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.PB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 13,
+      "source": "Fielding"
+    },
+    {
+      "column": "WP",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.WP",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 14,
+      "source": "Fielding"
+    },
+    {
+      "column": "SB",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.SB",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 15,
+      "source": "Fielding"
+    },
+    {
+      "column": "CS",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.CS",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 16,
+      "source": "Fielding"
+    },
+    {
+      "column": "ZR",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "Fielding.ZR",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 17,
+      "source": "Fielding"
+    },
+    {
+      "column": "yearID",
+      "data_type": "integer",
+      "duckdb_type": "BIGINT",
+      "identity": "TeamReference.yearID",
+      "operations": [
+        "select",
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+        "range",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 0,
+      "source": "TeamReference"
+    },
+    {
+      "column": "teamID",
+      "data_type": "text",
+      "duckdb_type": "VARCHAR",
+      "identity": "TeamReference.teamID",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 1,
+      "source": "TeamReference"
+    },
+    {
       "column": "name",
       "data_type": "text",
-      "operations": ["select", "equals", "one_of", "group", "sort", "export"]
+      "duckdb_type": "VARCHAR",
+      "identity": "TeamReference.name",
+      "operations": [
+        "select",
+        "equals",
+        "one_of",
+        "group",
+        "sort",
+        "export"
+      ],
+      "ordinal": 2,
+      "source": "TeamReference"
     }
-  ]
+  ],
+  "inventory_revision": "raw-fields-62c654dd3fddb1f6",
+  "schema_version": 1
 }

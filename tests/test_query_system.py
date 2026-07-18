@@ -6,6 +6,7 @@ from inspect import signature
 import pytest
 
 from baseball_rag.query import (
+    All,
     Compare,
     ExecutionUnavailable,
     QueryPlanV1,
@@ -28,10 +29,11 @@ def test_raw_people_birth_city_query_crosses_catalog_plan_execution_and_evidence
         QueryRecipe(
             source="People",
             selections=("People.playerID", "People.birthCity"),
-            predicate=Compare(
-                value="People.birthCity",
-                operator="equals",
-                literal="Brooklyn",
+            predicate=All(
+                (
+                    Compare("People.birthCity", "equals", "Brooklyn"),
+                    Compare("People.playerID", "equals", "koufasa01"),
+                )
             ),
         )
     )
@@ -47,9 +49,9 @@ def test_raw_people_birth_city_query_crosses_catalog_plan_execution_and_evidence
     assert "koufasa01" in {row["People.playerID"] for row in executed.rows}
     assert "?" in executed.evidence.parameterized_sql
     assert "Brooklyn" not in executed.evidence.parameterized_sql
-    assert executed.evidence.bound_values == ("Brooklyn",)
+    assert executed.evidence.bound_values == ("Brooklyn", "koufasa01")
     assert executed.evidence.catalog_revision == planned.plan.catalog_revision
-    assert executed.evidence.data_release
+    assert executed.evidence.data_release == "neuml-baseballdata:lahman-2025:2026-01-11"
     assert executed.evidence.sources[0].identity == "People"
     assert executed.evidence.row_count == len(executed.rows)
 
@@ -68,7 +70,8 @@ def test_query_plan_has_canonical_json_round_trip():
 
     assert serialized == (
         '{"catalog_revision":"published-query-catalog-v1","grain":"raw_rows",'
-        '"ordering":[],"output":"interactive_page","predicate":{"kind":"compare",'
+        '"groupings":[],"ordering":[],"output":{"kind":"interactive_page",'
+        '"offset":0,"size":100},"predicate":{"kind":"compare",'
         '"literal":"Brooklyn","operator":"equals","value":"People.birthCity"},'
         '"ranking":null,"relationships":[],"selections":["People.birthCity"],'
         '"source":"People","version":"query-plan-v1"}'
@@ -88,10 +91,11 @@ def test_published_source_and_raw_field_views_are_immutable_and_registry_backed(
         "TeamReference",
     )
     assert sources[-1].reference_version == "season-aware-v1"
-    assert tuple(field.identity for field in fields) == (
+    assert len(fields) == 25
+    assert {field.identity for field in fields} >= {
         "People.playerID",
         "People.birthCity",
-    )
+    }
     assert not hasattr(sources[0], "relation")
     assert not hasattr(sources[0], "asset")
 
@@ -228,6 +232,12 @@ def test_season_aware_team_reference_is_a_real_versioned_published_source():
                 "TeamReference.yearID",
                 "TeamReference.teamID",
                 "TeamReference.name",
+            ),
+            predicate=All(
+                (
+                    Compare("TeamReference.yearID", "equals", 1936),
+                    Compare("TeamReference.teamID", "equals", "BSN"),
+                )
             ),
         )
     )

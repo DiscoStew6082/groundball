@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping, TypeAlias, cast
 
 Scalar: TypeAlias = str | int | float | bool | None
+Literal: TypeAlias = Scalar | tuple[Scalar, ...]
 
 
 @dataclass(frozen=True)
@@ -16,26 +17,43 @@ class Compare:
 
     value: str
     operator: str
-    literal: Scalar
+    literal: Literal
 
     def as_dict(self) -> dict[str, object]:
+        literal: object = list(self.literal) if isinstance(self.literal, tuple) else self.literal
         return {
             "kind": "compare",
-            "literal": self.literal,
+            "literal": literal,
             "operator": self.operator,
             "value": self.value,
         }
 
 
 @dataclass(frozen=True)
-class QueryRecipe:
-    """The editable user expression shared by every query Adapter."""
+class All:
+    predicates: tuple[Predicate, ...]
 
-    source: str
-    selections: tuple[str, ...]
-    predicate: Compare | None = None
-    catalog_revision: str | None = None
-    grain: str = "raw_rows"
+    def as_dict(self) -> dict[str, object]:
+        return {"kind": "all", "predicates": [item.as_dict() for item in self.predicates]}
+
+
+@dataclass(frozen=True)
+class Any:
+    predicates: tuple[Predicate, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {"kind": "any", "predicates": [item.as_dict() for item in self.predicates]}
+
+
+@dataclass(frozen=True)
+class Not:
+    predicate: Predicate
+
+    def as_dict(self) -> dict[str, object]:
+        return {"kind": "not", "predicate": self.predicate.as_dict()}
+
+
+Predicate: TypeAlias = Compare | All | Any | Not
 
 
 @dataclass(frozen=True)
@@ -71,6 +89,40 @@ class SortSpec:
 
 
 @dataclass(frozen=True)
+class InteractivePage:
+    size: int = 100
+    offset: int = 0
+
+    def as_dict(self) -> dict[str, object]:
+        return {"kind": "interactive_page", "offset": self.offset, "size": self.size}
+
+
+@dataclass(frozen=True)
+class Export:
+    format: str = "json"
+
+    def as_dict(self) -> dict[str, object]:
+        return {"format": self.format, "full_match": True, "kind": "export"}
+
+
+OutputSpec: TypeAlias = InteractivePage | Export
+
+
+@dataclass(frozen=True)
+class QueryRecipe:
+    """The editable user expression shared by every query Adapter."""
+
+    source: str
+    selections: tuple[str, ...]
+    predicate: Predicate | None = None
+    catalog_revision: str | None = None
+    grain: str = "raw_rows"
+    groupings: tuple[str, ...] = ()
+    ordering: tuple[SortSpec, ...] = ()
+    output: OutputSpec = field(default_factory=InteractivePage)
+
+
+@dataclass(frozen=True)
 class QueryPlanV1:
     """Closed, executable, canonically serializable query meaning."""
 
@@ -79,18 +131,20 @@ class QueryPlanV1:
     source: str
     grain: str
     selections: tuple[str, ...]
-    predicate: Compare | None
+    predicate: Predicate | None
+    groupings: tuple[str, ...] = ()
     relationships: tuple[str, ...] = ()
     ranking: RankSpec | None = None
     ordering: tuple[SortSpec, ...] = ()
-    output: str = "interactive_page"
+    output: OutputSpec = field(default_factory=InteractivePage)
 
     def as_dict(self) -> dict[str, object]:
         return {
             "catalog_revision": self.catalog_revision,
             "grain": self.grain,
+            "groupings": list(self.groupings),
             "ordering": [item.as_dict() for item in self.ordering],
-            "output": self.output,
+            "output": self.output.as_dict(),
             "predicate": self.predicate.as_dict() if self.predicate else None,
             "ranking": self.ranking.as_dict() if self.ranking else None,
             "relationships": list(self.relationships),
@@ -111,16 +165,6 @@ class QueryPlanV1:
     def from_json(cls, serialized: str) -> QueryPlanV1:
         """Restore a canonical plan without accepting executable expressions."""
         payload = cast(dict[str, object], json.loads(serialized))
-        predicate_payload = cast(dict[str, object] | None, payload["predicate"])
-        predicate = None
-        if predicate_payload is not None:
-            if predicate_payload.get("kind") != "compare":
-                raise ValueError("Unsupported Query Plan predicate kind.")
-            predicate = Compare(
-                value=str(predicate_payload["value"]),
-                operator=str(predicate_payload["operator"]),
-                literal=_typed_scalar(predicate_payload.get("literal")),
-            )
         ranking_payload = cast(dict[str, object] | None, payload["ranking"])
         ranking = None
         if ranking_payload is not None:
@@ -146,11 +190,12 @@ class QueryPlanV1:
             source=str(payload["source"]),
             grain=str(payload["grain"]),
             selections=tuple(cast(list[str], payload["selections"])),
-            predicate=predicate,
+            predicate=_predicate_from(payload["predicate"]),
+            groupings=tuple(cast(list[str], payload.get("groupings", []))),
             relationships=tuple(cast(list[str], payload["relationships"])),
             ranking=ranking,
             ordering=ordering,
-            output=str(payload["output"]),
+            output=_output_from(payload["output"]),
         )
 
 
@@ -180,6 +225,7 @@ class SourceEvidence:
     release: str
     expected_rows: int | None
     sha256: str | None
+    row_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -190,6 +236,7 @@ class QueryEvidence:
     catalog_revision: str
     data_release: str
     row_count: int
+    matched_row_count: int
     result_fingerprint: str
 
 
@@ -210,6 +257,12 @@ class Rows(QueryRun):
 
 
 @dataclass(frozen=True)
+class Exported(QueryRun):
+    format: str
+    content: str
+
+
+@dataclass(frozen=True)
 class NoData(QueryRun):
     pass
 
@@ -224,7 +277,51 @@ class ExecutionFailed:
     reason: str
 
 
-ExecutionOutcome: TypeAlias = Rows | NoData | ExecutionUnavailable | ExecutionFailed
+ExecutionOutcome: TypeAlias = Rows | Exported | NoData | ExecutionUnavailable | ExecutionFailed
+
+
+def _predicate_from(value: object) -> Predicate | None:
+    if value is None:
+        return None
+    payload = cast(dict[str, object], value)
+    kind = payload.get("kind")
+    if kind == "compare":
+        return Compare(
+            value=str(payload["value"]),
+            operator=str(payload["operator"]),
+            literal=_typed_literal(payload.get("literal")),
+        )
+    if kind in {"all", "any"}:
+        children = tuple(
+            cast(Predicate, _predicate_from(item))
+            for item in cast(list[dict[str, object]], payload["predicates"])
+        )
+        return All(children) if kind == "all" else Any(children)
+    if kind == "not":
+        child = _predicate_from(payload["predicate"])
+        if child is None:
+            raise ValueError("Not predicate requires one child.")
+        return Not(child)
+    raise ValueError("Unsupported Query Plan predicate kind.")
+
+
+def _output_from(value: object) -> OutputSpec:
+    payload = cast(dict[str, object], value)
+    kind = payload.get("kind")
+    if kind == "interactive_page":
+        return InteractivePage(
+            size=int(cast(int, payload["size"])),
+            offset=int(cast(int, payload["offset"])),
+        )
+    if kind == "export":
+        return Export(format=str(payload["format"]))
+    raise ValueError("Unsupported Query Plan output kind.")
+
+
+def _typed_literal(value: object) -> Literal:
+    if isinstance(value, list):
+        return tuple(_typed_scalar(item) for item in value)
+    return _typed_scalar(value)
 
 
 def _typed_scalar(value: object) -> Scalar:

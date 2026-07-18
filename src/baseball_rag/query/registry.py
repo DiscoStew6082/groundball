@@ -37,6 +37,8 @@ class RawField:
     identity: str
     source: str
     column: str
+    ordinal: int
+    duckdb_type: str
     data_type: str
     operations: tuple[str, ...]
 
@@ -79,6 +81,8 @@ def discover_fields(*, source: str | None = None) -> tuple[RawField, ...]:
             identity=item["identity"],
             source=item["source"],
             column=item["column"],
+            ordinal=int(item["ordinal"]),
+            duckdb_type=item["duckdb_type"],
             data_type=item["data_type"],
             operations=tuple(item["operations"]),
         )
