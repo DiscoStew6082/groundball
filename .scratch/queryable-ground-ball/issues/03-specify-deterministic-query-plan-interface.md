@@ -1,7 +1,7 @@
 # Specify the deterministic Query Plan Interface
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Specify the Published Query Catalog Interface](02-specify-published-query-catalog-interface.md)
 
 ## Question
