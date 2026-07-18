@@ -1,8 +1,10 @@
 """Published catalog-driven query interfaces."""
 
+from baseball_rag.query.batting_adapter import build_named_recipe, interpret_recipe
 from baseball_rag.query.contracts import (
     All,
     Any,
+    CalculationEvidence,
     Compare,
     ExecutionFailed,
     ExecutionUnavailable,
@@ -21,18 +23,24 @@ from baseball_rag.query.contracts import (
     Rows,
     SortSpec,
     SourceEvidence,
+    ValueRef,
 )
 from baseball_rag.query.registry import (
+    PromotedValueView,
+    PublishedRelationshipView,
     PublishedSourceView,
     RawField,
     discover_fields,
+    published_relationships,
     published_sources,
+    published_values,
 )
 from baseball_rag.query.service import execute, prepare
 
 __all__ = [
     "All",
     "Any",
+    "CalculationEvidence",
     "Compare",
     "ExecutionFailed",
     "ExecutionUnavailable",
@@ -42,6 +50,8 @@ __all__ = [
     "NeedsClarification",
     "NoData",
     "Not",
+    "PromotedValueView",
+    "PublishedRelationshipView",
     "PublishedSourceView",
     "QueryEvidence",
     "QueryPlanV1",
@@ -53,8 +63,13 @@ __all__ = [
     "Rows",
     "SortSpec",
     "SourceEvidence",
+    "ValueRef",
+    "build_named_recipe",
     "discover_fields",
     "execute",
+    "interpret_recipe",
     "prepare",
     "published_sources",
+    "published_relationships",
+    "published_values",
 ]

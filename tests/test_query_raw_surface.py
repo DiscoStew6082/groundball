@@ -73,6 +73,11 @@ def test_checked_in_inventory_and_compatibility_are_generated_from_full_inputs()
         payload["raw_inventory_sha256"]
         == hashlib.sha256((CATALOG_DIR / "raw_fields.json").read_bytes()).hexdigest()
     )
+    assert payload["promoted_catalog_sha256"] == {
+        "promoted_batting.json": hashlib.sha256(
+            (CATALOG_DIR / "promoted_batting.json").read_bytes()
+        ).hexdigest()
+    }
 
 
 def test_raw_numeric_filters_sorting_and_paging_are_deterministic():

@@ -1,7 +1,10 @@
 {
-  "catalog_revision": "published-query-catalog-v1",
-  "catalog_sha256": "49f49d6d478dddc1db38f86d5f7203b13d57dd456347b9d03ccaaee3019ff119",
+  "catalog_revision": "published-query-catalog-v2",
+  "catalog_sha256": "518fa69a0b3c892233cb91bcfea70126c502821e3fa8ec0d719967450a100f4c",
   "data_manifest_sha256": "3ea87cef68b71d7256827d025626703350785a3782e54d98070bf7fe74882128",
+  "promoted_catalog_sha256": {
+    "promoted_batting.json": "a657cbc7dd2539622f65622759500565bfbbbcbda0cf974f1fa6275582cc1225"
+  },
   "raw_inventory_revision": "raw-fields-62c654dd3fddb1f6",
   "raw_inventory_sha256": "a5e5e85f2cc2009c6df0e84bbe8cae7956a3a984b068471f50dae7b014b3509a",
   "source_registry_revision": "lahman-sources-v1",

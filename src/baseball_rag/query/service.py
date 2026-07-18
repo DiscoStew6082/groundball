@@ -7,10 +7,12 @@ import hashlib
 import io
 import json
 from datetime import date
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
+from baseball_rag.query.compiler import compile_promoted_plan, compile_raw_plan
 from baseball_rag.query.contracts import (
     All,
+    CalculationEvidence,
     Compare,
     ExecutionFailed,
     ExecutionOutcome,
@@ -18,7 +20,6 @@ from baseball_rag.query.contracts import (
     Export,
     Exported,
     InteractivePage,
-    Literal,
     NoData,
     Not,
     PlanningOutcome,
@@ -36,11 +37,18 @@ from baseball_rag.query.contracts import (
 from baseball_rag.query.contracts import (
     Any as AnyPredicate,
 )
+from baseball_rag.query.promoted import (
+    is_promoted_grain,
+    prepare_promoted,
+    validate_promoted_plan,
+)
 from baseball_rag.query.registry import (
     CATALOG_DIR,
     _SourceBinding,
     catalog_revision,
     field_by_identity,
+    promoted_value_by_identity,
+    relationship_by_identity,
     source_by_identity,
 )
 from baseball_rag.query.runtime import (
@@ -64,6 +72,16 @@ def prepare(recipe: QueryRecipe) -> PlanningOutcome:
     if not recipe.selections:
         return Rejected("At least one published value must be selected.")
 
+    output_reason = _validate_output(recipe.output)
+    if output_reason is not None:
+        return Rejected(output_reason)
+    if recipe.grain not in {"raw_rows", "group_by"} and not recipe.groupings:
+        return prepare_promoted(
+            recipe,
+            catalog_revision=current_revision,
+            plan_version=PLAN_VERSION,
+        )
+
     grain = "group_by" if recipe.groupings else recipe.grain
     if grain not in {"raw_rows", "group_by"}:
         return Rejected(f"Grain {grain!r} is not published yet.")
@@ -86,9 +104,8 @@ def prepare(recipe: QueryRecipe) -> PlanningOutcome:
     rejection = _validate_ordering(recipe.source, recipe.selections, recipe.ordering)
     if rejection is not None:
         return rejection
-    output_reason = _validate_output(recipe.output)
-    if output_reason is not None:
-        return Rejected(output_reason)
+    if recipe.ranking is not None:
+        return Rejected("Ranking is not published by the raw query surface.")
 
     return Ready(
         QueryPlanV1(
@@ -99,6 +116,7 @@ def prepare(recipe: QueryRecipe) -> PlanningOutcome:
             selections=recipe.selections,
             predicate=recipe.predicate,
             groupings=recipe.groupings,
+            ranking=recipe.ranking,
             ordering=recipe.ordering,
             output=recipe.output,
         )
@@ -126,7 +144,10 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
         return ExecutionUnavailable(f"Source {plan.source!r} is not executable.")
 
     try:
-        sql, bound_values = _compile(plan, source.relation, source.primary_key)
+        if is_promoted_grain(plan.grain):
+            sql, bound_values = compile_promoted_plan(plan)
+        else:
+            sql, bound_values = compile_raw_plan(plan, source.relation, source.primary_key)
         runtime = published_data_runtime()
         active_connection = runtime.connection
     except (ValueError, PublishedDataUnavailableError) as exc:
@@ -152,16 +173,25 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
         for values in materialized
         if bool(values[-1])
     )
+    evidence_sources = [source]
+    for relationship_identity in plan.relationships:
+        relationship = relationship_by_identity(relationship_identity)
+        if relationship is None:
+            return ExecutionUnavailable(f"Relationship {relationship_identity!r} is not published.")
+        for identity in (relationship.left_source, relationship.right_source):
+            binding = source_by_identity(identity)
+            if binding is not None and binding not in evidence_sources:
+                evidence_sources.append(binding)
     evidence = _evidence(
         plan=plan,
         sql=sql,
         bound_values=bound_values,
         rows=rows,
         matched_row_count=matched_row_count,
-        source=source,
+        sources=tuple(evidence_sources),
         manifest=runtime.manifest,
         data_release=runtime.data_release,
-        source_fingerprint=runtime.source_fingerprints[source.identity],
+        source_fingerprints=runtime.source_fingerprints,
     )
     if not rows and matched_row_count == 0:
         return NoData(plan=plan, rows=rows, evidence=evidence)
@@ -207,6 +237,8 @@ def _validate_compare(source: str, compare: Compare) -> Rejected | None:
         return Rejected(f"Filter value {compare.value!r} is not published for {source}.")
     if compare.operator not in field.operations:
         return Rejected(f"Operator {compare.operator!r} is not valid for {compare.value}.")
+    if not isinstance(compare.literal, (tuple, str, int, float, bool, type(None))):
+        return Rejected("Raw-field comparisons require typed scalar literals.")
     literals = compare.literal if isinstance(compare.literal, tuple) else (compare.literal,)
     if compare.operator == "range" and len(literals) != 2:
         return Rejected(f"Range filter {compare.value!r} requires exactly two literals.")
@@ -274,6 +306,8 @@ def _validate_output(output: object) -> str | None:
 
 
 def _validate_plan(plan: QueryPlanV1) -> str | None:
+    if is_promoted_grain(plan.grain):
+        return validate_promoted_plan(plan, plan_version=PLAN_VERSION)
     if plan.grain not in {"raw_rows", "group_by"}:
         return f"Grain {plan.grain!r} is not published yet."
     if plan.grain == "group_by" and set(plan.selections) != set(plan.groupings):
@@ -302,140 +336,6 @@ def _validate_plan(plan: QueryPlanV1) -> str | None:
     return _validate_output(plan.output)
 
 
-def _compile(
-    plan: QueryPlanV1,
-    relation: str,
-    primary_key: tuple[str, ...],
-) -> tuple[str, tuple[Scalar, ...]]:
-    selected_parts: list[str] = []
-    selected_aliases: list[str] = []
-    selected_columns: set[str] = set()
-    for identity in plan.selections:
-        field = field_by_identity(identity)
-        if field is None or field.source != plan.source:
-            raise ValueError(f"Plan references stale field {identity!r}.")
-        selected_parts.append(f"{_quote(field.column)} AS {_quote(field.identity)}")
-        selected_aliases.append(_quote(field.identity))
-        selected_columns.add(field.column)
-
-    hidden_keys: list[str] = []
-    if plan.grain == "raw_rows":
-        for index, column in enumerate(primary_key):
-            if column in selected_columns:
-                continue
-            alias = f"__key_{index}"
-            selected_parts.append(f"{_quote(column)} AS {_quote(alias)}")
-            hidden_keys.append(_quote(alias))
-
-    where_sql = ""
-    bound_values: tuple[Scalar, ...] = ()
-    if plan.predicate is not None:
-        predicate_sql, predicate_values = _compile_predicate(plan.source, plan.predicate)
-        where_sql = f" WHERE {predicate_sql}"
-        bound_values = tuple(predicate_values)
-
-    group_sql = ""
-    if plan.grain == "group_by":
-        grouping_columns = []
-        for identity in plan.groupings:
-            field = field_by_identity(identity)
-            if field is None:
-                raise ValueError(f"Plan references stale grouping field {identity!r}.")
-            grouping_columns.append(_quote(field.column))
-        group_sql = f" GROUP BY {', '.join(grouping_columns)}"
-
-    base_sql = f"SELECT {', '.join(selected_parts)} FROM {_quote(relation)}{where_sql}{group_sql}"
-    order_parts = []
-    for spec in plan.ordering:
-        direction = "ASC" if spec.direction == "ascending" else "DESC"
-        nulls = "FIRST" if spec.nulls == "first" else "LAST"
-        order_parts.append(f"{_quote(spec.value)} {direction} NULLS {nulls}")
-    if plan.grain == "raw_rows":
-        order_parts.extend(f"{key} ASC NULLS LAST" for key in hidden_keys)
-        for column in primary_key:
-            field_identity = f"{plan.source}.{column}"
-            if field_identity in plan.selections and not any(
-                spec.value == field_identity for spec in plan.ordering
-            ):
-                order_parts.append(f"{_quote(field_identity)} ASC NULLS LAST")
-    else:
-        for alias in selected_aliases:
-            if not any(alias == _quote(spec.value) for spec in plan.ordering):
-                order_parts.append(f"{alias} ASC NULLS LAST")
-
-    page_predicate = "TRUE"
-    if isinstance(plan.output, InteractivePage):
-        first_row = plan.output.offset + 1
-        last_row = plan.output.offset + plan.output.size
-        page_predicate = f"__row_number BETWEEN {first_row} AND {last_row}"
-    sql = (
-        f"WITH published_rows AS ({base_sql}), "
-        f"ordered_rows AS (SELECT {', '.join(selected_aliases)}, "
-        f"ROW_NUMBER() OVER (ORDER BY {', '.join(order_parts)}) AS __row_number "
-        f"FROM published_rows), "
-        f"match_count AS (SELECT COUNT(*) AS __matched_count FROM published_rows) "
-        f"SELECT {', '.join(selected_aliases)}, match_count.__matched_count, "
-        f"ordered_rows.__row_number IS NOT NULL AS __row_present "
-        f"FROM match_count LEFT JOIN ordered_rows ON {page_predicate} "
-        f"ORDER BY ordered_rows.__row_number"
-    )
-    return sql, bound_values
-
-
-def _compile_predicate(source: str, predicate: Predicate) -> tuple[str, list[Scalar]]:
-    if isinstance(predicate, Compare):
-        field = field_by_identity(predicate.value)
-        if field is None or field.source != source:
-            raise ValueError(f"Plan references stale filter field {predicate.value!r}.")
-        column = _quote(field.column)
-        literal = predicate.literal
-        if predicate.operator == "one_of":
-            values = list(cast_tuple(literal))
-            return f"{column} IN ({', '.join('?' for _ in values)})", values
-        if predicate.operator == "range":
-            values = list(cast_tuple(literal))
-            return f"{column} BETWEEN ? AND ?", values
-        operators = {
-            "equals": "=",
-            "not_equals": "<>",
-            "greater_than": ">",
-            "greater_or_equal": ">=",
-            "less_than": "<",
-            "less_or_equal": "<=",
-        }
-        sql_operator = operators.get(predicate.operator)
-        if sql_operator is None:
-            raise ValueError(f"Plan uses unsupported operator {predicate.operator!r}.")
-        return f"{column} {sql_operator} ?", [cast_scalar(literal)]
-    if isinstance(predicate, (All, AnyPredicate)):
-        compiled = [_compile_predicate(source, item) for item in predicate.predicates]
-        connector = " AND " if isinstance(predicate, All) else " OR "
-        return (
-            "(" + connector.join(sql for sql, _ in compiled) + ")",
-            [value for _, values in compiled for value in values],
-        )
-    if isinstance(predicate, Not):
-        sql, values = _compile_predicate(source, predicate.predicate)
-        return f"NOT ({sql})", values
-    raise ValueError("Unsupported predicate kind.")
-
-
-def cast_tuple(literal: Literal) -> tuple[Scalar, ...]:
-    if not isinstance(literal, tuple):
-        raise ValueError("Plan operator requires a literal sequence.")
-    return literal
-
-
-def cast_scalar(literal: Literal) -> Scalar:
-    if isinstance(literal, tuple):
-        raise ValueError("Plan operator requires one scalar literal.")
-    return literal
-
-
-def _quote(identifier: str) -> str:
-    return '"' + identifier.replace('"', '""') + '"'
-
-
 def _json_scalar(value: object) -> Scalar:
     """Normalize DuckDB values to the public JSON-scalar contract."""
     if isinstance(value, date):
@@ -452,15 +352,11 @@ def _evidence(
     bound_values: tuple[Scalar, ...],
     rows: Iterable[dict[str, Scalar]],
     matched_row_count: int,
-    source: _SourceBinding,
+    sources: tuple[_SourceBinding, ...],
     manifest: dict[str, Any],
     data_release: str,
-    source_fingerprint: str,
+    source_fingerprints: Mapping[str, str],
 ) -> QueryEvidence:
-    file_record: dict[str, Any] = next(
-        (item for item in manifest.get("files", []) if item.get("table") == source.manifest_table),
-        {},
-    )
     materialized_rows = tuple(rows)
     fingerprint_payload = json.dumps(
         materialized_rows,
@@ -469,33 +365,56 @@ def _evidence(
         sort_keys=True,
         default=str,
     ).encode("utf-8")
-    expected_rows = file_record.get("rows")
-    sha256 = file_record.get("sha256")
-    source_release = data_release
-    if source.reference_manifest is not None:
-        reference = json.loads(
-            (CATALOG_DIR / source.reference_manifest).read_text(encoding="utf-8")
+    evidence_sources = []
+    for source in sources:
+        file_record: dict[str, Any] = next(
+            (
+                item
+                for item in manifest.get("files", [])
+                if item.get("table") == source.manifest_table
+            ),
+            {},
         )
-        expected_rows = reference.get("rows")
-        sha256 = reference.get("sha256")
-        source_release = str(source.reference_version or reference.get("reference_version"))
-    source_evidence = SourceEvidence(
-        identity=source.identity,
-        kind=source.kind,
-        release=source_release,
-        expected_rows=expected_rows,
-        sha256=sha256,
-        row_fingerprint=source_fingerprint,
-    )
+        expected_rows = file_record.get("rows")
+        sha256 = file_record.get("sha256")
+        source_release = data_release
+        if source.reference_manifest is not None:
+            reference = json.loads(
+                (CATALOG_DIR / source.reference_manifest).read_text(encoding="utf-8")
+            )
+            expected_rows = reference.get("rows")
+            sha256 = reference.get("sha256")
+            source_release = str(source.reference_version or reference.get("reference_version"))
+        evidence_sources.append(
+            SourceEvidence(
+                identity=source.identity,
+                kind=source.kind,
+                release=source_release,
+                expected_rows=expected_rows,
+                sha256=sha256,
+                row_fingerprint=source_fingerprints[source.identity],
+            )
+        )
     return QueryEvidence(
         parameterized_sql=sql,
         bound_values=bound_values,
-        sources=(source_evidence,),
+        sources=tuple(evidence_sources),
         catalog_revision=plan.catalog_revision,
         data_release=data_release,
         row_count=len(materialized_rows),
         matched_row_count=matched_row_count,
         result_fingerprint=hashlib.sha256(fingerprint_payload).hexdigest(),
+        calculations=tuple(
+            CalculationEvidence(
+                identity=identity,
+                formula=value.formula,
+                inputs=value.components,
+            )
+            for identity in plan.selections
+            if (value := promoted_value_by_identity(identity)) is not None
+            and value.kind == "calculation"
+            and value.formula is not None
+        ),
     )
 
 

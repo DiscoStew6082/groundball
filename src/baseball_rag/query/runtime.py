@@ -71,6 +71,24 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
         != compatibility["catalog_sha256"]
     ):
         raise PublishedDataUnavailableError("Published catalog content is not compatible.")
+    promoted_hashes = compatibility.get("promoted_catalog_sha256")
+    if not isinstance(promoted_hashes, dict):
+        raise PublishedDataUnavailableError("Promoted catalog compatibility is missing.")
+    expected_promoted = {str(item) for item in catalog.get("promoted", [])}
+    if set(promoted_hashes) != expected_promoted:
+        raise PublishedDataUnavailableError("Promoted catalog file set is not compatible.")
+    for filename, expected_digest in promoted_hashes.items():
+        promoted_path = CATALOG_DIR / filename
+        try:
+            observed_digest = hashlib.sha256(promoted_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise PublishedDataUnavailableError(
+                f"Required promoted catalog asset {filename!r} is missing."
+            ) from exc
+        if observed_digest != expected_digest:
+            raise PublishedDataUnavailableError(
+                f"Promoted catalog asset {filename!r} is not compatible."
+            )
     if inventory["inventory_revision"] != compatibility["raw_inventory_revision"]:
         raise PublishedDataUnavailableError("Raw-field inventory revision is not compatible.")
     if (

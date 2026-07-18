@@ -8,7 +8,19 @@ from types import MappingProxyType
 from typing import Mapping, TypeAlias, cast
 
 Scalar: TypeAlias = str | int | float | bool | None
-Literal: TypeAlias = Scalar | tuple[Scalar, ...]
+
+
+@dataclass(frozen=True)
+class ValueRef:
+    """A compatible catalog value used as the right side of a comparison."""
+
+    identity: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"identity": self.identity, "kind": "value_ref"}
+
+
+Literal: TypeAlias = Scalar | tuple[Scalar, ...] | ValueRef
 
 
 @dataclass(frozen=True)
@@ -20,7 +32,12 @@ class Compare:
     literal: Literal
 
     def as_dict(self) -> dict[str, object]:
-        literal: object = list(self.literal) if isinstance(self.literal, tuple) else self.literal
+        if isinstance(self.literal, tuple):
+            literal: object = list(self.literal)
+        elif isinstance(self.literal, ValueRef):
+            literal = self.literal.as_dict()
+        else:
+            literal = self.literal
         return {
             "kind": "compare",
             "literal": literal,
@@ -118,6 +135,7 @@ class QueryRecipe:
     catalog_revision: str | None = None
     grain: str = "raw_rows"
     groupings: tuple[str, ...] = ()
+    ranking: RankSpec | None = None
     ordering: tuple[SortSpec, ...] = ()
     output: OutputSpec = field(default_factory=InteractivePage)
 
@@ -229,6 +247,13 @@ class SourceEvidence:
 
 
 @dataclass(frozen=True)
+class CalculationEvidence:
+    identity: str
+    formula: str
+    inputs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class QueryEvidence:
     parameterized_sql: str
     bound_values: tuple[Scalar, ...]
@@ -238,6 +263,7 @@ class QueryEvidence:
     row_count: int
     matched_row_count: int
     result_fingerprint: str
+    calculations: tuple[CalculationEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -321,6 +347,8 @@ def _output_from(value: object) -> OutputSpec:
 def _typed_literal(value: object) -> Literal:
     if isinstance(value, list):
         return tuple(_typed_scalar(item) for item in value)
+    if isinstance(value, dict) and value.get("kind") == "value_ref":
+        return ValueRef(identity=str(value["identity"]))
     return _typed_scalar(value)
 
 

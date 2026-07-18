@@ -69,7 +69,7 @@ def test_query_plan_has_canonical_json_round_trip():
     serialized = planned.plan.to_json()
 
     assert serialized == (
-        '{"catalog_revision":"published-query-catalog-v1","grain":"raw_rows",'
+        '{"catalog_revision":"published-query-catalog-v2","grain":"raw_rows",'
         '"groupings":[],"ordering":[],"output":{"kind":"interactive_page",'
         '"offset":0,"size":100},"predicate":{"kind":"compare",'
         '"literal":"Brooklyn","operator":"equals","value":"People.birthCity"},'
@@ -187,7 +187,7 @@ def test_integer_field_rejects_non_integer_literals_during_planning(literal):
 def test_query_plan_nested_specs_are_immutable_values():
     plan = QueryPlanV1(
         version="query-plan-v1",
-        catalog_revision="published-query-catalog-v1",
+        catalog_revision="published-query-catalog-v2",
         source="People",
         grain="raw_rows",
         selections=("People.playerID",),
@@ -212,7 +212,7 @@ def test_query_plan_nested_specs_are_immutable_values():
 
 def test_query_plan_deserialization_rejects_untyped_literal_objects():
     serialized = (
-        '{"catalog_revision":"published-query-catalog-v1","grain":"raw_rows",'
+        '{"catalog_revision":"published-query-catalog-v2","grain":"raw_rows",'
         '"ordering":[],"output":"interactive_page","predicate":{"kind":"compare",'
         '"literal":{"sql":"DROP TABLE people"},"operator":"equals",'
         '"value":"People.birthCity"},"ranking":null,"relationships":[],'

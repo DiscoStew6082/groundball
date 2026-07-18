@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from typing import cast
 
 from baseball_rag.db.duckdb_schema import DATA_DIR
 from baseball_rag.query.registry import CATALOG_DIR
@@ -24,12 +25,16 @@ def render_compatibility(data_dir: Path) -> bytes:
     team_manifest_path = CATALOG_DIR / "assets/team_reference.manifest.json"
     team_manifest = _read_json(team_manifest_path)
     data_manifest_path = data_dir / "manifest.json"
+    promoted_files = cast(list[object], catalog.get("promoted", []))
     payload = {
         "catalog_revision": catalog["catalog_revision"],
         "catalog_sha256": _sha256(catalog_path),
         "data_manifest_sha256": _sha256(data_manifest_path),
         "raw_inventory_revision": inventory["inventory_revision"],
         "raw_inventory_sha256": _sha256(inventory_path),
+        "promoted_catalog_sha256": {
+            str(filename): _sha256(CATALOG_DIR / str(filename)) for filename in promoted_files
+        },
         "source_registry_revision": registry["registry_revision"],
         "source_registry_sha256": _sha256(registry_path),
         "team_reference_revision": team_manifest["reference_version"],
