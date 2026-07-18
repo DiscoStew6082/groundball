@@ -1,5 +1,6 @@
 """FastAPI Adapter for the clean Query Recipe and Query Run contracts."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from baseball_rag.api.server import app
@@ -69,6 +70,23 @@ def test_query_run_request_requires_exactly_one_clean_input():
     assert "Unknown Query Recipe predicate fields" in nested.json()["detail"]
 
 
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+def test_query_run_rejects_non_finite_recipe_literals(literal: str):
+    response = client.post(
+        "/api/query-runs",
+        content=(
+            '{"recipe":{"source":"Batting","grain":"player-season",'
+            '"selections":["batting.AVG"],"predicate":{"kind":"compare",'
+            f'"value":"batting.AVG","operator":"greater_than","literal":{literal}'
+            "}}}"
+        ),
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    assert "finite" in response.json()["detail"].lower()
+
+
 def test_catalog_endpoint_discovers_raw_gidp_and_old_query_routes_are_absent():
     response = client.get("/api/query-catalog", params={"source": "Batting", "search": "GIDP"})
 
@@ -78,24 +96,55 @@ def test_catalog_endpoint_discovers_raw_gidp_and_old_query_routes_are_absent():
     assert client.post("/api/query", json={"question": "40-40"}).status_code == 405
 
 
+def test_coverage_report_has_machine_and_dark_human_representations():
+    machine = client.get("/api/query-coverage")
+    human = client.get("/coverage-report")
+
+    assert machine.status_code == 200
+    assert machine.json()["status"] == "passing"
+    assert machine.json()["summary"] == {"covered": 5253, "total": 5253, "uncovered": 0}
+    assert human.status_code == 200
+    assert "Verified for this data release" in human.text
+    assert "color-scheme:dark" in human.text
+
+
+def test_coverage_routes_reject_stale_or_tampered_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from baseball_rag.query.coverage import CoverageProofUnavailableError
+
+    def reject_stale_report():
+        raise CoverageProofUnavailableError("Coverage Report proof hash is invalid.")
+
+    monkeypatch.setattr(
+        "baseball_rag.query.coverage.load_passing_coverage_report",
+        reject_stale_report,
+    )
+
+    machine = client.get("/api/query-coverage")
+    human = client.get("/coverage-report")
+
+    assert machine.status_code == 503
+    assert human.status_code == 503
+    assert "proof hash is invalid" in machine.json()["detail"]
+
+
 def test_capabilities_publish_the_new_composition_root_only():
     payload = client.get("/api/capabilities").json()
 
     assert payload["query"] == {
         "endpoint": "/api/query-runs",
         "catalog_endpoint": "/api/query-catalog",
+        "coverage_endpoint": "/api/query-coverage",
+        "coverage_report": "/coverage-report",
         "natural_language": True,
         "structured_recipe": True,
     }
+    assert payload["llm_required"] is False
+    assert payload["retrosheet_endpoint"] == "/api/retrosheet/queries"
 
 
-def test_retrosheet_queries_remain_separate_and_never_fallback_from_primary_questions(monkeypatch):
-    monkeypatch.setattr(
-        "baseball_rag.request_execution.execute_public_demo_request",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("Retrosheet query re-entered the legacy request router")
-        ),
-    )
+def test_retrosheet_queries_remain_separate_and_never_fallback_from_primary_questions():
     response = client.post(
         "/api/retrosheet/queries",
         json={"question": "how many times did Nolan Ryan strike out the side in his career"},

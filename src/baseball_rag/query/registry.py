@@ -57,6 +57,8 @@ class PromotedValueView:
     rollup: str | None
     allowed_grains: tuple[str, ...]
     null_policy: str | None
+    operations: tuple[str, ...]
+    explanation: str
 
 
 @dataclass(frozen=True)
@@ -509,10 +511,56 @@ def published_values() -> tuple[PromotedValueView, ...]:
             rollup=value.rollup,
             allowed_grains=value.allowed_grains,
             null_policy=value.null_policy,
+            operations=_promoted_operations(value),
+            explanation=_promoted_explanation(value),
         )
         for value in _promoted_value_bindings()
         if value.public
     )
+
+
+def _promoted_operations(value: _PromotedValueBinding) -> tuple[str, ...]:
+    filters = {
+        "text": ("equals", "one_of"),
+        "date": ("equals", "before", "after", "range"),
+        "integer": (
+            "equals",
+            "not_equals",
+            "greater_than",
+            "greater_or_equal",
+            "less_than",
+            "less_or_equal",
+            "range",
+        ),
+        "number": (
+            "equals",
+            "not_equals",
+            "greater_than",
+            "greater_or_equal",
+            "less_than",
+            "less_or_equal",
+            "range",
+        ),
+        "baseball_innings": (
+            "equals",
+            "not_equals",
+            "greater_than",
+            "greater_or_equal",
+            "less_than",
+            "less_or_equal",
+            "range",
+        ),
+    }[value.data_type]
+    grouping = ("group",) if is_promoted_grouping(value.identity) else ()
+    return ("select", *filters, *grouping, "sort", "export")
+
+
+def _promoted_explanation(value: _PromotedValueBinding) -> str:
+    if value.formula:
+        return f"{value.friendly_name}, computed as {value.formula}."
+    if value.rollup == "non_aggregatable":
+        return f"{value.friendly_name}, available only at its declared record grain."
+    return f"{value.friendly_name} from the published {', '.join(value.allowed_grains)} grains."
 
 
 @lru_cache(maxsize=1)

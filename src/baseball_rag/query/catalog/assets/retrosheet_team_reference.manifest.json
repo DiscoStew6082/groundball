@@ -1,0 +1,22 @@
+{
+  "columns": [
+    "yearID",
+    "retrosheetTeamID",
+    "name"
+  ],
+  "reference_version": "retrosheet-season-aware-v1",
+  "rows": 4063,
+  "sha256": "558fb4957e1e766af0465358de03531d9c207bff8f6ff21c583c0502706eda60",
+  "sources": [
+    {
+      "name": "Retrosheet official team catalog",
+      "sha256": "bc3ce97dc5a1d4afa758217689355ca41ec3815813ccaff874acbca1bbe678c7",
+      "url": "https://www.retrosheet.org/downloads/csvteams.html"
+    },
+    {
+      "name": "SABR Lahman Teams.csv with season-specific names",
+      "sha256": "9d1c390df5d2a422175f6bcfb56d099cfb9c5805586ba5e3f8c895a9952423ad",
+      "url": "https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/master/csv/Lahman/Teams.csv"
+    }
+  ]
+}

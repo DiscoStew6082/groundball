@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping, TypeAlias, cast
+from typing import Mapping, TypeAlias
 
 Scalar: TypeAlias = str | int | float | bool | None
 
@@ -30,6 +31,11 @@ class Compare:
     value: str
     operator: str
     literal: Literal
+
+    def __post_init__(self) -> None:
+        literals = self.literal if isinstance(self.literal, tuple) else (self.literal,)
+        if any(isinstance(value, float) and not math.isfinite(value) for value in literals):
+            raise ValueError("Query comparison numeric literals must be finite.")
 
     def as_dict(self) -> dict[str, object]:
         if isinstance(self.literal, tuple):
@@ -182,37 +188,74 @@ class QueryPlanV1:
     @classmethod
     def from_json(cls, serialized: str) -> QueryPlanV1:
         """Restore a canonical plan without accepting executable expressions."""
-        payload = cast(dict[str, object], json.loads(serialized))
-        ranking_payload = cast(dict[str, object] | None, payload["ranking"])
+        try:
+            decoded = json.loads(
+                serialized,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"Non-finite JSON number {value!r} is not allowed.")
+                ),
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError("Query Plan JSON is malformed.") from exc
+        payload = _object(decoded, "Query Plan")
+        _exact_keys(
+            payload,
+            {
+                "version",
+                "catalog_revision",
+                "source",
+                "grain",
+                "selections",
+                "predicate",
+                "groupings",
+                "relationships",
+                "ranking",
+                "ordering",
+                "output",
+            },
+            "Query Plan",
+        )
+        ranking_payload = payload["ranking"]
         ranking = None
         if ranking_payload is not None:
+            ranking_object = _object(ranking_payload, "ranking")
+            _exact_keys(
+                ranking_object,
+                {"value", "direction", "count", "tie_policy", "within"},
+                "ranking",
+            )
             ranking = RankSpec(
-                value=str(ranking_payload["value"]),
-                direction=str(ranking_payload["direction"]),
-                count=int(cast(int, ranking_payload["count"])),
-                tie_policy=str(ranking_payload["tie_policy"]),
-                within=tuple(cast(list[str], ranking_payload["within"])),
+                value=_string(ranking_object["value"], "ranking value"),
+                direction=_string(ranking_object["direction"], "ranking direction"),
+                count=_integer(ranking_object["count"], "ranking count"),
+                tie_policy=_string(ranking_object["tie_policy"], "ranking tie policy"),
+                within=_string_tuple(ranking_object["within"], "ranking partitions"),
             )
-        ordering_payload = cast(list[dict[str, object]], payload["ordering"])
-        ordering = tuple(
-            SortSpec(
-                value=str(item["value"]),
-                direction=str(item["direction"]),
-                nulls=str(item["nulls"]),
+        ordering_payload = payload["ordering"]
+        if not isinstance(ordering_payload, list):
+            raise ValueError("Query Plan ordering must be a list.")
+        ordering_items = []
+        for item in ordering_payload:
+            sort = _object(item, "sort")
+            _exact_keys(sort, {"value", "direction", "nulls"}, "sort")
+            ordering_items.append(
+                SortSpec(
+                    value=_string(sort["value"], "sort value"),
+                    direction=_string(sort["direction"], "sort direction"),
+                    nulls=_string(sort["nulls"], "sort null placement"),
+                )
             )
-            for item in ordering_payload
-        )
         return cls(
-            version=str(payload["version"]),
-            catalog_revision=str(payload["catalog_revision"]),
-            source=str(payload["source"]),
-            grain=str(payload["grain"]),
-            selections=tuple(cast(list[str], payload["selections"])),
+            version=_string(payload["version"], "version"),
+            catalog_revision=_string(payload["catalog_revision"], "catalog revision"),
+            source=_string(payload["source"], "source"),
+            grain=_string(payload["grain"], "grain"),
+            selections=_string_tuple(payload["selections"], "selections"),
             predicate=_predicate_from(payload["predicate"]),
-            groupings=tuple(cast(list[str], payload.get("groupings", []))),
-            relationships=tuple(cast(list[str], payload["relationships"])),
+            groupings=_string_tuple(payload["groupings"], "groupings"),
+            relationships=_string_tuple(payload["relationships"], "relationships"),
             ranking=ranking,
-            ordering=ordering,
+            ordering=tuple(ordering_items),
             output=_output_from(payload["output"]),
         )
 
@@ -316,21 +359,28 @@ ExecutionOutcome: TypeAlias = Rows | Exported | NoData | ExecutionUnavailable | 
 def _predicate_from(value: object) -> Predicate | None:
     if value is None:
         return None
-    payload = cast(dict[str, object], value)
+    payload = _object(value, "predicate")
     kind = payload.get("kind")
     if kind == "compare":
+        _exact_keys(payload, {"kind", "value", "operator", "literal"}, "predicate")
         return Compare(
-            value=str(payload["value"]),
-            operator=str(payload["operator"]),
+            value=_string(payload["value"], "predicate value"),
+            operator=_string(payload["operator"], "predicate operator"),
             literal=_typed_literal(payload.get("literal")),
         )
     if kind in {"all", "any"}:
+        _exact_keys(payload, {"kind", "predicates"}, "predicate")
+        children_payload = payload["predicates"]
+        if not isinstance(children_payload, list):
+            raise ValueError("Compound Query Plan predicates require a list.")
         children = tuple(
-            cast(Predicate, _predicate_from(item))
-            for item in cast(list[dict[str, object]], payload["predicates"])
+            child for item in children_payload if (child := _predicate_from(item)) is not None
         )
+        if len(children) != len(children_payload):
+            raise ValueError("Compound Query Plan predicates cannot contain null children.")
         return All(children) if kind == "all" else Any(children)
     if kind == "not":
+        _exact_keys(payload, {"kind", "predicate"}, "predicate")
         child = _predicate_from(payload["predicate"])
         if child is None:
             raise ValueError("Not predicate requires one child.")
@@ -339,15 +389,17 @@ def _predicate_from(value: object) -> Predicate | None:
 
 
 def _output_from(value: object) -> OutputSpec:
-    payload = cast(dict[str, object], value)
+    payload = _object(value, "output")
     kind = payload.get("kind")
     if kind == "interactive_page":
+        _exact_keys(payload, {"kind", "size", "offset"}, "output")
         return InteractivePage(
-            size=int(cast(int, payload["size"])),
-            offset=int(cast(int, payload["offset"])),
+            size=_integer(payload["size"], "interactive page size"),
+            offset=_integer(payload["offset"], "interactive page offset"),
         )
     if kind == "export":
-        return Export(format=str(payload["format"]))
+        _exact_keys(payload, {"kind", "format"}, "output")
+        return Export(format=_string(payload["format"], "export format"))
     raise ValueError("Unsupported Query Plan output kind.")
 
 
@@ -355,11 +407,47 @@ def _typed_literal(value: object) -> Literal:
     if isinstance(value, list):
         return tuple(_typed_scalar(item) for item in value)
     if isinstance(value, dict) and value.get("kind") == "value_ref":
-        return ValueRef(identity=str(value["identity"]))
+        _exact_keys(value, {"kind", "identity"}, "value reference")
+        return ValueRef(identity=_string(value["identity"], "value reference identity"))
     return _typed_scalar(value)
 
 
 def _typed_scalar(value: object) -> Scalar:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("Query Plan numeric literals must be finite.")
     if value is None or isinstance(value, (str, int, float, bool)):
-        return cast(Scalar, value)
+        return value
     raise ValueError("Query Plan literals must be typed scalar values.")
+
+
+def _object(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise ValueError(f"{label} must be an object with string keys.")
+    return value
+
+
+def _exact_keys(payload: Mapping[str, object], expected: set[str], label: str) -> None:
+    unknown = set(payload) - expected
+    missing = expected - set(payload)
+    if unknown:
+        raise ValueError(f"{label} has unknown fields: {', '.join(sorted(unknown))}.")
+    if missing:
+        raise ValueError(f"{label} is missing fields: {', '.join(sorted(missing))}.")
+
+
+def _string(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"Query Plan {label} must be a string.")
+    return value
+
+
+def _integer(value: object, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"Query Plan {label} must be an integer.")
+    return value
+
+
+def _string_tuple(value: object, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"Query Plan {label} must be a string list.")
+    return tuple(value)

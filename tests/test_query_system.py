@@ -1,5 +1,7 @@
 """Public-behavior tests for the catalog-driven query system."""
 
+import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from inspect import signature
 
@@ -21,6 +23,29 @@ from baseball_rag.query import (
     prepare,
     published_sources,
 )
+
+
+def test_shared_runtime_executes_concurrent_query_plans_without_corruption() -> None:
+    planned = prepare(
+        QueryRecipe(
+            source="Batting",
+            grain="player-season",
+            selections=("player.name", "season", "batting.RBI"),
+            predicate=Compare("season", "equals", 1962),
+            ranking=RankSpec("batting.RBI", "highest", 1, "include_ties"),
+        )
+    )
+    assert isinstance(planned, Ready)
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        outcomes = tuple(executor.map(lambda _index: execute(planned.plan), range(40)))
+
+    assert all(isinstance(outcome, Rows) for outcome in outcomes)
+    assert all(
+        outcome.rows == ({"player.name": "Tommy Davis", "season": 1962, "batting.RBI": 153},)
+        for outcome in outcomes
+        if isinstance(outcome, Rows)
+    )
 
 
 def test_raw_people_birth_city_query_crosses_catalog_plan_execution_and_evidence():
@@ -211,17 +236,24 @@ def test_query_plan_nested_specs_are_immutable_values():
 
 
 def test_query_plan_deserialization_rejects_untyped_literal_objects():
-    serialized = (
-        '{"catalog_revision":"published-query-catalog-v3","grain":"raw_rows",'
-        '"ordering":[],"output":"interactive_page","predicate":{"kind":"compare",'
-        '"literal":{"sql":"DROP TABLE people"},"operator":"equals",'
-        '"value":"People.birthCity"},"ranking":null,"relationships":[],'
-        '"selections":["People.playerID"],"source":"People",'
-        '"version":"query-plan-v1"}'
+    planned = prepare(
+        QueryRecipe(
+            source="People",
+            selections=("People.playerID",),
+            predicate=Compare("People.birthCity", "equals", "Brooklyn"),
+        )
     )
+    assert isinstance(planned, Ready)
+    payload = planned.plan.as_dict()
+    payload["predicate"] = {
+        "kind": "compare",
+        "literal": {"sql": "DROP TABLE people"},
+        "operator": "equals",
+        "value": "People.birthCity",
+    }
 
     with pytest.raises(ValueError, match="typed scalar"):
-        QueryPlanV1.from_json(serialized)
+        QueryPlanV1.from_json(json.dumps(payload))
 
 
 def test_season_aware_team_reference_is_a_real_versioned_published_source():

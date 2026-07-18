@@ -1,0 +1,90 @@
+{
+  "schema_version": "query-eval-matrix-v1",
+  "cases": [
+    {
+      "id": "rbi_1962",
+      "question": "who had the most RBIs in 1962",
+      "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Tommy Davis", "batting.RBI": 153}], "bound_values_include": [1962]}
+    },
+    {
+      "id": "forty_forty",
+      "question": "40-40",
+      "expect": {"kind": "rows", "row_count": 6, "rows_include": [{"player.name": "Jose Canseco", "season": 1988}, {"player.name": "Barry Bonds", "season": 1996}, {"player.name": "Alex Rodriguez", "season": 1998}, {"player.name": "Alfonso Soriano", "season": 2006}, {"player.name": "Ronald Acuña", "season": 2023}, {"player.name": "Shohei Ohtani", "season": 2024}]}
+    },
+    {
+      "id": "judge_ops",
+      "question": "Aaron Judge's 2022 OPS",
+      "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Aaron Judge", "batting.AB": 570, "batting.H": 177, "batting.HR": 62, "batting.OPS": 1.1108204036101816}], "calculation": "batting.OPS"}
+    },
+    {
+      "id": "bare_avg_clarifies",
+      "question": "highest batting average in 1894",
+      "expect": {"kind": "needs_clarification", "text_contains": "minimum at-bat"}
+    },
+    {
+      "id": "duffy_explicit_floor",
+      "question": "highest batting average in 1894, minimum 100 at-bats",
+      "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Hugh Duffy", "batting.H": 237, "batting.AB": 539}], "bound_values_include": [100]}
+    },
+    {
+      "id": "strikeouts_clarify",
+      "question": "who had the most strikeouts in 2024",
+      "expect": {"kind": "needs_clarification", "text_contains": "batting or pitching"}
+    },
+    {
+      "id": "braves_1936_source_truth",
+      "question": "who played for the Braves in 1936",
+      "expect": {"kind": "rows", "row_count": 37, "rows_include": [{"team.id": "BSN", "team.name": "Boston Bees"}], "bound_values_include": [1936, "BSN"]}
+    },
+    {
+      "id": "braves_all_time_clarifies",
+      "question": "Braves all time",
+      "expect": {"kind": "needs_clarification", "text_contains": "historical team identity"}
+    },
+    {
+      "id": "ohtani_cross_discipline",
+      "question": "players with at least 30 HR and 10 pitching wins in one season",
+      "expect": {"kind": "rows", "row_count": 2, "rows_include": [{"season": 2022, "batting.HR": 34, "pitching.W": 15}, {"season": 2023, "batting.HR": 44, "pitching.W": 10}]}
+    },
+    {
+      "id": "home_run_tie_2021",
+      "recipe": {"source": "Batting", "grain": "player-season", "selections": ["player.id", "season", "batting.HR"], "predicate": {"kind": "compare", "value": "season", "operator": "equals", "literal": 2021}, "ranking": {"value": "batting.HR", "direction": "highest", "count": 1, "tie_policy": "include_ties", "within": []}},
+      "expect": {"kind": "rows", "row_count": 2, "rows_include": [{"player.id": "guerrvl02", "batting.HR": 48}, {"player.id": "perezsa02", "batting.HR": 48}]}
+    },
+    {
+      "id": "forbidden_fielding_rollup",
+      "recipe": {"source": "Fielding", "grain": "team-season", "selections": ["team.name", "season", "fielding.G"]},
+      "expect": {"kind": "rejected", "text_contains": "not published at grain"}
+    },
+    {
+      "id": "no_data_100_hr",
+      "recipe": {"source": "Batting", "grain": "player-season", "selections": ["player.name", "season", "batting.HR"], "predicate": {"kind": "all", "predicates": [{"kind": "compare", "value": "season", "operator": "equals", "literal": 2024}, {"kind": "compare", "value": "batting.HR", "operator": "greater_or_equal", "literal": 100}]}},
+      "expect": {"kind": "no_data", "row_count": 0}
+    },
+    {
+      "id": "raw_gidp",
+      "recipe": {"source": "Batting", "selections": ["Batting.playerID", "Batting.yearID", "Batting.GIDP"], "predicate": {"kind": "compare", "value": "Batting.GIDP", "operator": "greater_or_equal", "literal": 25}, "ordering": [{"value": "Batting.GIDP", "direction": "descending", "nulls": "last"}]},
+      "expect": {"kind": "rows", "row_count_min": 1, "bound_values_include": [25]}
+    },
+    {
+      "id": "arbitrary_formula_rejected",
+      "question": "sum of home runs plus stolen bases",
+      "expect": {"kind": "rejected", "text_contains": "arbitrary formulas"}
+    },
+    {
+      "id": "stale_revision_unavailable",
+      "recipe": {"source": "People", "catalog_revision": "stale", "selections": ["People.playerID"]},
+      "expect": {"kind": "rejected", "text_contains": "stale"}
+    },
+    {
+      "id": "csv_export",
+      "recipe": {"source": "People", "selections": ["People.playerID", "People.nameFirst", "People.nameLast"], "predicate": {"kind": "compare", "value": "People.playerID", "operator": "equals", "literal": "aaronha01"}, "output": {"kind": "export", "format": "csv"}},
+      "expect": {"kind": "exported", "row_count": 1, "export_contains": "aaronha01"}
+    },
+    {
+      "id": "execution_failed_fixture",
+      "fixture": "execution_failed",
+      "expect": {"kind": "failed", "text_contains": "deterministic failure fixture"}
+    }
+  ]
+}

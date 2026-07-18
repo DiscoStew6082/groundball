@@ -8,7 +8,6 @@ from typing import Any, Callable
 
 from baseball_rag.outcomes import llm_unavailable_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer
-from baseball_rag.routing import GeneralExplanationCase
 
 
 @dataclass(frozen=True)
@@ -18,16 +17,12 @@ class GeneralExplanationPolicy:
     make_request: Callable[..., Any] | None = None
     stat_definitions_dir: Path | None = None
 
-    def answer(
-        self,
-        decision: GeneralExplanationCase,
-    ) -> StructuredAnswer:
-        """Return a structured explanation without exposing the backing path."""
-        question = decision.raw_question
+    def answer(self, question: str) -> StructuredAnswer:
+        """Return one explicit auxiliary explanation without query routing."""
         local_definition = self._answer_local_stat_definition(question)
         if local_definition is not None:
             return local_definition
-        return self._answer_open_explanation(question, intent=decision.intent)
+        return self._answer_open_explanation(question, intent="general_explanation")
 
     def _answer_local_stat_definition(self, question: str) -> StructuredAnswer | None:
         from baseball_rag.corpus import STAT_DEFS_DIR

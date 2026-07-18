@@ -29,6 +29,7 @@ from baseball_rag.query.contracts import (
 from baseball_rag.query.contracts import (
     Any as AnyPredicate,
 )
+from baseball_rag.query.coverage import verification_payload
 from baseball_rag.query.recipe_adapter import interpret_recipe
 from baseball_rag.query.registry import (
     catalog_revision,
@@ -38,12 +39,6 @@ from baseball_rag.query.registry import (
     published_values,
 )
 from baseball_rag.query.service import execute, prepare
-
-_UNVERIFIED = {
-    "status": "unavailable",
-    "reason": "No passing Coverage Report exists for this catalog and data release.",
-    "coverage_report": None,
-}
 
 
 def run_query_input(
@@ -130,7 +125,13 @@ def recipe_from_dict(payload: Mapping[str, Any]) -> QueryRecipe:
     )
 
 
-def catalog_payload(*, source: str | None = None, search: str | None = None) -> dict[str, Any]:
+def catalog_payload(
+    *,
+    source: str | None = None,
+    search: str | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+) -> dict[str, Any]:
     """Return the catalog discovery read model used by every application Adapter."""
     needle = search.casefold().strip() if search else ""
     fields = [
@@ -138,6 +139,10 @@ def catalog_payload(*, source: str | None = None, search: str | None = None) -> 
         for field in discover_fields(source=source)
         if _matches(needle, field.identity, field.column)
     ]
+    if offset < 0 or limit is not None and limit <= 0:
+        raise ValueError("Catalog offset must be nonnegative and limit must be positive.")
+    field_total = len(fields)
+    fields = fields[offset:] if limit is None else fields[offset : offset + limit]
     values = [
         value
         for value in published_values()
@@ -145,6 +150,9 @@ def catalog_payload(*, source: str | None = None, search: str | None = None) -> 
     ]
     return {
         "catalog_revision": catalog_revision(),
+        "field_total": field_total,
+        "field_offset": offset,
+        "field_limit": limit,
         "sources": [
             {
                 "identity": item.identity,
@@ -176,6 +184,8 @@ def catalog_payload(*, source: str | None = None, search: str | None = None) -> 
                 "rollup": item.rollup,
                 "allowed_grains": list(item.allowed_grains),
                 "null_policy": item.null_policy,
+                "operations": list(item.operations),
+                "explanation": item.explanation,
             }
             for item in values
         ],
@@ -222,6 +232,13 @@ def _execution_payload(recipe: QueryRecipe, planned: Ready, outcome: object) -> 
         return {"kind": "failed", "reason": outcome.reason, **base}
     if not isinstance(outcome, (Rows, NoData, Exported)):
         raise TypeError("Unknown Query Run outcome.")
+    verification = verification_payload(outcome.evidence)
+    if verification["status"] != "verified":
+        return {
+            **base,
+            "kind": "unavailable",
+            "reason": verification["reason"],
+        }
     payload = {
         **base,
         "kind": (
@@ -233,7 +250,7 @@ def _execution_payload(recipe: QueryRecipe, planned: Ready, outcome: object) -> 
         ),
         "rows": [dict(row) for row in outcome.rows],
         "evidence": _evidence_payload(outcome.evidence),
-        "verification": dict(_UNVERIFIED),
+        "verification": verification,
     }
     if isinstance(outcome, Exported):
         payload["export"] = {"format": outcome.format, "content": outcome.content}

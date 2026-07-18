@@ -1,14 +1,20 @@
 """FastAPI server for Groundball."""
 
 import hmac
+import html
 import os
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
-from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+)
 
 app = FastAPI(title="Groundball API")
 _CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
@@ -34,23 +40,6 @@ def _public_demo_enabled() -> bool:
         "yes",
         "on",
     }
-
-
-def _local_feature_enabled(env_var: str) -> bool:
-    if _public_demo_enabled():
-        return False
-    configured = os.environ.get(env_var)
-    if configured is None:
-        return True
-    return configured.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _architecture_enabled() -> bool:
-    return _local_feature_enabled("GROUNDBALL_ARCHITECTURE_ENABLED")
-
-
-def _developer_tools_enabled() -> bool:
-    return _local_feature_enabled("GROUNDBALL_DEVELOPER_TOOLS_ENABLED")
 
 
 def _cors_allowed_origins() -> list[str]:
@@ -101,25 +90,6 @@ def _requested_headers_are_allowed(raw_headers: str) -> bool:
 def _origin_proxy_token_is_valid(request: Request, configured_token: str) -> bool:
     supplied_token = request.headers.get(_ORIGIN_PROXY_TOKEN_HEADER, "")
     return hmac.compare_digest(supplied_token, configured_token)
-
-
-def _local_only_path(path: str) -> bool:
-    return (
-        path == "/review-queue"
-        or path.startswith("/review-queue/")
-        or path == "/evals/report"
-        or path == "/evals/run"
-        or path == "/api/architecture"
-        or path.startswith("/api/architecture/")
-        or path == "/api/developer/tests"
-    )
-
-
-@app.middleware("http")
-async def _public_mode_route_guard(request: Request, call_next):
-    if _public_demo_enabled() and _local_only_path(request.url.path):
-        return JSONResponse({"detail": "Not found."}, status_code=404)
-    return await call_next(request)
 
 
 @app.middleware("http")
@@ -177,17 +147,6 @@ class RetrosheetQueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
-class EvalRunRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    include_live: bool = False
-
-
-class ReviewUpdateRequest(BaseModel):
-    status: Literal["resolved", "dismissed"]
-    note: str | None = None
-
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -203,76 +162,15 @@ def capabilities():
         "query": {
             "endpoint": "/api/query-runs",
             "catalog_endpoint": "/api/query-catalog",
+            "coverage_endpoint": "/api/query-coverage",
+            "coverage_report": "/coverage-report",
             "natural_language": True,
             "structured_recipe": True,
         },
-        "llm": not public_demo,
-        "architecture": _architecture_enabled(),
-        "developer_tools": _developer_tools_enabled(),
+        "retrosheet_endpoint": "/api/retrosheet/queries",
+        "llm_required": False,
         "history": "browser_local",
     }
-
-
-@app.get("/api/architecture")
-def architecture_catalog():
-    """Return the rendering-neutral architecture component catalog."""
-    _require_local_capability(_architecture_enabled())
-
-    from baseball_rag.arch.components import get_registry
-
-    components = sorted(get_registry().all(), key=lambda component: component.id)
-    return {"components": [component.to_catalog_dict() for component in components]}
-
-
-@app.get("/api/architecture/{component_id}")
-def architecture_component_detail(component_id: str):
-    """Return source-backed component details only in the local runtime."""
-    _require_local_capability(_architecture_enabled())
-
-    from baseball_rag.arch.components import get_registry
-
-    component = get_registry().get(component_id)
-    if component is None:
-        raise HTTPException(status_code=404, detail="Architecture component not found.")
-    return {
-        "component": component.to_detail_dict(),
-        "source_excerpt": get_registry().get_source_snippet(component_id, n=10),
-    }
-
-
-def _require_local_mode() -> None:
-    if _public_demo_enabled():
-        raise HTTPException(status_code=404, detail="Not found.")
-
-
-def _require_local_capability(enabled: bool) -> None:
-    _require_local_mode()
-    if not enabled:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-
-@app.post("/api/developer/tests")
-def developer_tests():
-    """Run the fixed Architecture pytest command in the local runtime only."""
-    _require_local_capability(_developer_tools_enabled())
-
-    from baseball_rag.arch.components import get_registry
-    from baseball_rag.arch.test_status import collect_and_apply_test_status
-
-    result = collect_and_apply_test_status(get_registry())
-    payload = asdict(result)
-    payload["component_statuses"] = {
-        component_id: status.value for component_id, status in result.component_statuses.items()
-    }
-    return payload
-
-
-@app.get("/health/verification")
-def verification_health():
-    """Return operational readiness for deterministic verification surfaces."""
-    from baseball_rag.verification_health import operational_verification_health
-
-    return operational_verification_health()
 
 
 @app.post("/api/query-runs")
@@ -292,11 +190,57 @@ def query_run(req: QueryInputRequest):
 
 
 @app.get("/api/query-catalog")
-def query_catalog(source: str | None = None, search: str | None = None):
+def query_catalog(
+    source: str | None = None,
+    search: str | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+):
     """Return rendering-neutral source, raw-field, and promoted-value discovery."""
     from baseball_rag.query.adapters import catalog_payload
 
-    return catalog_payload(source=source, search=search)
+    try:
+        return catalog_payload(source=source, search=search, offset=offset, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/query-coverage")
+def query_coverage():
+    """Return the canonical machine-readable Coverage Report."""
+    from baseball_rag.query.coverage import (
+        CoverageProofUnavailableError,
+        load_passing_coverage_report,
+    )
+
+    try:
+        return load_passing_coverage_report()
+    except CoverageProofUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/coverage-report", response_class=HTMLResponse)
+def coverage_report():
+    """Render the human report from the canonical machine read model."""
+    from baseball_rag.query.coverage import (
+        CoverageProofUnavailableError,
+        load_passing_coverage_report,
+        render_coverage_markdown,
+    )
+
+    try:
+        report = load_passing_coverage_report()
+    except CoverageProofUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    readable = html.escape(render_coverage_markdown(report))
+    return HTMLResponse(
+        "<!doctype html><html lang='en'><meta name='viewport' "
+        "content='width=device-width,initial-scale=1'><title>Ground Ball Coverage</title>"
+        "<style>html{color-scheme:dark;background:#10100f;color:#f5f1e8;font:16px/1.5 "
+        "ui-monospace,monospace}body{margin:0 auto;max-width:900px;padding:clamp(20px,5vw,64px)}"
+        "pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}a{color:#f4d21f}</style>"
+        f"<body><pre>{readable}</pre></body></html>"
+    )
 
 
 @app.post("/api/retrosheet/queries")
@@ -308,88 +252,6 @@ def retrosheet_query(req: RetrosheetQueryRequest):
         return execute_retrosheet_query(req.question)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.get("/review-queue")
-def review_queue(status: Literal["open", "resolved", "dismissed", "all"] = "open"):
-    """Return latest local human-review queue snapshots."""
-    _require_local_mode()
-
-    from baseball_rag.review_queue import list_review_items
-
-    items = list_review_items(status=status)
-    return {"count": len(items), "items": [asdict(item) for item in items]}
-
-
-@app.patch("/review-queue/{item_id}")
-def update_review_queue_item(item_id: str, req: ReviewUpdateRequest):
-    """Resolve or dismiss a local human-review queue item."""
-    _require_local_mode()
-
-    from baseball_rag.review_queue import resolve_review_item
-
-    try:
-        item = resolve_review_item(item_id, req.status, note=req.note)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"item": asdict(item)}
-
-
-@app.get("/evals/report")
-def evals_report(include_live: bool = False):
-    """Return the deterministic eval report without writing files."""
-    _require_local_mode()
-    return _run_eval_payload(include_live=include_live)
-
-
-@app.post("/evals/run")
-def evals_run(req: EvalRunRequest):
-    """Run evals with explicit options, deterministic-only by default."""
-    _require_local_mode()
-    payload = _run_eval_payload(include_live=req.include_live)
-    payload["options"] = req.model_dump()
-    if req.include_live:
-        payload.setdefault("warnings", []).append("include_live=true may require LM Studio.")
-    return payload
-
-
-@app.get("/guardrails/coverage")
-def guardrails_coverage():
-    """Return manifest-only guardrail coverage."""
-    from baseball_rag.eval_manifest import default_guardrail_coverage_payload
-
-    return default_guardrail_coverage_payload()
-
-
-def _run_eval_payload(*, include_live: bool) -> dict[str, Any]:
-    from evals.questions import (
-        EvalReport,
-        build_eval_report_payload,
-        format_eval_report,
-        load_cases,
-        run_cases,
-    )
-
-    cases = load_cases()
-    result = run_cases(cases, include_live=include_live)
-    report = EvalReport(
-        command="api:/evals/report",
-        cases=cases,
-        include_live=include_live,
-        result=result,
-        mode="answer",
-    )
-    payload = build_eval_report_payload(report)
-    payload["markdown"] = format_eval_report(report)
-    return payload
-
-
-@app.get("/sources")
-def sources():
-    """Return dataset provenance used by DuckDB-backed answers."""
-    from baseball_rag.provenance import load_data_manifest
-
-    return load_data_manifest()
 
 
 def _web_dist_path() -> Path:

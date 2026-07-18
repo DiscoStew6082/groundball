@@ -59,7 +59,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra dev
-      - run: uv run ruff check src/ tests/ evals/
+      - run: uv run ruff check src/ tests/
 
   typecheck:
     runs-on: ubuntu-latest
@@ -74,17 +74,6 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run mypy src/baseball_rag/
-
-  go-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: go vet ./...
-      - run: go test ./...
 
   web-test:
     runs-on: ubuntu-latest
@@ -118,26 +107,21 @@ jobs:
       # Download NeuML/baseballdata CSVs (runtime deps — not stored in repo)
       - run: uv run python -c "from baseball_rag.db.download import download_all; download_all()"
       - run: uv run python -m pytest tests/ -m "not llm" --cov=baseball_rag --cov-report=xml --cov-report=term-missing -v
-      - name: Deterministic eval release gate
-        run: uv run python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md --json-report eval-report.json --baseline evals/baseline.json
-      - name: Publish reliability summary
+      - name: Query coverage release gate
+        run: uv run python -m baseball_rag.query.generate_coverage_report --check
+      - name: Query Plan and Query Run eval matrix
+        run: uv run python -m baseball_rag.query.eval_matrix --json-report query-eval-report.json
+      - name: Publish query proof summary
         if: always()
-        run: |
-          {
-            echo "## Deterministic Eval Report"
-            cat eval-report.md
-            echo
-            echo "## Guardrail Coverage Report"
-            cat guardrail-coverage.md
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: cat src/baseball_rag/query/coverage/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: deterministic-reliability-reports
+          name: deterministic-query-reports
           path: |
-            eval-report.md
-            eval-report.json
-            guardrail-coverage.md
+            query-eval-report.json
+            src/baseball_rag/query/coverage/coverage-report.json
+            src/baseball_rag/query/coverage/coverage-report.md
       - uses: actions/upload-artifact@v7
         if: always()
         with:

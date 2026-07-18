@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from _thread import RLock
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -15,6 +16,7 @@ import duckdb
 from duckdb import DuckDBPyConnection
 
 from baseball_rag.db.duckdb_schema import DATA_DIR
+from baseball_rag.query.data_identity import semantic_manifest_sha256
 from baseball_rag.query.fingerprint import RowFingerprint
 from baseball_rag.query.registry import (
     CATALOG_DIR,
@@ -31,6 +33,7 @@ class PublishedDataUnavailableError(ValueError):
 @dataclass(frozen=True)
 class PublishedDataRuntime:
     connection: DuckDBPyConnection
+    connection_lock: RLock
     data_dir: Path
     manifest: dict[str, Any]
     data_release: str
@@ -61,8 +64,8 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
         raise PublishedDataUnavailableError(
             "Installed data manifest is missing or unreadable."
         ) from exc
-    manifest_digest = hashlib.sha256(manifest_content).hexdigest()
-    if manifest_digest != compatibility["data_manifest_sha256"]:
+    manifest_digest = semantic_manifest_sha256(manifest)
+    if manifest_digest != compatibility["data_manifest_semantic_sha256"]:
         raise PublishedDataUnavailableError("Installed data manifest is not catalog-compatible.")
     if catalog["catalog_revision"] != compatibility["catalog_revision"]:
         raise PublishedDataUnavailableError("Published catalog revision is not compatible.")
@@ -143,6 +146,7 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     data_release = str(manifest.get("dataset", {}).get("release_id") or "unavailable")
     return PublishedDataRuntime(
         connection=connection,
+        connection_lock=RLock(),
         data_dir=data_dir,
         manifest=manifest,
         data_release=data_release,

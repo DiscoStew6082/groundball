@@ -157,9 +157,10 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
         return ExecutionUnavailable(str(exc))
 
     try:
-        cursor = active_connection.execute(sql, list(bound_values))
-        columns = [str(item[0]) for item in cursor.description]
-        materialized = cursor.fetchall()
+        with runtime.connection_lock:
+            cursor = active_connection.execute(sql, list(bound_values))
+            columns = [str(item[0]) for item in cursor.description]
+            materialized = cursor.fetchall()
     except Exception as exc:
         return ExecutionFailed(f"Query execution failed: {exc}")
 

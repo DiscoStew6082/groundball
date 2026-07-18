@@ -194,8 +194,7 @@ def source_authority_catalog(*, include_retrosheet: bool = False) -> list[dict[s
             "upstream": dataset.get("upstream"),
             "optional": False,
             "scopes": [
-                "structured_stat_answers",
-                "grounded_database_answers",
+                "query_runs",
                 "player_identity",
                 "biography_stat_claim_primary_verification",
             ],

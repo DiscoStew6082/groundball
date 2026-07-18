@@ -1,6 +1,6 @@
 """DuckDB CSV schema setup — zero-ingestion queries over NeuML/baseballdata CSVs."""
 
-import csv
+import hashlib
 import json
 import os
 import tempfile
@@ -17,6 +17,16 @@ _lock = threading.Lock()
 # Project root: go up 4 levels — lahman.py -> db/ -> baseball_rag/ -> src/ -> repo/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data"
+RETROSHEET_TEAM_REFERENCE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "query"
+    / "catalog"
+    / "assets"
+    / "retrosheet_team_reference.csv"
+)
+RETROSHEET_TEAM_REFERENCE_MANIFEST_PATH = RETROSHEET_TEAM_REFERENCE_PATH.with_suffix(
+    ".manifest.json"
+)
 RETROSHEET_DATA_SUBDIR = Path("secondary_sources") / "retrosheet"
 RETROSHEET_STAT_TABLES = {
     "retrosheet_batting": "batting.csv",
@@ -35,179 +45,6 @@ RETROSHEET_DERIVED_TABLES = {
 }
 RETROSHEET_BIOFILE = ("retrosheet_biofile", "biofile0.csv")
 RETROSHEET_EXTRACT_DIR_ENV = "BASEBALL_RAG_RETROSHEET_EXTRACT_DIR"
-
-# Try to load Teams.csv at module init; fall back to {} if not present.
-_TEAMS_CSV_PATH = DATA_DIR / "Teams.csv"
-try:
-    _TEAM_MAP: dict[str, str] = {}
-    with open(_TEAMS_CSV_PATH, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            team_id = row.get("teamID") or row.get("TeamCode") or row.get("ID")
-            name = (
-                row.get("name")
-                or row.get("Name")
-                or row.get("teamName")
-                or f"{row.get('city', '')} {row.get('nickname', '')}".strip()
-            )
-            if team_id and name:
-                _TEAM_MAP[team_id] = name
-except Exception:
-    _TEAM_MAP = {}
-
-# Fallback comprehensive MLB team map (covers all teams in the NeuML/baseballdata batting data)
-if not _TEAM_MAP:
-    _TEAM_MAP = {
-        # Active MLB teams (2020s)
-        "ARI": "Arizona Diamondbacks",
-        "ATL": "Atlanta Braves",
-        "BAL": "Baltimore Orioles",
-        "BOS": "Boston Red Sox",
-        "CHA": "Chicago White Sox",
-        "CHN": "Chicago Cubs",
-        "CIN": "Cincinnati Reds",
-        "CLE": "Cleveland Guardians",
-        "COL": "Colorado Rockies",
-        "DET": "Detroit Tigers",
-        "HOU": "Houston Astros",
-        "KCA": "Kansas City Royals",
-        "LAA": "Los Angeles Angels",
-        "LAN": "Los Angeles Dodgers",
-        "MIA": "Miami Marlins",
-        "MIL": "Milwaukee Brewers",
-        "MIN": "Minnesota Twins",
-        "NYA": "New York Yankees",
-        "NYN": "New York Mets",
-        "OAK": "Oakland Athletics",
-        "PHI": "Philadelphia Phillies",
-        "PIT": "Pittsburgh Pirates",
-        "SDN": "San Diego Padres",
-        "SEA": "Seattle Mariners",
-        "SFN": "San Francisco Giants",
-        "SLN": "St. Louis Cardinals",
-        "TBA": "Tampa Bay Rays",
-        "TEX": "Texas Rangers",
-        "TOR": "Toronto Blue Jays",
-        "WAS": "Washington Nationals",
-        # Historical team names
-        "ANA": "Anaheim Angels",
-        "BRO": "Brooklyn Dodgers",
-        "BSN": "Boston Braves",
-        "CAL": "California Angels",
-        "FLO": "Florida Marlins",
-        "MON": "Montreal Expos",
-        "NYY": "New York Yankees",  # alias
-        "PHA": "Philadelphia Athletics",
-        "MLA": "Milwaukee Braves",
-        "ML4": "Milwaukee Brewers (1982)",
-        "WS1": "Washington Senators (1901-1960)",
-        "WS2": "Washington Senators (1961-1971)",
-        # Negro Leagues & early teams
-        "AB": "Abbott",  # ABB? placeholder for unknown/early
-        "AC": "All Cubans",
-        "ATH": "Athletics (Philadelphia, early)",
-        "BLU": "Baltimore Orioles (19th c.)",
-        "BR1": "Brooklyn (alt.",
-        "BR2": "Brooklyn (alt 2)",
-        "BR3": "Brooklyn (alt 3)",
-        "BR4": "Brooklyn (alt 4)",
-        "CBG": "Cincinnati (old)",
-        "CH1": "Chicago (AA/NL early)",
-        "CHN": "Chicago Cubs",  # noqa: F601 — also in active teams above
-        "CL1": "Cleveland (early AL)",
-        "CL2": "Cleveland (early NL)",
-        "CL3": "Cleveland (alt 3)",
-        "CL4": "Cleveland (alt 4)",
-        "CL5": "Cleveland (alt 5)",
-        "CL6": "Cleveland (alt 6)",
-        "CN1": "Chicago (NL early)",
-        "CN2": "Chicago (NL alt)",
-        "CSW": "Chicago White Stockings",
-        "DTN": "Detroit (early NL)",
-        "LS1": "Louisville (early)",
-        "LS2": "Louisville (alt 2)",
-        "ML1": "Milwaukee (Braves/Brewers)",
-        "NE": "New England",
-        "NEW": "Newark (Negro league)",
-        "NY1": "New York Giants (NL)",
-        "NY2": "New York (AL early)",
-        "NY3": "New York (alt 3)",
-        "NYC": "New York (city teams)",
-        "PH1": "Philadelphia (early NL)",
-        "PH2": "Philadelphia (alt 2)",
-        # PHA: Philadelphia Athletics — already mapped at line 75
-        "PHP": "Philadelphia Phillies",
-        # PIT: Pittsburgh Pirates — already mapped above
-        "PRO": "Providence Grays",
-        # SDN: San Diego Padres — already mapped above
-        "SL1": "St. Louis (early NL)",
-        "SL2": "St. Louis Browns",
-        "SL4": "St. Louis (alt 4)",
-        "SL5": "St. Louis (alt 5)",
-        "SLA": "St. Louis Browns",
-        "SLF": "St. Louis (fall league?)",
-        # SLN: St. Louis Cardinals — already mapped at line 62
-        "WS3": "Washington Senators (1900s)",
-    }
-
-_TEAM_MAP.update(
-    {
-        "ACY": "Atlantic City Bacharach Giants",
-        "ASD": "All-Star East",
-        "ASE": "All-Star East",
-        "ASF": "All-Star East",
-        "ASP": "All-Star Players",
-        "ASW": "All-Star West",
-        "BIR": "Birmingham Black Barons",
-        "BLF": "Baltimore Terrapins",
-        "BLG": "Baltimore Elite Giants",
-        "BRF": "Brooklyn Tip-Tops",
-        "BRG": "Brooklyn Royal Giants",
-        "BUF": "Buffalo Blues",
-        "CAG": "Chicago American Giants",
-        "CDA": "Cincinnati Buckeyes",
-        "CHF": "Chicago Whales",
-        "CHM": "Chicago American Giants",
-        "CI1": "Cincinnati Tigers",
-        "CVB": "Cleveland Buckeyes",
-        "DT2": "Detroit Stars",
-        "HIL": "Hilldale Club",
-        "HOM": "Homestead Grays",
-        "IN4": "Indianapolis ABCs",
-        "IN6": "Indianapolis ABCs",
-        "IN7": "Indianapolis Clowns",
-        "IN9": "Indianapolis Clowns",
-        "IND": "Indianapolis Hoosiers",
-        "JAX": "Jacksonville Red Caps",
-        "KC1": "Kansas City Athletics",
-        "KCF": "Kansas City Packers",
-        "KCM": "Kansas City Monarchs",
-        "KCR": "Kansas City Royals",
-        "MEM": "Memphis Red Sox",
-        "MLN": "Milwaukee Braves",
-        "MLS": "Milwaukee Stars",
-        "NAL": "National League All-Stars",
-        "NAS": "Nashville Elite Giants",
-        "NNS": "Newark Eagles",
-        "NSH": "Nashville Elite Giants",
-        "NW2": "Newark Eagles",
-        "NY5": "New York Cubans",
-        "NY6": "New York Lincoln Giants",
-        "PH5": "Philadelphia Stars",
-        "PIR": "Pittsburgh Crawfords",
-        "PRG": "Pittsburgh Crawfords",
-        "PTF": "Pittsburgh Rebels",
-        "SDO": "San Diego Padres",
-        "SE1": "Seattle Pilots",
-        "SSA": "St. Louis Stars",
-        "WHK": "Washington Homestead Grays",
-    }
-)
-
-
-def get_team_name(team_id: str, *, default: str = "Unknown") -> str:
-    """Return a display name for a Lahman team ID."""
-    return _TEAM_MAP.get(team_id, default)
 
 
 def get_duckdb() -> duckdb.DuckDBPyConnection:
@@ -243,16 +80,23 @@ def get_duckdb() -> duckdb.DuckDBPyConnection:
             conn.execute(f"CREATE TABLE pitching AS SELECT * FROM read_csv_auto('{pitching_path}')")
             _load_optional_retrosheet_tables(conn, DATA_DIR)
 
-            # Create a teams table from _TEAM_MAP so queries can JOIN on it
-            teams_rows = ", ".join(f"('{k}', '{v}')" for k, v in _TEAM_MAP.items())
-            conn.execute("CREATE TABLE teams (teamID TEXT, name TEXT)")
-            if teams_rows:
-                conn.execute(f"INSERT INTO teams VALUES {teams_rows}")
+            _load_retrosheet_team_reference(conn)
 
             # Assign to module-level singleton (global declared at function top).
             _cached_conn = conn
 
         return _cached_conn
+
+
+def _load_retrosheet_team_reference(conn: duckdb.DuckDBPyConnection) -> None:
+    manifest = json.loads(RETROSHEET_TEAM_REFERENCE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    observed = hashlib.sha256(RETROSHEET_TEAM_REFERENCE_PATH.read_bytes()).hexdigest()
+    if observed != manifest["sha256"]:
+        raise ValueError("Retrosheet team-reference checksum does not match its manifest.")
+    conn.execute(
+        "CREATE TABLE retrosheet_team_reference AS SELECT * FROM read_csv_auto(?)",
+        [str(RETROSHEET_TEAM_REFERENCE_PATH)],
+    )
 
 
 def _load_optional_retrosheet_tables(conn: duckdb.DuckDBPyConnection, data_dir: Path) -> None:

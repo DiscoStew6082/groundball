@@ -1,8 +1,12 @@
 """Clean transport Adapters over Query Recipe and Query Run."""
 
+import json
+from pathlib import Path
+
 import pytest
 
 from baseball_rag.query.adapters import catalog_payload, run_query_input
+from baseball_rag.query.coverage import canonical_proof_id, load_coverage_report
 
 
 def test_natural_language_and_structured_input_return_the_same_recipe_and_plan():
@@ -17,10 +21,28 @@ def test_natural_language_and_structured_input_return_the_same_recipe_and_plan()
     assert natural["evidence"]["parameterized_sql"]
     assert natural["evidence"]["bound_values"] == [1962]
     assert natural["verification"] == {
-        "status": "unavailable",
-        "reason": "No passing Coverage Report exists for this catalog and data release.",
-        "coverage_report": None,
+        "status": "verified",
+        "reason": "Verified for this data release.",
+        "coverage_report": "/coverage-report",
     }
+
+
+def test_stale_proof_blocks_factual_adapter_results(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report = load_coverage_report()
+    report["proof_identity"] = {**report["proof_identity"], "compiler_sha256": "stale"}
+    report["proof_id"] = canonical_proof_id(report)
+    report_path = tmp_path / "coverage-report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr("baseball_rag.query.coverage.COVERAGE_REPORT_PATH", report_path)
+
+    result = run_query_input(question="who had the most RBIs in 1962")
+
+    assert result["kind"] == "unavailable"
+    assert "stale" in result["reason"].lower()
+    assert "rows" not in result
+    assert "evidence" not in result
 
 
 def test_adapter_exposes_clarification_rejection_no_data_and_export_as_discriminated_outcomes():
@@ -112,6 +134,18 @@ def test_catalog_payload_drives_raw_field_discovery_without_physical_relationshi
         }
     ]
     assert all("keys" not in relationship for relationship in payload["relationships"])
+
+
+def test_catalog_discovery_paginates_after_source_and_search_filters():
+    complete = catalog_payload(source="Pitching")
+    first = catalog_payload(source="Pitching", offset=0, limit=11)
+    second = catalog_payload(source="Pitching", offset=11, limit=11)
+
+    assert first["field_total"] == 30
+    assert first["field_offset"] == 0
+    assert first["field_limit"] == 11
+    assert first["fields"] + second["fields"] == complete["fields"][:22]
+    assert all("operations" in value and "explanation" in value for value in complete["values"])
 
 
 @pytest.mark.parametrize(

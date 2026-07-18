@@ -1,7 +1,7 @@
 {
   "catalog_revision": "published-query-catalog-v3",
   "catalog_sha256": "14406e5679de6279de6ff0fa9ea0fb347d9f6b116811aa12978b3a7142496e2c",
-  "data_manifest_sha256": "3ea87cef68b71d7256827d025626703350785a3782e54d98070bf7fe74882128",
+  "data_manifest_semantic_sha256": "5c533cb9e479c46f6c2825acf3ae0669825c017c3e125e8c969474200e46127e",
   "promoted_catalog_sha256": {
     "promoted_batting.json": "3832f55bf9edcc3e8742e1d56db2727474d32292b2fd6db004e6bd80cfaff1c9",
     "promoted_common.json": "fcb1a00838a46f6cfc69d9e4758884cb3c1203b78e018eb6e690986c266121de",

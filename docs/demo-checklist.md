@@ -1,53 +1,21 @@
 # Demo Checklist
 
-Use this when walking a reviewer through the project in five minutes.
-
-## Prep
-
 ```bash
 uv sync
 npm --prefix web ci
 npm --prefix web run build
-uv run python -m baseball_rag.db.download
-uv run python -m evals.questions
-```
-
-Start the unified Svelte/FastAPI application:
-
-```bash
 uv run groundball-ui
 ```
 
-Open `http://127.0.0.1:7861/`. To demonstrate the zero-Mac public contract,
-restart with `GROUNDBALL_PUBLIC_DEMO=1`; the server then advertises only
-deterministic capabilities and rejects LLM and local developer operations.
+Open `http://127.0.0.1:7861/`.
 
-## Script
+1. Ask `who had the most RBIs in 1962`; show Tommy Davis, 153, then open SQL and QueryEvidence.
+2. Run the 40-40 recipe; show the exact six rows and tie-safe ordering.
+3. Discover `GIDP` in the catalog, build a raw query, and show that the raw surface is not hidden behind promoted stats.
+4. Ask `Aaron Judge OPS in 2022`; show the published formula and independently sourced components.
+5. Ask an ambiguous strikeout question; show inline clarification rather than a guessed discipline.
+6. Try an arbitrary formula; show the closed catalog rejection.
+7. Export a result and show that the downloaded snapshot matches the visible rows.
+8. Open the Coverage Report; show six passing gates, 5,253 covered obligations, and zero uncovered.
 
-1. Ask: `who had the most RBIs in 1962`
-   - Show deterministic stat routing to DuckDB.
-   - Point out returned rows and data manifest provenance.
-
-2. Ask: `who won the Triple Crown and which years`
-   - Show `Deterministic template query` in the source label.
-   - Point out SQL visibility and template-owned factual execution.
-
-3. Ask: `who played for the Braves in 1936`
-   - Show the LLM-backed typed grounded database path.
-   - Point out that Python still assembles constrained, parameterized SQL.
-
-4. Ask: `who was Babe Ruth`
-   - Show that the player identity resolves through DuckDB first.
-   - Point out biography stat-claim verification rows and any warnings.
-
-5. Ask: `how many home runs did Williams have in 1941`
-   - Show ambiguity handling.
-   - Emphasize that unsupported or ambiguous questions do not silently guess.
-
-6. Open `docs/eval-report.md`
-   - Show safe deterministic eval counts.
-   - Mention that `--include-live` is intentionally separate because it may require LM Studio.
-
-## Close
-
-The takeaway: Groundball is a modern sports almanac, not a generic chatbot. Language is used for routing and narration, while deterministic code owns database execution and every answer carries inspectable evidence.
+The takeaway: one catalog and one deterministic plan/compiler path own structured baseball facts. Every result is inspectable, proof-bound, and independent of an LLM or network service.

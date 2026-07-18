@@ -330,7 +330,7 @@ def interpret_recipe(question: str) -> RecipeAdaptation:
         return QueryRecipe(
             source="Batting",
             grain="player-season",
-            selections=("player.name", "season", "batting.AB", "batting.AVG"),
+            selections=("player.name", "season", "batting.H", "batting.AB", "batting.AVG"),
             predicate=All(
                 (
                     Compare("season", "equals", year),

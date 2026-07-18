@@ -8,7 +8,6 @@ import zipfile
 import duckdb
 
 from baseball_rag.db import duckdb_schema
-from baseball_rag.db.duckdb_schema import get_team_name
 from baseball_rag.db.secondary_sources import retrosheet, retrosheet_database
 
 
@@ -356,8 +355,3 @@ def test_duckdb_ignores_retrosheet_database_cache_with_wrong_schema_version(tmp_
     finally:
         conn.close()
         duckdb_schema._cached_conn = None
-
-
-def test_team_map_includes_retrosheet_event_team_aliases():
-    assert get_team_name("MLN") == "Milwaukee Braves"
-    assert get_team_name("KC1") == "Kansas City Athletics"
