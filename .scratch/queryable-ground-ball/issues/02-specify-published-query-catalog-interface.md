@@ -1,14 +1,16 @@
 # Specify the Published Query Catalog Interface
 
 Type: `grilling`
-Status: claimed
+Status: resolved
 Blocked by: [Prototype the mobile Query Recipe experience](01-prototype-mobile-query-experience.md)
 
 ## Question
 
 What is the smallest readable catalog Interface that distinguishes mandatory raw Lahman discoverability from promoted query semantics, then defines friendly fields, aliases, exact derived statistics, valid grains, filters, aggregations, approved joins, and verification metadata once for interpretation, controls, planning, documentation, and completeness checks while leaving numeric safety ceilings to the zero-Mac public-demo map?
 
-## Decisions in progress
+## Answer
+
+Use one small, checked-in Published Query Catalog Interface with two parts: an exhaustive generated raw-field inventory and a hand-authored promoted semantic layer. The same catalog governs structured public and local Ground Ball; runtime profiles remain deferred until concrete capability divergence exists.
 
 - Raw coverage uses a hybrid catalog: a generated, checked-in inventory exhaustively records every in-scope primary Lahman table and field plus the synthesized team reference lookup, while hand-authored semantic entries define friendly names, aliases, exact calculations, approved relationships, and promoted query semantics. Verification rejects drift between the packaged schema and the checked-in inventory.
 - Unpromoted raw fields remain reachable through one generic structured field interface for selection, type-appropriate filtering and grouping, sorting, pagination, and export. Natural-language interpretation recognizes only promoted semantic entries; the first release does not require field-specific natural-language behavior for raw fields such as `People.birthCity`.

@@ -25,6 +25,7 @@ Reach a reviewed product and architecture specification, with an implementation 
 ## Decisions so far
 
 - [Prototype the mobile Query Recipe experience](issues/01-prototype-mobile-query-experience.md) — Use the approved Variant F answer-first sports feed inside the launched-window frame, with the yellow top-left `GB` control as the single expandable application-navigation trigger, the familiar chat composer fixed at the bottom, compact verified results in the main feed, inline clarification, and technical details progressively disclosed behind one Details surface.
+- [Specify the Published Query Catalog Interface](issues/02-specify-published-query-catalog-interface.md) — Use one checked-in catalog with an exhaustive generated raw-field inventory and a hand-authored promoted semantic layer shared by public and local Ground Ball. Generic structured controls reach every raw field; promoted entries own exact formulas, grains, and simple roll-up rules, while catalog-level type defaults and relationship allowlists govern safe filtering and joins without runtime profiles or duplicated definitions.
 
 ## Not yet specified
 
