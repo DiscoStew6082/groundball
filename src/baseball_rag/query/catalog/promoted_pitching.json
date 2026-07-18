@@ -19,7 +19,10 @@
     {"identity": "pitching.ERA", "friendly_name": "Earned run average", "aliases": ["earned run average", "era"], "kind": "calculation", "data_type": "number", "formula": "27 * ER / IPouts", "expression": {"op": "divide", "args": [{"op": "multiply", "args": [{"constant": 27}, {"field": "Pitching.ER"}]}, {"field": "Pitching.IPouts"}]}, "components": ["Pitching.ER", "Pitching.IPouts"], "eligibility_component": "pitching.IPouts", "rollup": "recompute", "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]},
     {"identity": "pitching.WHIP", "friendly_name": "Walks and hits per inning pitched", "aliases": ["whip", "walks and hits per inning pitched"], "kind": "calculation", "data_type": "number", "formula": "3 * (BB + H) / IPouts", "expression": {"op": "divide", "args": [{"op": "multiply", "args": [{"constant": 3}, {"op": "add", "args": [{"field": "Pitching.BB"}, {"field": "Pitching.H"}]}]}, {"field": "Pitching.IPouts"}]}, "components": ["Pitching.BB", "Pitching.H", "Pitching.IPouts"], "eligibility_component": "pitching.IPouts", "rollup": "recompute", "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]}
   ],
-  "relationships": [],
+  "relationships": [
+    {"identity": "people-to-pitching", "left_source": "People", "right_source": "Pitching", "cardinality": "left_one_to_right_many", "keys": [["People.playerID", "Pitching.playerID"]]},
+    {"identity": "team-reference-to-pitching", "left_source": "TeamReference", "right_source": "Pitching", "cardinality": "left_one_to_right_many", "keys": [["TeamReference.yearID", "Pitching.yearID"], ["TeamReference.teamID", "Pitching.teamID"]]}
+  ],
   "recipes": [],
   "grains": []
 }

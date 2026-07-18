@@ -26,6 +26,7 @@ from baseball_rag.query.contracts import (
 from baseball_rag.query.registry import (
     _relationship_bindings,
     canonical_promoted_identity,
+    combination_for,
     field_by_identity,
     grain_by_identity,
     is_promoted_grouping,
@@ -146,7 +147,16 @@ def prepare_promoted(
         *(_value_sources(identity, anchor_source=recipe.source) for identity in refs)
     )
     relationships = []
-    for required_source in sorted(required_sources - {recipe.source}):
+    combined_sources = {recipe.source}
+    for required_source in required_sources - {recipe.source}:
+        if combination_for({recipe.source, required_source}, recipe.grain) is not None:
+            combined_sources.add(required_source)
+    combination = (
+        combination_for(combined_sources, recipe.grain) if len(combined_sources) > 1 else None
+    )
+    if combination is not None and groupings:
+        return Rejected("Cross-discipline combinations require one named shared grain.")
+    for required_source in sorted(required_sources - combined_sources):
         candidates = [
             relationship
             for relationship in _relationship_bindings()
@@ -158,6 +168,8 @@ def prepare_promoted(
                 f"No single published relationship connects {recipe.source} and {required_source}."
             )
         relationships.append(candidates[0].identity)
+    if combination is not None:
+        relationships.append(combination.identity)
 
     return Ready(
         QueryPlanV1(

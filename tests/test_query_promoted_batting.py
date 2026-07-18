@@ -86,10 +86,10 @@ def test_promoted_batting_catalog_publishes_exact_values_and_friendly_relationsh
         "batting.AVG.league_max",
     }.isdisjoint(values)
     relationships = published_relationships()
-    assert [(item.identity, item.left_source, item.right_source) for item in relationships] == [
+    assert {(item.identity, item.left_source, item.right_source) for item in relationships} >= {
         ("people-to-batting", "People", "Batting"),
         ("team-reference-to-batting", "TeamReference", "Batting"),
-    ]
+    }
     assert all(not hasattr(item, "keys") for item in relationships)
 
 

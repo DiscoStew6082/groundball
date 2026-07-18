@@ -111,6 +111,52 @@ def _resolve_eligibility(
 def interpret_recipe(question: str) -> RecipeAdaptation:
     """Interpret the reviewed deterministic phrases for the initial Adapter."""
     normalized = " ".join(question.casefold().replace("’", "'").split())
+    if re.fullmatch(
+        r"(?:players? with )?at least 30 (?:hr|home runs) and 10 pitching wins "
+        r"in one season\??",
+        normalized,
+    ):
+        return QueryRecipe(
+            source="Batting",
+            grain="player-season",
+            selections=(
+                "player.id",
+                "player.name",
+                "season",
+                "batting.HR",
+                "pitching.W",
+            ),
+            predicate=All(
+                (
+                    Compare("batting.HR", "greater_or_equal", 30),
+                    Compare("pitching.W", "greater_or_equal", 10),
+                )
+            ),
+            ordering=(SortSpec("season", "ascending"),),
+        )
+    if re.fullmatch(r"who played for the braves in 1936\??", normalized):
+        return QueryRecipe(
+            source="Batting",
+            grain="player-team-season",
+            selections=(
+                "player.id",
+                "season",
+                "team.id",
+                "team.name",
+                "batting.G",
+            ),
+            predicate=All(
+                (
+                    Compare("season", "equals", 1936),
+                    Compare("team.id", "equals", "BSN"),
+                )
+            ),
+            ordering=(SortSpec("player.id", "ascending"),),
+        )
+    if re.fullmatch(r"braves all time\??", normalized):
+        return NeedsClarification(
+            "Which Braves historical team identity or season should this query use?"
+        )
     ambiguous_strikeouts = re.fullmatch(
         r"who had the most (?:strikeouts|so) in (\d{4})\??",
         normalized,

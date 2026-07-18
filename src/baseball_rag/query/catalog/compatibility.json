@@ -4,10 +4,10 @@
   "data_manifest_sha256": "3ea87cef68b71d7256827d025626703350785a3782e54d98070bf7fe74882128",
   "promoted_catalog_sha256": {
     "promoted_batting.json": "3832f55bf9edcc3e8742e1d56db2727474d32292b2fd6db004e6bd80cfaff1c9",
-    "promoted_common.json": "ad7a1918fd0e51f83dadaf75d335eaf59b2e85956aab9f8b9488763d50876d73",
-    "promoted_fielding.json": "4549eee587a0001ecebe159119fa49cc73ed01314f423b2466c3225aed04b20e",
+    "promoted_common.json": "fcb1a00838a46f6cfc69d9e4758884cb3c1203b78e018eb6e690986c266121de",
+    "promoted_fielding.json": "01087531a18f715488dbad37bc6e496865721122d2eb3efe8948b5bab8bb2d4d",
     "promoted_people.json": "b8a46b988373486ecf1b351b1fc4567efb5cf133eeb4b3bd288d7ebb8caed59a",
-    "promoted_pitching.json": "2cf54ac7301d2366c8746c54c545057a8edeb15071d1fa707d47890f915d5afb"
+    "promoted_pitching.json": "9244c375830b7a6ae81642a233b168e04d1254c202eb874f712e7b963109450f"
   },
   "raw_inventory_revision": "raw-fields-62c654dd3fddb1f6",
   "raw_inventory_sha256": "a5e5e85f2cc2009c6df0e84bbe8cae7956a3a984b068471f50dae7b014b3509a",

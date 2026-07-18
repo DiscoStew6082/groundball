@@ -7,6 +7,7 @@ from typing import Any
 from baseball_rag.query.contracts import (
     All,
     Compare,
+    Export,
     InteractivePage,
     Literal,
     Not,
@@ -20,6 +21,8 @@ from baseball_rag.query.contracts import (
 )
 from baseball_rag.query.registry import (
     _promoted_value_bindings,
+    combination_by_identity,
+    direct_value_sources,
     field_by_identity,
     grain_by_identity,
     promoted_value_by_identity,
@@ -163,6 +166,16 @@ def _cast_scalar(literal: Literal) -> Scalar:
 
 def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
     """Compile one validated promoted plan from catalog declarations only."""
+    combination = next(
+        (
+            binding
+            for identity in plan.relationships
+            if (binding := combination_by_identity(identity)) is not None
+        ),
+        None,
+    )
+    if combination is not None:
+        return _compile_composed_plan(plan, combination.sources)
     grain = grain_by_identity(plan.grain)
     source = source_by_identity(plan.source)
     if grain is None or source is None:
@@ -348,6 +361,142 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
         f"ordered_rows.__row_number IS NOT NULL AS __row_present "
         f"FROM match_count LEFT JOIN ordered_rows ON {page_predicate} "
         f"ORDER BY ordered_rows.__row_number"
+    )
+    return sql, tuple(bound_values)
+
+
+def _compile_composed_plan(
+    plan: QueryPlanV1,
+    allowed_sources: tuple[str, ...],
+) -> tuple[str, tuple[Scalar, ...]]:
+    grain = grain_by_identity(plan.grain)
+    if grain is None or plan.groupings:
+        raise ValueError("Composed queries require one named shared grain.")
+    references = set(plan.selections)
+    references.update(_predicate_values(plan.predicate))
+    references.update(spec.value for spec in plan.ordering)
+    if plan.ranking is not None:
+        references.add(plan.ranking.value)
+        references.update(plan.ranking.within)
+    fact_sources = {plan.source}
+    for identity in references:
+        direct_sources = direct_value_sources(identity) & set(allowed_sources)
+        if len(direct_sources) == 1:
+            fact_sources.update(direct_sources)
+        elif plan.source in direct_sources:
+            fact_sources.add(plan.source)
+    if len(fact_sources) < 2:
+        raise ValueError("Composed plan does not reference multiple fact sources.")
+    if any(
+        (value := promoted_value_by_identity(identity)) is not None and value.kind == "window"
+        for identity in references
+    ):
+        raise ValueError("Window values are not published across fact-source combinations.")
+
+    ordered_sources = [plan.source, *sorted(fact_sources - {plan.source})]
+    source_selections: dict[str, set[str]] = {
+        source: set(grain.dimensions) for source in ordered_sources
+    }
+    column_owner: dict[str, str] = {identity: plan.source for identity in grain.dimensions}
+    for identity in references:
+        direct_sources = direct_value_sources(identity) & fact_sources
+        owner = (
+            plan.source
+            if plan.source in direct_sources or not direct_sources
+            else sorted(direct_sources)[0]
+        )
+        source_selections[owner].add(identity)
+        column_owner[identity] = owner
+
+    subqueries: list[str] = []
+    bound_values: list[Scalar] = []
+    lookup_relationships = [
+        identity for identity in plan.relationships if combination_by_identity(identity) is None
+    ]
+    for index, source in enumerate(ordered_sources):
+        relationships = tuple(
+            identity
+            for identity in lookup_relationships
+            if (relationship := relationship_by_identity(identity)) is not None
+            and source in {relationship.left_source, relationship.right_source}
+        )
+        subplan = QueryPlanV1(
+            version=plan.version,
+            catalog_revision=plan.catalog_revision,
+            source=source,
+            grain=plan.grain,
+            selections=tuple(sorted(source_selections[source])),
+            predicate=None,
+            relationships=relationships,
+            output=Export(),
+        )
+        sql, values = compile_promoted_plan(subplan)
+        subqueries.append(f"fact_{index} AS ({sql})")
+        bound_values.extend(values)
+
+    source_index = {source: index for index, source in enumerate(ordered_sources)}
+    projections = []
+    for identity in sorted(set(grain.dimensions) | references):
+        owner = column_owner.get(identity, plan.source)
+        projections.append(f"f{source_index[owner]}.{_quote(identity)} AS {_quote(identity)}")
+    joins = []
+    for index in range(1, len(ordered_sources)):
+        conditions = " AND ".join(
+            f"f0.{_quote(key)} = f{index}.{_quote(key)}" for key in grain.dimensions
+        )
+        joins.append(f"JOIN fact_{index} AS f{index} ON {conditions}")
+    combined = f"SELECT {', '.join(projections)} FROM fact_0 AS f0 {' '.join(joins)}"
+
+    predicate_sql = "TRUE"
+    if plan.predicate is not None:
+        predicate_sql, predicate_values = _compile_alias_predicate(plan.predicate)
+        bound_values.extend(predicate_values)
+    filtered = f"SELECT * FROM combined WHERE {predicate_sql}"
+
+    source_name = "filtered"
+    ranking_cte = ""
+    rank_filter = ""
+    if plan.ranking is not None:
+        rank = plan.ranking
+        direction = "DESC" if rank.direction == "highest" else "ASC"
+        nulls = "LAST" if rank.direction == "highest" else "FIRST"
+        partition = (
+            "PARTITION BY " + ", ".join(_quote(item) for item in rank.within) + " "
+            if rank.within
+            else ""
+        )
+        function = "RANK" if rank.tie_policy == "include_ties" else "ROW_NUMBER"
+        rank_order = f"{_quote(rank.value)} {direction} NULLS {nulls}"
+        if rank.tie_policy == "exact_count":
+            rank_order += ", " + ", ".join(
+                f"{_quote(key)} ASC NULLS LAST" for key in grain.dimensions
+            )
+        ranking_cte = (
+            f", ranked AS (SELECT filtered.*, {function}() OVER ({partition}"
+            f"ORDER BY {rank_order}) AS __rank FROM filtered)"
+        )
+        source_name = "ranked"
+        rank_filter = f" WHERE __rank <= {rank.count}"
+
+    order_parts = _ordering(plan, grain.dimensions)
+    selected = ", ".join(_quote(item) for item in plan.selections)
+    ordered = (
+        f"SELECT {selected}, ROW_NUMBER() OVER (ORDER BY {', '.join(order_parts)}) "
+        f"AS __row_number FROM {source_name}{rank_filter}"
+    )
+    page_predicate = "TRUE"
+    if isinstance(plan.output, InteractivePage):
+        page_predicate = (
+            f"__row_number BETWEEN {plan.output.offset + 1} "
+            f"AND {plan.output.offset + plan.output.size}"
+        )
+    sql = (
+        f"WITH {', '.join(subqueries)}, combined AS ({combined}), "
+        f"filtered AS ({filtered}){ranking_cte}, ordered_rows AS ({ordered}), "
+        f"match_count AS (SELECT COUNT(*) AS __matched_count FROM {source_name}"
+        f"{rank_filter}) SELECT {selected}, match_count.__matched_count, "
+        f"ordered_rows.__row_number IS NOT NULL AS __row_present FROM match_count "
+        f"LEFT JOIN ordered_rows ON {page_predicate} ORDER BY ordered_rows.__row_number"
     )
     return sql, tuple(bound_values)
 

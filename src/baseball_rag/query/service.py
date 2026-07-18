@@ -33,6 +33,7 @@ from baseball_rag.query.contracts import (
     Scalar,
     SortSpec,
     SourceEvidence,
+    ValueRef,
 )
 from baseball_rag.query.contracts import (
     Any as AnyPredicate,
@@ -46,6 +47,8 @@ from baseball_rag.query.registry import (
     CATALOG_DIR,
     _SourceBinding,
     catalog_revision,
+    combination_by_identity,
+    direct_value_sources,
     field_by_identity,
     promoted_value_by_identity,
     relationship_by_identity,
@@ -177,7 +180,25 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
     for relationship_identity in plan.relationships:
         relationship = relationship_by_identity(relationship_identity)
         if relationship is None:
-            return ExecutionUnavailable(f"Relationship {relationship_identity!r} is not published.")
+            combination = combination_by_identity(relationship_identity)
+            if combination is None:
+                return ExecutionUnavailable(
+                    f"Relationship {relationship_identity!r} is not published."
+                )
+            used_sources = {plan.source}
+            for value_identity in _plan_references(plan):
+                direct_sources = direct_value_sources(value_identity) & set(combination.sources)
+                if len(direct_sources) == 1:
+                    used_sources.update(direct_sources)
+                elif plan.source in direct_sources:
+                    used_sources.add(plan.source)
+            for identity in combination.sources:
+                if identity not in used_sources:
+                    continue
+                binding = source_by_identity(identity)
+                if binding is not None and binding not in evidence_sources:
+                    evidence_sources.append(binding)
+            continue
         for identity in (relationship.left_source, relationship.right_source):
             binding = source_by_identity(identity)
             if binding is not None and binding not in evidence_sources:
@@ -204,6 +225,30 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
             content=_render_export(rows, plan.output.format),
         )
     return Rows(plan=plan, rows=rows, evidence=evidence)
+
+
+def _plan_references(plan: QueryPlanV1) -> set[str]:
+    references = set(plan.selections)
+    references.update(plan.groupings)
+    references.update(spec.value for spec in plan.ordering)
+    if plan.ranking is not None:
+        references.add(plan.ranking.value)
+        references.update(plan.ranking.within)
+    references.update(_predicate_references(plan.predicate))
+    return references
+
+
+def _predicate_references(predicate: Predicate | None) -> set[str]:
+    if predicate is None:
+        return set()
+    if isinstance(predicate, Compare):
+        references = {predicate.value}
+        if isinstance(predicate.literal, ValueRef):
+            references.add(predicate.literal.identity)
+        return references
+    if isinstance(predicate, (All, AnyPredicate)):
+        return set().union(*(_predicate_references(item) for item in predicate.predicates))
+    return _predicate_references(predicate.predicate)
 
 
 def _validate_field_operation(source: str, identity: str, operation: str) -> Rejected | None:

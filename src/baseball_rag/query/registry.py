@@ -121,6 +121,13 @@ class _GrainBinding:
     dimensions: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _CombinationBinding:
+    identity: str
+    sources: tuple[str, ...]
+    grains: tuple[str, ...]
+
+
 @lru_cache(maxsize=1)
 def _source_bindings() -> tuple[_SourceBinding, ...]:
     payload = _read_json("published_sources.json")
@@ -183,6 +190,7 @@ def _promoted_payload() -> dict[str, Any]:
         "relationships": [],
         "recipes": [],
         "groupings": [],
+        "combinations": [],
     }
     for filename in promoted_files:
         payload = _read_json(str(filename))
@@ -345,6 +353,19 @@ def _validate_promoted_declarations(payload: dict[str, list[Any]]) -> None:
             ):
                 raise ValueError(f"Relationship {identity!r} references stale join keys.")
 
+    combination_ids: set[str] = set()
+    for combination in payload["combinations"]:
+        identity = str(combination["identity"])
+        if identity in combination_ids:
+            raise ValueError("Promoted catalog contains duplicate combinations.")
+        combination_ids.add(identity)
+        if (
+            len(combination["sources"]) < 2
+            or any(source_by_identity(source) is None for source in combination["sources"])
+            or not set(combination["grains"]) <= grain_ids
+        ):
+            raise ValueError(f"Combination {identity!r} has stale declarations.")
+
     recipe_ids: set[str] = set()
     for recipe in payload["recipes"]:
         identity = str(recipe["identity"])
@@ -464,6 +485,18 @@ def _grain_bindings() -> tuple[_GrainBinding, ...]:
 
 
 @lru_cache(maxsize=1)
+def _combination_bindings() -> tuple[_CombinationBinding, ...]:
+    return tuple(
+        _CombinationBinding(
+            identity=item["identity"],
+            sources=tuple(item["sources"]),
+            grains=tuple(item["grains"]),
+        )
+        for item in _promoted_payload()["combinations"]
+    )
+
+
+@lru_cache(maxsize=1)
 def published_values() -> tuple[PromotedValueView, ...]:
     return tuple(
         PromotedValueView(
@@ -560,6 +593,37 @@ def grain_by_identity(identity: str) -> _GrainBinding | None:
 
 def is_promoted_grouping(identity: str) -> bool:
     return identity in {str(item) for item in _promoted_payload()["groupings"]}
+
+
+def combination_by_identity(identity: str) -> _CombinationBinding | None:
+    return next((item for item in _combination_bindings() if item.identity == identity), None)
+
+
+def combination_for(sources: set[str], grain: str) -> _CombinationBinding | None:
+    return next(
+        (
+            item
+            for item in _combination_bindings()
+            if sources <= set(item.sources) and grain in item.grains
+        ),
+        None,
+    )
+
+
+def direct_value_sources(identity: str) -> set[str]:
+    value = promoted_value_by_identity(identity)
+    if value is None:
+        return set()
+    sources = set(value.source_bindings)
+    for field_identity in (
+        *((value.source_field,) if value.source_field is not None else ()),
+        *value.source_fields,
+        *value.components,
+    ):
+        field = field_by_identity(field_identity)
+        if field is not None:
+            sources.add(field.source)
+    return sources
 
 
 @lru_cache(maxsize=1)

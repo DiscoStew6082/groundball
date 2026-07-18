@@ -1,6 +1,9 @@
 {
   "schema_version": 1,
   "groupings": ["player.id", "season", "team.id", "league"],
+  "combinations": [
+    {"identity": "combine-primary-facts", "sources": ["Batting", "Pitching", "Fielding"], "grains": ["player-season", "player-team-season", "player-career"]}
+  ],
   "grains": [
     {"identity": "player-record", "sources": ["People"], "dimensions": ["player.id"]},
     {"identity": "player-team-season", "sources": ["Batting", "Pitching", "Fielding"], "dimensions": ["player.id", "season", "team.id"]},
