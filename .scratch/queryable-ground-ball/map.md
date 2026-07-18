@@ -29,6 +29,7 @@ Reach a reviewed product and architecture specification, with an implementation 
 - [Specify the deterministic Query Plan Interface](issues/03-specify-deterministic-query-plan-interface.md) — Use one closed, versioned, catalog-capped declarative plan shared by natural-language and structured refinement; planning clarifies or rejects before execution, resolves approved relationships, and preserves deterministic browsing, export, and verification without exposing database mechanics.
 - [Define completeness and verification gates](issues/04-define-completeness-and-verification-gates.md) — Require exhaustive, release-blocking proof of catalog/schema identity, every raw field and row, exact promoted semantics, safe Query Plans, complete evidence, and no-LLM/no-Mac independence, with quiet per-result verification linked to a public Coverage Report.
 - [Specify the Lahman source-expansion Seam](issues/06-specify-lahman-source-expansion-seam.md) — Use one checked-in declarative Published Lahman Source Registry so future primary tables contribute raw coverage, grains, relationships, provenance, and optional promoted semantics without gaining custom Adapters or parallel query lanes.
+- [Choose the initial promoted query surface](issues/07-choose-initial-promoted-query-surface.md) — Promote a historical-almanac core of player facts, common batting, pitching, and fielding values, exact familiar rates, named baseball recipes, explicit grains and relationships, and cross-discipline questions without hiding the complete raw surface.
 
 ## Not yet specified
 
