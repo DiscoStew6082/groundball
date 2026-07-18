@@ -16,3 +16,19 @@ updates:
       github-actions:
         patterns:
           - "*"
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    groups:
+      web-dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: "uv"
+    directory: "/src/mlb_api_mcp"
+    schedule:
+      interval: "weekly"
+    groups:
+      mlb-api-mcp-dependencies:
+        patterns:
+          - "*"

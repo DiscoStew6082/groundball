@@ -18,11 +18,11 @@ ENV UV_LINK_MODE=copy
 # Set work directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy the locked dependency graph
+COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies
-RUN uv pip install --system -e .
+# Install production dependencies from the lockfile
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy application code
 COPY . .
@@ -36,4 +36,4 @@ USER app
 EXPOSE 8002
 
 # Command to run the application
-CMD ["python", "main.py", "--http"]
+CMD ["/app/.venv/bin/python", "main.py", "--http"]
