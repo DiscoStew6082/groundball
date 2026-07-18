@@ -1,22 +1,78 @@
 {
   "dataset": {
-    "name": "Retrosheet event-derived local aggregates",
-    "source_url": "https://www.retrosheet.org/events",
+    "name": "Retrosheet CSV daily logs and local derived projections",
+    "source_url": "https://www.retrosheet.org/downloads/csvdownloads.html",
     "attribution": "The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.",
     "license_notes": "Retrosheet data is free to use with required attribution. Retrosheet makes no guarantees of accuracy and updates data as corrections arrive."
   },
   "download": {
-    "downloaded_at": "2026-07-03T02:55:40-04:00",
-    "download_tool": "python -m baseball_rag.db.secondary_sources.retrosheet_events",
-    "notes": "Generated pitcher strikeout-side evidence from Retrosheet event archives."
+    "downloaded_at": "2026-07-03T16:12:21-04:00",
+    "download_tool": "python -m baseball_rag.db.secondary_sources.retrosheet",
+    "notes": "Fetched batting.zip, pitching.zip, fielding.zip, and biodata.zip; preserves existing local Retrosheet-derived projection entries."
   },
   "coverage": {
     "year_coverage": {
-      "min": 1910,
+      "min": 1898,
       "max": 2025
     }
   },
   "files": [
+    {
+      "archive": "batting.zip",
+      "path": "data/secondary_sources/retrosheet/batting.zip",
+      "source_url": "https://www.retrosheet.org/downloads/batting.zip",
+      "table": "retrosheet_batting",
+      "kind": "stat",
+      "rows": 5746328,
+      "year_coverage": {
+        "min": 1898,
+        "max": 2025
+      },
+      "sha256": "b71464f886fd788db359c3456fae65e7bb4d6b7f009e1954e985ef49452e1385",
+      "archive_sha256": "14c0fad53600a477a0cfac780c1c89545a79da4c881c5127a3e38da54e58f076"
+    },
+    {
+      "archive": "pitching.zip",
+      "path": "data/secondary_sources/retrosheet/pitching.zip",
+      "source_url": "https://www.retrosheet.org/downloads/pitching.zip",
+      "table": "retrosheet_pitching",
+      "kind": "stat",
+      "rows": 1269889,
+      "year_coverage": {
+        "min": 1898,
+        "max": 2025
+      },
+      "sha256": "93bee02622be910b2bf765af9493babee2c7fbe42f8d7e2756f7bdc93cec82da",
+      "archive_sha256": "1cd00cfe9ae640c8c3e8de4bfafa01d92796ffa40e79e3fef3b8f1c8261783fd"
+    },
+    {
+      "archive": "fielding.zip",
+      "path": "data/secondary_sources/retrosheet/fielding.zip",
+      "source_url": "https://www.retrosheet.org/downloads/fielding.zip",
+      "table": "retrosheet_fielding",
+      "kind": "stat",
+      "rows": 5266059,
+      "year_coverage": {
+        "min": 1898,
+        "max": 2025
+      },
+      "sha256": "7f03cc2e7c51f1fdf156bad9b0c6ce07c3d6db0bcacff8b96f627e6b82aab122",
+      "archive_sha256": "fb49ed48a65912e67e4a5e6c207e7602609a28d61b0a93b262c08f06d7eaa065"
+    },
+    {
+      "archive": "biodata.zip",
+      "path": "data/secondary_sources/retrosheet/biodata.zip",
+      "source_url": "https://www.retrosheet.org/downloads/biodata.zip",
+      "table": "retrosheet_biofile",
+      "kind": "bio",
+      "rows": 26961,
+      "year_coverage": {
+        "min": null,
+        "max": null
+      },
+      "sha256": "69e7525c43f0605cd0002151f88975cbfee86b9d78f86f391cce5454083347a3",
+      "archive_sha256": "d4ac2d16ede4128117f642b4639fb14b6825bfbbe04a0ccbc221affb860cad2e"
+    },
     {
       "path": "data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv",
       "source_url": "https://www.retrosheet.org/events/",
@@ -27,7 +83,7 @@
         "min": 1910,
         "max": 2025
       },
-      "sha256": "63875d942e69935d860ea9a43444f331c4529d72e8377708da8047c7c1004f06"
+      "sha256": "df5af662813817d8cfe5a93668614b463fded249714858159826ce50097aa0b5"
     }
   ]
 }

@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-from baseball_rag.audit import unsupported_reason
 from baseball_rag.outcomes import (
     ambiguous_outcome,
     local_request_failure_outcome,
@@ -11,11 +10,10 @@ from baseball_rag.outcomes import (
     timeout_outcome,
 )
 from baseball_rag.provenance import (
-    StructuredAnswer,
     compact_consensus_data_manifest,
     compact_data_manifest,
+    compact_secondary_data_manifest,
 )
-from baseball_rag.review_queue import build_review_item
 
 
 def _write_manifest(path: Path, payload: dict) -> None:
@@ -69,8 +67,7 @@ def test_compact_data_manifest_preserves_primary_fields(tmp_path, monkeypatch):
                 "upstream": "Lahman",
                 "optional": False,
                 "scopes": [
-                    "structured_stat_answers",
-                    "grounded_database_answers",
+                    "query_runs",
                     "player_identity",
                     "biography_stat_claim_primary_verification",
                 ],
@@ -143,8 +140,7 @@ def test_consensus_manifest_includes_available_retrosheet_manifest(tmp_path, mon
             "upstream": "Lahman Baseball Database",
             "optional": False,
             "scopes": [
-                "structured_stat_answers",
-                "grounded_database_answers",
+                "query_runs",
                 "player_identity",
                 "biography_stat_claim_primary_verification",
             ],
@@ -216,23 +212,47 @@ def test_consensus_manifest_does_not_treat_event_projection_as_stat_consensus(
     assert "retrosheet_batting" in retrosheet["unavailable_reason"]
 
 
-def test_structured_answer_serializes_metadata():
-    answer = StructuredAnswer(
-        answer="Tommy Davis led MLB with 153 RBI.",
-        intent="stat_query",
-        metadata={"route": "stat_query", "latency_ms": 12.5},
-        review={"queued": True, "reason": "unsupported", "item_id": "review_abc"},
+def test_secondary_manifest_filters_required_files_even_when_unavailable(tmp_path, monkeypatch):
+    secondary = tmp_path / "secondary_sources" / "retrosheet" / "manifest.json"
+    _write_manifest(
+        secondary,
+        {
+            "dataset": {"name": "Retrosheet CSV daily logs"},
+            "download": {},
+            "coverage": {},
+            "files": [
+                {
+                    "path": "data/secondary_sources/retrosheet/batting.zip",
+                    "table": "retrosheet_batting",
+                    "rows": 10,
+                    "year_coverage": {"min": 1901, "max": 2025},
+                    "sha256": "batting",
+                },
+                {
+                    "path": "data/secondary_sources/retrosheet/pitching.zip",
+                    "table": "retrosheet_pitching",
+                    "rows": 5,
+                    "year_coverage": {"min": 1901, "max": 2025},
+                    "sha256": "pitching",
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "baseball_rag.provenance.secondary_manifest_path",
+        lambda source: secondary,
     )
 
-    assert answer.to_dict()["metadata"] == {"route": "stat_query", "latency_ms": 12.5}
-    assert answer.to_dict()["review"] == {
-        "queued": True,
-        "reason": "unsupported",
-        "item_id": "review_abc",
-    }
+    compact = compact_secondary_data_manifest(
+        "retrosheet",
+        required_tables=["retrosheet_pitching"],
+    )
+
+    assert compact["available"] is False
+    assert [item["table"] for item in compact["files"]] == ["retrosheet_pitching"]
 
 
-def test_ambiguous_outcome_sets_audit_and_review_reason_without_prose_sniffing():
+def test_ambiguous_outcome_sets_explicit_reason_without_prose_sniffing():
     answer = ambiguous_outcome(
         answer="Multiple matching players were found.",
         intent="player_biography",
@@ -242,15 +262,9 @@ def test_ambiguous_outcome_sets_audit_and_review_reason_without_prose_sniffing()
     assert answer.unsupported is True
     assert answer.unsupported_reason == "ambiguous"
     assert answer.review_reason == "ambiguous"
-    assert unsupported_reason(answer) == "ambiguous"
-
-    item = build_review_item("who was Johnson", answer)
-
-    assert item is not None
-    assert item.reason == "ambiguous"
 
 
-def test_no_data_outcome_is_unsupported_but_reviews_as_unsupported():
+def test_no_data_outcome_is_explicit():
     answer = no_data_outcome(
         answer="No results found.",
         intent="stat_query",
@@ -260,7 +274,6 @@ def test_no_data_outcome_is_unsupported_but_reviews_as_unsupported():
     assert answer.unsupported is True
     assert answer.unsupported_reason == "no_data"
     assert answer.review_reason is None
-    assert build_review_item("who led MLB in vibes", answer).reason == "unsupported"
 
 
 def test_timeout_and_local_request_failures_share_llm_unavailable_reason():

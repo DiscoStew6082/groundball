@@ -18,10 +18,16 @@ coverage.xml
 # Data — downloaded from HuggingFace at runtime, not stored in repo
 data/*.csv
 data/*.duckdb
+data/review_queue.jsonl
+# Retrosheet zips are tracked as source artifacts; the local DuckDB cache is ignored.
 data/secondary_sources/retrosheet/*
 !data/secondary_sources/retrosheet/
 !data/secondary_sources/retrosheet/manifest.json
 !data/secondary_sources/retrosheet/pitcher_strikeout_side_events.csv
+!data/secondary_sources/retrosheet/batting.zip
+!data/secondary_sources/retrosheet/pitching.zip
+!data/secondary_sources/retrosheet/fielding.zip
+!data/secondary_sources/retrosheet/biodata.zip
 
 # Environments
 .venv/
@@ -30,7 +36,14 @@ data/secondary_sources/retrosheet/*
 # IDE
 .vscode/
 .idea/
+.wrangler/
 
 # Misc
 .depeval/
 /groundball-verify
+.vercel
+.env*
+
+# Svelte/Vite build artifacts
+web/node_modules/
+web/dist/

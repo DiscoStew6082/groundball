@@ -1,25 +1,23 @@
-"""Groundball query engine — CLI entry point."""
+"""Ground Ball command-line Adapters."""
 
-import sys
+from __future__ import annotations
 
-from baseball_rag.request_execution import execute_request
+import argparse
+import json
+from collections.abc import Sequence
+
+from baseball_rag.query.adapters import catalog_payload, run_query_input
 from baseball_rag.retrosheet_event_capabilities import retrosheet_event_capabilities
-from baseball_rag.service import render_text
-
-
-def answer(question: str) -> str:
-    """Answer a single question as CLI-friendly text."""
-    return render_text(execute_request(question, adapter_component_id="cli").answer)
 
 
 def retrosheet_event_capabilities_text() -> str:
-    """Return the Retrosheet event support matrix as CLI-friendly text."""
+    """Return the separately governed Retrosheet capability matrix."""
     lines = ["Retrosheet event capabilities:"]
     for capability in retrosheet_event_capabilities():
         lines.extend(
             [
                 "",
-                f"{capability.title}",
+                capability.title,
                 f"  table: {capability.local_table}",
                 f"  source: {capability.data_source}",
                 "  supported:",
@@ -35,26 +33,42 @@ def retrosheet_event_capabilities_text() -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] == "--help":
-        print(
-            "Groundball Query Engine\n"
-            "Usage: groundball 'your question'\n\n"
-            "Inspect capabilities: groundball capabilities retrosheet-events\n\n"
-            "Compatibility alias: baseball-rag\n\n"
-            "Examples:\n"
-            "  groundball 'who had the most RBIs in 1962'\n"
-            "  groundball 'career home run leaders'\n"
-        )
-        sys.exit(0)
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run the clean Query Recipe, catalog, or Retrosheet capability Adapter."""
+    parser = argparse.ArgumentParser(prog="groundball", description="Query MLB history")
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    if sys.argv[1:] == ["capabilities", "retrosheet-events"]:
-        print(retrosheet_event_capabilities_text())
-        sys.exit(0)
+    query = commands.add_parser("query", help="Plan and execute one query")
+    query_input = query.add_mutually_exclusive_group(required=True)
+    query_input.add_argument("question", nargs="?", help="Reviewed natural-language question")
+    query_input.add_argument("--recipe-json", help="Structured Query Recipe JSON")
 
-    question = " ".join(sys.argv[1:])
-    result = answer(question)
-    print(result)
+    fields = commands.add_parser("fields", help="Discover published query fields")
+    fields.add_argument("--source")
+    fields.add_argument("--search")
+
+    capabilities = commands.add_parser("capabilities", help="Inspect separate capabilities")
+    capabilities.add_argument("capability", choices=("retrosheet-events",))
+
+    args = parser.parse_args(argv)
+    if args.command == "query":
+        if args.recipe_json is not None:
+            try:
+                recipe = json.loads(args.recipe_json)
+            except json.JSONDecodeError as exc:
+                parser.error(f"Invalid Query Recipe JSON: {exc.msg}")
+            if not isinstance(recipe, dict):
+                parser.error("Query Recipe JSON must be an object.")
+            payload = run_query_input(recipe=recipe)
+        else:
+            payload = run_query_input(question=args.question)
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+    if args.command == "fields":
+        payload = catalog_payload(source=args.source, search=args.search)
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+    print(retrosheet_event_capabilities_text())
 
 
 if __name__ == "__main__":

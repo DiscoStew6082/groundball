@@ -128,13 +128,15 @@ def compact_secondary_data_manifest(
 
     compact = _compact_manifest(manifest)
     available = bool(compact["files"]) and bool(compact["download"].get("downloaded_at"))
-    if available and required_tables is not None:
+    if required_tables is not None:
         present_tables = {item.get("table") for item in compact["files"]}
         required = set(required_tables)
-        if any_required_table:
-            available = bool(required & present_tables)
-        else:
-            available = required <= present_tables
+        if available:
+            if any_required_table:
+                available = bool(required & present_tables)
+            else:
+                available = required <= present_tables
+        compact["files"] = [item for item in compact["files"] if item.get("table") in required]
     compact["available"] = available
     if not available:
         if required_tables:
@@ -192,8 +194,7 @@ def source_authority_catalog(*, include_retrosheet: bool = False) -> list[dict[s
             "upstream": dataset.get("upstream"),
             "optional": False,
             "scopes": [
-                "structured_stat_answers",
-                "grounded_database_answers",
+                "query_runs",
                 "player_identity",
                 "biography_stat_claim_primary_verification",
             ],

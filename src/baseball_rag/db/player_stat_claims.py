@@ -9,18 +9,15 @@ from typing import Any, Literal, cast
 import duckdb
 
 from baseball_rag.db.biography_stat_vocabulary import (
+    BiographyStatDefinition,
+    StatTable,
     biography_claim_stat_definitions,
+    quote_identifier,
     retrosheet_adapter_stats,
     retrosheet_stat_column_candidates,
 )
 from baseball_rag.db.duckdb_schema import get_duckdb
 from baseball_rag.db.player_identity import resolve_retrosheet_id
-from baseball_rag.db.stat_registry import (
-    StatDefinition,
-    StatSqlAdapter,
-    StatTable,
-    quote_identifier,
-)
 from baseball_rag.provenance import compact_consensus_data_manifest
 
 ClaimScope = Literal["career", "season"]
@@ -606,7 +603,7 @@ def _verify_one_claim(
             warning=f"Unsupported biography stat claim {claim.stat!r}.",
         )
 
-    last_lookup: tuple[StatDefinition, str, list[object]] | None = None
+    last_lookup: tuple[BiographyStatDefinition, str, list[object]] | None = None
     for stat_def in stat_defs:
         row, sql, params = _lookup_player_stat(conn, player_id, stat_def, claim)
         if row is not None:
@@ -637,7 +634,7 @@ def _verification_from_row(
     claim: PlayerStatClaim,
     claimed_value: float,
     row: tuple,
-    stat_def: StatDefinition,
+    stat_def: BiographyStatDefinition,
     sql: str,
     params: list[object],
 ) -> PlayerStatVerification:
@@ -662,7 +659,7 @@ def _verification_from_row(
     )
 
 
-def _candidate_stat_definitions(claim: PlayerStatClaim) -> list[StatDefinition]:
+def _candidate_stat_definitions(claim: PlayerStatClaim) -> list[BiographyStatDefinition]:
     return biography_claim_stat_definitions(
         claim.stat,
         table=claim.table,
@@ -673,16 +670,12 @@ def _candidate_stat_definitions(claim: PlayerStatClaim) -> list[StatDefinition]:
 def _lookup_player_stat(
     conn: duckdb.DuckDBPyConnection,
     player_id: str,
-    stat_def: StatDefinition,
+    stat_def: BiographyStatDefinition,
     claim: PlayerStatClaim,
 ) -> tuple[tuple | None, str, list[object]]:
     alias = {"batting": "b", "pitching": "pi", "fielding": "f"}[stat_def.table]
     expr = stat_def.aggregate_expression(alias)
-    sample_clause = stat_def.aggregate_sample_clause(alias)
-    having_parts = [f"{expr} IS NOT NULL"]
-    if sample_clause:
-        having_parts.append(sample_clause)
-    having_clause = " AND ".join(having_parts)
+    having_clause = f"{expr} IS NOT NULL"
 
     if claim.resolved_scope == "season":
         if claim.year is None:
@@ -839,7 +832,7 @@ def _validate_retrosheet_biofile(
 def _lookup_retrosheet_stat(
     conn: duckdb.DuckDBPyConnection,
     retro_id: str,
-    stat_def: StatDefinition,
+    stat_def: BiographyStatDefinition,
     claim: PlayerStatClaim,
 ) -> tuple[tuple | None, str | None, list[object], str | None, str | None]:
     table = f"retrosheet_{stat_def.table}"
@@ -877,9 +870,6 @@ def _lookup_retrosheet_stat(
         )
 
     having_parts = [f"{expr} IS NOT NULL"]
-    sample_clause = _retrosheet_sample_clause(conn, table, alias, stat_def)
-    if sample_clause:
-        having_parts.append(sample_clause)
     having_clause = " AND ".join(having_parts)
     filter_clause = _retrosheet_filter_clause(conn, table, alias)
 
@@ -920,53 +910,27 @@ def _retrosheet_aggregate_expression(
     conn: duckdb.DuckDBPyConnection,
     table: str,
     alias: str,
-    stat_def: StatDefinition,
+    stat_def: BiographyStatDefinition,
 ) -> str | None:
-    stat = stat_def.canonical
-    adapter = _retrosheet_sql_adapter(conn, table, stat_def.table)
-
-    if stat == "G":
-        g_column = _first_existing_column(conn, table, ("G", "g"))
-        if g_column is not None:
-            return f"SUM({alias}.{g_column})"
-        game_column = _first_existing_column(conn, table, ("gid", "game_id", "gameID", "gameid"))
-        if game_column is not None:
-            return f"COUNT(DISTINCT {alias}.{game_column})"
-
-    if adapter is None:
-        return None
-    try:
-        return stat_def.aggregate_expression(alias, adapter=adapter)
-    except ValueError:
-        return None
-
-
-def _retrosheet_sample_clause(
-    conn: duckdb.DuckDBPyConnection,
-    table: str,
-    alias: str,
-    stat_def: StatDefinition,
-) -> str | None:
-    adapter = _retrosheet_sql_adapter(conn, table, stat_def.table)
-    if adapter is None:
-        return None
-    try:
-        return stat_def.aggregate_sample_clause(alias, adapter=adapter)
-    except ValueError:
-        return None
-
-
-def _retrosheet_sql_adapter(
-    conn: duckdb.DuckDBPyConnection,
-    table: str,
-    stat_table: StatTable,
-) -> StatSqlAdapter | None:
     column_map = {
         stat: column
-        for stat in retrosheet_adapter_stats(stat_table)
-        if (column := _retrosheet_stat_column(conn, table, stat_table, stat)) is not None
+        for stat in retrosheet_adapter_stats(stat_def.table)
+        if (column := _retrosheet_stat_column(conn, table, stat_def.table, stat)) is not None
     }
-    return StatSqlAdapter(table=stat_table, columns=column_map) if column_map else None
+
+    def resolve(field_identity: str) -> str:
+        source, _, stat_name = field_identity.partition(".")
+        if source.casefold() != stat_def.table:
+            raise ValueError(f"Retrosheet {stat_def.table} cannot render {field_identity}.")
+        column = column_map.get(stat_name.upper())
+        if column is None:
+            raise ValueError(f"Retrosheet {stat_def.table} cannot render {stat_name}.")
+        return f"TRY_CAST({alias}.{column} AS DOUBLE)"
+
+    try:
+        return stat_def.aggregate_expression(alias, column_resolver=resolve)
+    except ValueError:
+        return None
 
 
 def _retrosheet_filter_clause(

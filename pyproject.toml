@@ -6,9 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "requests",
     "duckdb",
-    "typer",
     "fastapi",
-    "gradio",
     "uvicorn[standard]>=0.24.0",
     "unidecode>=1.4.0",
     "pyyaml>=6.0",
@@ -28,8 +26,6 @@ dev = [
 [project.scripts]
 groundball = "baseball_rag.cli:main"
 groundball-ui = "baseball_rag.web_app:dev_main"
-baseball-rag = "baseball_rag.cli:main"
-baseball-rag-ui = "baseball_rag.web_app:dev_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -43,7 +39,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "unit: fast, mocked tests — no external services required",
-    "integration: requires live services (LM Studio, Gradio, etc.)",
+    "integration: requires live services (LM Studio, web app, etc.)",
     "slow: long-running or heavy setup (full pipeline runs, ingestion)",
     "llm: calls the LLM via LM Studio — excluded from unit CI job",
 ]

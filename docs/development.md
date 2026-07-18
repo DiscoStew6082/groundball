@@ -3,208 +3,75 @@
 ## Setup
 
 ```bash
-git clone https://github.com/DiscoStew6082/groundball.git
-cd groundball
 uv sync
-```
-
-### Data Dependencies
-
-The project requires MLB data from the Lahman-derived
-`NeuML/baseballdata` dataset. Download once:
-
-```bash
+npm --prefix web ci
 uv run python -m baseball_rag.db.download
 ```
 
-This fetches CSV files into `data/` and regenerates `data/manifest.json`.
-The CSVs are ignored by git; the manifest is tracked as the reproducible data
-contract.
+The CSVs and generated DuckDB files are local state. `data/manifest.json`, catalog assets, and the generated Coverage Report are tracked release contracts.
 
-To regenerate the manifest from already-downloaded CSVs:
+## Run
 
 ```bash
-uv run python -m baseball_rag.db.download --manifest-only
-```
-
-### Corpus Material
-
-ChromaDB indexing has been removed. Checked-in stat-definition Markdown remains
-runtime grounding for supported stat-definition explanations.
-
-For a full local data rebuild from scratch:
-
-```bash
-uv run python -m baseball_rag.db.download
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | OpenAI-compatible LM Studio base URL |
-| `LMSTUDIO_MODEL` | `google/gemma-4-26b-a4b` | Model name sent to LM Studio |
-| `LMSTUDIO_TIMEOUT_SECONDS` | `20` | Request timeout for LM Studio calls |
-| `GROUNDBALL_REVIEW_QUEUE_PATH` | `data/review_queue.jsonl` | Optional override for the API-owned human review queue; `BASEBALL_RAG_REVIEW_QUEUE_PATH` remains a compatibility alias |
-| `GROUNDBALL_WEB_APP_TTL_SECONDS` | unset | Optional Gradio web-app process time to live; `BASEBALL_RAG_WEB_APP_TTL_SECONDS` remains a compatibility alias; `0` disables it |
-| `GROUNDBALL_CURRENT_YEAR` | current system year | Optional deterministic override for relative-year query parsing; `BASEBALL_RAG_CURRENT_YEAR` remains a compatibility alias |
-
-## Running Locally
-
-```bash
-# CLI (stat query — DuckDB)
-uv run groundball "who had the most RBIs in 1962"
-
-# API server (port 8000)
-uv run uvicorn baseball_rag.api.server:app --reload
-
-# Web UI (port 7860)
-uv run python -m baseball_rag.web_app
-
-# Short local UI entrypoint used by the Codex workflow (port 7861)
+npm --prefix web run build
 uv run groundball-ui
-
-# Web UI with a one-hour process TTL
-uv run python -m baseball_rag.web_app --ttl-seconds 3600
 ```
 
-## Code Quality
+Open `http://127.0.0.1:7861/`. For frontend iteration, run `npm --prefix web run dev` alongside the API server.
 
-### Lint
+## Generated contracts
+
+Regenerate after changing their inputs:
 
 ```bash
-uv run ruff check src/ tests/ evals/
+uv run python -m baseball_rag.query.generate_catalog_compatibility
+uv run python -m baseball_rag.query.generate_raw_inventory
+uv run python -m baseball_rag.query.generate_team_reference --teams /path/to/official/Teams.csv
+uv run python -m baseball_rag.db.generate_retrosheet_team_reference \
+  --teams /path/to/official/Teams.csv \
+  --retrosheet-teams /path/to/retrosheet-team-catalog.txt
+uv run python -m baseball_rag.query.generate_coverage_report
 ```
 
-### Type Check
+The Coverage Report fingerprints all query Python modules and the deterministic eval matrix. Any change to those files requires regeneration.
+
+## Validation
 
 ```bash
-uv run mypy src/
+uv run ruff format --check src/ tests/
+uv run ruff check src/ tests/
+uv run mypy src/baseball_rag/
+uv run pytest tests/ -m 'not llm' -q
+uv run python -m baseball_rag.query.eval_matrix
+uv run python -m baseball_rag.query.generate_catalog_compatibility --check
+uv run python -m baseball_rag.query.generate_raw_inventory --check
+uv run python -m baseball_rag.query.generate_coverage_report --check
+npm --prefix web test
+npm --prefix web run build
 ```
 
-### Tests
+CI runs these deterministic checks and uploads `coverage-report.json` and `coverage-report.md`. There is no baseline-refresh workflow and no Go verifier.
 
-```bash
-uv run pytest tests/ -v
-```
+## Browser acceptance
 
-### Coverage Report
+Use the Codex in-app Browser with the integrated server. At minimum verify:
 
-```bash
-uv run pytest --cov=baseball_rag --cov-report=term-missing
-```
+- `who had the most RBIs in 1962` returns Tommy Davis, 153.
+- the 40-40 recipe returns exactly six players.
+- raw `Batting.GIDP` discovery and execution work.
+- Aaron Judge 2022 OPS exposes formula and evidence.
+- ambiguous strikeouts request clarification inline.
+- arbitrary formulas are rejected.
+- export downloads the exact result snapshot.
+- the Coverage Report opens and reports all obligations covered.
+- no page-level horizontal overflow occurs at 360, 390, or 430 CSS pixels; desktop remains correct at 1024 and 1440.
 
-Coverage report is also generated as `coverage.xml` and `coverage.html` (see `.coverage` and `htmlcov/` after runs).
+Leave the local server running after the smoke for handoff.
 
-## CI Pipeline
+## Change rules
 
-`.github/workflows/ci.yml` runs three jobs in sequence:
-
-| Job | Depends On | What it does |
-|-----|------------|--------------|
-| `lint` | - | `ruff check` across configured Python files, including `src/`, `tests/`, and `evals/` |
-| `typecheck` | - | `mypy src/` + type stubs |
-| `test` | lint, typecheck | Unit pytest suite, deterministic eval release gate, reliability report artifacts/run summary, coverage artifact, and optional Codecov upload |
-
-Python version: **3.11** (ubuntu-latest). All dependencies installed via pip (not uv) in CI to avoid PATH issues.
-
-The CI release gate is deterministic-only:
-
-```bash
-python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md --json-report eval-report.json --baseline evals/baseline.json
-```
-
-This command skips cases that require LM Studio or other live model services.
-Live LLM evals remain local/manual opt-ins via `--include-live`.
-
-The JSON report is compared to `evals/baseline.json`. Behavioral regressions block CI; dataset/model/prompt drift is reported as `WARN` so the baseline can be reviewed and refreshed deliberately.
-The dataset audit hash is computed from the compact provenance payload that
-answers expose, not from the CSV bytes alone. Refresh the baseline deliberately
-when `data/manifest.json` file hashes still match NeuML/baseballdata but the
-provenance payload changes, such as adding `source_authorities` metadata that
-clarifies Lahman/DuckDB source roles.
-
-CI also uploads `coverage.xml` as a workflow artifact. Codecov is useful reporting, but it is non-blocking so releases do not depend on external coverage upload availability.
-
-## Regression Net
-
-Use this checklist for PRs touching `service.py`, routing, stat queries, grounded
-database templates/runtime, biography generation or verification, API payloads,
-or the Gradio UI:
-
-1. Run the full local gates:
-
-   ```bash
-   uv run ruff check src/ tests/ evals/
-   uv run mypy src/
-   uv run pytest tests/ -v
-   ```
-
-2. Run the product-critical focus suites:
-
-   ```bash
-   uv run pytest tests/test_service.py tests/test_player_bio_query.py tests/test_player_stat_claims_consensus.py tests/test_api.py -q
-   ```
-
-3. Run the deterministic eval release gate:
-
-   ```bash
-   uv run python -m evals.questions --report docs/eval-report.md --guardrail-report docs/guardrail-coverage.md --json-report docs/eval-report.json --baseline evals/baseline.json
-   ```
-
-4. Smoke the live UI in the Codex in-app Browser:
-
-   ```bash
-   uv run groundball-ui
-   ```
-
-   Open `http://127.0.0.1:7861/`, run `who had the most RBIs in 1962`,
-   and verify the answer, DuckDB source, SQL, rows, and Ask-button lifecycle.
-
-5. Run a code review subagent and explicitly state whether intent names, API
-   payload fields, SQL/source visibility, or eval baselines changed.
-
-The product contract is authority-first: supported stat and grounded database
-answers must carry DuckDB provenance with visible SQL and rows, and LLM-flavored
-text must stay inside verified evidence.
-
-## Governance Surfaces
-
-The API exposes release and review surfaces for local demos:
-
-- `GET /evals/report` returns the deterministic eval gate summary and Markdown report without writing files.
-- `POST /evals/run` defaults to deterministic-only evals. `include_live=true` opts into cases that may require LM Studio.
-- `GET /guardrails/coverage` returns manifest-only guardrail coverage through the package-safe eval manifest adapter, returning explicit unavailable metadata when the repo manifest is absent in a package-only runtime.
-- `GET /review-queue` and `PATCH /review-queue/{item_id}` list, resolve, or dismiss API-created review items.
-
-Only `/query` writes review queue items. CLI and Gradio calls do not persist review state.
-
-## Go Contract Verifier
-
-Groundball includes a small Go verifier for the Python API contract. It does not
-answer baseball questions itself; it probes the running FastAPI app and checks
-that operational readiness, source provenance, visible SQL, parameterization,
-and the default deterministic query contract are still exposed.
-
-```bash
-go test ./...
-go run ./cmd/groundball-verify --json
-```
-
-The verifier expects the API to be running at `http://127.0.0.1:8000` by
-default. Use `--base-url` for another server. The built-in query checks the
-`stat_rbi_1962` eval case; custom queries can opt into a different eval
-expectation with `--expected-eval-case`.
-
-## Project Conventions
-
-- Package location: `src/baseball_rag/` (explicit package discovery via `[tool.hatch.build.targets.wheel]` in pyproject.toml)
-- Tests live in `tests/`, mirror source layout
-- DuckDB query tables are initialized lazily from downloaded CSVs.
-- ChromaDB indexes are no longer generated or required.
-
-## Adding a New Stat or Player
-
-1. Add or update registered structured stats in `src/baseball_rag/db/stat_registry.py`.
-2. Add focused tests for the public question-answering behavior.
-3. For biography verification, ensure the stat can be queried from DuckDB before asking the LLM to emit it as a supported claim.
+- Use TDD.
+- Run an independent code-review subagent after each task.
+- Do not introduce a second stat/query registry beside the Published Query Catalog.
+- Do not restore deleted compatibility routes or facades.
+- Commit all intended changes, explain any unstaged files, push, and wait for green CI.

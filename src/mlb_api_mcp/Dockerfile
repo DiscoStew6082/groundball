@@ -33,7 +33,7 @@ RUN useradd --create-home --shell /bin/bash app && \
 USER app
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8002
 
 # Command to run the application
 CMD ["/app/.venv/bin/python", "main.py", "--http"]

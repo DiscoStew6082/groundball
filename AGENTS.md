@@ -24,3 +24,7 @@ When Stewart says "next ticket," load the Wayfinder skill and use the local-Mark
 - "Next ticket" follows numeric order across unresolved, unblocked tickets. If the first one is already claimed, report the claim and stop; do not resume it or skip to a later ticket. Explain that an orphaned claim must be explicitly released before the same ticket can be claimed in a new session.
 - Claim an unclaimed ticket before investigating or resolving it.
 - Wayfinder tickets are planning work unless the map explicitly authorizes implementation. Do not start TDD, a UI server, or browser validation for decision-only tickets.
+
+### Domain docs
+
+Ground Ball uses the root `CONTEXT.md` and root `docs/adr/` as a single domain context. See `docs/agents/domain.md`.

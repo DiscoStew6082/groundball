@@ -1,6 +1,5 @@
 from baseball_rag.generation.llm import LLMResponse
 from baseball_rag.player_biography import PlayerBiographyCaseAnswerer
-from baseball_rag.routing import PlayerBiographyCase
 
 
 def test_player_biography_case_answerer_preserves_resolved_player_metadata():
@@ -14,7 +13,7 @@ def test_player_biography_case_answerer_preserves_resolved_player_metadata():
 
     result = answerer.answer(
         "who was Babe Ruth",
-        PlayerBiographyCase(player_name="Babe Ruth", raw_question="who was Babe Ruth"),
+        "Babe Ruth",
     )
 
     assert result.intent == "player_biography"
@@ -55,7 +54,7 @@ def test_player_biography_case_answerer_repairs_malformed_llm_json():
 
     result = answerer.answer(
         "who was Babe Ruth",
-        PlayerBiographyCase(player_name="Babe Ruth", raw_question="who was Babe Ruth"),
+        "Babe Ruth",
     )
 
     assert result.answer == "Babe Ruth was a two-way star."
@@ -71,12 +70,7 @@ def test_player_biography_case_answerer_handles_supplied_claims_without_llm():
 
     result = answerer.answer(
         "Babe Ruth hit 60 HR in 1927. Which stat claims can be verified by DuckDB?",
-        PlayerBiographyCase(
-            player_name="Babe Ruth",
-            raw_question=(
-                "Babe Ruth hit 60 HR in 1927. Which stat claims can be verified by DuckDB?"
-            ),
-        ),
+        "Babe Ruth",
     )
 
     assert "I checked the stat claims in the supplied biography for Babe Ruth." in result.answer

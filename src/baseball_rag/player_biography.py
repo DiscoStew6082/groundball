@@ -21,7 +21,6 @@ from baseball_rag.db.player_stat_claims import (
 )
 from baseball_rag.outcomes import ambiguous_outcome, llm_unavailable_outcome, no_data_outcome
 from baseball_rag.provenance import SourceRecord, StructuredAnswer, compact_data_manifest
-from baseball_rag.routing import PlayerBiographyCase
 
 
 @dataclass
@@ -34,16 +33,17 @@ class PlayerBiographyCaseAnswerer:
     extract_claims: Callable[[str], list[PlayerStatClaim]] | None = None
     request_biography: Callable[[Any, tuple[str, str]], dict[str, Any]] | None = None
 
-    def answer(self, question: str, decision: PlayerBiographyCase) -> StructuredAnswer:
-        if not decision.player_name:
+    def answer(self, question: str, player_name: str | None) -> StructuredAnswer:
+        """Answer one explicit biography capability request without query routing."""
+        intent = "player_biography"
+        if not player_name:
             return ambiguous_outcome(
                 answer="I need a specific player name before I can generate a biography.",
-                intent=decision.intent,
+                intent=intent,
                 warnings=["No biography was generated because no player name was resolved."],
             )
 
         conn = self.conn_factory()
-        player_name = decision.player_name
         resolution = resolve_player_by_name(player_name, conn)
         if resolution.ambiguous:
             choices = ", ".join(
@@ -55,7 +55,7 @@ class PlayerBiographyCaseAnswerer:
                     f"'{player_name}' is ambiguous in the local player registry. "
                     f"Try a fuller name. Possible matches: {choices}."
                 ),
-                intent=decision.intent,
+                intent=intent,
                 warnings=["No biography was generated because the player name was ambiguous."],
             )
         if resolution.player_id is None:
@@ -64,19 +64,19 @@ class PlayerBiographyCaseAnswerer:
                     f"No player named '{player_name}' was found in the local DuckDB player "
                     "registry."
                 ),
-                intent=decision.intent,
+                intent=intent,
                 warnings=["No biography was generated because the player was not found in DuckDB."],
             )
 
         player = resolution.candidates[0]
         extract_claims = self.extract_claims or extract_supplied_stat_claims
-        supplied_claims = extract_claims(decision.raw_question or question)
+        supplied_claims = extract_claims(question)
         if supplied_claims:
             return self._answer_supplied_claims(
                 player_id=player.player_id,
                 player_name=player.full_name,
                 claims=supplied_claims,
-                intent=decision.intent,
+                intent=intent,
                 conn=conn,
             )
 
@@ -86,7 +86,7 @@ class PlayerBiographyCaseAnswerer:
 
             request = self.make_request or make_request
             prompt = build_player_biography_json_prompt(
-                question=decision.raw_question or question,
+                question=question,
                 player_name=player.full_name,
                 player_id=player.player_id,
                 debut=player.debut,
@@ -104,7 +104,7 @@ class PlayerBiographyCaseAnswerer:
                     "LM Studio was unavailable, so no player biography was generated. "
                     "Player biographies require the local LLM."
                 ),
-                intent=decision.intent,
+                intent=intent,
                 warnings=[str(exc)],
             )
         except (LLMError, BiographyContractError, ValueError, TypeError) as exc:
@@ -113,14 +113,14 @@ class PlayerBiographyCaseAnswerer:
                     "The local LLM did not return the structured biography JSON contract, "
                     "so no player biography was generated."
                 ),
-                intent=decision.intent,
+                intent=intent,
                 warnings=[str(exc)],
             )
 
         return self._answer_generated_biography(
             player=player,
             biography=biography,
-            intent=decision.intent,
+            intent=intent,
             conn=conn,
         )
 

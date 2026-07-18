@@ -1,193 +1,61 @@
 # Architecture
 
-## System Overview
-
-Groundball uses one request lifecycle for its modern sports almanac engine across
-the CLI, API, and Gradio UI. The lifecycle returns a `StructuredAnswer` with answer text, intent,
-sources, warnings, unsupported state, metadata, and trace information.
-
-For a non-linear visual overview, see the
-[Groundball Architecture Pathway Map](architecture-pathways-large.svg).
+Ground Ball has one structured-query pipeline and three adapters.
 
 ```text
-Question
-  |
-  v
-request_lifecycle.py
-  |-- validate answer mode and pass conversation context through
-  |-- route through routing/contracts.py + routing/decisions.py
-  |-- dispatch to the route answerer
-  |-- attach metadata, trace, audit, and review observations
-  |
-  v
-StructuredAnswer(answer, intent, sources, warnings, unsupported, metadata)
-  |
-  +--> CLI text renderer
-  +--> API JSON payload
-  +--> AnswerPresenter -> Gradio answer, rows, sources, and SQL
+question or recipe
+       |
+       v
+Recipe Adapter -----> NeedsClarification / Rejected
+       |
+       v
+Query Plan v1 validator
+       |
+       v
+Catalog-bound compiler -----> ExecutionUnavailable
+       |
+       v
+DuckDB execution -----> Rows / NoData / Exported / ExecutionFailed
+       |
+       v
+QueryEvidence + Coverage proof binding
+       |
+       +---- HTTP
+       +---- CLI
+       +---- Svelte
 ```
 
-`src/baseball_rag/request_execution.py` keeps the public
-`execute_request(...)` entrypoint, while `src/baseball_rag/request_lifecycle.py`
-owns the ordering for one complete request.
+## Authority boundaries
 
-## Data Layer
+The Published Query Catalog owns sources, raw fields, promoted values, grains, relationships, combinations, recipes, operations, formulas, roll-up policy, and public visibility. The runtime never discovers a second semantic vocabulary from Python registries or router rules.
 
-Structured MLB statistics live in a DuckDB database built from the
-Lahman-derived `NeuML/baseballdata` dataset. The main tables are:
+The plan contract is closed and versioned. Unknown keys, coercible-but-wrong types, non-finite numbers, stale catalog revisions, unlisted values, invalid grains, forbidden operations, arbitrary formulas, and forged source identifiers fail before executable SQL is produced.
 
-- `batting` - per-season batting stats
-- `pitching` - per-season pitching stats
-- `fielding` - per-season fielding stats
-- `people` - player identity and career date metadata
+The compiler owns all SQL structure and identifiers. Recipe literals become bound parameters. Cross-source results use only catalog-declared relationships and combinations. Ranking and pagination use deterministic total ordering; tie policy is explicit.
 
-`src/baseball_rag/db/stat_registry.py` owns the supported stat whitelist and SQL
-aggregate expressions. DuckDB sources include compact data-manifest provenance
-with dataset name, license, row counts, checksums, and structured year coverage.
+## Data identity and evidence
 
-## Provenance
+DuckDB loads People, Batting, Pitching, Fielding, and the versioned TeamReference asset. Runtime compatibility compares the catalog against a semantic data-manifest hash: provenance timestamps may change without changing identity, but table content, checksums, row counts, or schema changes invalidate it.
 
-`src/baseball_rag/provenance.py` shapes source records and compact data
-manifests. Lahman/DuckDB remains the primary factual/stat authority.
-Retrosheet is optional secondary consensus evidence for biography stat claims,
-not a replacement source of truth for all answers.
+Every successful execution produces QueryEvidence containing the canonical plan, catalog revision, data release, parameterized SQL, bound values, source metadata and fingerprints, row counts, and result fingerprint. Returned rows are immutable snapshots.
 
-Primary stat and grounded database answers expose the Lahman manifest plus a
-`source_authorities` catalog that names Lahman as the non-optional factual stat
-authority. Biography stat-claim consensus can expose a `consensus_sources` list,
-the same authority catalog with Retrosheet marked as optional secondary
-evidence, and `secondary_manifests.retrosheet` availability details in one
-public payload.
+The Coverage Report independently binds that evidence to generated release proof. If the proof is missing, failing, malformed, hash-invalid, or stale, application adapters return `unavailable` and do not expose unverified factual rows.
 
-## Routing
+## Completeness proof
 
-Stable route facts live in `src/baseball_rag/routing/contracts.py`. The ordered
-decision chain lives in `src/baseball_rag/routing/decisions.py`.
-`src/baseball_rag/routing/query_router.py` remains the public `route(question)`
-adapter and compatibility export point. Its internal LLM Router Adapter owns
-prompt construction, model output parsing, field coercion, and typed fallback
-failures so route precedence stays local to the decision chain.
+`generate_coverage_report.py` blocks network access and exercises six fixed gates:
 
-The router classifies natural language into typed intents:
+1. Catalog/schema identity for all five sources.
+2. Raw discovery, every declared raw operation, source pagination, and full-row fingerprint traversal.
+3. Every public promoted value at every allowed grain, every type-appropriate filter, semantic declarations, cross-source combinations, named recipes, and golden answers.
+4. Closed plan parsing, catalog pinning, parameterization, forged-identifier rejection, and deterministic ordering.
+5. Every public outcome plus complete evidence fields and adapter sharing.
+6. No LLM, network, or Mac runtime dependency.
 
-- `stat_query` for leaderboard and single-player stat questions
-- `grounded_database_question` for supported database templates
-- `player_biography` for player biography requests
-- `general_explanation` for open baseball/stat explanation questions
+The JSON report is canonical; Markdown and the human HTTP view are derived from it.
 
-Decision ordering is explicit so supplied claim verification, player biography
-detection, deterministic stat routing, grounded database ownership, LLM routing,
-and heuristic fallback keep their current precedence. Ambiguous or unsupported
-requests fail closed instead of falling through to ungrounded prose.
-For compact stat questions, route-time player mention checks use the Player Identity Authority
-over DuckDB/Lahman instead of router-local CSV aliases. If that lookup is
-unavailable, routing treats the mention as unknown rather than raising during
-classification.
-`src/baseball_rag/unsupported_policy.py` runs before routing for deterministic
-out-of-scope requests such as SQL mutation text, betting, live scores, current
-injury/salary questions, non-baseball sports, Statcast-only fields, and
-subjective rankings without a metric.
+## Separate capabilities
 
-`src/baseball_rag/query_scope.py` exposes `QueryScopeOutcome`, an explicit
-scope read model for answerable scope, no scope, and unsupported answer states.
-It owns coverage, reversed-range, ambiguous-decade, and player-specific
-single-season policy so callers do not inspect a three-way union or make a
-second scope pass for normal planning.
+Retrosheet event queries use six explicit template families in `db/retrosheet_query_templates.py` and a checksum-validated, year-aware identity reference generated from the official Retrosheet team catalog plus Lahman season names. They are not a fallback for arbitrary questions.
 
-`src/baseball_rag/stat_query.py` uses `StatQueryPlanningOutcome` to keep
-stat-query planning explicit: a planning pass returns either a validated
-`StatQueryPlan` for DuckDB execution or a structured unsupported/ambiguous
-answer. This keeps coverage and player ambiguity out of the execution path.
-
-## Request Lifecycle
-
-`request_lifecycle.py` keeps answer-mode validation, trace ownership, answer
-dispatch, metadata attachment, and governance observation in one local
-implementation. Conversation context is still passed into the answer service for
-follow-up handling. The public API and Gradio adapters call the same lifecycle
-through `execute_request(...)`, so trace and review behavior stays consistent
-across surfaces.
-
-Operational verification readiness is exposed by
-`src/baseball_rag/verification_health.py` and the FastAPI
-`GET /health/verification` endpoint. It checks that primary provenance loads,
-DuckDB core tables are queryable, guardrail manifests are available, and the
-standard focused/full/eval/browser verification commands are discoverable.
-
-## Player Biographies
-
-Player biographies are generated by the local LLM, not retrieved from stored
-corpus chunks.
-
-1. The requested player name resolves through the Player Identity Authority over
-   DuckDB/Lahman first.
-2. Ambiguous or unresolved names return the existing unsupported/ambiguous
-   outcome shape before any LLM call.
-3. The LLM receives a JSON contract requiring `answer` and `stat_claims`.
-4. The biography contract rejects generated prose that includes explicit
-   supported stat facts missing from `stat_claims`.
-5. Supported career and season stat claims are verified against Lahman/DuckDB
-   plus optional Retrosheet consensus evidence when available.
-6. The answer is returned even when verification fails, with structured warnings
-   and visible verification rows.
-7. If LM Studio is unavailable or returns invalid JSON, the route returns
-   `llm_unavailable`.
-
-## Visible Evidence
-
-`AnswerPresenter` in `src/baseball_rag/ui/presentation.py` is the UI-facing
-evidence adapter. It chooses the visible evidence rows, source JSON, SQL, and
-chat text for each `StructuredAnswer`. Normal DuckDB stat answers still show the
-primary rows and SQL. Multi-source biography answers can show verification rows
-and the best visible SQL instead of losing evidence behind the first source.
-
-The LLM narration guard uses a `VerifiedEvidence` read model derived from DuckDB
-source rows before accepting LLM-flavored prose. The public source JSON remains
-unchanged; the read model is only the verification Interface for narration.
-
-The Gradio Query tab uses a named output contract in
-`src/baseball_rag/ui/gradio_adapter.py` so pending, completed, and stale callback
-tuples map to component names in one Adapter instead of leaking tuple slots into
-dashboard code. `src/baseball_rag/ui/query_tab_wiring.py` owns the browser-facing
-Query tab callback order, session-hash extraction, stale completion no-ops, and
-component map validation while `build_dashboard()` stays layout-oriented.
-
-## Architecture Explorer
-
-The Architecture tab includes a Developer tools accordion with Run All Tests.
-That control delegates to `src/baseball_rag/arch/test_status.py`, which runs
-pytest from the repo root and maps results to per-component status badges.
-Mapped test failures mark the owning component as failing, pytest collection
-errors do not create false pass badges, and unmapped or incomplete status stays
-UNKNOWN.
-
-Completed Query tab executions publish to the Architecture Explorer through
-`src/baseball_rag/arch/trace_publication.py`. The publication adapter owns
-animate-vs-record policy, session-scoped latest-run publication, and failure
-isolation while `ArchitectureDiagram` remains the rendering adapter.
-
-## Eval Reporting
-
-`evals/questions.py` owns the deterministic release gate. The CLI report writer
-and FastAPI governance endpoints use `build_eval_report_payload` for the shared
-summary and case-list data that feeds `GET /evals/report`, `POST /evals/run`,
-Markdown reports, and JSON artifacts.
-
-Runtime eval metadata and `GET /guardrails/coverage` use
-`src/baseball_rag/eval_manifest.py`, a package-safe eval manifest adapter. When
-the repo manifest is absent in a package-only runtime, query audit metadata and
-guardrail coverage return explicit unavailable status instead of importing the
-repo-only `evals` package.
-
-## General Explanations
-
-Supported stat-definition questions such as "what is OPS?" read the checked-in
-local stat-definition Markdown and return stat-definition provenance. Broader
-baseball explanation questions remain open LLM answers. No explanation path uses
-a vector index at runtime.
-
-## Corpus Material
-
-Markdown files under `src/baseball_rag/corpus/` remain useful project material
-for docs and tests. ChromaDB indexing and Chroma-backed retrieval were removed
-because the index duplicated generated facts and created fragile local state.
+Player biography and general explanation classes remain callable auxiliary modules. They do not participate in query interpretation or structured factual execution. Biography claim vocabulary now consumes the Published Query Catalog instead of a second stat registry.

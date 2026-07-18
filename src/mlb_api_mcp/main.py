@@ -140,8 +140,8 @@ if __name__ == "__main__":
         "--port",
         "-p",
         type=int,
-        default=8000,
-        help="Port to run the server on (default: 8000, env PORT takes priority)",
+        default=8002,
+        help="Port to run the server on (default: 8002, env PORT takes priority)",
     )
     args = parser.parse_args()
 

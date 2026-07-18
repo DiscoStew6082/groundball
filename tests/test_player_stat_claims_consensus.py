@@ -3,14 +3,17 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from baseball_rag.db.biography_stat_vocabulary import supported_biography_claim_stats
+from baseball_rag.db.biography_stat_vocabulary import (
+    biography_claim_stat_definitions,
+    supported_biography_claim_stats,
+)
 from baseball_rag.db.player_identity import resolve_retrosheet_id
 from baseball_rag.db.player_stat_claims import (
     PlayerStatClaim,
     shape_biography_stat_claim_consensus,
     verify_player_stat_claims_consensus,
 )
-from baseball_rag.db.stat_registry import supported_stats
+from baseball_rag.query.registry import published_values
 
 
 def _conn(*, retrosheet: bool = True) -> duckdb.DuckDBPyConnection:
@@ -402,12 +405,22 @@ def test_consensus_keeps_sql_only_stats_out_of_biography_claim_vocabulary():
 
     row = _row(conn, PlayerStatClaim(stat="BB", value=20, year=1927))
 
-    assert "BB" in supported_stats()
+    assert "batting.BB" in {value.identity for value in published_values()}
     assert "BB" not in supported_biography_claim_stats()
     assert row["consensus_status"] == "unsupported"
     assert row["primary_status"] == "unsupported_stat"
     assert row["secondary_status"] == "unsupported"
     assert "Unsupported biography stat claim" in row["warning"]
+
+
+def test_biography_claim_definitions_are_catalog_values():
+    pitching, batting = biography_claim_stat_definitions("SO", text="pitching strikeouts")
+
+    assert pitching.identity == "pitching.SO"
+    assert pitching.source_field == "Pitching.SO"
+    assert batting.identity == "batting.SO"
+    assert batting.source_field == "Batting.SO"
+    assert biography_claim_stat_definitions("OPS")[0].formula == "OBP + SLG"
 
 
 @pytest.mark.parametrize("bad_value", ["many", None, float("nan")])
@@ -750,7 +763,7 @@ def test_consensus_retrosheet_sql_filters_by_retroid_and_year():
     assert result.secondary.params == ["retro001", 1927]
 
 
-def test_consensus_provenance_marks_placeholder_retrosheet_manifest_optional():
+def test_consensus_provenance_includes_retrosheet_manifest_when_available():
     conn = _conn()
     _add_player(conn)
     _add_batting(conn)
@@ -764,8 +777,8 @@ def test_consensus_provenance_marks_placeholder_retrosheet_manifest_optional():
 
     assert presentation.data_manifest["dataset"]["name"] == "NeuML/baseballdata"
     retrosheet = presentation.data_manifest["secondary_manifests"]["retrosheet"]
-    assert retrosheet["available"] is False
-    assert "retrosheet_batting" in retrosheet["unavailable_reason"]
+    assert retrosheet["available"] is True
+    assert any(item["table"] == "retrosheet_batting" for item in retrosheet["files"])
 
 
 def test_consensus_presentation_surfaces_retrosheet_sql_for_secondary_only_evidence():

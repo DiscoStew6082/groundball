@@ -15,7 +15,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.11'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
@@ -38,6 +43,9 @@ jobs:
           uv export --frozen --format requirements-txt --no-emit-project --all-extras --all-groups > "$tmpreq"
           uvx pip-audit --progress-spinner off --no-deps --disable-pip -r "$tmpreq"
         working-directory: src/mlb_api_mcp
+      - name: Audit web dependencies
+        run: npm audit --audit-level=low
+        working-directory: web
 
   lint:
     runs-on: ubuntu-latest
@@ -51,7 +59,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra dev
-      - run: uv run ruff check src/ tests/ evals/
+      - run: uv run ruff check src/ tests/
 
   typecheck:
     runs-on: ubuntu-latest
@@ -67,20 +75,25 @@ jobs:
       - run: uv sync --locked --extra dev
       - run: uv run mypy src/baseball_rag/
 
-  go-test:
+  web-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-node@v6
         with:
-          go-version-file: go.mod
-          cache: true
-      - run: go vet ./...
-      - run: go test ./...
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
 
   test:
     runs-on: ubuntu-latest
-    needs: [security, lint, typecheck]
+    needs: [security, lint, typecheck, web-test]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -94,26 +107,21 @@ jobs:
       # Download NeuML/baseballdata CSVs (runtime deps — not stored in repo)
       - run: uv run python -c "from baseball_rag.db.download import download_all; download_all()"
       - run: uv run python -m pytest tests/ -m "not llm" --cov=baseball_rag --cov-report=xml --cov-report=term-missing -v
-      - name: Deterministic eval release gate
-        run: uv run python -m evals.questions --report eval-report.md --guardrail-report guardrail-coverage.md --json-report eval-report.json --baseline evals/baseline.json
-      - name: Publish reliability summary
+      - name: Query coverage release gate
+        run: uv run python -m baseball_rag.query.generate_coverage_report --check
+      - name: Query Plan and Query Run eval matrix
+        run: uv run python -m baseball_rag.query.eval_matrix --json-report query-eval-report.json
+      - name: Publish query proof summary
         if: always()
-        run: |
-          {
-            echo "## Deterministic Eval Report"
-            cat eval-report.md
-            echo
-            echo "## Guardrail Coverage Report"
-            cat guardrail-coverage.md
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: cat src/baseball_rag/query/coverage/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: deterministic-reliability-reports
+          name: deterministic-query-reports
           path: |
-            eval-report.md
-            eval-report.json
-            guardrail-coverage.md
+            query-eval-report.json
+            src/baseball_rag/query/coverage/coverage-report.json
+            src/baseball_rag/query/coverage/coverage-report.md
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -11,7 +11,7 @@ import pytest
 def pytest_configure(config: pytest.Config) -> None:
     """Register marker names so pytest knows about them."""
     config.addinivalue_line("markers", "unit: fast, mocked tests — no external services required")
-    config.addinivalue_line("markers", "integration: requires live services (LM Studio, Gradio)")
+    config.addinivalue_line("markers", "integration: requires live services (LM Studio or UI)")
     config.addinivalue_line("markers", "slow: long-running or heavy setup")
 
 
@@ -20,10 +20,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     integration = {
         "test_api",
         "test_cli_player_query",
-        "test_dashboard",
-        "test_diagram_ui",
         "test_generation",
-        "test_gradio",
         "test_pipeline",
         "test_pipeline_tracing_integration",
         "test_router",

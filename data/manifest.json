@@ -5,6 +5,7 @@
     "source_url": "https://huggingface.co/datasets/NeuML/baseballdata",
     "base_download_url": "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main",
     "upstream": "Lahman Baseball Database",
+    "release_id": "neuml-baseballdata:lahman-2025:2026-01-11",
     "upstream_release": "Version 2025, released 2026-01-02",
     "hugging_face_last_updated": "2026-01-11",
     "license": "CC BY-SA 3.0",

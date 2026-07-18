@@ -31,6 +31,9 @@ def test_download_pitcher_strikeout_side_events_derives_reusable_evidence(tmp_pa
         "\n".join(
             [
                 "id,OAK197505120",
+                "info,visteam,NYA",
+                "info,hometeam,OAK",
+                "info,site,OAK01",
                 'start,fingr001,"Rollie Fingers",0,9,1',
                 'start,batt001,"Batter One",1,1,3',
                 "play,5,1,batt001,??,,K",
@@ -60,8 +63,9 @@ def test_download_pitcher_strikeout_side_events_derives_reusable_evidence(tmp_pa
     rows = output_path.read_text(encoding="utf-8").splitlines()
     assert rows == [
         "retroID,year,game_id,inning,batting_home,started_half_inning,"
-        "strikeout_outs,total_outs_recorded,event_sequence",
-        "fingr001,1975,OAK197505120,5,1,true,3,3,K|K/C|K",
+        "strikeout_outs,total_outs_recorded,event_sequence,game_date,home_team_id,"
+        "away_team_id,pitcher_team_id,opponent_team_id,site",
+        "fingr001,1975,OAK197505120,5,1,true,3,3,K|K/C|K,1975-05-12,OAK,NYA,NYA,OAK,OAK01",
     ]
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["download"]["download_tool"] == (

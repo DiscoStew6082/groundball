@@ -95,6 +95,7 @@ def write_manifest(db_dir: Path | None = None, *, paths: list[Path] | None = Non
             "source_url": "https://huggingface.co/datasets/NeuML/baseballdata",
             "base_download_url": BASE_URL,
             "upstream": "Lahman Baseball Database",
+            "release_id": "neuml-baseballdata:lahman-2025:2026-01-11",
             "upstream_release": "Version 2025, released 2026-01-02",
             "hugging_face_last_updated": "2026-01-11",
             "license": "CC BY-SA 3.0",
