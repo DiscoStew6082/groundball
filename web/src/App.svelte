@@ -21,6 +21,8 @@
     ['data', 'Data'],
     ['generation', 'Generation'],
   ];
+  const prototypeVariant = new URLSearchParams(window.location.search).get('variant');
+  const prototypeMode = import.meta.env.DEV && ['A', 'B', 'C'].includes(prototypeVariant);
 
   let capabilities = null;
   let capabilityError = '';
@@ -40,6 +42,7 @@
   let testsPending = false;
   let testsResult = null;
   let testsError = '';
+  let PrototypeComponent = null;
 
   $: table = tableRows(result?.rows);
   $: queryEnabled = capabilityEnabled(capabilities?.query);
@@ -73,6 +76,11 @@
     : null;
 
   onMount(async () => {
+    if (prototypeMode) {
+      PrototypeComponent = (
+        await import('./prototypes/query-recipe/MobileQueryRecipePrototype.svelte')
+      ).default;
+    }
     history = readHistory();
     try {
       const response = await fetch('/api/capabilities');
@@ -288,7 +296,14 @@
           </div>
         </aside>
 
-        <div class="main-column">
+        <div class:prototype-column={prototypeMode} class="main-column">
+          {#if prototypeMode}
+            {#if PrototypeComponent}
+              <PrototypeComponent />
+            {:else}
+              <p class="empty-copy">Loading mobile prototype…</p>
+            {/if}
+          {:else}
           <section class="query-composer" id="query">
             <div class="section-heading">
               <div>
@@ -486,6 +501,7 @@
                 {#if testsError}<p class="answer-error" role="alert">{testsError}</p>{/if}
               </div>
             </details>
+          {/if}
           {/if}
         </div>
 
