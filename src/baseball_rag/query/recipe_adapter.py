@@ -8,6 +8,7 @@ from typing import Any
 
 from baseball_rag.query.contracts import (
     All,
+    ClarificationChoice,
     Compare,
     Literal,
     NeedsClarification,
@@ -162,7 +163,20 @@ def interpret_recipe(question: str) -> RecipeAdaptation:
         normalized,
     )
     if ambiguous_strikeouts:
-        return NeedsClarification("Should strikeouts mean batting or pitching strikeouts?")
+        year = int(ambiguous_strikeouts.group(1))
+        return NeedsClarification(
+            "Should strikeouts mean batting or pitching strikeouts?",
+            choices=(
+                ClarificationChoice(
+                    "Pitching",
+                    _discipline_leader_recipe("Pitching", "SO", year),
+                ),
+                ClarificationChoice(
+                    "Batting",
+                    _discipline_leader_recipe("Batting", "SO", year),
+                ),
+            ),
+        )
     pitching_strikeouts = re.fullmatch(
         r"which pitcher had the most (?:strikeouts|so) in (\d{4})\??",
         normalized,
@@ -331,3 +345,14 @@ def interpret_recipe(question: str) -> RecipeAdaptation:
     ):
         return Rejected("Arbitrary formulas are not published; choose a catalog calculation.")
     return Rejected("That natural-language batting recipe is not published yet.")
+
+
+def _discipline_leader_recipe(source: str, value: str, year: int) -> QueryRecipe:
+    identity = f"{source.casefold()}.{value}"
+    return QueryRecipe(
+        source=source,
+        grain="player-season",
+        selections=("player.id", "season", identity),
+        predicate=Compare("season", "equals", year),
+        ranking=RankSpec(identity, "highest", 1, "include_ties"),
+    )

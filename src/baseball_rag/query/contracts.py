@@ -119,7 +119,7 @@ class Export:
     format: str = "json"
 
     def as_dict(self) -> dict[str, object]:
-        return {"format": self.format, "full_match": True, "kind": "export"}
+        return {"format": self.format, "kind": "export"}
 
 
 OutputSpec: TypeAlias = InteractivePage | Export
@@ -223,9 +223,16 @@ class Ready:
 
 
 @dataclass(frozen=True)
+class ClarificationChoice:
+    label: str
+    recipe: QueryRecipe
+
+
+@dataclass(frozen=True)
 class NeedsClarification:
     question: str
     suggested_recipe_change: QueryRecipe | None = None
+    choices: tuple[ClarificationChoice, ...] = ()
 
 
 @dataclass(frozen=True)

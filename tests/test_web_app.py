@@ -109,9 +109,12 @@ def test_main_uses_container_defaults(monkeypatch) -> None:
     assert calls == [{"server_name": "0.0.0.0", "server_port": 7860, "ttl_seconds": None}]
 
 
-def test_project_exposes_ui_scripts_without_gradio_dependency() -> None:
+def test_project_exposes_only_clean_groundball_scripts_without_gradio_dependency() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
     assert "gradio" not in pyproject["project"]["dependencies"]
     assert pyproject["project"]["scripts"]["groundball-ui"] == "baseball_rag.web_app:dev_main"
-    assert pyproject["project"]["scripts"]["baseball-rag-ui"] == "baseball_rag.web_app:dev_main"
+    assert pyproject["project"]["scripts"] == {
+        "groundball": "baseball_rag.cli:main",
+        "groundball-ui": "baseball_rag.web_app:dev_main",
+    }

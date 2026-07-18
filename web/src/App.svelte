@@ -1,558 +1,320 @@
 <script>
   import { onMount, tick } from 'svelte';
 
-  import { csvDataUrl, jsonDataUrl, tableRows } from './lib/downloads.js';
+  import ChatComposer from './lib/ChatComposer.svelte';
+  import DetailsSheet from './lib/DetailsSheet.svelte';
+  import NavigationMenu from './lib/NavigationMenu.svelte';
 
-  const DEFAULT_QUESTION = 'who had the most RBIs in 1962';
-  const EXAMPLES = [
-    DEFAULT_QUESTION,
-    'career home run leaders',
-    'who won the Triple Crown and which years',
-    'what is OPS',
-    'who played for the Braves in 1936',
-  ];
-  const HISTORY_KEY = 'ground-ball-history';
-  const MAX_HISTORY = 12;
-  const MAX_CONVERSATION_TURNS = 20;
-  const ARCHITECTURE_LAYERS = [
-    ['api', 'API'],
-    ['routing', 'Routing'],
-    ['verification', 'Verification'],
-    ['data', 'Data'],
-    ['generation', 'Generation'],
-  ];
-  const prototypeVariant = new URLSearchParams(window.location.search).get('variant');
-  const prototypeMode = import.meta.env.DEV && ['D', 'E', 'F'].includes(prototypeVariant);
+  const HISTORY_KEY = 'ground-ball-query-history';
+  const DEFAULT_QUESTION = '40-40';
 
-  let capabilities = null;
-  let capabilityError = '';
-  let question = DEFAULT_QUESTION;
+  let capabilities;
+  let catalog = { sources: [], fields: [], values: [], relationships: [] };
+  let draft = DEFAULT_QUESTION;
   let pending = false;
   let result = null;
-  let resultQuestion = '';
+  let submittedQuestion = '';
   let error = '';
-  let conversation = [];
+  let navOpen = false;
+  let navButton;
+  let activeSurface = 'Query';
+  let detailsOpen = false;
+  let detailsButton;
+  let fieldSearch = '';
+  let fieldSource = '';
   let history = [];
-  let answerMode = 'stats_only';
-  let requestSequence = 0;
-  let architectureComponents = [];
-  let architectureError = '';
-  let selectedComponent = null;
-  let componentPending = false;
-  let testsPending = false;
-  let testsResult = null;
-  let testsError = '';
-  let PrototypeComponent = null;
-  let prototypeSettingsOpen =
-    prototypeMode && new URLSearchParams(window.location.search).get('menu') === '1';
-  let prototypeSettingsButton;
 
-  $: table = tableRows(result?.rows);
-  $: queryEnabled = capabilityEnabled(capabilities?.query);
-  $: llmEnabled = capabilityEnabled(capabilities?.llm);
-  $: architectureEnabled =
-    capabilities?.mode === 'local' && capabilityEnabled(capabilities?.architecture);
-  $: developerToolsEnabled = capabilityEnabled(capabilities?.developer_tools);
-  $: historyEnabled = capabilities?.history === 'browser_local' || capabilities?.history === true;
-  $: answerModes = capabilities?.query?.answer_modes ??
-    (llmEnabled ? ['stats_only', 'llm_flavored'] : ['stats_only']);
-  $: architectureByLayer = Object.fromEntries(
-    ARCHITECTURE_LAYERS.map(([layerId]) => [
-      layerId,
-      architectureComponents.filter((component) => component.layer === layerId),
-    ]),
+  $: recipeText = result?.recipe ? JSON.stringify(result.recipe, null, 2) : '';
+  $: visibleFields = catalog.fields.filter((field) =>
+    (!fieldSource || field.source === fieldSource) &&
+    (!fieldSearch || `${field.identity} ${field.column}`.toLowerCase().includes(fieldSearch.toLowerCase()))
   );
-  $: exportPayload = result
-    ? {
-        question: resultQuestion,
-        status: result.status,
-        answer: result.answer,
-        intent: result.intent,
-        rows: result.rows,
-        sources: result.sources,
-        sql: result.sql,
-        warnings: result.warnings,
-        unsupported: result.unsupported,
-        unsupported_reason: result.unsupported_reason,
-        metadata: result.metadata,
-      }
-    : null;
 
   onMount(async () => {
-    if (prototypeMode) {
-      PrototypeComponent = (
-        await import('./prototypes/query-recipe/MobileQueryRecipePrototype.svelte')
-      ).default;
-    }
     history = readHistory();
     try {
-      const response = await fetch('/api/capabilities');
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Could not load application capabilities.');
-      capabilities = payload;
-      if (localArchitectureEnabled(payload)) await loadArchitecture();
+      const [capabilityResponse, catalogResponse] = await Promise.all([
+        fetch('/api/capabilities'),
+        fetch('/api/query-catalog'),
+      ]);
+      capabilities = await readResponse(capabilityResponse);
+      catalog = await readResponse(catalogResponse);
     } catch (caught) {
-      capabilityError = messageFrom(caught, 'Could not start Ground Ball.');
+      error = messageFrom(caught, 'Ground Ball could not start.');
     }
   });
-
-  function togglePrototypeSettings() {
-    prototypeSettingsOpen = !prototypeSettingsOpen;
-  }
-
-  async function closePrototypeSettings() {
-    prototypeSettingsOpen = false;
-    await tick();
-    prototypeSettingsButton?.focus({ preventScroll: true });
-  }
 
   function readHistory() {
     try {
       const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-      return Array.isArray(stored) ? stored.slice(0, MAX_HISTORY) : [];
+      return Array.isArray(stored) ? stored.slice(0, 12) : [];
     } catch {
       return [];
     }
   }
 
-  function saveHistory(entry) {
-    history = [entry, ...history.filter((item) => item.question !== entry.question)].slice(
-      0,
-      MAX_HISTORY,
-    );
+  function saveHistory(run) {
+    const entry = { question: submittedQuestion, recipe: run.recipe, run, saved_at: new Date().toISOString() };
+    history = [entry, ...history].slice(0, 12);
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch {
-      // Browser storage is optional; a completed query must remain successful.
+      // Query completion does not depend on optional browser storage.
     }
   }
 
-  function chooseExample(example) {
-    question = example;
+  async function runQuestion(question) {
+    submittedQuestion = question;
+    await runRequest({ question });
   }
 
-  function restoreHistory(item) {
-    question = item.question;
-    result = item.result;
-    resultQuestion = item.question;
-    conversation = Array.isArray(item.conversation)
-      ? item.conversation.slice(-MAX_CONVERSATION_TURNS)
-      : [];
-    error = '';
+  async function runRecipe(recipe) {
+    await runRequest({ recipe });
   }
 
-  function capabilityEnabled(capability) {
-    if (capability && typeof capability === 'object') return capability.enabled === true;
-    return capability === true;
-  }
-
-  function localArchitectureEnabled(payload) {
-    return payload?.mode === 'local' && capabilityEnabled(payload?.architecture);
-  }
-
-  async function loadArchitecture() {
-    architectureError = '';
+  async function runRecipeText(text) {
     try {
-      const response = await fetch('/api/architecture');
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || payload.detail || 'Architecture is unavailable.');
-      architectureComponents = payload.components ?? [];
+      await runRecipe(JSON.parse(text));
+      detailsOpen = false;
     } catch (caught) {
-      architectureError = messageFrom(caught, 'Architecture is unavailable.');
+      error = messageFrom(caught, 'The structured recipe is not valid JSON.');
     }
   }
 
-  async function inspectComponent(componentId) {
-    if (!architectureEnabled || componentPending) return;
-    componentPending = true;
-    architectureError = '';
-    try {
-      const response = await fetch(`/api/architecture/${encodeURIComponent(componentId)}`);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || payload.detail || 'Component detail is unavailable.');
-      selectedComponent = payload;
-    } catch (caught) {
-      architectureError = messageFrom(caught, 'Component detail is unavailable.');
-    } finally {
-      componentPending = false;
-    }
-  }
-
-  async function submitQuery() {
-    const submitted = question.trim();
-    if (!submitted || !queryEnabled) return;
-
-    const sequence = ++requestSequence;
+  async function runRequest(body) {
+    const endpoint = capabilities?.query?.endpoint ?? '/api/query-runs';
     pending = true;
-    result = null;
     error = '';
-
+    const requestResult = result;
     try {
-      const response = await fetch('/api/query', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: submitted,
-          conversation,
-          answer_mode: answerMode,
-        }),
+        body: JSON.stringify(body),
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || payload.detail || `Request failed (${response.status}).`);
-      if (sequence !== requestSequence) return;
-
+      const payload = await readResponse(response);
       result = payload;
-      question = submitted;
-      resultQuestion = submitted;
-      const nextConversation = payload.conversation_turn
-        ? [...conversation, payload.conversation_turn].slice(-MAX_CONVERSATION_TURNS)
-        : conversation;
-      conversation = nextConversation;
-      if (historyEnabled) {
-        saveHistory({
-          question: submitted,
-          result: payload,
-          conversation: nextConversation,
-          saved_at: new Date().toISOString(),
-        });
-      }
+      activeSurface = 'Query';
+      if (['rows', 'no_data'].includes(payload.kind)) saveHistory(payload);
     } catch (caught) {
-      if (sequence !== requestSequence) return;
-      error = messageFrom(caught, 'Ground Ball could not return an answer.');
+      result = requestResult;
+      error = messageFrom(caught, 'Ground Ball could not run that query.');
     } finally {
-      if (sequence === requestSequence) pending = false;
+      pending = false;
     }
   }
 
-  async function runTests() {
-    if (!developerToolsEnabled || testsPending) return;
-    testsPending = true;
-    testsResult = null;
-    testsError = '';
-    try {
-      const response = await fetch('/api/developer/tests', { method: 'POST' });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Tests could not run.');
-      testsResult = payload;
-    } catch (caught) {
-      testsError = messageFrom(caught, 'Tests could not run.');
-    } finally {
-      testsPending = false;
-    }
+  async function readResponse(response) {
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || payload.error || `Request failed (${response.status}).`);
+    return payload;
   }
 
   function messageFrom(caught, fallback) {
     return caught instanceof Error && caught.message ? caught.message : fallback;
   }
 
-  function conversationAnswer(turn) {
-    if (typeof turn?.answer === 'string') return turn.answer;
-    return turn?.answer?.answer ?? '';
+  async function closeNavigation() {
+    navOpen = false;
+    await tick();
+    navButton?.focus({ preventScroll: true });
+  }
+
+  async function closeDetails() {
+    detailsOpen = false;
+    await tick();
+    detailsButton?.focus({ preventScroll: true });
+  }
+
+  function selectSurface(surface) {
+    activeSurface = surface;
+    closeNavigation();
+  }
+
+  function browseFromDetails() {
+    detailsOpen = false;
+    activeSurface = 'Browse fields';
+  }
+
+  function useField(field) {
+    submittedQuestion = `Raw ${field.identity}`;
+    runRecipe({
+      catalog_revision: catalog.catalog_revision,
+      source: field.source,
+      grain: 'raw_rows',
+      selections: [field.identity],
+      predicate: null,
+      groupings: [],
+      ranking: null,
+      ordering: [],
+      output: { kind: 'interactive_page', size: 100, offset: 0 },
+    });
+  }
+
+  function restoreHistory(entry) {
+    result = entry.run;
+    submittedQuestion = entry.question;
+    activeSurface = 'Query';
+  }
+
+  async function exportResult(format) {
+    if (!result?.recipe) return;
+    const exportRecipe = structuredClone(result.recipe);
+    exportRecipe.output = { kind: 'export', format };
+    try {
+      const response = await fetch(capabilities?.query?.endpoint ?? '/api/query-runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipe: exportRecipe }),
+      });
+      const exported = await readResponse(response);
+      if (exported.kind !== 'exported') throw new Error('The export run did not return an export.');
+      const blob = new Blob([exported.export.content], {
+        type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ground-ball-query.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      error = messageFrom(caught, 'Ground Ball could not export that result.');
+    }
+  }
+
+  function outcomeTitle(run) {
+    if (!run) return '';
+    if (run.kind === 'rows') return `${run.rows.length} matching rows`;
+    if (run.kind === 'no_data') return 'No matching rows';
+    if (run.kind === 'needs_clarification') return 'One detail needed';
+    if (run.kind === 'rejected') return 'That query is not published';
+    if (run.kind === 'unavailable') return 'Query unavailable';
+    if (run.kind === 'failed') return 'Query failed';
+    return 'Query result';
   }
 </script>
 
-<svelte:head>
-  <title>Ground Ball</title>
-</svelte:head>
+<svelte:head><title>Ground Ball</title></svelte:head>
 
 <main class="desktop-shell">
-  <section class:prototype-window={prototypeMode} class="app-window" aria-label="Ground Ball application window">
+  <section class="app-window" aria-label="Ground Ball application window">
     <header class="title-bar">
       <div class="app-identity">
-        {#if prototypeMode}
-          <button
-            bind:this={prototypeSettingsButton}
-            class="prototype-settings-trigger"
-            type="button"
-            aria-label="Open application sections"
-            aria-expanded={prototypeSettingsOpen}
-            aria-controls="app-sections-menu"
-            on:click={togglePrototypeSettings}
-          ><span class="ball-mark" aria-hidden="true">GB</span></button>
-        {:else}
-          <span class="ball-mark" aria-hidden="true">GB</span>
-        {/if}
-        <div>
-          <h1>{capabilities?.name ?? 'Ground Ball'}</h1>
-          <p>
-            {#if capabilities?.mode === 'public'}
-              Deterministic public demo
-            {:else if capabilities?.mode === 'local'}
-              Local almanac workspace
-            {:else}
-              Modern baseball almanac
-            {/if}
-          </p>
-        </div>
+        <button
+          bind:this={navButton}
+          class="navigation-trigger"
+          type="button"
+          aria-label="Open application navigation"
+          aria-expanded={navOpen}
+          on:click={() => (navOpen = !navOpen)}
+        ><span class="ball-mark" aria-hidden="true">GB</span></button>
+        <div><h1>Ground Ball</h1><p>Historical MLB · deterministic query system</p></div>
       </div>
-      <div class="window-controls" aria-hidden="true">
-        <span>—</span><span>□</span><span>×</span>
-      </div>
+      <span class="runtime-status">{capabilities ? 'Ready' : 'Connecting'}</span>
     </header>
 
-    {#if capabilityError}
-      <div class="startup-error" role="alert">{capabilityError}</div>
-    {:else}
-      <div class:prototype-workspace={prototypeMode} class="workspace">
-        {#if !prototypeMode}
-          <aside class="sidebar">
-          <div class="brand-block">
-            <span class="eyebrow">Historical MLB</span>
-            <strong>Ask the record.</strong>
-            <p>Grounded answers backed by inspectable data.</p>
+    {#if navOpen}
+      <NavigationMenu active={activeSurface} onSelect={selectSurface} onClose={closeNavigation} />
+    {/if}
+
+    <div class="answer-workspace">
+      {#if activeSurface === 'Browse fields'}
+        <section class="catalog-browser">
+          <small>QUERY CATALOG</small><h2>Browse fields</h2>
+          <p>Raw source fields and reviewed promoted values share this catalog revision.</p>
+          <div class="catalog-filters">
+            <select bind:value={fieldSource} aria-label="Field source">
+              <option value="">All sources</option>
+              {#each catalog.sources as source}<option value={source.identity}>{source.identity}</option>{/each}
+            </select>
+            <input bind:value={fieldSearch} aria-label="Search fields" placeholder="Search fields" />
           </div>
-
-          <nav aria-label="Application sections">
-            <a class="nav-item active" href="#query">Query</a>
-            <a class="nav-item" href="#evidence">Evidence</a>
-            {#if historyEnabled}
-              <a class="nav-item" href="#history">History</a>
-            {/if}
-            {#if architectureEnabled}
-              <a class="nav-item" href="#architecture">Architecture</a>
-            {/if}
-          </nav>
-
-          <div class="runtime-card">
-            <span class:online={capabilities} class="status-dot"></span>
-            <div>
-              <strong>{capabilities ? 'Ready' : 'Connecting'}</strong>
-              <small>{llmEnabled ? 'Local narration enabled' : 'No LLM access'}</small>
-            </div>
+          <div class="field-list">
+            {#each visibleFields as field}
+              <article>
+                <div><strong>{field.identity}</strong><small>{field.data_type} · {field.operations.join(' · ')}</small></div>
+                <button type="button" aria-label={`Use ${field.identity}`} on:click={() => useField(field)}>Use field</button>
+              </article>
+            {/each}
           </div>
-          </aside>
-        {/if}
-
-        <div class:prototype-column={prototypeMode} class="main-column">
-          {#if prototypeMode}
-            {#if PrototypeComponent}
-              <PrototypeComponent
-                settingsOpen={prototypeSettingsOpen}
-                onCloseSettings={closePrototypeSettings}
-              />
-            {:else}
-              <p class="empty-copy">Loading mobile prototype…</p>
-            {/if}
-          {:else}
-          <section class="query-composer" id="query">
-            <div class="section-heading">
-              <div>
-                <span class="eyebrow">Natural language in</span>
-                <h2>What do you want to know?</h2>
-              </div>
-              <span class="mode-badge">{capabilities?.mode ?? 'loading'}</span>
-            </div>
-
-            <form on:submit|preventDefault={submitQuery}>
-              <label for="baseball-question">Baseball question</label>
-              {#if llmEnabled}
-                <div class="answer-mode-row">
-                  <label for="answer-mode">Answer mode</label>
-                  <select id="answer-mode" aria-label="Answer mode" bind:value={answerMode}>
-                    {#each answerModes as mode}
-                      <option value={mode}>{mode === 'stats_only' ? 'Stats only' : 'LLM-flavored narration'}</option>
-                    {/each}
-                  </select>
-                </div>
-              {/if}
-              <div class="query-input-row">
-                <input
-                  id="baseball-question"
-                  aria-label="Baseball question"
-                  bind:value={question}
-                  autocomplete="off"
-                  spellcheck="true"
-                />
-                <button type="submit" class="ask-button" disabled={pending || !queryEnabled}>
-                  {pending ? 'Working…' : 'Ask'}
-                </button>
-              </div>
-            </form>
-
-            <div class="examples" aria-label="Example questions">
-              {#each EXAMPLES as example}
-                <button type="button" on:click={() => chooseExample(example)}>{example}</button>
-              {/each}
-            </div>
-          </section>
-
-          <section class="answer-card" data-testid="answer" aria-live="polite">
-            <div class="card-kicker">
-              <span>Answer</span>
-              {#if result?.intent}<span class="intent-chip">{result.intent}</span>{/if}
-            </div>
-            {#if pending}
-              <div class="working-state"><span class="spinner"></span> Working through the record…</div>
-            {:else if error}
-              <div class="answer-error" role="alert">{error}</div>
-            {:else if result}
-              <p class="answer-copy">{result.answer}</p>
-              {#if result.unsupported}
-                <p class="support-state">Unsupported: {result.unsupported_reason ?? 'unsupported'}</p>
-              {/if}
-              {#if result.warnings?.length}
-                <ul class="warnings">
-                  {#each result.warnings as warning}<li>{warning}</li>{/each}
-                </ul>
-              {/if}
-            {:else}
-              <p class="empty-copy">Ask a question to see the answer, evidence, and query details.</p>
-            {/if}
-          </section>
-
-          {#if conversation.length}
-            <section class="conversation-card" data-testid="conversation">
-              <div class="card-kicker"><span>Conversation</span><span>{conversation.length} turns</span></div>
-              <div class="conversation-list">
-                {#each conversation as turn}
-                  <div class="conversation-turn">
-                    <p><span>You</span>{turn.question}</p>
-                    <p><span>Ground Ball</span>{conversationAnswer(turn)}</p>
-                  </div>
-                {/each}
-              </div>
+          <h3>Promoted values</h3>
+          <div class="field-list promoted-list">
+            {#each catalog.values as value}
+              <article><div><strong>{value.friendly_name}</strong><small>{value.identity}{value.formula ? ` · ${value.formula}` : ''}</small></div></article>
+            {/each}
+          </div>
+        </section>
+      {:else if activeSurface === 'Evidence'}
+        <section class="evidence-surface">
+          <small>LAST QUERY RUN</small><h2>Evidence</h2>
+          {#if result?.evidence}
+            <dl>
+              <dt>Catalog</dt><dd>{result.evidence.catalog_revision}</dd>
+              <dt>Data release</dt><dd>{result.evidence.data_release}</dd>
+              <dt>Matched rows</dt><dd>{result.evidence.matched_row_count}</dd>
+              <dt>Fingerprint</dt><dd>{result.evidence.result_fingerprint}</dd>
+            </dl>
+            <button bind:this={detailsButton} type="button" aria-label="Open query details" on:click={() => (detailsOpen = true)}>Open full Details</button>
+          {:else}<p>Run a query to inspect its plan, rows, calculations, sources, and SQL.</p>{/if}
+        </section>
+      {:else if activeSurface === 'History'}
+        <section class="history-surface">
+          <small>LOCAL HISTORY</small><h2>Query snapshots</h2>
+          {#if history.length}
+            {#each history as entry}
+              <button type="button" on:click={() => restoreHistory(entry)}><strong>{entry.question || entry.recipe.source}</strong><small>{entry.saved_at}</small></button>
+            {/each}
+          {:else}<p>No saved Query Runs yet.</p>{/if}
+        </section>
+      {:else if activeSurface === 'Architecture'}
+        <section class="architecture-surface">
+          <small>COMPOSITION ROOT</small><h2>One deterministic query path</h2>
+          <p>Natural language and structured edits produce the same Query Recipe, canonical Query Plan, immutable Query Run, and evidence.</p>
+          <code>Query Recipe → prepare → Query Plan → execute → Query Run</code>
+        </section>
+      {:else}
+        <article class="answer-feed">
+          {#if !result && !pending}
+            <section class="feed-welcome">
+              <span class="welcome-mark" aria-hidden="true">GB</span>
+              <h2>Ask the record.</h2>
+              <p>Edit the 40-40 example in the composer, browse any published raw field, or ask a reviewed baseball question.</p>
             </section>
-          {/if}
-
-          {#if result}
-            <section class="results-card" data-testid="results">
-              <div class="card-kicker"><span>Key rows</span><span>{table.data.length} shown</span></div>
-              {#if table.headers.length}
-                <div class="table-scroll">
-                  <table>
-                    <thead><tr>{#each table.headers as header}<th>{header}</th>{/each}</tr></thead>
-                    <tbody>
-                      {#each table.data as row}
-                        <tr>{#each row as cell}<td>{cell ?? '—'}</td>{/each}</tr>
-                      {/each}
-                    </tbody>
+          {:else if pending}
+            <section class="working-state" aria-live="polite"><span></span><p>Planning and checking the record…</p></section>
+          {:else if result?.kind === 'needs_clarification'}
+            <section class="clarification-card" aria-live="polite">
+              <small>CLARIFICATION</small><h2>{result.question}</h2>
+              <div>{#each result.choices ?? [] as choice}<button class="clarification-choice" type="button" on:click={() => runRecipe(choice.recipe)}>{choice.label}</button>{/each}</div>
+              {#if result.suggested_recipe}<button class="clarification-choice" type="button" on:click={() => runRecipe(result.suggested_recipe)}>Use suggested recipe</button>{/if}
+            </section>
+          {:else}
+            <section class:problem={['rejected', 'unavailable', 'failed'].includes(result?.kind)} class="run-card" aria-live="polite">
+              {#if submittedQuestion}<p class="feed-question">{submittedQuestion}</p>{/if}
+              <small>{result?.kind?.replaceAll('_', ' ')}</small><h2>{outcomeTitle(result)}</h2>
+              {#if result?.reason}<p>{result.reason}</p>{/if}
+              {#if result?.rows?.length}
+                <div class="result-scroller" data-testid="results">
+                  <table><thead><tr>{#each Object.keys(result.rows[0]) as key}<th>{key}</th>{/each}</tr></thead>
+                    <tbody>{#each result.rows as row}<tr>{#each Object.values(row) as value}<td>{value ?? '—'}</td>{/each}</tr>{/each}</tbody>
                   </table>
                 </div>
-              {:else}
-                <p class="empty-copy">This answer did not return tabular rows.</p>
               {/if}
-            </section>
-
-            <section class="evidence-card" id="evidence">
-              <div class="card-kicker"><span>Evidence</span><span>Audit-ready detail</span></div>
-              <div class="disclosures">
-                <details open data-testid="evidence">
-                  <summary>Sources <span>{result.sources?.length ?? 0}</span></summary>
-                  <pre>{JSON.stringify(result.sources ?? [], null, 2)}</pre>
-                </details>
-                <details data-testid="sql">
-                  <summary>SQL or query plan</summary>
-                  <pre>{result.sql || 'No SQL was produced for this answer.'}</pre>
-                </details>
-                <details>
-                  <summary>Dataset release</summary>
-                  <pre>{JSON.stringify(result.metadata ?? {}, null, 2)}</pre>
-                </details>
-              </div>
-              <div class="download-row">
-                <a href={csvDataUrl(result.rows)} download="ground-ball-result.csv">Download CSV</a>
-                <a href={jsonDataUrl(exportPayload)} download="ground-ball-result.json">Download JSON</a>
-              </div>
-            </section>
-          {/if}
-
-          {#if architectureEnabled}
-            <section class="architecture-card" id="architecture">
-              <div class="card-kicker"><span>Architecture Explorer</span><span>Local only</span></div>
-              {#if architectureError}<p class="answer-error" role="alert">{architectureError}</p>{/if}
-              <div class="architecture-catalog">
-                {#each ARCHITECTURE_LAYERS as [layerId, layerLabel]}
-                  <section class="architecture-layer">
-                    <h3>{layerLabel}</h3>
-                    <div class="component-grid">
-                      {#each architectureByLayer[layerId] ?? [] as component}
-                        <button
-                          type="button"
-                          data-component-id={component.id}
-                          class:selected={selectedComponent?.component?.id === component.id}
-                          on:click={() => inspectComponent(component.id)}
-                        >
-                          <span>{component.label}</span>
-                          <small>{component.test_status?.toUpperCase() ?? 'UNKNOWN'}</small>
-                        </button>
-                      {/each}
-                    </div>
-                  </section>
-                {/each}
-              </div>
-
-              {#if selectedComponent}
-                <aside class="component-detail" aria-live="polite">
-                  <div class="component-detail-heading">
-                    <div><span class="eyebrow">Runtime role</span><h3>{selectedComponent.component.label}</h3></div>
-                    <span class="test-badge status-{selectedComponent.component.test_status ?? 'unknown'}">
-                      {selectedComponent.component.test_status?.toUpperCase() ?? 'UNKNOWN'}
-                    </span>
-                  </div>
-                  <p>{selectedComponent.component.description}</p>
-                  <dl><dt>File path</dt><dd>{selectedComponent.component.file_path}</dd></dl>
-                  <pre>{selectedComponent.source_excerpt || 'Source excerpt is unavailable.'}</pre>
-                </aside>
-              {/if}
-
-              <div class="trace-heading"><span class="eyebrow">Latest query trace</span></div>
-              {#if result?.architecture_trace}
-                <div class="trace-summary">
-                  <strong>{result.architecture_trace.route ?? result.intent}</strong>
-                  {#if result.architecture_trace.total_ms != null}
-                    <span>{result.architecture_trace.total_ms}ms total</span>
-                  {/if}
-                </div>
-                <ol class="trace-path">
-                  {#each result.architecture_trace.stages ?? [] as stage}
-                    <li class:error-stage={stage.error}>
-                      <span class="stage-index"></span>
-                      <div><strong>{stage.label ?? stage.component_id}</strong><small>{stage.component_id}</small></div>
-                      <span>{stage.elapsed_ms ?? 0}ms</span>
-                    </li>
-                  {/each}
-                </ol>
-              {:else}
-                <p class="empty-copy">Run a query to inspect its execution path.</p>
+              {#if result?.plan}
+                <button bind:this={detailsButton} class="details-link" type="button" aria-label="Open query details" on:click={() => (detailsOpen = true)}>Details ›</button>
               {/if}
             </section>
           {/if}
+          {#if error}<div class="inline-error" role="alert">{error}</div>{/if}
+        </article>
+      {/if}
+    </div>
 
-          {#if developerToolsEnabled}
-            <details class="developer-card">
-              <summary>Developer Tools <span>Local only</span></summary>
-              <div class="developer-body">
-                <button data-testid="run-tests" type="button" on:click={runTests} disabled={testsPending}>
-                  {testsPending ? 'Tests are running…' : 'Run all tests'}
-                </button>
-                {#if testsResult}
-                  <p>{testsResult.passed} passed · {testsResult.failed} failed · {testsResult.errors} errors · {testsResult.skipped} skipped</p>
-                {/if}
-                {#if testsError}<p class="answer-error" role="alert">{testsError}</p>{/if}
-              </div>
-            </details>
-          {/if}
-          {/if}
-        </div>
-
-        {#if historyEnabled && !prototypeMode}
-          <aside class="history-panel" id="history">
-            <div class="card-kicker"><span>Recent questions</span><span>On this device</span></div>
-            {#if history.length}
-              <div class="history-list">
-                {#each history as item}
-                  <button type="button" on:click={() => restoreHistory(item)}>
-                    <span>{item.question}</span>
-                    <small>{item.result?.intent ?? 'query'}</small>
-                  </button>
-                {/each}
-              </div>
-            {:else}
-              <p class="empty-copy">Your latest results will stay here in this browser.</p>
-            {/if}
-          </aside>
-        {/if}
-      </div>
-    {/if}
+    <div class="composer-dock"><ChatComposer bind:value={draft} {pending} onSubmit={runQuestion} /></div>
   </section>
 </main>
+
+{#if detailsOpen && result}
+  <DetailsSheet {result} {recipeText} onClose={closeDetails} onRunRecipe={runRecipeText} onExport={exportResult} onBrowseFields={browseFromDetails} />
+{/if}

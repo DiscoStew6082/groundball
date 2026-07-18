@@ -1,7 +1,6 @@
 """FastAPI server for Groundball."""
 
 import hmac
-import logging
 import os
 from dataclasses import asdict
 from pathlib import Path
@@ -11,15 +10,12 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
-from baseball_rag.answer_mode import AnswerMode
-
 app = FastAPI(title="Groundball API")
-logger = logging.getLogger(__name__)
 _CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
 _ORIGIN_PROXY_TOKEN_ENV_VAR = "GROUNDBALL_ORIGIN_PROXY_TOKEN"
 _ORIGIN_PROXY_TOKEN_HEADER = "x-groundball-proxy-token"
 _PUBLIC_HEALTH_PATH = "/health"
-_CORS_QUERY_PATHS = {"/query", "/api/query"}
+_CORS_QUERY_PATHS = {"/api/query-runs"}
 _CORS_ALLOWED_METHOD = "POST"
 _CORS_ALLOWED_HEADERS = ("content-type",)
 _DEFAULT_CORS_ORIGINS = (
@@ -168,32 +164,17 @@ async def _query_cors_middleware(request: Request, call_next):
     return response
 
 
-class QueryRequest(BaseModel):
+class QueryInputRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str | None = Field(default=None, min_length=1, max_length=500)
+    recipe: dict[str, Any] | None = None
+
+
+class RetrosheetQueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=500)
-    conversation: list[dict[str, Any]] | None = Field(default=None, max_length=20)
-    answer_mode: AnswerMode = "stats_only"
-
-
-class QueryResponse(BaseModel):
-    answer: str
-    intent: str
-    sources: list[dict[str, Any]]
-    warnings: list[str]
-    unsupported: bool
-    unsupported_reason: str | None = None
-    review_reason: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    review: dict[str, Any] | None = None
-
-
-class WebQueryResponse(QueryResponse):
-    status: Literal["completed"]
-    rows: Any
-    sql: str
-    conversation_turn: dict[str, Any]
-    architecture_trace: dict[str, Any] | None
 
 
 class EvalRunRequest(BaseModel):
@@ -219,7 +200,12 @@ def capabilities():
     return {
         "name": "Ground Ball",
         "mode": "public" if public_demo else "local",
-        "query": True,
+        "query": {
+            "endpoint": "/api/query-runs",
+            "catalog_endpoint": "/api/query-catalog",
+            "natural_language": True,
+            "structured_recipe": True,
+        },
         "llm": not public_demo,
         "architecture": _architecture_enabled(),
         "developer_tools": _developer_tools_enabled(),
@@ -289,64 +275,39 @@ def verification_health():
     return operational_verification_health()
 
 
-@app.post("/query", response_model=QueryResponse)
-def query(req: QueryRequest):
-    return QueryResponse(**_query_payload(req, adapter_component_id="api"))
+@app.post("/api/query-runs")
+def query_run(req: QueryInputRequest):
+    """Plan and execute one natural-language or structured Query Recipe input."""
+    from baseball_rag.query.adapters import run_query_input
 
-
-@app.post("/api/query", response_model=WebQueryResponse)
-def web_query(req: QueryRequest):
-    """Answer one self-contained browser request with display and trace data."""
-    return WebQueryResponse(**_query_payload(req, adapter_component_id="api-server"))
-
-
-def _query_payload(req: QueryRequest, *, adapter_component_id: str) -> dict[str, Any]:
-    from baseball_rag.audit import build_query_metadata, trace_to_dict
-    from baseball_rag.request_execution import execute_public_demo_request, execute_request
-    from baseball_rag.ui.presentation import AnswerPresenter
-
-    if _public_demo_enabled():
-        if req.answer_mode != "stats_only":
-            raise HTTPException(
-                status_code=422,
-                detail="The public demo supports only answer_mode='stats_only'.",
-            )
-        execution = execute_public_demo_request(
-            req.question,
-            adapter_component_id=adapter_component_id,
-            adapter_label="FastAPI Query",
-            conversation=req.conversation,
+    if (req.question is None) == (req.recipe is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Provide exactly one natural-language question or structured recipe.",
         )
-        execution.answer.metadata.update(
-            build_query_metadata(req.question, execution.answer, trace=execution.trace)
-        )
-        execution.answer.metadata.pop("trace", None)
-        logger.info("query_audit", extra={"audit": execution.answer.metadata})
-    else:
-        execution = execute_request(
-            req.question,
-            answer_mode=req.answer_mode,
-            adapter_component_id=adapter_component_id,
-            adapter_label="FastAPI Query",
-            conversation=req.conversation,
-            attach_audit=True,
-            attach_review=True,
-            audit_logger=logger,
-        )
+    try:
+        return run_query_input(question=req.question, recipe=req.recipe)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    presentation = AnswerPresenter().present(execution.answer)
-    architecture_trace = (
-        None if _public_demo_enabled() else trace_to_dict(getattr(execution, "trace", None))
-    )
-    return {
-        **presentation.payload,
-        "status": "completed",
-        "rows": presentation.rows,
-        "sources": presentation.sources,
-        "sql": presentation.sql,
-        "conversation_turn": presentation.conversation_turn(req.question),
-        "architecture_trace": architecture_trace,
-    }
+
+@app.get("/api/query-catalog")
+def query_catalog(source: str | None = None, search: str | None = None):
+    """Return rendering-neutral source, raw-field, and promoted-value discovery."""
+    from baseball_rag.query.adapters import catalog_payload
+
+    return catalog_payload(source=source, search=search)
+
+
+@app.post("/api/retrosheet/queries")
+def retrosheet_query(req: RetrosheetQueryRequest):
+    """Execute only the separately governed deterministic Retrosheet capabilities."""
+    from baseball_rag.retrosheet_query import execute_retrosheet_query
+
+    try:
+        return execute_retrosheet_query(req.question)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/review-queue")

@@ -52,3 +52,13 @@ def test_default_container_and_ci_use_the_same_svelte_application() -> None:
     assert "npm test" in ci
     assert "npm run build" in ci
     assert "'/api': 'http://127.0.0.1:7861'" in vite_config
+
+
+def test_packaged_browser_bundle_uses_only_the_new_query_composition_root() -> None:
+    bundled_assets = list((ROOT / "src" / "baseball_rag" / "web_dist" / "assets").glob("*.js"))
+
+    assert len(bundled_assets) == 1
+    bundle = bundled_assets[0].read_text(encoding="utf-8")
+    assert "/api/query-runs" in bundle
+    assert "/api/query-catalog" in bundle
+    assert 'fetch("/api/query")' not in bundle
