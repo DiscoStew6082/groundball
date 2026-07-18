@@ -20,8 +20,8 @@ Use these words consistently:
 - Groundball is positioned as a local-first modern sports almanac for historical MLB questions: natural language in, grounded answer plus evidence out.
 - Queryable Data Contract: every loaded primary Lahman table and field is discoverable, every loaded primary Lahman row is reachable through filtering, pagination, or export, and the synthesized team reference lookup is equally reachable. Secondary evidence sources are governed separately.
 - Published Query Catalog: the single reviewed capability cap, shared by public and local Ground Ball, that promotes fields, statistics, calculations, relationships, and operations without hiding the raw loaded Lahman surface. Add runtime-specific profiles only if concrete capability divergence appears later.
-- Query Recipe: the visible, editable user expression of a question. Natural-language interpretation and manual refinement produce the same recipe.
-- Query Plan: the deterministic, serializable, declarative meaning of a Query Recipe that Ground Ball validates and executes against its published data surface. It describes the desired result, never an ordered database procedure.
+- Query Recipe: the visible, editable user expression of a question. Natural-language interpretation and manual refinement produce the same recipe, which may remain incomplete or ambiguous while the user refines it.
+- Query Plan: the deterministic, serializable, declarative meaning of a Query Recipe after successful validation against Ground Ball's published data surface. It is always executable and describes the desired result, never an ordered database procedure.
 - DuckDB/Lahman remains the primary factual/stat authority for structured stat answers, grounded database answers, player identity, and primary biography stat-claim verification.
 - Retrosheet remains optional secondary consensus evidence for biography stat claims, not a replacement factual authority for all query paths.
 - LLMs may classify, narrate, and generate biography prose, but structured baseball facts must stay verified against DuckDB/Lahman and optional Retrosheet evidence where supported.
