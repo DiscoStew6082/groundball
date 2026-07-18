@@ -1,8 +1,9 @@
 # Prototype the website-framed hosted Ground Ball experience
 
 Type: `prototype`
-Blocked by: 11
+Status: open
+Blocked by: [Prove the stateless Svelte/FastAPI Vercel fit](12-prove-stateless-svelte-fastapi-vercel-fit.md)
 
 ## Question
 
-Which concrete integration of the verified hosted application and the website's dark Start-menu window frame best combines free-form guidance, answer-first results, evidence tabs, browser-local history, deterministic follow-ups, and CSV or JSON exports without making the app feel like an unrelated embedded website, and what explicit Adapter mapping—if any—is required from the existing `RequestExecution` and `StructuredAnswer` types to the public UI model?
+Does the merged dark Svelte/FastAPI application already provide the website-framed hosted experience needed for public release—answer-first Query Runs, editable Query Recipes, inspectable Query Plans and evidence, field discovery, browser-local history, follow-up behavior, Coverage Report access, and CSV or JSON exports—and what bounded presentation or integration decisions, if any, remain without restoring a legacy compatibility layer?

@@ -1,8 +1,9 @@
 # Choose the packaged deterministic data release
 
 Type: `grilling`
-Blocked by: 11
+Status: open
+Blocked by: [Prove the stateless Svelte/FastAPI Vercel fit](12-prove-stateless-svelte-fastapi-vercel-fit.md)
 
 ## Question
 
-Which Lahman tables, compact Retrosheet projections, DuckDB artifacts, indexes, licenses, checksums, provenance fields, and build steps should ship in the immutable hosted release so supported deterministic query families work without runtime downloads while the complete image remains comfortably inside the selected host's limits?
+Which artifacts from the merged Published Lahman Source Registry, Published Query Catalog, generated raw-field inventory, compact governed Retrosheet projections, DuckDB data, licenses, checksums, provenance, and coverage proof should ship in the immutable hosted release so every published deterministic capability works without runtime downloads while the complete image remains comfortably inside Vercel Hobby's limits?

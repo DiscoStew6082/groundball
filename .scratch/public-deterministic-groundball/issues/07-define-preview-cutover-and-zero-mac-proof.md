@@ -1,8 +1,9 @@
 # Define preview cutover and zero-Mac proof
 
 Type: `grilling`
-Blocked by: 03, 06
+Status: open
+Blocked by: [Prototype the website-framed hosted Ground Ball experience](03-prototype-groundball-app-interior.md), [Define parity and release gates](06-define-parity-and-release-gates.md)
 
 ## Question
 
-What selected-host preview topology, website integration switch, previously verified hosted rollback mechanism, tunnel and secret retirement sequence, and external verification evidence are sufficient to prove the public demo works with zero route to Stewart's Mac, and what exact failed acceptance criterion requires aborting or revisiting the chosen host?
+What Vercel Hobby preview-to-public topology, website integration switch, previously verified hosted rollback mechanism, confirmation that the disabled Mac LaunchAgents and tunnel remain unused, and external verification evidence are sufficient to prove the clean-cutover Svelte/FastAPI application works with zero route to Stewart's Mac, and what exact failed acceptance criterion requires aborting promotion or reopening the hosting decision?

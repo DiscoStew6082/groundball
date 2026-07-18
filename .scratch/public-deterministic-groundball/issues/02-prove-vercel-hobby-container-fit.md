@@ -2,7 +2,7 @@
 
 Type: `prototype`
 Status: resolved
-Blocked by: 09, 10
+Blocked by: [Confirm current public container hosting constraints](09-confirm-current-public-container-hosting-constraints.md), [Provision the Vercel Hobby proof target](10-provision-vercel-hobby-proof-target.md)
 
 ## Question
 
