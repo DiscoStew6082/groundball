@@ -7,3 +7,12 @@ Blocked by: [Prototype the mobile Query Recipe experience](01-prototype-mobile-q
 ## Question
 
 Which exact current Lahman fields receive first-class natural-language treatment, which statistics and exact derived calculations are promoted, and which approved joins, filters, and groupings belong in the initial shared query surface while every raw loaded Lahman field and team-reference field remains discoverable? Numeric request, result, export, and hosting safety ceilings remain owned by the zero-Mac public-demo map.
+
+## Working decisions
+
+- Promote a coherent historical-almanac core rather than freezing the narrower current registry.
+- Promote player, season, team, league, and position as first-class dimensions.
+- Promote player name, birth and death dates and places, bats, throws, height, weight, debut, and final game as first-class almanac facts.
+- Promote batting `G`, `AB`, `R`, `H`, `2B`, `3B`, `HR`, `RBI`, `SB`, `CS`, `BB`, and `SO`; pitching `W`, `L`, `G`, `GS`, `CG`, `SHO`, `SV`, innings pitched, `H`, `ER`, `HR`, `BB`, and `SO`; and fielding position, `G`, `GS`, innings, `PO`, `A`, `E`, and `DP`.
+- Promote exact AVG, OBP, SLG, OPS, ERA, WHIP, and fielding-percentage calculations, plus named 30-30, 40-40, 500-HR-club, and Triple Crown recipes.
+- All other loaded fields remain reachable through raw-field discovery and generic structured controls without first-class natural-language treatment.
