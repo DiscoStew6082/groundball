@@ -12,6 +12,8 @@ Use the Codex in-app Browser to troubleshoot this project. Start the local UI if
 
 Wayfinder maps and tickets use local Markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
 
+After every context compaction, automatically re-establish Wayfinder context before responding or acting on active ticket work. Reload the complete `wayfinder` skill when it is available, then reread `docs/agents/issue-tracker.md`, the `.scratch/<effort>/map.md` that owns the currently claimed ticket, and that ticket. Use the compacted summary to identify the active effort; if it is unclear, identify the claimed ticket from the local tracker rather than asking Stewart to repeat the workflow. Resume from the recorded status, answers, and commits without requiring Stewart to re-explain anything. If the standalone skill is unavailable, treat the repository-owned Markdown workflow as authoritative and continue without searching repeatedly for the missing skill.
+
 ### Domain docs
 
 Ground Ball uses the root `CONTEXT.md` and root `docs/adr/` as a single domain context. See `docs/agents/domain.md`.

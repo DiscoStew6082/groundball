@@ -14,7 +14,7 @@ Reach a reviewed product and architecture specification, with an implementation 
 - Ask HITL questions one at a time, include a recommended answer, and reserve detailed provenance choices for the implementation unless they change product behavior.
 - Queryable Data Contract: every loaded primary Lahman table and field is discoverable, every loaded primary Lahman row is reachable through filtering, pagination, or export, and the synthesized team reference lookup is equally reachable. The first release applies this to People, Batting, Pitching, and Fielding plus that team lookup. Additional Lahman tables must be addable without redesigning the application.
 - Secondary Retrosheet projections remain governed evidence and deterministic-route data, but exhaustive Retrosheet row-and-field exploration is not part of this destination.
-- One progressive interface owns both question entry and structured refinement. It opens with a clearly labeled, editable 40-40 example; shows a visible Query Recipe; asks one focused clarification instead of guessing; uses friendly field names with Lahman details on demand; and defaults to baseball-meaningful grain while preserving raw-row access.
+- One progressive interface owns both question entry and structured refinement. It opens with a clearly labeled, editable 40-40 example; asks one focused clarification instead of guessing; uses friendly field names with Lahman details on demand; and defaults to baseball-meaningful grain while preserving raw-row access. The approved answer-first shell keeps the Query Recipe and field discovery progressively disclosed through the top-left navigation and Details surface rather than persistently visible beside every answer.
 - Preserve the dark, website-compatible, launched-window visual language. Prototype the 360-430px mobile Query Recipe experience and obtain Stewart's approval before any later decision ticket is taken.
 - A readable, checked-in Published Query Catalog is the product capability cap. Profiles promote natural-language fields, statistics, exact calculations, relationships, and operations without hiding the raw loaded Lahman surface. Estimated statistics and arbitrary user formulas are excluded. Numeric request, result, export, and hosting safety ceilings remain owned by the zero-Mac public-demo map.
 - Verification is invariant. Stewart chooses the published capability cap, not provenance mechanics statistic by statistic.
@@ -23,6 +23,8 @@ Reach a reviewed product and architecture specification, with an implementation 
 - This map plans and decides. It does not authorize implementation, public promotion, paid hosting, production-domain changes, or secret changes.
 
 ## Decisions so far
+
+- [Prototype the mobile Query Recipe experience](issues/01-prototype-mobile-query-experience.md) — Use the approved Variant F answer-first sports feed inside the launched-window frame, with the yellow top-left `GB` control as the single expandable application-navigation trigger, the familiar chat composer fixed at the bottom, compact verified results in the main feed, inline clarification, and technical details progressively disclosed behind one Details surface.
 
 ## Not yet specified
 

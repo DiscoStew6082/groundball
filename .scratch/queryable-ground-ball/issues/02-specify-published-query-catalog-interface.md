@@ -1,7 +1,7 @@
 # Specify the Published Query Catalog Interface
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Prototype the mobile Query Recipe experience](01-prototype-mobile-query-experience.md)
 
 ## Question
