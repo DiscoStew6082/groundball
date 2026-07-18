@@ -11,3 +11,4 @@ What is the smallest readable catalog Interface that distinguishes mandatory raw
 ## Decisions in progress
 
 - Raw coverage uses a hybrid catalog: a generated, checked-in inventory exhaustively records every in-scope primary Lahman table and field plus the synthesized team reference lookup, while hand-authored semantic entries define friendly names, aliases, exact calculations, approved relationships, and runtime-profile promotions. Verification rejects drift between the packaged schema and the checked-in inventory.
+- Unpromoted raw fields remain reachable through one generic structured field interface for selection, type-appropriate filtering and grouping, sorting, pagination, and export. Natural-language interpretation recognizes only promoted semantic entries; the first release does not require field-specific natural-language behavior for raw fields such as `People.birthCity`.
