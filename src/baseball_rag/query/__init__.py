@@ -1,6 +1,5 @@
 """Published catalog-driven query interfaces."""
 
-from baseball_rag.query.batting_adapter import build_named_recipe, interpret_recipe
 from baseball_rag.query.contracts import (
     All,
     Any,
@@ -25,6 +24,7 @@ from baseball_rag.query.contracts import (
     SourceEvidence,
     ValueRef,
 )
+from baseball_rag.query.recipe_adapter import build_named_recipe, interpret_recipe
 from baseball_rag.query.registry import (
     PromotedValueView,
     PublishedRelationshipView,

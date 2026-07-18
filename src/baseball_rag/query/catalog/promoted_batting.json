@@ -1,69 +1,8 @@
 {
   "schema_version": 1,
-  "grains": [
-    {"identity": "player-team-season", "source": "Batting", "dimensions": ["player.id", "season", "team.id"]},
-    {"identity": "player-season", "source": "Batting", "dimensions": ["player.id", "season"]},
-    {"identity": "player-season-league", "source": "Batting", "dimensions": ["player.id", "season", "league"]},
-    {"identity": "player-career", "source": "Batting", "dimensions": ["player.id"]},
-    {"identity": "team-season", "source": "Batting", "dimensions": ["season", "team.id"]},
-    {"identity": "league-season", "source": "Batting", "dimensions": ["season", "league"]}
-  ],
+  "default_null_policies": {"count": "preserve_unknown", "component": "preserve_unknown", "calculation": "preserve_unknown"},
+  "grains": [],
   "values": [
-    {
-      "identity": "player.id",
-      "friendly_name": "Player ID",
-      "aliases": ["player", "player id"],
-      "kind": "dimension",
-      "data_type": "text",
-      "source_field": "People.playerID",
-      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "player-career"]
-    },
-    {
-      "identity": "player.name",
-      "friendly_name": "Player",
-      "aliases": ["player name", "name"],
-      "kind": "dimension",
-      "data_type": "text",
-      "source_fields": ["People.nameFirst", "People.nameLast"],
-      "composition": "join_nonempty_space",
-      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "player-career"]
-    },
-    {
-      "identity": "season",
-      "friendly_name": "Season",
-      "aliases": ["year", "year id"],
-      "kind": "dimension",
-      "data_type": "integer",
-      "source_field": "Batting.yearID",
-      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "team-season", "league-season"]
-    },
-    {
-      "identity": "team.id",
-      "friendly_name": "Team ID",
-      "aliases": ["team code"],
-      "kind": "dimension",
-      "data_type": "text",
-      "source_field": "Batting.teamID",
-      "allowed_grains": ["player-team-season", "team-season"]
-    },
-    {
-      "identity": "team.name",
-      "friendly_name": "Team",
-      "aliases": ["team", "team name"],
-      "kind": "dimension",
-      "data_type": "text",
-      "source_field": "TeamReference.name",
-      "allowed_grains": ["player-team-season", "team-season"]
-    },
-    {
-      "identity": "league",
-      "friendly_name": "League",
-      "aliases": ["league id"],
-      "kind": "dimension",
-      "data_type": "text",
-      "source_field": "Batting.lgID",
-      "allowed_grains": ["player-season-league", "league-season"]
-    },
     {
       "identity": "batting.G",
       "friendly_name": "Games played",
@@ -322,12 +261,14 @@
       "identity": "people-to-batting",
       "left_source": "People",
       "right_source": "Batting",
+      "cardinality": "left_one_to_right_many",
       "keys": [["People.playerID", "Batting.playerID"]]
     },
     {
       "identity": "team-reference-to-batting",
       "left_source": "TeamReference",
       "right_source": "Batting",
+      "cardinality": "left_one_to_right_many",
       "keys": [["TeamReference.yearID", "Batting.yearID"], ["TeamReference.teamID", "Batting.teamID"]]
     }
   ],

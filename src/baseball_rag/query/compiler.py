@@ -129,6 +129,8 @@ def _compile_raw_predicate(source: str, predicate: Predicate) -> tuple[str, list
             "greater_or_equal": ">=",
             "less_than": "<",
             "less_or_equal": "<=",
+            "before": "<",
+            "after": ">",
         }
         sql_operator = operators.get(predicate.operator)
         if sql_operator is None:
@@ -165,29 +167,38 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
     source = source_by_identity(plan.source)
     if grain is None or source is None:
         raise ValueError("Plan is not a published promoted plan.")
+    source_predicate, aggregate_predicate = _split_source_predicate(plan.predicate)
     references = set(plan.selections)
-    references.update(_predicate_values(plan.predicate))
+    references.update(plan.groupings)
+    references.update(_predicate_values(aggregate_predicate))
     references.update(spec.value for spec in plan.ordering)
     if plan.ranking is not None:
         references.add(plan.ranking.value)
         references.update(plan.ranking.within)
 
-    grain_keys = grain.dimensions
+    grain_keys = plan.groupings or grain.dimensions
+    source_aliases, joins = _compile_relationships(plan)
     dimensions = set(grain_keys)
     dimensions.update(
         identity
         for identity in references
-        if (value := promoted_value_by_identity(identity)) is not None and value.kind == "dimension"
+        if (value := promoted_value_by_identity(identity)) is not None
+        and value.kind in {"dimension", "fact"}
     )
 
-    source_aliases, joins = _compile_relationships(plan)
     dimension_sql = [
-        _dimension_expression(identity, source_aliases) for identity in sorted(dimensions)
+        _dimension_expression(identity, source_aliases, plan.source)
+        for identity in sorted(dimensions)
     ]
+    dimension_sql.extend(
+        expression
+        for identity in sorted(dimensions)
+        for expression in _match_expressions(identity, source_aliases)
+    )
     group_sql = [
         expression
         for identity in sorted(dimensions)
-        for expression in _dimension_group_expressions(identity, source_aliases)
+        for expression in _dimension_group_expressions(identity, source_aliases, plan.source)
     ]
 
     component_fields = _component_fields(references)
@@ -197,7 +208,7 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
         if field is None or field.source not in source_aliases:
             raise ValueError(f"Promoted calculation references stale field {field_identity!r}.")
         aggregate_sql.append(
-            f"SUM(COALESCE({_field_sql(field_identity, source_aliases)}, 0)) AS "
+            f"{_preserve_unknown_sum(field_identity, source_aliases)} AS "
             f"{_quote(_component_alias(field_identity))}"
         )
 
@@ -208,16 +219,27 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
         field = field_by_identity(value.source_field)
         if field is None:
             raise ValueError(f"Promoted value {identity!r} has a stale source field.")
+        if value.null_policy != "preserve_unknown":
+            raise ValueError(f"Promoted value {identity!r} has an unsupported null policy.")
         aggregate_sql.append(
-            f"SUM(COALESCE({_field_sql(value.source_field, source_aliases)}, 0)) "
-            f"AS {_quote(identity)}"
+            f"{_preserve_unknown_sum(value.source_field, source_aliases)} AS {_quote(identity)}"
         )
 
     rollup_parts = [*dimension_sql, *aggregate_sql]
+    source_predicate_sql = "TRUE"
+    bound_values: list[Scalar] = []
+    if source_predicate is not None:
+        source_predicate_sql, source_values = _compile_source_predicate(
+            source_predicate,
+            source_aliases,
+            plan.source,
+        )
+        bound_values.extend(source_values)
     rollups = (
         f"SELECT {', '.join(rollup_parts)} FROM {_quote(source.relation)} "
         f"AS {source_aliases[plan.source]} "
-        f"{' '.join(joins)} GROUP BY {', '.join(group_sql)}"
+        f"{' '.join(joins)} WHERE {source_predicate_sql} "
+        f"GROUP BY {', '.join(group_sql)}"
     )
 
     base_calculations = []
@@ -241,11 +263,11 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
         derived += ", " + ", ".join(derived_calculations)
     derived += " FROM calculated"
 
-    pre_predicate, post_predicate = _split_window_predicate(plan.predicate)
+    pre_predicate, post_predicate = _split_window_predicate(aggregate_predicate)
     pre_predicate_sql = "TRUE"
-    bound_values: list[Scalar] = []
     if pre_predicate is not None:
-        pre_predicate_sql, bound_values = _compile_alias_predicate(pre_predicate)
+        pre_predicate_sql, pre_values = _compile_alias_predicate(pre_predicate)
+        bound_values.extend(pre_values)
     eligible = f"SELECT * FROM derived WHERE {pre_predicate_sql}"
 
     window_sql = []
@@ -339,8 +361,12 @@ def _compile_relationships(plan: QueryPlanV1) -> tuple[dict[str, str], list[str]
             raise ValueError(f"Plan references stale relationship {identity!r}.")
         if relationship.left_source in aliases:
             joined_source = relationship.right_source
+            if relationship.cardinality == "left_one_to_right_many":
+                raise ValueError(f"Relationship {identity!r} would multiply the plan's fact rows.")
         elif relationship.right_source in aliases:
             joined_source = relationship.left_source
+            if relationship.cardinality == "right_one_to_left_many":
+                raise ValueError(f"Relationship {identity!r} would multiply the plan's fact rows.")
         else:
             raise ValueError(f"Relationship {identity!r} is disconnected from the plan source.")
         binding = source_by_identity(joined_source)
@@ -358,11 +384,28 @@ def _compile_relationships(plan: QueryPlanV1) -> tuple[dict[str, str], list[str]
     return aliases, joins
 
 
-def _dimension_expression(identity: str, aliases: dict[str, str]) -> str:
+def _dimension_expression(
+    identity: str,
+    aliases: dict[str, str],
+    anchor_source: str,
+) -> str:
+    expression = _dimension_raw_expression(identity, aliases, anchor_source)
+    return f"{expression} AS {_quote(identity)}"
+
+
+def _dimension_raw_expression(
+    identity: str,
+    aliases: dict[str, str],
+    anchor_source: str,
+) -> str:
     value = promoted_value_by_identity(identity)
-    if value is None or value.kind != "dimension":
-        raise ValueError(f"Unknown promoted dimension {identity!r}.")
-    if value.source_field is not None:
+    if value is None or value.kind not in {"dimension", "fact"}:
+        raise ValueError(f"Unknown promoted non-aggregatable value {identity!r}.")
+    if value.composition == "year" and value.source_field is not None:
+        expression = f"EXTRACT(YEAR FROM {_field_sql(value.source_field, aliases)})"
+    elif anchor_source in value.source_bindings:
+        expression = _field_sql(value.source_bindings[anchor_source], aliases)
+    elif value.source_field is not None:
         expression = _field_sql(value.source_field, aliases)
     elif value.composition == "join_nonempty_space" and value.source_fields:
         arguments = ", ".join(
@@ -371,15 +414,68 @@ def _dimension_expression(identity: str, aliases: dict[str, str]) -> str:
         expression = f"trim(concat_ws(' ', {arguments}))"
     else:
         raise ValueError(f"Dimension {identity!r} has no catalog-owned composition.")
-    return f"{expression} AS {_quote(identity)}"
+    return expression
 
 
-def _dimension_group_expressions(identity: str, aliases: dict[str, str]) -> list[str]:
+def _dimension_group_expressions(
+    identity: str,
+    aliases: dict[str, str],
+    anchor_source: str,
+) -> list[str]:
     value = promoted_value_by_identity(identity)
-    if value is None or value.kind != "dimension":
-        raise ValueError(f"Unknown promoted dimension {identity!r}.")
-    fields = (value.source_field,) if value.source_field is not None else value.source_fields
-    return [_field_sql(field, aliases) for field in fields]
+    if value is None or value.kind not in {"dimension", "fact"}:
+        raise ValueError(f"Unknown promoted non-aggregatable value {identity!r}.")
+    if value.composition == "year" and value.source_field is not None:
+        return [f"EXTRACT(YEAR FROM {_field_sql(value.source_field, aliases)})"]
+    fields: tuple[str, ...]
+    if anchor_source in value.source_bindings:
+        fields = (value.source_bindings[anchor_source],)
+    else:
+        fields = (value.source_field,) if value.source_field is not None else value.source_fields
+    return [
+        *(_field_sql(field, aliases) for field in fields),
+        *(_field_sql(field, aliases) for field in value.match_fields),
+    ]
+
+
+def _match_expressions(identity: str, aliases: dict[str, str]) -> list[str]:
+    value = promoted_value_by_identity(identity)
+    if value is None:
+        return []
+    expressions = [
+        f"{_field_sql(field, aliases)} AS {_quote(_match_alias(identity, index))}"
+        for index, field in enumerate(value.match_fields)
+    ]
+    if value.match_composition == "join_nonempty_space" and value.match_fields:
+        arguments = ", ".join(
+            f"COALESCE({_field_sql(field, aliases)}, '')" for field in value.match_fields
+        )
+        expressions.append(
+            f"trim(concat_ws(' ', {arguments})) AS "
+            f"{_quote(_match_alias(identity, len(value.match_fields)))}"
+        )
+    return expressions
+
+
+def _raw_match_expressions(identity: str, aliases: dict[str, str]) -> list[str]:
+    value = promoted_value_by_identity(identity)
+    if value is None:
+        return []
+    expressions = [_field_sql(field, aliases) for field in value.match_fields]
+    if value.match_composition == "join_nonempty_space" and value.match_fields:
+        arguments = ", ".join(
+            f"COALESCE({_field_sql(field, aliases)}, '')" for field in value.match_fields
+        )
+        expressions.append(f"trim(concat_ws(' ', {arguments}))")
+    return expressions
+
+
+def _match_expression_count(value: Any) -> int:
+    if value is None:
+        return 0
+    return len(value.match_fields) + (
+        1 if value.match_composition == "join_nonempty_space" and value.match_fields else 0
+    )
 
 
 def _field_sql(identity: str, aliases: dict[str, str]) -> str:
@@ -387,6 +483,11 @@ def _field_sql(identity: str, aliases: dict[str, str]) -> str:
     if field is None or field.source not in aliases:
         raise ValueError(f"Catalog field {identity!r} is not joined into this plan.")
     return f"{aliases[field.source]}.{_quote(field.column)}"
+
+
+def _preserve_unknown_sum(identity: str, aliases: dict[str, str]) -> str:
+    expression = _field_sql(identity, aliases)
+    return f"CASE WHEN COUNT(*) = COUNT({expression}) THEN SUM({expression}) END"
 
 
 def _component_fields(references: set[str]) -> set[str]:
@@ -442,6 +543,8 @@ def _compile_expression(expression: dict[str, Any]) -> str:
         return "(" + " * ".join(arguments) + ")"
     if operation == "divide" and len(arguments) == 2:
         return f"(CAST({arguments[0]} AS DOUBLE) / NULLIF({arguments[1]}, 0))"
+    if operation == "baseball_innings" and len(arguments) == 1:
+        return f"(FLOOR({arguments[0]} / 3) + ({arguments[0]} % 3) / 10.0)"
     raise ValueError(f"Unsupported catalog calculation operation {operation!r}.")
 
 
@@ -456,13 +559,81 @@ def _expression_uses_value(expression: dict[str, Any]) -> bool:
     return bool(_expression_values(expression))
 
 
+def _compile_source_predicate(
+    predicate: Predicate,
+    aliases: dict[str, str],
+    anchor_source: str,
+) -> tuple[str, list[Scalar]]:
+    if isinstance(predicate, Compare):
+        columns = [
+            _dimension_raw_expression(predicate.value, aliases, anchor_source),
+            *_raw_match_expressions(predicate.value, aliases),
+        ]
+        literal = predicate.literal
+        if isinstance(literal, ValueRef):
+            target = _dimension_raw_expression(literal.identity, aliases, anchor_source)
+            operator = "=" if predicate.operator == "equals" else "<>"
+            return f"{columns[0]} {operator} {target}", []
+        if predicate.operator == "one_of":
+            assert isinstance(literal, tuple)
+            placeholders = ", ".join("?" for _ in literal)
+            return (
+                "(" + " OR ".join(f"{item} IN ({placeholders})" for item in columns) + ")",
+                [item for _ in columns for item in literal],
+            )
+        if predicate.operator == "range":
+            assert isinstance(literal, tuple)
+            return f"{columns[0]} BETWEEN ? AND ?", list(literal)
+        operators = {
+            "equals": "=",
+            "not_equals": "<>",
+            "greater_than": ">",
+            "greater_or_equal": ">=",
+            "less_than": "<",
+            "less_or_equal": "<=",
+            "before": "<",
+            "after": ">",
+        }
+        operator = operators[predicate.operator]
+        assert not isinstance(literal, tuple)
+        if predicate.operator == "equals" and len(columns) > 1:
+            return (
+                "(" + " OR ".join(f"{item} = ?" for item in columns) + ")",
+                [literal] * len(columns),
+            )
+        return f"{columns[0]} {operator} ?", [literal]
+    if isinstance(predicate, (All, AnyPredicate)):
+        compiled = [
+            _compile_source_predicate(item, aliases, anchor_source) for item in predicate.predicates
+        ]
+        connector = " AND " if isinstance(predicate, All) else " OR "
+        return (
+            "(" + connector.join(sql for sql, _ in compiled) + ")",
+            [value for _, values in compiled for value in values],
+        )
+    if isinstance(predicate, Not):
+        sql, values = _compile_source_predicate(predicate.predicate, aliases, anchor_source)
+        return f"NOT ({sql})", values
+    raise ValueError("Unsupported source predicate kind.")
+
+
 def _compile_alias_predicate(predicate: Predicate) -> tuple[str, list[Scalar]]:
     if isinstance(predicate, Compare):
         column = _quote(predicate.value)
+        value = promoted_value_by_identity(predicate.value)
+        match_columns = [
+            _quote(_match_alias(predicate.value, index))
+            for index in range(_match_expression_count(value))
+        ]
         literal = predicate.literal
         if predicate.operator == "one_of":
             assert isinstance(literal, tuple)
-            return f"{column} IN ({', '.join('?' for _ in literal)})", list(literal)
+            columns = [column, *match_columns]
+            placeholders = ", ".join("?" for _ in literal)
+            return (
+                "(" + " OR ".join(f"{item} IN ({placeholders})" for item in columns) + ")",
+                [item for _ in columns for item in literal],
+            )
         if predicate.operator == "range":
             assert isinstance(literal, tuple)
             return f"{column} BETWEEN ? AND ?", list(literal)
@@ -473,11 +644,19 @@ def _compile_alias_predicate(predicate: Predicate) -> tuple[str, list[Scalar]]:
             "greater_or_equal": ">=",
             "less_than": "<",
             "less_or_equal": "<=",
+            "before": "<",
+            "after": ">",
         }
         operator = operators[predicate.operator]
         assert not isinstance(literal, tuple)
         if isinstance(literal, ValueRef):
             return f"{column} {operator} {_quote(literal.identity)}", []
+        if predicate.operator == "equals" and match_columns:
+            columns = [column, *match_columns]
+            return (
+                "(" + " OR ".join(f"{item} = ?" for item in columns) + ")",
+                [literal] * len(columns),
+            )
         return f"{column} {operator} ?", [literal]
     if isinstance(predicate, (All, AnyPredicate)):
         compiled = [_compile_alias_predicate(item) for item in predicate.predicates]
@@ -529,6 +708,10 @@ def _component_alias(identity: str) -> str:
     return f"__component_{identity}"
 
 
+def _match_alias(identity: str, index: int) -> str:
+    return f"__match_{identity}_{index}"
+
+
 def _split_window_predicate(
     predicate: Predicate | None,
 ) -> tuple[Predicate | None, Predicate | None]:
@@ -546,6 +729,40 @@ def _split_window_predicate(
             All(tuple(post)) if len(post) > 1 else (post[0] if post else None),
         )
     return (None, predicate) if _uses_window_value(predicate) else (predicate, None)
+
+
+def _split_source_predicate(
+    predicate: Predicate | None,
+) -> tuple[Predicate | None, Predicate | None]:
+    if predicate is None:
+        return None, None
+    if isinstance(predicate, All):
+        source_items: list[Predicate] = []
+        aggregate_items: list[Predicate] = []
+        for child in predicate.predicates:
+            source_child, aggregate_child = _split_source_predicate(child)
+            if source_child is not None:
+                source_items.append(source_child)
+            if aggregate_child is not None:
+                aggregate_items.append(aggregate_child)
+        return _all_or_single(source_items), _all_or_single(aggregate_items)
+    if _is_source_predicate(predicate):
+        return predicate, None
+    return None, predicate
+
+
+def _all_or_single(predicates: list[Predicate]) -> Predicate | None:
+    if not predicates:
+        return None
+    return predicates[0] if len(predicates) == 1 else All(tuple(predicates))
+
+
+def _is_source_predicate(predicate: Predicate) -> bool:
+    return all(
+        (value := promoted_value_by_identity(identity)) is not None
+        and value.kind in {"dimension", "fact"}
+        for identity in _predicate_values(predicate)
+    )
 
 
 def _uses_window_value(predicate: Predicate) -> bool:

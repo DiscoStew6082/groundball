@@ -418,7 +418,7 @@ def test_window_comparison_without_required_eligibility_clarifies_while_planning
     assert "eligibility" in planned.question.lower()
 
 
-def test_grain_relationships_are_inferred_without_explicit_player_selection():
+def test_source_bound_grain_dimensions_need_no_lookup_relationship():
     season = prepare(
         QueryRecipe(
             source="Batting",
@@ -438,12 +438,12 @@ def test_grain_relationships_are_inferred_without_explicit_player_selection():
     )
 
     assert isinstance(season, Ready)
-    assert season.plan.relationships == ("people-to-batting",)
+    assert season.plan.relationships == ()
     season_rows = execute(season.plan)
     assert isinstance(season_rows, Rows)
     assert season_rows.rows[0]["batting.RBI"] == 153
     assert isinstance(career, Ready)
-    assert career.plan.relationships == ("people-to-batting",)
+    assert career.plan.relationships == ()
     career_rows = execute(career.plan)
     assert isinstance(career_rows, Rows)
     assert career_rows.rows[0]["batting.HR"] == 762

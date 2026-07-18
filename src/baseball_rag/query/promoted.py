@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from baseball_rag.query.contracts import (
     All,
@@ -26,6 +28,7 @@ from baseball_rag.query.registry import (
     canonical_promoted_identity,
     field_by_identity,
     grain_by_identity,
+    is_promoted_grouping,
     promoted_value_by_identity,
 )
 
@@ -43,22 +46,38 @@ def prepare_promoted(
     grain = grain_by_identity(recipe.grain)
     if grain is None:
         return Rejected(f"Grain {recipe.grain!r} is not published yet.")
-    if recipe.source != grain.source:
+    if recipe.source not in grain.sources:
         return Rejected(f"Grain {recipe.grain!r} is not published for {recipe.source}.")
-    if recipe.groupings:
-        return Rejected("Promoted grains own their groupings; raw groupings are not accepted.")
-
-    selections_or_rejection = _canonical_values(recipe.selections, recipe.grain)
+    selections_or_rejection = _canonical_values(recipe.selections, recipe.grain, recipe.source)
     if isinstance(selections_or_rejection, Rejected):
         return selections_or_rejection
     selections = selections_or_rejection
+    groupings_or_rejection = _canonical_values(recipe.groupings, recipe.grain, recipe.source)
+    if isinstance(groupings_or_rejection, Rejected):
+        return groupings_or_rejection
+    groupings = groupings_or_rejection
+    if any(not is_promoted_grouping(identity) for identity in groupings):
+        return Rejected("Every promoted grouping must be explicitly published.")
+    if not set(groupings) <= set(selections):
+        return Rejected("Every promoted grouping must also be selected.")
+    if groupings and any(
+        (value := promoted_value_by_identity(identity)) is not None
+        and value.kind in {"dimension", "fact"}
+        and identity not in groupings
+        for identity in selections
+    ):
+        return Rejected("Selected dimensions and facts must be explicit promoted grouping keys.")
 
     predicate: Predicate | None = None
     if recipe.predicate is not None:
-        predicate_or_rejection = _canonical_predicate(recipe.predicate, recipe.grain)
+        predicate_or_rejection = _canonical_predicate(recipe.predicate, recipe.grain, recipe.source)
         if isinstance(predicate_or_rejection, Rejected):
             return predicate_or_rejection
         predicate = predicate_or_rejection
+        if groupings and _has_unsafe_grouped_predicate(predicate):
+            return Rejected(
+                "One grouped predicate cannot mix source dimensions with post-aggregate values."
+            )
         for reference in _predicate_values(predicate):
             value = promoted_value_by_identity(reference)
             if (
@@ -74,10 +93,20 @@ def prepare_promoted(
 
     ranking: RankSpec | None = None
     if recipe.ranking is not None:
-        ranking_or_outcome = _canonical_ranking(recipe.ranking, recipe.grain)
+        ranking_or_outcome = _canonical_ranking(recipe.ranking, recipe.grain, recipe.source)
         if isinstance(ranking_or_outcome, Rejected):
             return ranking_or_outcome
         ranking = ranking_or_outcome
+        if groupings:
+            ranked_value = promoted_value_by_identity(ranking.value)
+            if (
+                ranked_value is not None
+                and ranked_value.kind in {"dimension", "fact"}
+                and ranking.value not in groupings
+            ):
+                return Rejected("A grouped rank dimension must be a grouping key.")
+            if not set(ranking.within) <= set(groupings):
+                return Rejected("Grouped rank partitions must be grouping keys.")
         ranked_value = promoted_value_by_identity(ranking.value)
         if (
             ranked_value is not None
@@ -92,7 +121,7 @@ def prepare_promoted(
 
     ordering: list[SortSpec] = []
     for spec in recipe.ordering:
-        identity = canonical_promoted_identity(spec.value)
+        identity = canonical_promoted_identity(spec.value, source=recipe.source)
         if identity is None:
             return Rejected(f"Sort value {spec.value!r} is not published.")
         rejection = _validate_value_at_grain(identity, recipe.grain)
@@ -102,16 +131,20 @@ def prepare_promoted(
             return Rejected(f"Sort direction {spec.direction!r} is not published.")
         if spec.nulls not in {"first", "last"}:
             return Rejected(f"Null placement {spec.nulls!r} is not published.")
+        if groupings and identity not in selections:
+            return Rejected("Grouped sort values must be selected result values.")
         ordering.append(replace(spec, value=identity))
 
     refs = set(selections)
-    refs.update(grain.dimensions)
+    refs.update(groupings or grain.dimensions)
     refs.update(_predicate_values(predicate))
     refs.update(spec.value for spec in ordering)
     if ranking is not None:
         refs.add(ranking.value)
         refs.update(ranking.within)
-    required_sources = set().union(*(_value_sources(identity) for identity in refs))
+    required_sources = set().union(
+        *(_value_sources(identity, anchor_source=recipe.source) for identity in refs)
+    )
     relationships = []
     for required_source in sorted(required_sources - {recipe.source}):
         candidates = [
@@ -133,6 +166,7 @@ def prepare_promoted(
             source=recipe.source,
             grain=recipe.grain,
             selections=selections,
+            groupings=groupings,
             predicate=predicate,
             relationships=tuple(relationships),
             ranking=ranking,
@@ -149,6 +183,7 @@ def validate_promoted_plan(plan: QueryPlanV1, *, plan_version: str) -> str | Non
             source=plan.source,
             grain=plan.grain,
             selections=plan.selections,
+            groupings=plan.groupings,
             predicate=plan.predicate,
             ranking=plan.ranking,
             ordering=plan.ordering,
@@ -164,10 +199,12 @@ def validate_promoted_plan(plan: QueryPlanV1, *, plan_version: str) -> str | Non
     return "Promoted Query Plan is not canonical."
 
 
-def _canonical_values(values: tuple[str, ...], grain: str) -> tuple[str, ...] | Rejected:
+def _canonical_values(
+    values: tuple[str, ...], grain: str, source: str
+) -> tuple[str, ...] | Rejected:
     canonical: list[str] = []
     for reference in values:
-        identity = canonical_promoted_identity(reference)
+        identity = canonical_promoted_identity(reference, source=source)
         if identity is None:
             return Rejected(f"Value {reference!r} is not published.")
         rejection = _validate_value_at_grain(identity, grain)
@@ -177,9 +214,9 @@ def _canonical_values(values: tuple[str, ...], grain: str) -> tuple[str, ...] | 
     return tuple(canonical)
 
 
-def _canonical_predicate(predicate: Predicate, grain: str) -> Predicate | Rejected:
+def _canonical_predicate(predicate: Predicate, grain: str, source: str) -> Predicate | Rejected:
     if isinstance(predicate, Compare):
-        identity = canonical_promoted_identity(predicate.value)
+        identity = canonical_promoted_identity(predicate.value, source=source)
         if identity is None:
             return Rejected(f"Filter value {predicate.value!r} is not published.")
         rejection = _validate_value_at_grain(identity, grain)
@@ -190,7 +227,7 @@ def _canonical_predicate(predicate: Predicate, grain: str) -> Predicate | Reject
         if predicate.operator not in _operations(value.data_type):
             return Rejected(f"Operator {predicate.operator!r} is not valid for {identity}.")
         if isinstance(predicate.literal, ValueRef):
-            target_identity = canonical_promoted_identity(predicate.literal.identity)
+            target_identity = canonical_promoted_identity(predicate.literal.identity, source=source)
             if target_identity is None:
                 return Rejected(
                     f"Comparison value {predicate.literal.identity!r} is not published."
@@ -226,19 +263,19 @@ def _canonical_predicate(predicate: Predicate, grain: str) -> Predicate | Reject
             return Rejected(f"{type(predicate).__name__} requires at least one predicate.")
         children: list[Predicate] = []
         for item in predicate.predicates:
-            canonical = _canonical_predicate(item, grain)
+            canonical = _canonical_predicate(item, grain, source)
             if isinstance(canonical, Rejected):
                 return canonical
             children.append(canonical)
         return type(predicate)(tuple(children))
     if isinstance(predicate, Not):
-        child = _canonical_predicate(predicate.predicate, grain)
+        child = _canonical_predicate(predicate.predicate, grain, source)
         return child if isinstance(child, Rejected) else Not(child)
     return Rejected("Unsupported predicate kind.")
 
 
-def _canonical_ranking(ranking: RankSpec, grain: str) -> RankSpec | Rejected:
-    identity = canonical_promoted_identity(ranking.value)
+def _canonical_ranking(ranking: RankSpec, grain: str, source: str) -> RankSpec | Rejected:
+    identity = canonical_promoted_identity(ranking.value, source=source)
     if identity is None:
         return Rejected(f"Rank value {ranking.value!r} is not published.")
     rejection = _validate_value_at_grain(identity, grain)
@@ -250,7 +287,7 @@ def _canonical_ranking(ranking: RankSpec, grain: str) -> RankSpec | Rejected:
         return Rejected("Rank count must be positive.")
     if ranking.tie_policy not in {"include_ties", "exact_count"}:
         return Rejected(f"Tie policy {ranking.tie_policy!r} is not published.")
-    within_or_rejection = _canonical_values(ranking.within, grain)
+    within_or_rejection = _canonical_values(ranking.within, grain, source)
     if isinstance(within_or_rejection, Rejected):
         return within_or_rejection
     for partition_identity in within_or_rejection:
@@ -273,6 +310,8 @@ def _validate_value_at_grain(identity: str, grain: str) -> Rejected | None:
 def _operations(data_type: str) -> set[str]:
     if data_type == "text":
         return {"equals", "one_of"}
+    if data_type == "date":
+        return {"equals", "before", "after", "range"}
     return {
         "equals",
         "not_equals",
@@ -291,6 +330,20 @@ def _literal_matches(data_type: str, literal: Scalar) -> bool:
         return isinstance(literal, int) and not isinstance(literal, bool)
     if data_type == "number":
         return isinstance(literal, (int, float)) and not isinstance(literal, bool)
+    if data_type == "baseball_innings":
+        if not isinstance(literal, (int, float)) or isinstance(literal, bool) or literal < 0:
+            return False
+        try:
+            tenths = Decimal(str(literal)) * 10
+        except InvalidOperation:
+            return False
+        return tenths == tenths.to_integral_value() and int(tenths) % 10 in {0, 1, 2}
+    if data_type == "date" and isinstance(literal, str):
+        try:
+            date.fromisoformat(literal)
+        except ValueError:
+            return False
+        return True
     return False
 
 
@@ -323,7 +376,45 @@ def _has_explicit_floor(predicate: Predicate | None, identity: str) -> bool:
     return False
 
 
-def _value_sources(identity: str, seen: set[str] | None = None) -> set[str]:
+def _has_unsafe_grouped_predicate(predicate: Predicate) -> bool:
+    if isinstance(predicate, Compare):
+        return len(_predicate_stages(predicate)) > 1
+    if isinstance(predicate, Any):
+        if len(_predicate_stages(predicate)) > 1:
+            return True
+        return any(_has_unsafe_grouped_predicate(item) for item in predicate.predicates)
+    if isinstance(predicate, All):
+        return any(_has_unsafe_grouped_predicate(item) for item in predicate.predicates)
+    if isinstance(predicate, Not):
+        return len(_predicate_stages(predicate.predicate)) > 1 or _has_unsafe_grouped_predicate(
+            predicate.predicate
+        )
+    return True
+
+
+def _predicate_stages(predicate: Predicate) -> set[str]:
+    if isinstance(predicate, Compare):
+        stages: set[str] = set()
+        for identity in _predicate_values(predicate):
+            value = promoted_value_by_identity(identity)
+            if value is None:
+                continue
+            if value.kind in {"dimension", "fact"}:
+                stages.add("source")
+            else:
+                stages.add("post")
+        return stages
+    if isinstance(predicate, (All, Any)):
+        return set().union(*(_predicate_stages(item) for item in predicate.predicates))
+    return _predicate_stages(predicate.predicate)
+
+
+def _value_sources(
+    identity: str,
+    *,
+    anchor_source: str,
+    seen: set[str] | None = None,
+) -> set[str]:
     visited = set() if seen is None else seen
     if identity in visited:
         return set()
@@ -331,6 +422,8 @@ def _value_sources(identity: str, seen: set[str] | None = None) -> set[str]:
     value = promoted_value_by_identity(identity)
     if value is None:
         return set()
+    if anchor_source in value.source_bindings:
+        return {anchor_source}
     sources: set[str] = set()
     for field_identity in (
         *((value.source_field,) if value.source_field is not None else ()),
@@ -342,5 +435,11 @@ def _value_sources(identity: str, seen: set[str] | None = None) -> set[str]:
             sources.add(field.source)
     for dependency in (value.window_base, value.window_eligibility):
         if dependency is not None:
-            sources.update(_value_sources(dependency, visited))
+            sources.update(
+                _value_sources(
+                    dependency,
+                    anchor_source=anchor_source,
+                    seen=visited,
+                )
+            )
     return sources

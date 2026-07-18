@@ -75,7 +75,7 @@ def prepare(recipe: QueryRecipe) -> PlanningOutcome:
     output_reason = _validate_output(recipe.output)
     if output_reason is not None:
         return Rejected(output_reason)
-    if recipe.grain not in {"raw_rows", "group_by"} and not recipe.groupings:
+    if is_promoted_grain(recipe.grain):
         return prepare_promoted(
             recipe,
             catalog_revision=current_revision,

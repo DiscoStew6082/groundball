@@ -1,4 +1,4 @@
-"""Deterministic natural-language and named-recipe Adapter for promoted batting."""
+"""Deterministic natural-language and named-recipe Adapter for promoted queries."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ RecipeAdaptation = QueryRecipe | NeedsClarification | Rejected
 
 
 def build_named_recipe(identity: str, **parameters: object) -> RecipeAdaptation:
-    """Expand a catalog-owned batting recipe into ordinary recipe semantics."""
+    """Expand a catalog-owned named recipe into ordinary recipe semantics."""
     recipe = named_recipe_by_identity(identity)
     if recipe is None:
         return Rejected(f"Named recipe {identity!r} is not published.")
@@ -109,8 +109,100 @@ def _resolve_eligibility(
 
 
 def interpret_recipe(question: str) -> RecipeAdaptation:
-    """Interpret the reviewed deterministic batting phrases for the initial Adapter."""
+    """Interpret the reviewed deterministic phrases for the initial Adapter."""
     normalized = " ".join(question.casefold().replace("’", "'").split())
+    ambiguous_strikeouts = re.fullmatch(
+        r"who had the most (?:strikeouts|so) in (\d{4})\??",
+        normalized,
+    )
+    if ambiguous_strikeouts:
+        return NeedsClarification("Should strikeouts mean batting or pitching strikeouts?")
+    pitching_strikeouts = re.fullmatch(
+        r"which pitcher had the most (?:strikeouts|so) in (\d{4})\??",
+        normalized,
+    )
+    if pitching_strikeouts:
+        year = int(pitching_strikeouts.group(1))
+        return QueryRecipe(
+            source="Pitching",
+            grain="player-season",
+            selections=("player.id", "season", "pitching.SO"),
+            predicate=Compare("season", "equals", year),
+            ranking=RankSpec("pitching.SO", "highest", 1, "include_ties"),
+        )
+    contextual_leader = re.fullmatch(
+        r"which (pitcher|batter|hitter) had the most "
+        r"(games|hits|home runs|walks|strikeouts|g|h|hr|bb|so) in (\d{4})\??",
+        normalized,
+    )
+    if contextual_leader:
+        role, requested_value, year_text = contextual_leader.groups()
+        source = "Pitching" if role == "pitcher" else "Batting"
+        identity = {
+            "games": "G",
+            "g": "G",
+            "hits": "H",
+            "h": "H",
+            "home runs": "HR",
+            "hr": "HR",
+            "walks": "BB",
+            "bb": "BB",
+            "strikeouts": "SO",
+            "so": "SO",
+        }[requested_value]
+        promoted_value = f"{source.casefold()}.{identity}"
+        return QueryRecipe(
+            source=source,
+            grain="player-season",
+            selections=("player.id", "season", promoted_value),
+            predicate=Compare("season", "equals", int(year_text)),
+            ranking=RankSpec(promoted_value, "highest", 1, "include_ties"),
+        )
+    ambiguous_leader = re.fullmatch(
+        r"who had the most (games|hits|home runs|walks|g|h|hr|bb) in (\d{4})\??",
+        normalized,
+    )
+    if ambiguous_leader:
+        return NeedsClarification(
+            "Should that statistic use batting, pitching, or fielding context?"
+        )
+    fielding_games = re.fullmatch(
+        r"which fielder (?:played|had) the most (?:games|g) in (\d{4})\??",
+        normalized,
+    )
+    if fielding_games:
+        return NeedsClarification("Which fielding position should the games leaderboard use?")
+    position_games = re.fullmatch(
+        r"which (catcher|first baseman|second baseman|third baseman|shortstop|"
+        r"left fielder|center fielder|right fielder|pitcher) "
+        r"(?:played|had) the most (?:games|g) in (\d{4})\??",
+        normalized,
+    )
+    if position_games:
+        position_name, year_text = position_games.groups()
+        position = {
+            "catcher": "C",
+            "first baseman": "1B",
+            "second baseman": "2B",
+            "third baseman": "3B",
+            "shortstop": "SS",
+            "left fielder": "LF",
+            "center fielder": "CF",
+            "right fielder": "RF",
+            "pitcher": "P",
+        }[position_name]
+        return QueryRecipe(
+            source="Fielding",
+            grain="player-position-season",
+            selections=("player.id", "season", "position", "fielding.G"),
+            predicate=All(
+                (
+                    Compare("season", "equals", int(year_text)),
+                    Compare("position", "equals", position),
+                )
+            ),
+            ranking=RankSpec("fielding.G", "highest", 1, "include_ties"),
+        )
     if re.search(r"\b40\s*[- ]\s*40\b", normalized):
         return build_named_recipe("batting.40-40")
     if re.search(r"\b30\s*[- ]\s*30\b", normalized):

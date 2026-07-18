@@ -73,10 +73,10 @@ def test_checked_in_inventory_and_compatibility_are_generated_from_full_inputs()
         payload["raw_inventory_sha256"]
         == hashlib.sha256((CATALOG_DIR / "raw_fields.json").read_bytes()).hexdigest()
     )
+    published = json.loads((CATALOG_DIR / "published_catalog.json").read_text())
     assert payload["promoted_catalog_sha256"] == {
-        "promoted_batting.json": hashlib.sha256(
-            (CATALOG_DIR / "promoted_batting.json").read_bytes()
-        ).hexdigest()
+        filename: hashlib.sha256((CATALOG_DIR / filename).read_bytes()).hexdigest()
+        for filename in published["promoted"]
     }
 
 
