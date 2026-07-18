@@ -7,3 +7,7 @@ Blocked by: [Prototype the mobile Query Recipe experience](01-prototype-mobile-q
 ## Question
 
 What is the smallest readable catalog Interface that distinguishes mandatory raw Lahman discoverability from promoted query semantics, then defines friendly fields, aliases, exact derived statistics, valid grains, filters, aggregations, approved joins, runtime profiles, and verification metadata once for interpretation, controls, planning, documentation, and completeness checks while leaving numeric safety ceilings to the zero-Mac public-demo map?
+
+## Decisions in progress
+
+- Raw coverage uses a hybrid catalog: a generated, checked-in inventory exhaustively records every in-scope primary Lahman table and field plus the synthesized team reference lookup, while hand-authored semantic entries define friendly names, aliases, exact calculations, approved relationships, and runtime-profile promotions. Verification rejects drift between the packaged schema and the checked-in inventory.
