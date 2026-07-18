@@ -22,7 +22,7 @@
     ['generation', 'Generation'],
   ];
   const prototypeVariant = new URLSearchParams(window.location.search).get('variant');
-  const prototypeMode = import.meta.env.DEV && ['A', 'B', 'C'].includes(prototypeVariant);
+  const prototypeMode = import.meta.env.DEV && ['D', 'E', 'F'].includes(prototypeVariant);
 
   let capabilities = null;
   let capabilityError = '';

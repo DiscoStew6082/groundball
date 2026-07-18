@@ -1,24 +1,26 @@
 <script>
-  import VariantA from './VariantA.svelte';
-  import VariantB from './VariantB.svelte';
-  import VariantC from './VariantC.svelte';
+  import VariantD from './VariantD.svelte';
+  import VariantE from './VariantE.svelte';
+  import VariantF from './VariantF.svelte';
   import PrototypeSwitcher from './PrototypeSwitcher.svelte';
-  import './prototype.css';
+  import './chat-prototype.css';
 
-  // Three mobile Query Recipe variants, switchable via ?variant=, on the existing app route.
+  // Three answer-first chat variants, switchable via ?variant=, on the existing app route.
   const variants = [
-    { key: 'A', name: 'Recipe stack' },
-    { key: 'B', name: 'Guided scorecard' },
-    { key: 'C', name: 'Three-view workbench' },
+    { key: 'D', name: 'Rich chat answer' },
+    { key: 'E', name: 'Search answer page' },
+    { key: 'F', name: 'Sports feed answer' },
   ];
   const states = [
-    { key: 'example', label: 'Example' },
-    { key: 'results', label: 'Results' },
-    { key: 'clarify', label: 'Clarification' },
+    { key: 'start', label: 'Start' },
+    { key: 'answer', label: 'Answer' },
+    { key: 'clarify', label: 'Clarify' },
+    { key: 'details', label: 'Details' },
   ];
 
-  let variant = readChoice('variant', variants.map((item) => item.key), 'A');
-  let previewState = readChoice('state', states.map((item) => item.key), 'example');
+  const presentationMode = new URLSearchParams(window.location.search).get('presentation') === '1';
+  let variant = readChoice('variant', variants.map((item) => item.key), 'D');
+  let previewState = readChoice('state', states.map((item) => item.key), 'answer');
 
   function readChoice(key, allowed, fallback) {
     const value = new URLSearchParams(window.location.search).get(key);
@@ -57,34 +59,38 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<section class="prototype-host" aria-label="Mobile Query Recipe prototype">
-  <aside class="prototype-evaluator" aria-label="Prototype preview state">
-    <span>Prototype state</span>
-    <div>
-      {#each states as state}
-        <button
-          type="button"
-          class:active={previewState === state.key}
-          on:click={() => setPreviewState(state.key)}
-        >{state.label}</button>
-      {/each}
-    </div>
-  </aside>
+<section class="prototype-host" aria-label="Answer-first mobile chat prototype">
+  {#if !presentationMode}
+    <aside class="prototype-evaluator" aria-label="Prototype preview state">
+      <span>Prototype state</span>
+      <div>
+        {#each states as state}
+          <button
+            type="button"
+            class:active={previewState === state.key}
+            on:click={() => setPreviewState(state.key)}
+          >{state.label}</button>
+        {/each}
+      </div>
+    </aside>
+  {/if}
 
   <div class="prototype-phone">
-    {#if variant === 'A'}
-      <VariantA {previewState} {setPreviewState} />
-    {:else if variant === 'B'}
-      <VariantB {previewState} {setPreviewState} />
+    {#if variant === 'D'}
+      <VariantD {previewState} {setPreviewState} />
+    {:else if variant === 'E'}
+      <VariantE {previewState} {setPreviewState} />
     {:else}
-      <VariantC {previewState} {setPreviewState} />
+      <VariantF {previewState} {setPreviewState} />
     {/if}
   </div>
 
-  <PrototypeSwitcher
-    {variants}
-    current={variant}
-    onPrevious={() => cycleVariant(-1)}
-    onNext={() => cycleVariant(1)}
-  />
+  {#if !presentationMode}
+    <PrototypeSwitcher
+      {variants}
+      current={variant}
+      onPrevious={() => cycleVariant(-1)}
+      onNext={() => cycleVariant(1)}
+    />
+  {/if}
 </section>
