@@ -1,7 +1,7 @@
 # Decide the optional LLM Adapter role
 
 Type: `grilling`
-Status: claimed
+Status: open
 Blocked by: [Specify the deterministic Query Plan Interface](03-specify-deterministic-query-plan-interface.md)
 
 ## Question
