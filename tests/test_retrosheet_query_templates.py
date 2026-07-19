@@ -10,7 +10,10 @@ from baseball_rag.db.generate_retrosheet_team_reference import (
     REFERENCE_PATH,
     render_retrosheet_team_reference,
 )
-from baseball_rag.db.retrosheet_query_templates import match_retrosheet_template
+from baseball_rag.db.retrosheet_query_templates import (
+    match_published_retrosheet_template,
+    match_retrosheet_template,
+)
 from baseball_rag.retrosheet_query import execute_retrosheet_query
 
 
@@ -48,6 +51,20 @@ def test_matcher_exposes_only_the_six_retrosheet_template_families(question, tem
 
 def test_matcher_does_not_accept_primary_lahman_questions():
     assert match_retrosheet_template("who had the most RBIs in 1962") is None
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "what is the longest stolen base streak in MLB history",
+        "show Rickey Henderson games with at least 2 stolen bases",
+        "show Nolan Ryan games with at least 10 strikeouts",
+    ],
+)
+def test_public_release_rejects_unbundled_retrosheet_families(
+    question: str,
+):
+    assert match_published_retrosheet_template(question) is None
 
 
 def test_templates_use_the_versioned_team_reference_instead_of_the_legacy_team_map():

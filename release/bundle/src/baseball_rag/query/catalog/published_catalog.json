@@ -1,0 +1,11 @@
+{
+  "catalog_revision": "published-query-catalog-v3",
+  "raw_inventory_revision": "raw-fields-62c654dd3fddb1f6",
+  "promoted": [
+    "promoted_common.json",
+    "promoted_batting.json",
+    "promoted_people.json",
+    "promoted_pitching.json",
+    "promoted_fielding.json"
+  ]
+}

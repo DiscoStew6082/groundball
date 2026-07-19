@@ -18,6 +18,17 @@ def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
     assert "COPY web/ ./" in dockerfile
     assert "RUN npm run build" in dockerfile
     assert "COPY --from=web-build /web/dist /app/web/dist" in dockerfile
+    assert "COPY release/bundle/ /app/release-bundle/" in dockerfile
+    assert "GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle" in dockerfile
+    assert "GROUNDBALL_SOURCE_COMMIT=${GROUNDBALL_SOURCE_COMMIT}" in dockerfile
+    assert "--expected-source-commit" in dockerfile
+    assert "baseball_rag.release_runtime import release_readiness" in dockerfile
+    assert "baseball_rag.db.download" not in dockerfile
+    assert "huggingface.co" not in dockerfile
+    assert "rm -f /app/src/baseball_rag/db/download.py" in dockerfile
+    assert "/app/src/baseball_rag/db/secondary_sources/retrosheet_events.py" in dockerfile
+    assert "/app/src/baseball_rag/generation/llm.py" in dockerfile
+    assert "rm -rf /app/src/baseball_rag/query/catalog" in dockerfile
     assert "baseball_rag.web_app" in dockerfile
     assert "${PORT:-80}" in dockerfile
     assert "GRADIO" not in dockerfile.upper()

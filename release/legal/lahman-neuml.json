@@ -1,0 +1,9 @@
+{
+  "attribution": "The packaged primary baseball tables originate with the Lahman Baseball Database and are distributed through the NeuML/baseballdata dataset.",
+  "disclaimer": "Ground Ball does not represent the third-party data as error-free; consult the upstream project for corrections and authoritative release notes.",
+  "license": "CC BY-SA 3.0",
+  "notice": "Preserve attribution to the Lahman Baseball Database and NeuML and share adaptations under compatible terms.",
+  "owner": "Lahman Baseball Database and NeuML",
+  "schema_version": "ground-ball-legal-record-v1",
+  "source": "https://huggingface.co/datasets/NeuML/baseballdata"
+}

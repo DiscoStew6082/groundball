@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "groupings": ["player.bats", "player.throws", "player.birth_country", "player.birth_state", "player.debut_year"],
+  "default_rollups": {"fact": "not_aggregatable"},
+  "default_allowed_grains": {"fact": ["player-record", "player-team-season", "player-season", "player-season-league", "player-career", "player-position-season", "player-position-career"]},
+  "values": [
+    {"identity": "player.birth_year", "friendly_name": "Birth year", "aliases": ["birth year"], "kind": "fact", "data_type": "integer", "source_field": "People.birthYear", "allowed_grains": ["player-record"]},
+    {"identity": "player.birth_month", "friendly_name": "Birth month", "aliases": ["birth month"], "kind": "fact", "data_type": "integer", "source_field": "People.birthMonth", "allowed_grains": ["player-record"]},
+    {"identity": "player.birth_day", "friendly_name": "Birth day", "aliases": ["birth day"], "kind": "fact", "data_type": "integer", "source_field": "People.birthDay", "allowed_grains": ["player-record"]},
+    {"identity": "player.birth_city", "friendly_name": "Birth city", "aliases": ["birth city", "born in"], "kind": "fact", "data_type": "text", "source_field": "People.birthCity", "allowed_grains": ["player-record"]},
+    {"identity": "player.birth_state", "friendly_name": "Birth state", "aliases": ["birth state"], "kind": "fact", "data_type": "text", "source_field": "People.birthState", "allowed_grains": ["player-record"]},
+    {"identity": "player.birth_country", "friendly_name": "Birth country", "aliases": ["birth country"], "kind": "fact", "data_type": "text", "source_field": "People.birthCountry", "allowed_grains": ["player-record"]},
+    {"identity": "player.death_year", "friendly_name": "Death year", "aliases": ["death year"], "kind": "fact", "data_type": "integer", "source_field": "People.deathYear", "allowed_grains": ["player-record"]},
+    {"identity": "player.death_month", "friendly_name": "Death month", "aliases": ["death month"], "kind": "fact", "data_type": "integer", "source_field": "People.deathMonth", "allowed_grains": ["player-record"]},
+    {"identity": "player.death_day", "friendly_name": "Death day", "aliases": ["death day"], "kind": "fact", "data_type": "integer", "source_field": "People.deathDay", "allowed_grains": ["player-record"]},
+    {"identity": "player.death_city", "friendly_name": "Death city", "aliases": ["death city"], "kind": "fact", "data_type": "text", "source_field": "People.deathCity", "allowed_grains": ["player-record"]},
+    {"identity": "player.death_state", "friendly_name": "Death state", "aliases": ["death state"], "kind": "fact", "data_type": "text", "source_field": "People.deathState", "allowed_grains": ["player-record"]},
+    {"identity": "player.death_country", "friendly_name": "Death country", "aliases": ["death country"], "kind": "fact", "data_type": "text", "source_field": "People.deathCountry", "allowed_grains": ["player-record"]},
+    {"identity": "player.bats", "friendly_name": "Bats", "aliases": ["bats", "batting hand"], "kind": "fact", "data_type": "text", "source_field": "People.bats", "allowed_grains": ["player-record"]},
+    {"identity": "player.throws", "friendly_name": "Throws", "aliases": ["throws", "throwing hand"], "kind": "fact", "data_type": "text", "source_field": "People.throws", "allowed_grains": ["player-record"]},
+    {"identity": "player.height", "friendly_name": "Height", "aliases": ["height"], "kind": "fact", "data_type": "integer", "source_field": "People.height", "allowed_grains": ["player-record"]},
+    {"identity": "player.weight", "friendly_name": "Weight", "aliases": ["weight"], "kind": "fact", "data_type": "integer", "source_field": "People.weight", "allowed_grains": ["player-record"]},
+    {"identity": "player.debut", "friendly_name": "Debut", "aliases": ["debut", "debut date"], "kind": "fact", "data_type": "date", "source_field": "People.debut", "allowed_grains": ["player-record"]},
+    {"identity": "player.final_game", "friendly_name": "Final game", "aliases": ["final game", "final game date"], "kind": "fact", "data_type": "date", "source_field": "People.finalGame", "allowed_grains": ["player-record"]},
+    {"identity": "player.debut_year", "friendly_name": "Debut year", "aliases": ["debut year"], "kind": "fact", "data_type": "integer", "source_field": "People.debut", "composition": "year", "allowed_grains": ["player-record", "player-team-season", "player-season", "player-season-league", "player-career", "player-position-season", "player-position-career"]}
+  ],
+  "relationships": [],
+  "recipes": [],
+  "grains": []
+}

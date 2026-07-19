@@ -1,0 +1,70 @@
+{
+  "dataset": {
+    "name": "NeuML/baseballdata",
+    "description": "Copy of the Lahman Baseball Database used for local DuckDB-backed baseball statistics.",
+    "source_url": "https://huggingface.co/datasets/NeuML/baseballdata",
+    "base_download_url": "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main",
+    "upstream": "Lahman Baseball Database",
+    "release_id": "neuml-baseballdata:lahman-2025:2026-01-11",
+    "upstream_release": "Version 2025, released 2026-01-02",
+    "hugging_face_last_updated": "2026-01-11",
+    "license": "CC BY-SA 3.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "license_notes": "Hugging Face metadata identifies the dataset license as cc-by-sa-3.0. Preserve attribution to Lahman Baseball Database / NeuML and share adaptations under compatible terms."
+  },
+  "download": {
+    "downloaded_at": "2026-04-20T13:29:00-04:00",
+    "download_tool": "python -m baseball_rag.db.download",
+    "notes": "Timestamps reflect local CSV file modification times after download."
+  },
+  "coverage": {
+    "structured_stat_years": {
+      "min": 1871,
+      "max": 2025
+    },
+    "notes": "Year coverage is computed from Batting.csv, Fielding.csv, and Pitching.csv yearID columns. People.csv has no yearID column."
+  },
+  "files": [
+    {
+      "path": "data/Batting.csv",
+      "source_url": "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main/Batting.csv",
+      "table": "batting",
+      "rows": 128598,
+      "year_coverage": {
+        "min": 1871,
+        "max": 2025
+      },
+      "sha256": "007551e2fe3072aff396a8573de61dceabe14dbf8de20038c8b60e2abe16978f"
+    },
+    {
+      "path": "data/Fielding.csv",
+      "source_url": "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main/Fielding.csv",
+      "table": "fielding",
+      "rows": 174332,
+      "year_coverage": {
+        "min": 1871,
+        "max": 2025
+      },
+      "sha256": "0b4dc11fab05f59fd281ea716c9b1f9ead3fe6b838a33914998d1727d31e0135"
+    },
+    {
+      "path": "data/People.csv",
+      "source_url": "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main/People.csv",
+      "table": "people",
+      "rows": 24270,
+      "year_coverage": null,
+      "sha256": "a3c6b79e388b509ddbe4097ccf4026856b7fe07f4b3b41fbe3a8551b3f516c20"
+    },
+    {
+      "path": "data/Pitching.csv",
+      "source_url": "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main/Pitching.csv",
+      "table": "pitching",
+      "rows": 57630,
+      "year_coverage": {
+        "min": 1871,
+        "max": 2025
+      },
+      "sha256": "dbbe1baeb0a0fd81c1843a19eb4967e3d86c073fbe51bf96581bfd9faae35951"
+    }
+  ]
+}

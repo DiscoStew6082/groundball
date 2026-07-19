@@ -16,6 +16,7 @@ import duckdb
 from duckdb import DuckDBPyConnection
 
 from baseball_rag.db.duckdb_schema import DATA_DIR
+from baseball_rag.db.packaged_data import verify_manifest_file
 from baseball_rag.query.data_identity import semantic_manifest_sha256
 from baseball_rag.query.fingerprint import RowFingerprint
 from baseball_rag.query.registry import (
@@ -24,6 +25,7 @@ from baseball_rag.query.registry import (
     _SourceBinding,
     discover_fields,
 )
+from baseball_rag.release_bundle import check_release_bundle
 
 
 class PublishedDataUnavailableError(ValueError):
@@ -41,7 +43,12 @@ class PublishedDataRuntime:
 
 
 def published_data_runtime() -> PublishedDataRuntime:
-    configured = Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
+    bundle_root = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+    if bundle_root:
+        check_release_bundle(bundle_root)
+        configured = (Path(bundle_root) / "data").resolve()
+    else:
+        configured = Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
     return _runtime_for(str(configured))
 
 
@@ -139,6 +146,8 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
             source_fingerprints[source.identity] = _source_fingerprint(
                 connection, source.identity, source.relation
             )
+        if os.environ.get("GROUNDBALL_RELEASE_BUNDLE"):
+            _load_release_retrosheet(connection, data_dir)
     except Exception:
         connection.close()
         raise
@@ -275,3 +284,27 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _quote(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
+
+
+def _load_release_retrosheet(connection: DuckDBPyConnection, data_dir: Path) -> None:
+    """Load only the compact Retrosheet projection admitted to the Release Bundle."""
+    retrosheet_dir = data_dir / "secondary_sources" / "retrosheet"
+    projection = retrosheet_dir / "pitcher_strikeout_side_events.csv"
+    projection_manifest = retrosheet_dir / "manifest.json"
+    verify_manifest_file(projection_manifest, projection)
+
+    reference = CATALOG_DIR / "assets" / "retrosheet_team_reference.csv"
+    reference_manifest = CATALOG_DIR / "assets" / "retrosheet_team_reference.manifest.json"
+    reference_metadata = _read_json(reference_manifest)
+    if hashlib.sha256(reference.read_bytes()).hexdigest() != reference_metadata.get("sha256"):
+        raise PublishedDataUnavailableError(
+            "Retrosheet team-reference checksum does not match its manifest."
+        )
+    connection.execute(
+        "CREATE TABLE retrosheet_team_reference AS SELECT * FROM read_csv_auto(?)",
+        [str(reference)],
+    )
+    connection.execute(
+        "CREATE TABLE retrosheet_pitcher_strikeout_side_events AS SELECT * FROM read_csv_auto(?)",
+        [str(projection)],
+    )
