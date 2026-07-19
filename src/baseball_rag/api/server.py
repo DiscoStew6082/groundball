@@ -375,7 +375,7 @@ def query_run(req: QueryInputRequest, request: Request):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-def _execute_public_request(request: Request, execution: ExecutionRequest) -> JSONResponse:
+def _execute_public_request(request: Request, execution: ExecutionRequest) -> Response:
     try:
         coordinator, digest_key = _shared_public_admission_components()
     except RuntimeError:
@@ -401,6 +401,7 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> JS
     admission = coordinator.admit(
         AdmissionAttempt(visitor=visitor, run_id=run_id, now=datetime.now(UTC))
     )
+    response: Response
     if admission.kind != "admitted":
         response = _admission_refusal_response(admission)
     else:
@@ -419,9 +420,17 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> JS
     return response
 
 
-def _execution_outcome_response(outcome: ExecutionOutcome) -> JSONResponse:
+def _execution_outcome_response(outcome: ExecutionOutcome) -> Response:
     if outcome.kind == "completed" and outcome.payload is not None:
-        return JSONResponse(jsonable_encoder(outcome.payload))
+        from baseball_rag.public_results import compact_json_bytes
+
+        payload = jsonable_encoder(outcome.payload)
+        status_code = 422 if payload.get("kind") == "export_too_large" else 200
+        return Response(
+            content=compact_json_bytes(payload),
+            media_type="application/json",
+            status_code=status_code,
+        )
     if outcome.kind == "invalid":
         return JSONResponse({"detail": outcome.detail}, status_code=422)
     if outcome.kind == "timed_out":
