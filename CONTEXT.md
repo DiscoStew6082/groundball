@@ -20,6 +20,14 @@ _Avoid_: Docker manifest, deployment record
 A provider-specific record binding one unchanged Release Bundle to a deployed image, runtime configuration, deployment identity, and verified hosting evidence.
 _Avoid_: release manifest, data release
 
+**Release Candidate**:
+One fixed source commit, Release Bundle identity, container image, runtime configuration, Public Admission Policy configuration, and Deployment Attestation evaluated together for publication eligibility.
+_Avoid_: latest build, current preview
+
+**Release Gate**:
+An all-or-nothing check that a Release Candidate must pass before it may be considered for public promotion. A failed gate blocks publication rather than becoming a warning.
+_Avoid_: best-effort check, release warning
+
 **Public Admission Policy**:
 The server-owned rule that decides whether a public Query Run may start before deterministic execution, using the published request, visitor, deployment-capacity, and hosting-allowance limits.
 _Avoid_: rate limiter, request queue

@@ -31,6 +31,7 @@ Reach a reviewed, proven zero-Mac Ground Ball application that preserves the det
 - [Set public query, export, and abuse guardrails](issues/05-set-public-query-export-and-abuse-guardrails.md) — Admit only bounded human-paced work, fail fast at explicit request, concurrency, rate, runtime, result, and export ceilings, and preserve the last result with an actionable refusal reason.
 - [Prove stateless Public Admission Policy feasibility](issues/13-prove-stateless-public-admission-policy-feasibility.md) — Vercel Blob can coordinate the approved Visitor and deployment limits at $0, but Hobby lacks the current CPU/memory feed required for the 70% Allowance Pause, so the allowance guardrail or hosting decision must reopen.
 - [Choose the Public Allowance Pause authority](issues/14-choose-public-allowance-pause-authority.md) — Keep Vercel Hobby and replace its unavailable provider meter with an isolated, fail-closed budget of 100 nonrefundable admitted Query Runs per UTC month.
+- [Define parity and release gates](issues/06-define-parity-and-release-gates.md) — Publish only a single identified candidate that passes every deterministic-parity, performance, bundle, admission, security, resource, restart, and live-Browser gate with no warning-only exceptions.
 
 ## Not yet specified
 
