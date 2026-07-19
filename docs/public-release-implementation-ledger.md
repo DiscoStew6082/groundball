@@ -7,8 +7,8 @@ This is the execution handoff for the completed Public Deterministic Ground Ball
 ## Canonical continuation
 
 - Working directory: `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release`
-- Branch: `implementation/public-deterministic-groundball-blob-adapter`
-- Integrated baseline: `origin/main` at PR #26 merge commit `427e189f97c274cb53529cad8e3f35aa92aec652`
+- Branch: `implementation/public-deterministic-groundball-results-browser`
+- Integrated baseline: `origin/main` at PR #27 merge commit `30a2bc590c9c0f0438a4c8b29175005103c2024d`
 - Completed planning source: `.scratch/public-deterministic-groundball/map.md` on `wayfinder/queryable-ground-ball` at `6675ad1`
 - Current context: `CONTEXT.md`
 - Current instructions: this worktree's `AGENTS.md`, aligned with the root worktree's removal of the former TDD, subagent, mandatory-review, auto-commit, CI-wait, and forced-browser directives
@@ -42,6 +42,7 @@ Stewart must receive the final protected candidate link, open it, and explicitly
 - `0639c23`: Wave 2 Public Admission Policy core.
 - `a56fbe0`: Wave 2 UTC monthly retry-boundary correction.
 - `427e189`: PR #26 merge containing the complete Wave 2 public admission seam.
+- `30a2bc5`: PR #27 merge containing the complete Wave 3 shared coordination Adapter contract.
 
 The landed foundation packages the four Lahman tables, catalog and registry assets, generated raw inventory, team references, exact Coverage Report, compact strikeout-side Retrosheet projection, provenance, licenses, and canonical Release Manifest. It boots without acquiring data and advertises only the three bundle-backed Retrosheet families.
 
@@ -78,8 +79,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | --- | --- | --- | --- |
 | 1. Release Bundle foundation | Complete | Immutable payload, manifest, offline runtime, exact Coverage Report, restricted Retrosheet surface, container proof | Commits `944180a`, `7a6adbe`, `6106dd6`, `b3c20e6`, merged as `a4084f1` |
 | 2. Public Admission Policy core | Complete on `main` in PR #26 (`427e189`) | Pure CAS state model, shared-store/stable-key configuration seam, 500-character and 16,384-byte limits, Visitor/deployment concurrency, rolling rates, 15-second leases, nonrefundable UTC-month budget, common primary/Retrosheet admission, exact retries, fail-closed readiness, and isolated ten-second hard-stop execution | Focused policy/API/runtime proof passes; `InMemoryCasStore` rejected as deployment authority; no Blob or deployment claim |
-| 3. Shared coordination Adapter | Complete on the Wave 3 branch after independent protocol/security correction | Exact private Vercel Blob `?cache=0` read plus current raw control-plane ETag CAS, canonical provider time, strict store identity, stable keyed Visitor digest configuration, strict schema/versioning, create-if-absent initialization, redirect refusal, readiness, namespace isolation, and local operation accounting | Injected fake/scripted transport contract proof only; real protected Blob compatibility/accounting remains blocked on external approval |
-| 4. Public result and Browser contract | Pending after wave 2 | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused API and web tests plus local Browser evidence |
+| 3. Shared coordination Adapter | Complete on `main` in PR #27 (`30a2bc5`) | Exact private Vercel Blob `?cache=0` read plus current raw control-plane ETag CAS, canonical provider time, strict store identity, stable keyed Visitor digest configuration, strict schema/versioning, create-if-absent initialization, redirect refusal, readiness, namespace isolation, and local operation accounting | Injected fake/scripted transport contract proof only; real protected Blob compatibility/accounting remains blocked on external approval |
+| 4. Public result and Browser contract | Implemented on `implementation/public-deterministic-groundball-results-browser`; PR pending | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused public Adapter/child/API tests, Browser DOM tests, full local fast suite, marked offline proof, static checks, generators, eval matrix, and web build; no live provider/deployment proof |
 | 5. Deterministic parity closure | Pending | Prove or fix the exact Ohtani cross-discipline question, equivalent friendly-name recipe, deterministic two-turn follow-up, three bundled Retrosheet families, and all unbundled negative cases | Named parity corpus plus exhaustive catalog/raw-surface checks |
 | 6. Candidate identity and gate tooling | Pending after waves 2-5 | Bind one source commit, bundle digest, image digest, runtime config, admission config, evidence set, and Deployment Attestation; repair release-container CI so it is not tied to the retired branch | Machine-readable gate report and reproducible candidate assembly |
 | 7. Protected Vercel proof | Blocked on explicit external approval | Provision isolated proof coordination, deploy protected candidate, and run real Blob, restart, scale-to-zero, performance, security, and live Browser gates | All gates pass for one candidate; no promotion |
@@ -293,6 +294,48 @@ No subagent or review-agent facility was available, so Wave 3 received an explic
 
 This proof deliberately uses only injected fake/scripted transports and socket-denial guards. It does not establish that Vercel's live service accepts this raw-HTTP contract, how Vercel bills successful or failed operation attempts, or whether actual Hobby limits remain safe. Those are protected-proof gates requiring separate approval.
 
+## Wave 4 public result and Browser contract
+
+Wave 4 is implemented on `implementation/public-deterministic-groundball-results-browser`, based exactly on PR #27 merge `30a2bc590c9c0f0438a4c8b29175005103c2024d`. It does not alter Query Recipe, Query Plan, Query Run, compiler, Coverage Report, Release Bundle, Wave 2 admission, or Wave 3 coordination behavior. The existing local `run_query_input` Interface and exhaustive export behavior remain unchanged.
+
+### Public result and export contract
+
+- `public_results.py` is the narrow public-only Adapter used inside the existing hard-stopped query child. Natural-language and output-omitted public recipes default to 25 rows; structured interactive output accepts exactly 25, 50, or 100 with a nonnegative integer offset. Unsupported sizes and invalid offsets are rejected rather than clamped.
+- Successful rows and no-data payloads expose top-level `returned_row_count`, `total_matched_count`, and `pagination` with `size`, `offset`, and `has_more`. An exhausted nonzero page remains `rows` with zero returned rows and a truthful nonzero total; zero matches remains successful `no_data`.
+- Pagination keeps the completed published recipe unchanged except for its interactive output size and offset. No public page can exceed 100 rows. Clarification recipes receive the same 25-row public default.
+- CSV and JSON exports are complete or refused. The first exceeded ceiling is checked in fixed order: 3,000 matched rows, 1,500,000 UTF-8 downloadable bytes, then 3,500,000 UTF-8 bytes for the complete compact response body. Equality is allowed; only a greater observed value is refused.
+- The complete-response measurement uses the same deterministic `ensure_ascii=False`, compact JSON encoding emitted by successful public HTTP responses. Row-limit refusal occurs before encoding a large success to child stdout; no refusal payload contains `rows` or `export` material.
+- Export refusal is a structured HTTP 422 with `error: export_too_large`, truthful total matched count, the named ceiling, configured maximum, observed value, detail, and filter guidance. Local exports remain unrestricted; the existing 3,613-row TeamReference proof stays green while the same public export is refused.
+
+### Browser contract
+
+- `lastCompletedRun` and `attemptOutcome` are separate state. Pending work, clarification, busy, rate limit, timeout, export ceiling, allowance pause, provider unavailability, unsupported/rejected, failure, malformed response, and other non-completed outcomes cannot erase or replace the completed rows/no-data run.
+- Structured non-2xx JSON is retained rather than collapsed into a generic error. Exact `retry_at` values and export filter guidance are rendered. One user action produces one request; there is no queue, hidden retry, redirect, alternate endpoint, Mac, tunnel, LLM, paid fallback, or download on refusal.
+- Completed rows and successful no-data update browser-local history. Details, evidence, recipe editing, exports, and pagination remain attached to the last completed run. Export success creates exactly one complete download without replacing that run.
+- The result surface reports “returned X of Y matched,” including exhausted pages, and exposes labeled 25/50/100 page-size, Previous, and Next controls with deterministic offset-zero page-size changes. Responsive CSS stacks full-width controls below 600 px for the required 360–430 px range while preserving the dark shell and existing focus-trap/return behavior.
+
+### Wave 4 TDD and local verification (2026-07-19)
+
+Vertical slices first failed for the missing public Adapter, unsupported page validation, missing counts/pagination, each export ceiling boundary, child/API integration, completed-result preservation while pending, structured refusal parsing, pagination controls, and export refusal handling. Each slice received the smallest green implementation before the next behavior. No test-only production bypass was added.
+
+Final local outputs before documentation closeout were:
+
+- Focused public-result/admission/Blob/execution/API/marked-runtime proof: `143 passed`; one upstream Starlette/httpx deprecation warning.
+- Focused public-result/execution/API proof after final boundary additions: `54 passed`; the same upstream warning.
+- `uv run pytest tests/ -m 'not llm and not release_proof' -q`: `425 passed, 1 deselected`; the same upstream warning.
+- Explicit `uv run pytest tests/test_release_runtime.py -m release_proof -q`: `1 passed`.
+- `uv run ruff check src/ tests/`: passed. Ruff formatting check passed for all changed Python.
+- `uv run mypy src/baseball_rag/`: passed for `62` source files.
+- Catalog compatibility, raw inventory, Coverage Report regeneration check, and coverage proof validator: passed with no generated diff.
+- Deterministic eval matrix: `17/17` passing.
+- `npm --prefix web test`: `21/21` passing. Tests cover pending state, every named refusal class, malformed and clarification outcomes, exact retries/guidance, one-request actions, no-data/history, exhausted pagination, same-recipe request bodies, accessible labels, one successful download, and zero refused downloads.
+- `npm --prefix web run build`: passed with `113` modules transformed.
+- Configured pre-commit hooks passed: ruff, ruff-format, mypy, trailing whitespace, EOF, YAML, and merge-conflict checks.
+
+Pi exposed no subagent or review-agent facility, so Wave 4 received an explicit direct review of the complete diff. The review checked public-only limit placement, off-by-one equality, UTF-8 rather than character counts, exact compact response encoding, row/content/response ceiling order, refusal material removal, exhausted/no-data truth, local 100-row and exhaustive export preservation, child stdout behavior, state separation, one-request actions, structured error retention, accessibility/mobile CSS, frozen seam preservation, and absence of secrets, cookies, private values, or fallback paths.
+
+This is repository and local no-network DOM/API evidence only. It does not prove live Vercel Blob compatibility, provider accounting, a deployment, protected or production Browser behavior, candidate parity, performance/resources, a Deployment Attestation, website integration, or cutover. Waves 5, 6, 7, and 8 remain incomplete; protected proof and every external mutation still require separate explicit approval.
+
 ## Abort and rollback rules
 
 - Any gate miss, identity mismatch, warning-only substitution, unexpected route or network destination, resource overage, or Browser failure makes the candidate ineligible.
@@ -321,7 +364,7 @@ Work only in:
 /Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release
 
 Branch:
-implementation/public-deterministic-groundball-blob-adapter
+implementation/public-deterministic-groundball-results-browser
 
 Read first:
 - AGENTS.md
@@ -330,7 +373,7 @@ Read first:
 
 The completed Wayfinder map is on wayfinder/queryable-ground-ball at 6675ad1. Do not reopen its decisions unless current evidence invalidates a gate.
 
-Wave 2 is merged in PR #26 at `427e189`. Wave 3 is implemented on PR #27 in `dc4a395`, `48f3158`, and the narrow independent-review correction, with fake/scripted transports only. Review its PR and protected-proof boundary without claiming live Blob compatibility. After Wave 3 merges, continue with Wave 4 public result and Browser contracts; do not reopen the completed admission or provider decisions.
+Wave 2 is merged in PR #26 at `427e189`. Wave 3 is merged in PR #27 at `30a2bc5`, with fake/scripted transport proof only. Wave 4 is implemented on this branch with public-only result/export policy and separated Browser completed-run/attempt state. Review and merge its repository/local contract proof without claiming live provider or deployment compatibility. Do not start Wave 5 unless it is separately scoped, and do not reopen completed query, admission, or provider decisions.
 
 Continue through authorized repository implementation and local validation without stopping after a narrow green test. Do not create Blob state or secrets, deploy, delete deployments, promote, change domains or website launchers, enable paid services, activate Cloudflare, or touch Mac/tunnel state without Stewart's explicit approval at that boundary.
 

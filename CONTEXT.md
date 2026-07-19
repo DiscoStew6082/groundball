@@ -20,11 +20,12 @@ This is the canonical current architecture and domain context. Historical implem
 
 The active delivery effort is the zero-Mac deterministic public release. Its execution source is `docs/public-release-implementation-ledger.md`; the completed Wayfinder map is supporting decision evidence, not an active ticket frontier.
 
-- Current Wave 3 branch: `implementation/public-deterministic-groundball-blob-adapter`, based exactly on PR #26's `main` merge `427e189f97c274cb53529cad8e3f35aa92aec652`.
+- Current Wave 4 branch: `implementation/public-deterministic-groundball-results-browser`, based exactly on PR #27's `main` merge `30a2bc590c9c0f0438a4c8b29175005103c2024d`.
 - Completed foundation: the immutable Release Bundle and offline container proof merged in PR #23 at `a4084f1`.
 - Completed Wave 2: the Public Admission Policy core merged in PR #26 at `427e189`, including shared-store and stable-key configuration seams, fail-closed readiness, hard-stop public execution, and common protection for both deterministic POST routes.
-- Implemented on the Wave 3 branch in commits `dc4a395` and `48f3158`, then corrected after independent protocol/security review: a strict schema-v1 state codec and project-owned private Vercel Blob HTTP Adapter with exact private `?cache=0` reads, current raw write headers and control-plane origin, opaque ETag CAS, create-if-absent initialization, canonical provider time, proof/production namespaces, store-ID-derived private origins, redirect refusal, strict secret configuration, readiness, and local operation-attempt accounting.
-- Current opportunity after Wave 3 review: merge the local contract proof without claiming real Blob compatibility, then implement the public result envelope, deterministic parity, candidate proof, and release preparation.
+- Completed Wave 3: the shared coordination Adapter merged in PR #27 at `30a2bc5`, with a strict schema-v1 state codec and project-owned private Vercel Blob HTTP Adapter. Its proof remains fake/scripted transport evidence only; it does not prove live provider compatibility.
+- Implemented on the Wave 4 branch: a narrow public result Adapter defaults interactive work to 25 rows, validates only 25/50/100 public pages, reports truthful returned/total/pagination state, and provides complete-or-422-refused CSV/JSON exports at the row, UTF-8 download, and compact complete-response ceilings. The Browser now separates the last completed Query Run from the latest attempt outcome, preserves completed results through pending and refusal states, parses structured non-2xx outcomes, and paginates the same recipe with accessible responsive controls.
+- Current opportunity after Wave 4 review: merge the repository/local result and Browser contract without claiming live Browser/provider proof, then continue only with separately scoped Wave 5 parity work.
 - External deployment, Blob or secret creation, production promotion, website cutover, paid services, Cloudflare activation, and Mac or tunnel operations remain outside current authorization until Stewart approves the exact action.
 
 ## Current modules
@@ -43,6 +44,7 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 - `src/baseball_rag/public_admission_state.py`: strict deterministic schema-v1 JSON codec and provider-state bounds.
 - `src/baseball_rag/public_admission_blob.py`: private Vercel Blob raw-HTTP transport contract, namespace/configuration validation, ETag CAS Adapter, and local operation counters.
 - `src/baseball_rag/public_execution.py`: isolated child-process execution with a ten-second hard-stop outcome.
+- `src/baseball_rag/public_results.py`: public-only interactive page metadata, page validation, compact response encoding, and complete-export ceiling policy over the unchanged local Query Adapter.
 - `src/baseball_rag/release_bundle.py`: immutable Release Bundle identity, assembly, and verification.
 - `src/baseball_rag/release_runtime.py`: offline release startup and readiness checks.
 
@@ -57,7 +59,8 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 - 2026-07-18, merge `f77b1df`: Queryable Ground Ball clean cutover. Public contract: Published Query Catalog to Query Recipe to Query Plan to Query Run is the only structured-query path; deleted compatibility surfaces stay deleted.
 - 2026-07-19, merge `a4084f1`: Public Release Bundle foundation. Public contract: one immutable offline bundle contains the approved Lahman, catalog, proof, compact Retrosheet, provenance, and license payload and exposes only bundle-backed deterministic capabilities.
 - 2026-07-19, merge `427e189`: Public Admission Policy core. Public contract: every public deterministic POST route shares one fail-closed CAS admission decision and ten-second hard-stop execution seam; process-local state is never deployment authority.
-- 2026-07-19, Wave 3 branch: Shared coordination Adapter contract. One private schema-v1 object uses canonical provider HTTP `Date`, exact private uncached reads, current raw write protocol, and opaque ETags for bounded CAS; this is fake-transport proof only until a separately approved protected Blob exercise passes.
+- 2026-07-19, merge `30a2bc5`: Shared coordination Adapter contract. One private schema-v1 object uses canonical provider HTTP `Date`, exact private uncached reads, current raw write protocol, and opaque ETags for bounded CAS; this is fake-transport proof only until a separately approved protected Blob exercise passes.
+- 2026-07-19, Wave 4 branch: Public result and Browser contract. Public-only 25/50/100 paging and complete-or-refused exports preserve the unchanged local/exhaustive Query path; Browser attempt outcomes cannot replace a completed Query Run. Repository and local DOM/API proof do not establish live provider compatibility, deployment, protected Browser behavior, or cutover.
 
 ### Frozen seams
 
