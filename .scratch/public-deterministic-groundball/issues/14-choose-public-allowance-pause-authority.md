@@ -31,7 +31,9 @@ The monthly count belongs in the same versioned, server-owned coordination state
 - Unused starts never roll over.
 - No operator, deployment, retry, state deletion, or application restart may reset or refund the counter manually.
 - At 100 charged starts, the Public Admission Policy returns Allowance Pause with the next UTC reset time and preserves the Browser's last completed Query Run.
-- Missing, malformed, contradictory, or out-of-period budget state fails closed as Allowance Pause rather than reconstructing or guessing a count.
+- Before first public promotion, the release process creates the initial current-period record at zero with create-if-absent semantics and records that initialization in the release evidence. It must never overwrite existing state; a conflict or failure stops promotion. This one-time initialization is not a reset.
+- On the first admitted start observed in a later UTC month, a well-formed record from any earlier period advances atomically to the current period with a zero starting count before the new start is charged. The prior count is discarded, so no unused units roll over; no scheduled or operator-driven reset is required.
+- Missing, malformed, contradictory, or future-period budget state fails closed as Allowance Pause rather than reconstructing or guessing a count.
 - An unavailable coordination store or exhausted bounded compare-and-swap retry returns Provider Unavailable, as already decided, and never admits optimistically.
 
 ### Hobby-scope isolation
@@ -44,7 +46,7 @@ This isolation is a release condition, not an account mutation authorized here. 
 
 [Set public query, export, and abuse guardrails](05-set-public-query-export-and-abuse-guardrails.md) remains authoritative for every request, Visitor, concurrency, execution, result, export, and refusal rule except its provider-reported 70% CPU and memory admission condition, which this answer supersedes.
 
-[Define parity and release gates](06-define-parity-and-release-gates.md) must require proof that the monthly count is atomic across stateless instances; the 101st start is refused; timeouts and failures do not refund units; UTC reset, first-partial-month, no-rollover, missing-state, malformed-state, and coordination-failure behavior are correct; the last completed Query Run survives Allowance Pause; the Hobby scope satisfies the isolation rule; and actual Vercel Blob operation accounting plus Python or raw-HTTP conditional-write compatibility remain inside the approved free topology.
+[Define parity and release gates](06-define-parity-and-release-gates.md) must require proof that the monthly count is atomic across stateless instances; the 101st start is refused; timeouts and failures do not refund units; create-if-absent initialization, UTC rollover from older well-formed state, first-partial-month, no-rollover, missing-state, malformed-state, future-state, and coordination-failure behavior are correct; the last completed Query Run survives Allowance Pause; the Hobby scope satisfies the isolation rule; and actual Vercel Blob operation accounting plus Python or raw-HTTP conditional-write compatibility remain inside the approved free topology.
 
 The later gate must also state the residual truth: an application-owned start budget cannot guarantee that Vercel will not pause the project because non-Query traffic, platform overhead, or provider accounting remains outside the counter. If Vercel does reject or pause the deployment, Ground Ball reports Provider Unavailable wherever application code can still respond and never falls back to a paid plan, another host, the Mac, a tunnel, or an LLM.
 
