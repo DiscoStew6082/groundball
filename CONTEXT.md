@@ -20,10 +20,11 @@ This is the canonical current architecture and domain context. Historical implem
 
 The active delivery effort is the zero-Mac deterministic public release. Its execution source is `docs/public-release-implementation-ledger.md`; the completed Wayfinder map is supporting decision evidence, not an active ticket frontier.
 
-- Continuation branch: `implementation/public-deterministic-groundball-release`, with current `origin/main` at `0afd947` integrated after preserving handoff commit `5ada351`.
+- Current Wave 3 branch: `implementation/public-deterministic-groundball-blob-adapter`, based exactly on PR #26's `main` merge `427e189f97c274cb53529cad8e3f35aa92aec652`.
 - Completed foundation: the immutable Release Bundle and offline container proof merged in PR #23 at `a4084f1`.
-- Completed on this branch: Wave 2 Public Admission Policy core, including shared-store and stable-key configuration seams, fail-closed readiness, hard-stop public execution, and common protection for both deterministic POST routes.
-- Current opportunity: implement the Wave 3 Vercel Blob coordination Adapter, then the public result envelope, deterministic parity, candidate proof, and release preparation.
+- Completed Wave 2: the Public Admission Policy core merged in PR #26 at `427e189`, including shared-store and stable-key configuration seams, fail-closed readiness, hard-stop public execution, and common protection for both deterministic POST routes.
+- Completed locally in Wave 3 commit `dc4a395`: a strict schema-v1 state codec and project-owned private Vercel Blob HTTP Adapter with uncached reads, opaque ETag CAS, create-if-absent initialization, trusted response time, proof/production namespaces, strict secret configuration, readiness, and local operation-attempt accounting.
+- Current opportunity after Wave 3 review: merge the local contract proof without claiming real Blob compatibility, then implement the public result envelope, deterministic parity, candidate proof, and release preparation.
 - External deployment, Blob or secret creation, production promotion, website cutover, paid services, Cloudflare activation, and Mac or tunnel operations remain outside current authorization until Stewart approves the exact action.
 
 ## Current modules
@@ -38,7 +39,9 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 - `src/baseball_rag/query/adapters.py`: shared rendering-neutral HTTP, CLI, and browser payloads.
 - `src/baseball_rag/retrosheet_query.py`: separate deterministic Retrosheet adapter.
 - `src/baseball_rag/api/server.py`: FastAPI routes, public admission boundary, and built Svelte application.
-- `src/baseball_rag/public_admission.py`: pure CAS admission state, leases, rates, monthly budget, Visitor digest, and readiness checks.
+- `src/baseball_rag/public_admission.py`: provider-neutral opaque CAS snapshots, admission state, leases, rates, monthly budget, Visitor digest, trusted snapshot-time routing, and readiness checks.
+- `src/baseball_rag/public_admission_state.py`: strict deterministic schema-v1 JSON codec and provider-state bounds.
+- `src/baseball_rag/public_admission_blob.py`: private Vercel Blob raw-HTTP transport contract, namespace/configuration validation, ETag CAS Adapter, and local operation counters.
 - `src/baseball_rag/public_execution.py`: isolated child-process execution with a ten-second hard-stop outcome.
 - `src/baseball_rag/release_bundle.py`: immutable Release Bundle identity, assembly, and verification.
 - `src/baseball_rag/release_runtime.py`: offline release startup and readiness checks.
@@ -53,6 +56,8 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 
 - 2026-07-18, merge `f77b1df`: Queryable Ground Ball clean cutover. Public contract: Published Query Catalog to Query Recipe to Query Plan to Query Run is the only structured-query path; deleted compatibility surfaces stay deleted.
 - 2026-07-19, merge `a4084f1`: Public Release Bundle foundation. Public contract: one immutable offline bundle contains the approved Lahman, catalog, proof, compact Retrosheet, provenance, and license payload and exposes only bundle-backed deterministic capabilities.
+- 2026-07-19, merge `427e189`: Public Admission Policy core. Public contract: every public deterministic POST route shares one fail-closed CAS admission decision and ten-second hard-stop execution seam; process-local state is never deployment authority.
+- 2026-07-19, local commit `dc4a395`: Shared coordination Adapter contract. One private schema-v1 object uses provider HTTP `Date` and opaque ETags for bounded CAS; this is fake-transport proof only until a separately approved protected Blob exercise passes.
 
 ### Frozen seams
 
