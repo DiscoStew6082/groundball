@@ -1,7 +1,7 @@
 # Choose the Public Allowance Pause authority
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Prove stateless Public Admission Policy feasibility](13-prove-stateless-public-admission-policy-feasibility.md)
 
 ## Question
