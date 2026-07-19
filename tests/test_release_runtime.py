@@ -8,10 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from baseball_rag.release_bundle import assemble_release_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_COMMIT = "a" * 40
+pytestmark = pytest.mark.release_proof
 
 
 def test_release_bundle_cold_boot_is_offline_in_memory_and_proof_exact(tmp_path: Path) -> None:
