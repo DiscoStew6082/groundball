@@ -48,6 +48,8 @@ These byte and row limits are grounded in Vercel Hobby's [4.5 MB response-body l
 
 ### Monthly free-plan allowance
 
+The provider-reported 70% CPU and memory authority selected below is superseded by [Choose the Public Allowance Pause authority](14-choose-public-allowance-pause-authority.md). That later decision owns the replacement allowance rule; every other guardrail in this answer remains in force.
+
 Vercel Hobby currently includes 4 active CPU-hours, 360 GB-hours of provisioned memory, and 1,000,000 function invocations in its free usage window. Hobby cannot buy on-demand overages and pauses projects after an included allowance is exhausted. The provider facts and official sources remain recorded in [Public container hosting constraints for Ground Ball](../../../research/public-container-hosting-constraints.md).
 
 Ground Ball enters an **Allowance Pause** and stops admitting new Query Runs at 70% of either the CPU or memory allowance: 2.8 active CPU-hours or 252 GB-hours of provisioned memory. This self-imposed safety target is intended to leave 30% headroom for an unavailable explanation and bounded release verification; it cannot reserve account-level capacity or guarantee that Vercel remains available when other traffic or projects consume the shared allowance. No production configuration may activate Vercel Pro, a paid add-on, on-demand usage, or an automatic upgrade.
