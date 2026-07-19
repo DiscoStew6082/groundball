@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from baseball_rag.coverage_proof_validator import validate_checked_in_coverage_proof
 from baseball_rag.query import QueryPlanV1, QueryRecipe, Ready, prepare
 from baseball_rag.query.coverage import (
+    COVERAGE_MARKDOWN_PATH,
     COVERAGE_REPORT_PATH,
     REQUIRED_GATE_IDS,
     CoverageProofUnavailableError,
@@ -64,6 +66,24 @@ def test_passing_coverage_report_requires_exact_current_proof(
         load_passing_coverage_report()
 
 
+def test_fast_validator_checks_both_canonical_report_forms(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report = _passing_report()
+    report_path = tmp_path / "coverage-report.json"
+    markdown_path = tmp_path / "coverage-report.md"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    markdown_path.write_text(render_coverage_markdown(report), encoding="utf-8")
+    monkeypatch.setattr("baseball_rag.query.coverage.COVERAGE_REPORT_PATH", report_path)
+    monkeypatch.setattr("baseball_rag.query.coverage.COVERAGE_MARKDOWN_PATH", markdown_path)
+
+    assert validate_checked_in_coverage_proof()["proof_id"] == report["proof_id"]
+
+    markdown_path.write_text("stale\n", encoding="utf-8")
+    with pytest.raises(CoverageProofUnavailableError, match="markdown does not match"):
+        validate_checked_in_coverage_proof()
+
+
 def test_failed_or_uncovered_coverage_report_is_not_accepted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -95,6 +115,7 @@ def test_human_report_is_rendered_from_the_canonical_read_model() -> None:
 def test_checked_in_report_location_is_packaged_with_query_module() -> None:
     assert COVERAGE_REPORT_PATH.name == "coverage-report.json"
     assert COVERAGE_REPORT_PATH.parent.name == "coverage"
+    assert COVERAGE_MARKDOWN_PATH.name == "coverage-report.md"
 
 
 def test_semantic_manifest_identity_ignores_download_metadata_but_not_data() -> None:

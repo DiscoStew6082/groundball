@@ -13,6 +13,9 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "unit: fast, mocked tests — no external services required")
     config.addinivalue_line("markers", "integration: requires live services (LM Studio or UI)")
     config.addinivalue_line("markers", "slow: long-running or heavy setup")
+    config.addinivalue_line(
+        "markers", "release_proof: exhaustive release-only verification excluded from fast CI"
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -35,6 +38,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
     for item in items:
         name = item.path.stem
+        if item.get_closest_marker("release_proof") is not None:
+            continue
         if name in integration:
             item.add_marker(pytest.mark.integration)
         elif name in slow:

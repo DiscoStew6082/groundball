@@ -41,7 +41,8 @@ The Coverage Report fingerprints all query Python modules and the deterministic 
 uv run ruff format --check src/ tests/
 uv run ruff check src/ tests/
 uv run mypy src/baseball_rag/
-uv run pytest tests/ -m 'not llm' -q
+uv run pytest tests/ -m 'not llm and not release_proof' -q
+uv run python -m baseball_rag.coverage_proof_validator
 uv run python -m baseball_rag.query.eval_matrix
 uv run python -m baseball_rag.query.generate_catalog_compatibility --check
 uv run python -m baseball_rag.query.generate_raw_inventory --check
@@ -50,7 +51,7 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-CI runs these deterministic checks and uploads `coverage-report.json` and `coverage-report.md`. There is no baseline-refresh workflow and no Go verifier.
+Fast CI runs the non-LLM, non-release-proof suite and validates the exact checked-in proof. The path-scoped Release Proof workflow runs the offline release test, regenerates all 5,253 obligations, and uploads `coverage-report.json` and `coverage-report.md`. There is no baseline-refresh workflow and no Go verifier.
 
 ## Browser acceptance
 
