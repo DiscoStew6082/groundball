@@ -19,7 +19,7 @@ Returns the server-enforced query, catalog, coverage, Coverage Report, Retroshee
 
 ## `POST /api/query-runs`
 
-Provide exactly one natural-language question or structured recipe.
+Provide exactly one natural-language question or structured recipe. A natural-language request may also include `previous_recipe`, containing only the preceding completed Query Recipe. It is rejected with structured `recipe` input; rows and server-side conversation state are never accepted as context.
 
 ```json
 { "question": "who had the most RBIs in 1962" }
@@ -42,6 +42,28 @@ Provide exactly one natural-language question or structured recipe.
   }
 }
 ```
+
+A deterministic follow-up can refine one unambiguous prior player filter:
+
+```json
+{
+  "question": "what about his home runs in 2022?",
+  "previous_recipe": {
+    "source": "Batting",
+    "grain": "player-season",
+    "selections": ["player.name", "season", "batting.RBI"],
+    "predicate": {
+      "kind": "all",
+      "predicates": [
+        {"kind": "compare", "value": "player.name", "operator": "equals", "literal": "Shohei Ohtani"},
+        {"kind": "compare", "value": "season", "operator": "equals", "literal": 2022}
+      ]
+    }
+  }
+}
+```
+
+The bounded follow-up grammar uses no LLM or server-side history and fails closed without exactly one prior `player.name equals <name>` predicate.
 
 The response is a rendering-neutral discriminated outcome:
 

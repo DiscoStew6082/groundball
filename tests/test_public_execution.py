@@ -31,6 +31,38 @@ def test_public_query_worker_applies_the_public_result_contract() -> None:
     assert outcome.payload["returned_row_count"] == len(outcome.payload["rows"])
 
 
+def test_public_query_worker_interprets_previous_recipe_context() -> None:
+    first = SubprocessExecutionRunner().run(
+        ExecutionRequest(
+            operation="query",
+            question="how many RBIs did Shohei Ohtani have in 2022",
+            recipe=None,
+        ),
+        timeout_seconds=10,
+    )
+    assert first.kind == "completed"
+    assert first.payload is not None
+
+    follow_up = SubprocessExecutionRunner().run(
+        ExecutionRequest(
+            operation="query",
+            question="what about his home runs in 2022?",
+            recipe=None,
+            previous_recipe=first.payload["recipe"],
+        ),
+        timeout_seconds=10,
+    )
+
+    assert follow_up.kind == "completed"
+    assert follow_up.payload is not None
+    assert follow_up.payload["recipe"]["selections"] == [
+        "player.name",
+        "season",
+        "batting.HR",
+    ]
+    assert follow_up.payload["recipe"]["predicate"]["predicates"][0]["literal"] == ("Shohei Ohtani")
+
+
 def test_subprocess_execution_returns_only_the_worker_envelope() -> None:
     runner = SubprocessExecutionRunner(
         command=(

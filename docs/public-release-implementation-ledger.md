@@ -7,8 +7,8 @@ This is the execution handoff for the completed Public Deterministic Ground Ball
 ## Canonical continuation
 
 - Working directory: `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release`
-- Branch: `implementation/public-deterministic-groundball-results-browser`
-- Integrated baseline: `origin/main` at PR #27 merge commit `30a2bc590c9c0f0438a4c8b29175005103c2024d`
+- Branch: `implementation/public-deterministic-groundball-parity`
+- Integrated baseline: `origin/main` at PR #28 Wave 4 merge commit `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`
 - Completed planning source: `.scratch/public-deterministic-groundball/map.md` on `wayfinder/queryable-ground-ball` at `6675ad1`
 - Current context: `CONTEXT.md`
 - Current instructions: this worktree's `AGENTS.md`, aligned with the root worktree's removal of the former TDD, subagent, mandatory-review, auto-commit, CI-wait, and forced-browser directives
@@ -43,6 +43,7 @@ Stewart must receive the final protected candidate link, open it, and explicitly
 - `a56fbe0`: Wave 2 UTC monthly retry-boundary correction.
 - `427e189`: PR #26 merge containing the complete Wave 2 public admission seam.
 - `30a2bc5`: PR #27 merge containing the complete Wave 3 shared coordination Adapter contract.
+- `91d1dfa`: PR #28 merge containing the complete Wave 4 public result and Browser contract.
 
 The landed foundation packages the four Lahman tables, catalog and registry assets, generated raw inventory, team references, exact Coverage Report, compact strikeout-side Retrosheet projection, provenance, licenses, and canonical Release Manifest. It boots without acquiring data and advertises only the three bundle-backed Retrosheet families.
 
@@ -80,8 +81,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | 1. Release Bundle foundation | Complete | Immutable payload, manifest, offline runtime, exact Coverage Report, restricted Retrosheet surface, container proof | Commits `944180a`, `7a6adbe`, `6106dd6`, `b3c20e6`, merged as `a4084f1` |
 | 2. Public Admission Policy core | Complete on `main` in PR #26 (`427e189`) | Pure CAS state model, shared-store/stable-key configuration seam, 500-character and 16,384-byte limits, Visitor/deployment concurrency, rolling rates, 15-second leases, nonrefundable UTC-month budget, common primary/Retrosheet admission, exact retries, fail-closed readiness, and isolated ten-second hard-stop execution | Focused policy/API/runtime proof passes; `InMemoryCasStore` rejected as deployment authority; no Blob or deployment claim |
 | 3. Shared coordination Adapter | Complete on `main` in PR #27 (`30a2bc5`) | Exact private Vercel Blob `?cache=0` read plus current raw control-plane ETag CAS, canonical provider time, strict store identity, stable keyed Visitor digest configuration, strict schema/versioning, create-if-absent initialization, redirect refusal, readiness, namespace isolation, and local operation accounting | Injected fake/scripted transport contract proof only; real protected Blob compatibility/accounting remains blocked on external approval |
-| 4. Public result and Browser contract | Implemented on `implementation/public-deterministic-groundball-results-browser`; PR pending | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused public Adapter/child/API tests, Browser DOM tests, full local fast suite, marked offline proof, static checks, generators, eval matrix, and web build; no live provider/deployment proof |
-| 5. Deterministic parity closure | Pending | Prove or fix the exact Ohtani cross-discipline question, equivalent friendly-name recipe, deterministic two-turn follow-up, three bundled Retrosheet families, and all unbundled negative cases | Named parity corpus plus exhaustive catalog/raw-surface checks |
+| 4. Public result and Browser contract | Complete on `main` in PR #28 (`91d1dfa`) | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused public Adapter/child/API tests, Browser DOM tests, full local fast suite, marked offline proof, static checks, generators, eval matrix, and web build; no live provider/deployment proof |
+| 5. Deterministic parity closure | Implemented on `implementation/public-deterministic-groundball-parity`; PR pending | Exact Ohtani natural/structured parity, hidden composed name-match projections, recipe-only deterministic two-turn follow-up, and all bundled/unbundled Retrosheet boundaries | 26-case named eval/parity matrix; focused compiler/Adapter/API/child/Browser/Retrosheet proof; regenerated exact Coverage Report and Release Bundle; no live provider/deployment proof |
 | 6. Candidate identity and gate tooling | Pending after waves 2-5 | Bind one source commit, bundle digest, image digest, runtime config, admission config, evidence set, and Deployment Attestation; repair release-container CI so it is not tied to the retired branch | Machine-readable gate report and reproducible candidate assembly |
 | 7. Protected Vercel proof | Blocked on explicit external approval | Provision isolated proof coordination, deploy protected candidate, and run real Blob, restart, scale-to-zero, performance, security, and live Browser gates | All gates pass for one candidate; no promotion |
 | 8. Production and website cutover | Blocked on gates and explicit approvals | Build and attest final production artifact, send Stewart its link, receive acceptance, then make one reversible launcher change and externally verify | Stewart acceptance, attestation, post-switch proof, rollback proof |
@@ -296,7 +297,7 @@ This proof deliberately uses only injected fake/scripted transports and socket-d
 
 ## Wave 4 public result and Browser contract
 
-Wave 4 is implemented on `implementation/public-deterministic-groundball-results-browser`, based exactly on PR #27 merge `30a2bc590c9c0f0438a4c8b29175005103c2024d`. It does not alter Query Recipe, Query Plan, Query Run, compiler, Coverage Report, Release Bundle, Wave 2 admission, or Wave 3 coordination behavior. The existing local `run_query_input` Interface and exhaustive export behavior remain unchanged.
+Wave 4 merged in PR #28 at `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`, after implementation on `implementation/public-deterministic-groundball-results-browser` from PR #27 merge `30a2bc590c9c0f0438a4c8b29175005103c2024d`. It did not alter Query Recipe, Query Plan, Query Run, compiler, Coverage Report, Release Bundle, Wave 2 admission, or Wave 3 coordination behavior. The existing local `run_query_input` Interface and exhaustive export behavior remain unchanged.
 
 ### Public result and export contract
 
@@ -336,7 +337,43 @@ Final local outputs before documentation closeout were:
 
 Pi exposed no subagent or review-agent facility, so Wave 4 received an explicit direct review of the complete diff. The review checked public-only limit placement, off-by-one equality, UTF-8 rather than character counts, exact compact response encoding, row/content/response ceiling order, refusal material removal, exhausted/no-data truth, local 100-row and exhaustive export preservation, child stdout behavior, state separation, one-request actions, structured error retention, accessibility/mobile CSS, frozen seam preservation, and absence of secrets, cookies, private values, or fallback paths.
 
-This is repository and local no-network DOM/API evidence only. It does not prove live Vercel Blob compatibility, provider accounting, a deployment, protected or production Browser behavior, candidate parity, performance/resources, a Deployment Attestation, website integration, or cutover. Waves 5, 6, 7, and 8 remain incomplete; protected proof and every external mutation still require separate explicit approval.
+This is repository and local no-network DOM/API evidence only. It does not prove live Vercel Blob compatibility, provider accounting, a deployment, protected or production Browser behavior, candidate parity, performance/resources, a Deployment Attestation, website integration, or cutover. Wave 5 addresses repository deterministic parity separately below; Waves 6, 7, and 8 remain incomplete, and protected proof plus every external mutation still require separate explicit approval.
+
+## Wave 5 deterministic parity closure
+
+Wave 5 is implemented on `implementation/public-deterministic-groundball-parity`, based exactly on PR #28 merge `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`. It preserves every Wave 1–4 query, admission, result, export, Browser-state, Release Bundle, and fail-closed boundary.
+
+### Composed-plan and exact Ohtani parity
+
+- The promoted compiler's internal fact subqueries can retain catalog-owned hidden match aliases for composed plans without exposing those aliases as result columns. The composed projection carries every hidden `player.name` match alias needed by the post-composition predicate; the name remains four bound values rather than SQL text.
+- The exact question `how many home runs did ohtani hit in the year he had the most wins as a pitcher` resolves to the reviewed Batting/player-season recipe, ranks `pitching.W` highest with ties, and returns exactly Shohei Ohtani in 2022 with 34 home runs and 15 pitching wins.
+- The equivalent structured recipe enters the same public 25-row Adapter and has equal stable recipe, plan, ordered rows, evidence, source fingerprints, verification, returned/total counts, and pagination fields. Volatile request/environment metadata is not part of the assertion.
+
+### Explicit deterministic follow-up context
+
+- `previous_recipe` is the only additive context field. It is optional, contains only one strictly parsed and currently valid preceding Query Recipe, and is accepted only beside `question`; it is rejected beside structured `recipe` input and cannot carry rows or unknown fields.
+- The exact first turn `how many RBIs did Shohei Ohtani have in 2022` returns the verified 95-RBI row. The exact follow-up `what about his home runs in 2022?` requires one unambiguous prior `player.name equals <name>` predicate and returns the verified 34-HR row. Missing or ambiguous identity fails closed without an LLM or fallback.
+- The Browser sends `lastCompletedRun.recipe` in the same single POST for a natural follow-up. It sends no rows or hidden conversation state, preserves the completed result while pending or refused, and replaces it only after a successful rows/no-data response. Local and public API paths and the isolated child share the same interpretation seam. The 16 KiB whole-body ceiling, one-action/one-request rule, ten-second deadline, and admission decision are unchanged.
+
+### Named parity corpus and release boundaries
+
+- The existing machine-readable `query/eval_matrix.json` is extended in place from 17 to 26 cases, preserving every prior case ID. It now names Tommy Davis 1962, exact Ohtani natural and structured parity inputs, the exact two-turn follow-up, all three bundle-backed strikeout-side templates, and all three unbundled Retrosheet negatives.
+- Each unbundled family remains available to the complete local Retrosheet matcher but absent from public capabilities, unmatched by the public release matcher, and explicitly invalid under release-bound execution. No negative becomes no-data or falls back to local archives/full data.
+- Public Retrosheet remains one advertised `pitcher_strikeout_side` capability backed only by the compact projection. The marked offline release proof executes all three positive templates and rejects all three negatives through the public API.
+
+### Wave 5 local verification (2026-07-19)
+
+- Focused compiler/Adapter/result/child/API/eval/Retrosheet/Release Bundle/runtime proof: `130 passed`; one upstream Starlette/httpx deprecation warning.
+- Fast Python suite: `438 passed, 1 deselected`; the same upstream warning.
+- Marked offline proof: `1 passed, 438 deselected`; the same upstream warning.
+- Deterministic eval/parity matrix: `26/26` passing.
+- Browser DOM suite: `25/25` passing.
+- The Coverage Report still proves `5,253/5,253` obligations with zero uncovered; its compiler identity and proof ID were regenerated canonically. The canonical assembler bound the checked-in Release Bundle to source commit `7007d135e2fb8afa60589040b442577159404685` with bundle digest `ab88172bd1170e5b2d1a79c33e322c95d75ed5ee65abe8983ac199b46478d0c6`. Generated changes are limited to the root Coverage Report JSON/Markdown, the bundled Coverage Report copy, and the Release Manifest; catalog/data payloads and bundle scope are unchanged.
+- Catalog compatibility, raw inventory, Coverage Report generation check and validator, full Ruff, changed-Python format check, mypy for `62` source files, web build with `113` transformed modules, configured pre-commit, and `git diff --check` all pass after final bundle assembly.
+
+Pi exposed no subagent or review-agent facility, so Wave 5 received an explicit direct review. The review checked hidden aliases remain internal and catalog-owned, values stay bound, natural and structured plans stay canonical, context cannot accompany structured input or contain rows, pronouns fail closed without one name predicate, independent questions ignore context, Browser actions remain one request, completed results survive pending/refusal, public limits and hard-stop execution are unchanged, all Retrosheet negatives fail before runtime fallback, full local Retrosheet behavior remains intact, and no external/provider/Mac/deployment behavior was touched.
+
+This remains repository and local no-network proof only. No live provider, Blob, deployment, protected Browser, performance/resource, website/domain, Cloudflare, Mac, tunnel, candidate attestation, or cutover proof has occurred. Wave 6 candidate identity and gate tooling is the next pending wave; it has not started.
 
 ## Abort and rollback rules
 
@@ -366,7 +403,7 @@ Work only in:
 /Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release
 
 Branch:
-implementation/public-deterministic-groundball-results-browser
+implementation/public-deterministic-groundball-parity
 
 Read first:
 - AGENTS.md
@@ -375,7 +412,7 @@ Read first:
 
 The completed Wayfinder map is on wayfinder/queryable-ground-ball at 6675ad1. Do not reopen its decisions unless current evidence invalidates a gate.
 
-Wave 2 is merged in PR #26 at `427e189`. Wave 3 is merged in PR #27 at `30a2bc5`, with fake/scripted transport proof only. Wave 4 is implemented on this branch with public-only result/export policy and separated Browser completed-run/attempt state. Review and merge its repository/local contract proof without claiming live provider or deployment compatibility. Do not start Wave 5 unless it is separately scoped, and do not reopen completed query, admission, or provider decisions.
+Waves 2 and 3 are merged in PRs #26 and #27. Wave 4 is merged in PR #28 at `91d1dfa`. Wave 5 is implemented on this branch with exact Ohtani natural/structured parity, internal composed-plan name-match aliases, recipe-only deterministic follow-up context, and the 26-case named eval/parity corpus. Review and merge its repository/local contract proof without claiming live provider or deployment compatibility. Do not start Wave 6 unless it is separately scoped, and do not reopen completed query, admission, result, or provider decisions.
 
 Continue through authorized repository implementation and local validation without stopping after a narrow green test. Do not create Blob state or secrets, deploy, delete deployments, promote, change domains or website launchers, enable paid services, activate Cloudflare, or touch Mac/tunnel state without Stewart's explicit approval at that boundary.
 

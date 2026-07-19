@@ -108,6 +108,37 @@ def test_query_run_endpoint_accepts_natural_language_and_structured_recipe():
     assert structured.json()["plan"] == natural_payload["plan"]
 
 
+def test_local_api_accepts_recipe_only_context_for_natural_follow_ups():
+    first = client.post(
+        "/api/query-runs",
+        json={"question": "how many RBIs did Shohei Ohtani have in 2022"},
+    )
+    assert first.status_code == 200
+
+    follow_up = client.post(
+        "/api/query-runs",
+        json={
+            "question": "what about his home runs in 2022?",
+            "previous_recipe": first.json()["recipe"],
+        },
+    )
+
+    assert follow_up.status_code == 200
+    assert follow_up.json()["recipe"]["selections"] == [
+        "player.name",
+        "season",
+        "batting.HR",
+    ]
+    invalid = client.post(
+        "/api/query-runs",
+        json={
+            "recipe": first.json()["recipe"],
+            "previous_recipe": first.json()["recipe"],
+        },
+    )
+    assert invalid.status_code == 422
+
+
 def test_query_run_request_requires_exactly_one_clean_input():
     assert client.post("/api/query-runs", json={}).status_code == 422
     assert (
@@ -345,6 +376,36 @@ def test_public_api_runs_the_real_result_policy_in_the_hard_stop_child(
     assert refused_export.json()["error"] == "export_too_large"
     assert "rows" not in refused_export.json()
     assert "export" not in refused_export.json()
+
+
+def test_public_api_two_turn_follow_up_runs_in_the_same_isolated_child_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_public_proof(monkeypatch)
+    monkeypatch.setattr(api_server, "_public_execution_runner", SubprocessExecutionRunner())
+    public_client = TestClient(app)
+
+    first = public_client.post(
+        "/api/query-runs",
+        json={"question": "how many RBIs did Shohei Ohtani have in 2022"},
+    )
+    follow_up = public_client.post(
+        "/api/query-runs",
+        json={
+            "question": "what about his home runs in 2022?",
+            "previous_recipe": first.json()["recipe"],
+        },
+    )
+
+    assert first.status_code == 200
+    assert first.json()["rows"] == [
+        {"player.name": "Shohei Ohtani", "season": 2022, "batting.RBI": 95}
+    ]
+    assert follow_up.status_code == 200
+    assert follow_up.json()["rows"] == [
+        {"player.name": "Shohei Ohtani", "season": 2022, "batting.HR": 34}
+    ]
+    assert follow_up.json()["verification"]["status"] == "verified"
 
 
 def test_public_export_refusal_is_structured_422_compact_json(

@@ -33,6 +33,84 @@ def test_public_natural_language_defaults_to_25_without_changing_local_default()
     }
 
 
+def test_ohtani_natural_and_structured_public_paths_have_semantic_parity() -> None:
+    question = "how many home runs did ohtani hit in the year he had the most wins as a pitcher"
+    structured_recipe = {
+        "source": "Batting",
+        "grain": "player-season",
+        "selections": ["player.name", "season", "batting.HR", "pitching.W"],
+        "predicate": {
+            "kind": "compare",
+            "value": "player.name",
+            "operator": "equals",
+            "literal": "Shohei Ohtani",
+        },
+        "ranking": {
+            "value": "pitching.W",
+            "direction": "highest",
+            "count": 1,
+            "tie_policy": "include_ties",
+            "within": [],
+        },
+    }
+
+    natural = run_public_query_input(question=question)
+    structured = run_public_query_input(recipe=structured_recipe)
+
+    stable_fields = (
+        "kind",
+        "recipe",
+        "plan",
+        "rows",
+        "evidence",
+        "verification",
+        "returned_row_count",
+        "total_matched_count",
+        "pagination",
+    )
+    assert {field: natural[field] for field in stable_fields} == {
+        field: structured[field] for field in stable_fields
+    }
+    assert natural["rows"] == [
+        {
+            "player.name": "Shohei Ohtani",
+            "season": 2022,
+            "batting.HR": 34,
+            "pitching.W": 15,
+        }
+    ]
+    assert natural["evidence"]["bound_values"] == ["Shohei Ohtani"] * 4
+    assert '"__match_player.name_2"' in natural["evidence"]["parameterized_sql"]
+    assert natural["verification"]["status"] == "verified"
+
+
+def test_public_follow_up_uses_only_previous_recipe_context_and_keeps_25_row_envelope() -> None:
+    first = run_public_query_input(question="how many RBIs did Shohei Ohtani have in 2022")
+
+    follow_up = run_public_query_input(
+        question="what about his home runs in 2022?",
+        previous_recipe=first["recipe"],
+    )
+
+    assert follow_up["recipe"]["selections"] == ["player.name", "season", "batting.HR"]
+    assert follow_up["recipe"]["predicate"]["predicates"][0]["literal"] == "Shohei Ohtani"
+    assert follow_up["recipe"]["output"] == {
+        "kind": "interactive_page",
+        "size": 25,
+        "offset": 0,
+    }
+    assert first["rows"] == [{"player.name": "Shohei Ohtani", "season": 2022, "batting.RBI": 95}]
+    assert follow_up["rows"] == [{"player.name": "Shohei Ohtani", "season": 2022, "batting.HR": 34}]
+    assert follow_up["evidence"]["bound_values"] == [
+        "Shohei Ohtani",
+        "Shohei Ohtani",
+        "Shohei Ohtani",
+        "Shohei Ohtani",
+        2022,
+    ]
+    assert follow_up["verification"]["status"] == "verified"
+
+
 def test_public_structured_recipe_without_output_uses_the_public_default() -> None:
     result = run_public_query_input(
         recipe={

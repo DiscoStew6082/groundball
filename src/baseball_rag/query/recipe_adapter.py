@@ -109,9 +109,47 @@ def _resolve_eligibility(
     return rule
 
 
-def interpret_recipe(question: str) -> RecipeAdaptation:
-    """Interpret the reviewed deterministic phrases for the initial Adapter."""
+def interpret_recipe(
+    question: str,
+    *,
+    previous_recipe: QueryRecipe | None = None,
+) -> RecipeAdaptation:
+    """Interpret reviewed deterministic phrases and recipe-derived follow-up context."""
     normalized = " ".join(question.casefold().replace("’", "'").split())
+    if normalized in {
+        "what about his home runs in 2022",
+        "what about his home runs in 2022?",
+    }:
+        player_name = _unambiguous_player_name(previous_recipe)
+        if player_name is None:
+            return Rejected("That follow-up requires one preceding player.name equals filter.")
+        return _named_player_year_recipe(player_name, 2022, "HR")
+    if normalized == (
+        "how many home runs did ohtani hit in the year he had the most wins as a pitcher"
+    ):
+        return QueryRecipe(
+            source="Batting",
+            grain="player-season",
+            selections=("player.name", "season", "batting.HR", "pitching.W"),
+            predicate=Compare("player.name", "equals", "Shohei Ohtani"),
+            ranking=RankSpec("pitching.W", "highest", 1, "include_ties"),
+        )
+    named_player_rbi = re.fullmatch(
+        r"how many (?:rbis?|runs batted in) did ([a-z .'-]+?) have in (\d{4})\??",
+        normalized,
+    )
+    if named_player_rbi:
+        player_text, year_text = named_player_rbi.groups()
+        player_name = " ".join(part.capitalize() for part in player_text.split())
+        return _named_player_year_recipe(player_name, int(year_text), "RBI")
+    named_player_home_runs = re.fullmatch(
+        r"how many home runs did ([a-z .'-]+?) (?:have|hit) in (\d{4})\??",
+        normalized,
+    )
+    if named_player_home_runs:
+        player_text, year_text = named_player_home_runs.groups()
+        player_name = " ".join(part.capitalize() for part in player_text.split())
+        return _named_player_year_recipe(player_name, int(year_text), "HR")
     if re.fullmatch(
         r"(?:players? with )?at least 30 (?:hr|home runs) and 10 pitching wins "
         r"in one season\??",
@@ -345,6 +383,42 @@ def interpret_recipe(question: str) -> RecipeAdaptation:
     ):
         return Rejected("Arbitrary formulas are not published; choose a catalog calculation.")
     return Rejected("That natural-language batting recipe is not published yet.")
+
+
+def _named_player_year_recipe(player_name: str, year: int, statistic: str) -> QueryRecipe:
+    return QueryRecipe(
+        source="Batting",
+        grain="player-season",
+        selections=("player.name", "season", f"batting.{statistic}"),
+        predicate=All(
+            (
+                Compare("player.name", "equals", player_name),
+                Compare("season", "equals", year),
+            )
+        ),
+    )
+
+
+def _unambiguous_player_name(recipe: QueryRecipe | None) -> str | None:
+    if recipe is None:
+        return None
+    predicate = recipe.predicate
+    comparisons: tuple[Compare, ...]
+    if isinstance(predicate, Compare):
+        comparisons = (predicate,)
+    elif isinstance(predicate, All):
+        comparisons = tuple(item for item in predicate.predicates if isinstance(item, Compare))
+    else:
+        return None
+    names = [
+        comparison.literal
+        for comparison in comparisons
+        if comparison.value == "player.name"
+        and comparison.operator == "equals"
+        and isinstance(comparison.literal, str)
+        and comparison.literal.strip()
+    ]
+    return names[0] if len(names) == 1 else None
 
 
 def _discipline_leader_recipe(source: str, value: str, year: int) -> QueryRecipe:

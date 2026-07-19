@@ -27,6 +27,50 @@ def test_natural_language_and_structured_input_return_the_same_recipe_and_plan()
     }
 
 
+def test_previous_recipe_is_strict_context_for_natural_questions_only():
+    previous_recipe = {
+        "source": "Batting",
+        "grain": "player-season",
+        "selections": ["player.name", "season", "batting.RBI"],
+        "predicate": {
+            "kind": "all",
+            "predicates": [
+                {
+                    "kind": "compare",
+                    "value": "player.name",
+                    "operator": "equals",
+                    "literal": "Shohei Ohtani",
+                },
+                {
+                    "kind": "compare",
+                    "value": "season",
+                    "operator": "equals",
+                    "literal": 2022,
+                },
+            ],
+        },
+    }
+
+    follow_up = run_query_input(
+        question="what about his home runs in 2022?",
+        previous_recipe=previous_recipe,
+    )
+
+    assert follow_up["recipe"]["selections"] == [
+        "player.name",
+        "season",
+        "batting.HR",
+    ]
+    assert follow_up["recipe"]["predicate"]["predicates"][0]["literal"] == "Shohei Ohtani"
+    with pytest.raises(ValueError, match="only with a natural-language question"):
+        run_query_input(recipe=previous_recipe, previous_recipe=previous_recipe)
+    with pytest.raises(ValueError, match="Unknown Query Recipe fields"):
+        run_query_input(
+            question="what about his home runs in 2022?",
+            previous_recipe={**previous_recipe, "rows": []},
+        )
+
+
 def test_stale_proof_blocks_factual_adapter_results(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

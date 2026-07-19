@@ -147,6 +147,48 @@ describe('Ground Ball answer-first application', () => {
     );
   });
 
+  it('sends only the last completed recipe with a natural follow-up and replaces after success', async () => {
+    let finishFollowUp;
+    const followUpResponse = new Promise((resolve) => {
+      finishFollowUp = resolve;
+    });
+    const requests = [];
+    await mountApp((body) => {
+      requests.push(body);
+      return requests.length === 1 ? response(rowsRun) : followUpResponse;
+    });
+
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Jose Canseco'));
+
+    inputText('Ask Ground Ball', 'what about his home runs in 2022?');
+    const postsBefore = requests.length;
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests.length - postsBefore).toBe(1);
+    expect(requests[1]).toEqual({
+      question: 'what about his home runs in 2022?',
+      previous_recipe: recipe,
+    });
+    expect(requests[1]).not.toHaveProperty('rows');
+    expect(document.body.textContent).toContain('Jose Canseco');
+
+    const followUpRun = {
+      ...rowsRun,
+      recipe: { ...recipe, selections: ['player.name', 'season', 'batting.HR'] },
+      rows: [{ 'player.name': 'Shohei Ohtani', season: 2022, 'batting.HR': 34 }],
+      returned_row_count: 1,
+      total_matched_count: 1,
+    };
+    finishFollowUp(response(followUpRun));
+
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="results"]').textContent).toContain('34'),
+    );
+    expect(document.body.textContent).not.toContain('Jose Canseco');
+  });
+
   it('keeps the last completed table visible while the next attempt is pending', async () => {
     let finishSecond;
     const secondResponse = new Promise((resolve) => {

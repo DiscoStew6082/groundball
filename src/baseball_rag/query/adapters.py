@@ -45,12 +45,17 @@ def run_query_input(
     *,
     question: str | None = None,
     recipe: Mapping[str, Any] | None = None,
+    previous_recipe: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve exactly one Adapter input into one discriminated query outcome."""
     if (question is None) == (recipe is None):
         raise ValueError("Provide exactly one natural-language question or structured recipe.")
+    if previous_recipe is not None and question is None:
+        raise ValueError(
+            "Previous recipe context is accepted only with a natural-language question."
+        )
     if question is not None:
-        adapted = interpret_recipe(question)
+        adapted = adapt_natural_query(question, previous_recipe=previous_recipe)
         if isinstance(adapted, (NeedsClarification, Rejected)):
             return _planning_payload(adapted, recipe=None)
         resolved_recipe = adapted
@@ -61,6 +66,21 @@ def run_query_input(
     if not isinstance(planned, Ready):
         return _planning_payload(planned, recipe=resolved_recipe)
     return _execution_payload(resolved_recipe, planned, execute(planned.plan))
+
+
+def adapt_natural_query(
+    question: str,
+    *,
+    previous_recipe: Mapping[str, Any] | None = None,
+) -> QueryRecipe | NeedsClarification | Rejected:
+    """Strictly parse optional recipe-only context at the shared interpretation seam."""
+    resolved_previous = None
+    if previous_recipe is not None:
+        resolved_previous = recipe_from_dict(previous_recipe)
+        previous_plan = prepare(resolved_previous)
+        if not isinstance(previous_plan, Ready):
+            raise ValueError("Previous recipe context must be a valid completed Query Recipe.")
+    return interpret_recipe(question, previous_recipe=resolved_previous)
 
 
 def recipe_to_dict(recipe: QueryRecipe) -> dict[str, Any]:

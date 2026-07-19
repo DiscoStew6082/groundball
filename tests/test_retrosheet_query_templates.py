@@ -14,6 +14,9 @@ from baseball_rag.db.retrosheet_query_templates import (
     match_published_retrosheet_template,
     match_retrosheet_template,
 )
+from baseball_rag.retrosheet_event_capabilities import (
+    published_retrosheet_event_capabilities,
+)
 from baseball_rag.retrosheet_query import execute_retrosheet_query
 
 
@@ -63,8 +66,46 @@ def test_matcher_does_not_accept_primary_lahman_questions():
 )
 def test_public_release_rejects_unbundled_retrosheet_families(
     question: str,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    advertised = published_retrosheet_event_capabilities()
+    assert [item.capability_id for item in advertised] == ["pitcher_strikeout_side"]
     assert match_published_retrosheet_template(question) is None
+
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", "/proof/release-bundle")
+    with pytest.raises(
+        ValueError,
+        match="not a published Retrosheet capability",
+    ):
+        execute_retrosheet_query(question)
+
+
+@pytest.mark.parametrize(
+    ("question", "template_id"),
+    [
+        (
+            "how many times did Nolan Ryan strike out the side in his career",
+            "pitcher_strikeout_side_count",
+        ),
+        (
+            "when did Nolan Ryan strike out the side in 1973",
+            "pitcher_strikeout_side_game_log",
+        ),
+        (
+            "which pitchers have the most strike out the side games in their careers",
+            "pitcher_strikeout_side_leaders",
+        ),
+    ],
+)
+def test_public_release_matcher_accepts_every_bundled_retrosheet_family(
+    question: str,
+    template_id: str,
+) -> None:
+    matched = match_published_retrosheet_template(question)
+
+    assert matched is not None
+    assert matched.template_id == template_id
 
 
 def test_templates_use_the_versioned_team_reference_instead_of_the_legacy_team_map():
