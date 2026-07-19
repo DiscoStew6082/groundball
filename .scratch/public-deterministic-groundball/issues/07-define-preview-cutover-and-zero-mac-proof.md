@@ -1,7 +1,7 @@
 # Define preview cutover and zero-Mac proof
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Prototype the website-framed hosted Ground Ball experience](03-prototype-groundball-app-interior.md), [Define parity and release gates](06-define-parity-and-release-gates.md)
 
 ## Question
