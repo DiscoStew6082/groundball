@@ -20,6 +20,22 @@ _Avoid_: Docker manifest, deployment record
 A provider-specific record binding one unchanged Release Bundle to a deployed image, runtime configuration, deployment identity, and verified hosting evidence.
 _Avoid_: release manifest, data release
 
+**Public Admission Policy**:
+The server-owned rule that decides whether a public Query Run may start before deterministic execution, using the published request, visitor, deployment-capacity, and hosting-allowance limits.
+_Avoid_: rate limiter, request queue
+
+**Busy Rejection**:
+A retryable public outcome returned when visitor or deployment execution capacity is occupied, with a truthful retry interval and no queued or background work.
+_Avoid_: queued request, generic failure
+
+**Export Ceiling**:
+The maximum complete row-and-byte envelope for one public export. A result beyond the envelope is refused with narrowing guidance and is never silently truncated.
+_Avoid_: export page, partial download
+
+**Allowance Pause**:
+The public application state that stops new Query Runs at a self-imposed free-plan safety target intended to leave headroom before the hosting provider's hard pause, without guaranteeing reserved account capacity.
+_Avoid_: billing upgrade, provider outage
+
 ## Architecture Vocabulary
 
 Use these words consistently:

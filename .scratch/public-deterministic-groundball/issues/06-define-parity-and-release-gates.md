@@ -2,7 +2,7 @@
 
 Type: `grilling`
 Status: open
-Blocked by: [Prove the stateless Svelte/FastAPI Vercel fit](12-prove-stateless-svelte-fastapi-vercel-fit.md), [Choose the packaged deterministic data release](04-choose-packaged-data-release.md), [Set public query, export, and abuse guardrails](05-set-public-query-export-and-abuse-guardrails.md)
+Blocked by: [Prove the stateless Svelte/FastAPI Vercel fit](12-prove-stateless-svelte-fastapi-vercel-fit.md), [Choose the packaged deterministic data release](04-choose-packaged-data-release.md), [Set public query, export, and abuse guardrails](05-set-public-query-export-and-abuse-guardrails.md), [Prove stateless Public Admission Policy feasibility](13-prove-stateless-public-admission-policy-feasibility.md)
 
 ## Question
 
