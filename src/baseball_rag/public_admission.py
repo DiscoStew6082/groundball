@@ -7,10 +7,10 @@ import hmac
 import math
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from threading import Lock
-from typing import Protocol
+from typing import Iterator, Protocol
 
 RUN_DEADLINE = timedelta(seconds=10)
 LEASE_SAFETY_MARGIN = timedelta(seconds=5)
@@ -69,15 +69,44 @@ class AdmissionTransition:
     outcome: AdmissionOutcome
 
 
+class CoordinationStateError(ValueError):
+    """Shared state is present but cannot safely authorize a Query Run."""
+
+
+@dataclass(frozen=True)
+class CasVersion:
+    """Opaque store-specific version retained only for a matching CAS write."""
+
+    _token: object = field(repr=False)
+
+
+@dataclass(frozen=True)
+class CasSnapshot:
+    state: AdmissionState
+    version: CasVersion
+    observed_at: datetime | None = None
+    exists: bool = True
+
+    def __iter__(self) -> Iterator[AdmissionState | CasVersion]:
+        """Preserve state/version unpacking while time remains snapshot-scoped."""
+        yield self.state
+        yield self.version
+
+
 class CasStore(Protocol):
     """Versioned coordination state shared by stateless server instances."""
 
     @property
     def deployment_shared(self) -> bool: ...
 
-    def read(self) -> tuple[AdmissionState, int]: ...
+    def read(self) -> CasSnapshot: ...
 
-    def compare_and_swap(self, version: int, state: AdmissionState) -> bool: ...
+    def compare_and_swap(self, version: CasVersion, state: AdmissionState) -> bool: ...
+
+
+@dataclass(frozen=True)
+class _MemoryVersion:
+    value: int
 
 
 class InMemoryCasStore:
@@ -85,6 +114,7 @@ class InMemoryCasStore:
 
     def __init__(self, state: AdmissionState | None = None) -> None:
         self._state = state or AdmissionState()
+        self._exists = state is not None
         self._version = 0
         self._lock = Lock()
 
@@ -92,15 +122,20 @@ class InMemoryCasStore:
     def deployment_shared(self) -> bool:
         return False
 
-    def read(self) -> tuple[AdmissionState, int]:
+    def read(self) -> CasSnapshot:
         with self._lock:
-            return self._state, self._version
+            return CasSnapshot(
+                state=self._state,
+                version=CasVersion(_MemoryVersion(self._version)),
+                exists=self._exists,
+            )
 
-    def compare_and_swap(self, version: int, state: AdmissionState) -> bool:
+    def compare_and_swap(self, version: CasVersion, state: AdmissionState) -> bool:
         with self._lock:
-            if version != self._version:
+            if version != CasVersion(_MemoryVersion(self._version)):
                 return False
             self._state = state
+            self._exists = True
             self._version += 1
             return True
 
@@ -122,50 +157,54 @@ class CasCoordinator:
     def admit(self, attempt: AdmissionAttempt) -> AdmissionOutcome:
         try:
             for _ in range(self._max_attempts):
-                state, version = self._store.read()
+                snapshot = self._store.read()
                 transition = decide_admission(
-                    state,
-                    replace(attempt, now=self._clock()),
+                    snapshot.state,
+                    replace(attempt, now=self._snapshot_time(snapshot)),
                 )
                 if transition.outcome.kind != "admitted":
                     return transition.outcome
-                if self._store.compare_and_swap(version, transition.state):
+                if self._store.compare_and_swap(snapshot.version, transition.state):
                     return transition.outcome
+        except CoordinationStateError:
+            return AdmissionOutcome("allowance_paused", "monthly_budget_invalid")
         except Exception:  # noqa: BLE001 - the policy must fail closed on Adapter failure
             return AdmissionOutcome("provider_unavailable", "coordination_store_unavailable")
         return AdmissionOutcome("provider_unavailable", "coordination_contention")
 
+    def _snapshot_time(self, snapshot: CasSnapshot) -> datetime:
+        return snapshot.observed_at if snapshot.observed_at is not None else self._clock()
+
     def readiness(self) -> AdmissionOutcome:
         """Check reachability and a budget valid now or safe for UTC rollover."""
-        now = self._clock()
         try:
-            state, _ = self._store.read()
+            snapshot = self._store.read()
+            now = self._snapshot_time(snapshot)
+        except CoordinationStateError:
+            return AdmissionOutcome("allowance_paused", "monthly_budget_invalid")
         except Exception:  # noqa: BLE001 - readiness must not leak Adapter details
             return AdmissionOutcome("provider_unavailable", "coordination_store_unavailable")
-        invalid = _budget_invalid_outcome(state.monthly_budget, now)
+        invalid = _budget_invalid_outcome(snapshot.state.monthly_budget, now)
         if invalid is not None:
             return invalid
         return AdmissionOutcome("ready", "public_admission_ready")
 
     def initialize_current_budget(self) -> bool:
         """Create the current zero budget once without replacing any record."""
-        now = self._clock()
-        period = _period_key(now)
-        if period is None:
-            return False
         try:
             for _ in range(self._max_attempts):
-                state, version = self._store.read()
-                if state.monthly_budget is not None:
+                snapshot = self._store.read()
+                period = _period_key(self._snapshot_time(snapshot))
+                if period is None or snapshot.exists or snapshot.state.monthly_budget is not None:
                     return False
                 initialized = replace(
-                    state,
+                    snapshot.state,
                     monthly_budget=MonthlyBudget(
                         period=f"{period[0]:04d}-{period[1]:02d}",
                         charged_starts=0,
                     ),
                 )
-                if self._store.compare_and_swap(version, initialized):
+                if self._store.compare_and_swap(snapshot.version, initialized):
                     return True
         except Exception:  # noqa: BLE001 - initialization must stop on Adapter failure
             return False
@@ -174,11 +213,11 @@ class CasCoordinator:
     def release(self, run_id: str) -> bool:
         try:
             for _ in range(self._max_attempts):
-                state, version = self._store.read()
-                released = release_run(state, run_id)
-                if released == state:
+                snapshot = self._store.read()
+                released = release_run(snapshot.state, run_id)
+                if released == snapshot.state:
                     return False
-                if self._store.compare_and_swap(version, released):
+                if self._store.compare_and_swap(snapshot.version, released):
                     return True
         except Exception:  # noqa: BLE001 - an expiring lease remains the fail-safe
             return False

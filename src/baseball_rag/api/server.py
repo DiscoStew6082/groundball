@@ -5,7 +5,7 @@ import html
 import os
 import secrets
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,6 +30,7 @@ from baseball_rag.public_admission import (
     InMemoryCasStore,
     visitor_digest,
 )
+from baseball_rag.public_admission_blob import HttpTransport
 from baseball_rag.public_execution import (
     ExecutionOutcome,
     ExecutionRequest,
@@ -51,6 +52,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from baseball_rag.release_runtime import release_readiness
 
         release_readiness()
+        _configure_public_admission_if_declared()
         _require_shared_public_admission()
     yield
 
@@ -73,9 +75,18 @@ _REPOSITORY_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 _PACKAGE_WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
 _PUBLIC_VISITOR_COOKIE = "groundball_visitor"
 _PUBLIC_EXECUTION_DEADLINE_SECONDS = 10.0
+_BLOB_CONFIGURATION_ENV_VARS = frozenset(
+    {
+        "GROUNDBALL_BLOB_NAMESPACE",
+        "GROUNDBALL_BLOB_PROOF_ID",
+        "GROUNDBALL_BLOB_STATE_ORIGIN",
+        "GROUNDBALL_BLOB_TOKEN",
+        "GROUNDBALL_VISITOR_DIGEST_KEY",
+    }
+)
 
-# Wave 3 will configure the real shared-store Adapter. Import-time process state
-# is intentionally never authority for a public deployment.
+# Wave 3 installs the shared Blob Adapter from strict startup configuration.
+# Import-time process state is intentionally never coordination authority.
 _public_admission: CasCoordinator | None = None
 _visitor_digest_key: bytes | None = None
 _public_admission_is_shared = False
@@ -101,6 +112,37 @@ def configure_public_admission(
     _visitor_digest_key = bytes(digest_key)
     _public_admission_is_shared = True
     return coordinator
+
+
+def configure_public_admission_from_environment(
+    *,
+    environment: Mapping[str, str] | None = None,
+    transport: HttpTransport | None = None,
+) -> CasCoordinator:
+    """Build the Blob Adapter and install it through the provider-neutral seam."""
+    from baseball_rag.public_admission_blob import load_blob_public_admission
+
+    configured = load_blob_public_admission(
+        os.environ if environment is None else environment,
+        transport=transport,
+    )
+    return configure_public_admission(
+        store=configured.store,
+        digest_key=configured.digest_key,
+    )
+
+
+def _configure_public_admission_if_declared() -> None:
+    if _public_admission is not None:
+        return
+    if not any(name in os.environ for name in _BLOB_CONFIGURATION_ENV_VARS):
+        return
+    try:
+        configure_public_admission_from_environment()
+    except ValueError:
+        raise RuntimeError(
+            "Public startup requires valid shared public admission configuration."
+        ) from None
 
 
 def _shared_public_admission_components() -> tuple[CasCoordinator, bytes]:
