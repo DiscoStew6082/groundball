@@ -14,10 +14,10 @@ Reach a reviewed, proven zero-Mac Ground Ball application that preserves the det
 - Ask HITL questions one at a time and include a recommended answer.
 - Preserve the website's dark, window-framed visual language. Ground Ball should look like an application launched from the Start menu, while its interior may be redesigned freely.
 - The existing Mac LaunchAgents and tunnel are disabled. They must never be used as a fallback during design, preview, cutover, or rollback.
-- PR #19 completed the clean Queryable Ground Ball cutover. Remaining tickets must build on the Published Query Catalog, Query Recipe, Query Plan, Query Run, and Coverage Report contracts; they must not restore legacy request models, compatibility Adapters, or fallback query lanes.
+- PR #19 completed the clean Queryable Ground Ball cutover. Any follow-on implementation must build on the Published Query Catalog, Query Recipe, Query Plan, Query Run, and Coverage Report contracts; it must not restore legacy request models, compatibility Adapters, or fallback query lanes.
 - Hosting budget: Vercel Hobby at $0 is the first proof target. Cloudflare Containers on Workers Paid at approximately $5 per month is the fallback. Hugging Face PRO, Vercel PRO, Google Cloud, and other paid hosting are not approved.
 - Vercel Hobby is acceptable only for this personal, non-commercial public demo. If the product becomes commercial, hosting must be decided again rather than silently violating Hobby terms.
-- The stateless Svelte/FastAPI Vercel proof and the Queryable Ground Ball implementation are complete. This map now authorizes only the remaining planning and bounded prototypes needed to decide the website-frame integration, packaged release, public guardrails, parity gates, and cutover proof. It does not authorize a public or production deployment, paid-plan activation, production-domain changes, secret changes, tunnel deletion, or other production mutations.
+- The stateless Svelte/FastAPI Vercel proof, Queryable Ground Ball implementation, and this map's planning route are complete. The recorded decisions define the separate implementation and release handoff. This map does not authorize a public or production deployment, paid-plan activation, production-domain changes, secret changes, tunnel deletion, or other production mutations.
 
 ## Decisions so far
 
@@ -36,11 +36,11 @@ Reach a reviewed, proven zero-Mac Ground Ball application that preserves the det
 
 ## Not yet specified
 
-None currently. The remaining route is precise enough to live entirely in open tickets.
+None. The planning route is complete; implementation and release execution require a separate handoff and Stewart's explicit approval.
 
 ## Out of scope
 
-- Performing a public production deployment, website cutover, or production-domain change; those mutations require the remaining release and cutover decisions plus Stewart's explicit approval.
+- Performing a public production deployment, website cutover, or production-domain change; those mutations require a separate implementation and release handoff plus Stewart's explicit approval.
 - [Prove session-affine Cloudflare Container fit](issues/11-prove-session-affine-cloudflare-container-fit.md) — Ruled out of the current route because the stateless Vercel proof passed; if future evidence invalidates that result, Cloudflare requires a fresh effort and Stewart's explicit Workers Paid approval.
 - [The Worker/D1 runtime investigation](issues/08-confirm-current-cloudflare-runtime-constraints.md) and reimplementation of the proven deterministic Python query engine as a TypeScript Worker/D1 system; hosting the merged Svelte/FastAPI/DuckDB application is the narrower route.
 - Paid Hugging Face, Vercel PRO, Google Cloud, or an unbounded pay-as-you-go host.
