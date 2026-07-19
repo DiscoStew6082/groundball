@@ -310,8 +310,10 @@ Wave 4 is implemented on `implementation/public-deterministic-groundball-results
 ### Browser contract
 
 - `lastCompletedRun` and `attemptOutcome` are separate state. Pending work, clarification, busy, rate limit, timeout, export ceiling, allowance pause, provider unavailability, unsupported/rejected, failure, malformed response, and other non-completed outcomes cannot erase or replace the completed rows/no-data run.
+- Every request activates Query before transport begins. Clarification remains above the completed result; every latest non-clarification attempt is labeled and rendered before the preserved completed result, including requests initiated from Browse fields.
 - Structured non-2xx JSON is retained rather than collapsed into a generic error. Exact `retry_at` values and export filter guidance are rendered. One user action produces one request; there is no queue, hidden retry, redirect, alternate endpoint, Mac, tunnel, LLM, paid fallback, or download on refusal.
-- Completed rows and successful no-data update browser-local history. Details, evidence, recipe editing, exports, and pagination remain attached to the last completed run. Export success creates exactly one complete download without replacing that run.
+- Completed rows and successful no-data update browser-local history. Details, evidence, recipe editing, exports, and pagination remain attached to the last completed run. Export success creates exactly one complete download without replacing that run; refused or malformed exports close Details, return focus to the result controls, and reveal the attempt above the preserved result.
+- Public Browse-fields recipes begin at 25 rows while local Browse-fields recipes retain 100. Public paginated result titles report the returned page size rather than calling it the total matching count; legacy/local payloads without pagination metadata retain the matching-rows title.
 - The result surface reports “returned X of Y matched,” including exhausted pages, and exposes labeled 25/50/100 page-size, Previous, and Next controls with deterministic offset-zero page-size changes. Responsive CSS stacks full-width controls below 600 px for the required 360–430 px range while preserving the dark shell and existing focus-trap/return behavior.
 
 ### Wave 4 TDD and local verification (2026-07-19)
@@ -328,7 +330,7 @@ Final local outputs before documentation closeout were:
 - `uv run mypy src/baseball_rag/`: passed for `62` source files.
 - Catalog compatibility, raw inventory, Coverage Report regeneration check, and coverage proof validator: passed with no generated diff.
 - Deterministic eval matrix: `17/17` passing.
-- `npm --prefix web test`: `21/21` passing. Tests cover pending state, every named refusal class, malformed and clarification outcomes, exact retries/guidance, one-request actions, no-data/history, exhausted pagination, same-recipe request bodies, accessible labels, one successful download, and zero refused downloads.
+- `npm --prefix web test`: `24/24` passing. Tests cover public/local Browse-fields defaults, truthful partial and exhausted page titles, pending state, every named refusal class, malformed and clarification outcomes, exact retries/guidance, cross-surface Query activation, latest-attempt order, Details teardown/focus, one-request actions, no-data/history, same-recipe request bodies, accessible labels, one successful download, and zero refused downloads.
 - `npm --prefix web run build`: passed with `113` modules transformed.
 - Configured pre-commit hooks passed: ruff, ruff-format, mypy, trailing whitespace, EOF, YAML, and merge-conflict checks.
 

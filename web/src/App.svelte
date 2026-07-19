@@ -95,6 +95,7 @@
   async function runRequest(body) {
     if (pending) return;
     const endpoint = capabilities?.query?.endpoint ?? '/api/query-runs';
+    activeSurface = 'Query';
     pending = true;
     attemptOutcome = null;
     error = '';
@@ -105,7 +106,6 @@
         body: JSON.stringify(body),
       });
       const payload = await readResponse(response);
-      activeSurface = 'Query';
       if (['rows', 'no_data'].includes(payload.kind)) {
         lastCompletedRun = payload;
         completedQuestion = submittedQuestion;
@@ -177,7 +177,11 @@
       groupings: [],
       ranking: null,
       ordering: [],
-      output: { kind: 'interactive_page', size: 100, offset: 0 },
+      output: {
+        kind: 'interactive_page',
+        size: capabilities?.mode === 'public' ? 25 : 100,
+        offset: 0,
+      },
     });
   }
 
@@ -236,6 +240,10 @@
           detail: messageFrom(caught, 'Ground Ball could not export that result.'),
         };
       }
+      activeSurface = 'Query';
+      detailsOpen = false;
+      await tick();
+      detailsButton?.focus({ preventScroll: true });
     } finally {
       pending = false;
     }
@@ -244,6 +252,7 @@
   function outcomeTitle(run) {
     if (!run) return '';
     const kind = run.kind ?? run.error;
+    if (kind === 'rows' && run.pagination) return `${run.returned_row_count} rows returned`;
     if (kind === 'rows') return `${run.rows.length} matching rows`;
     if (kind === 'no_data') return 'No matching rows';
     if (kind === 'needs_clarification') return 'One detail needed';
@@ -360,8 +369,18 @@
             </section>
           {/if}
 
+          {#if attemptOutcome && attemptOutcome.kind !== 'needs_clarification'}
+            <section class="run-card problem attempt-outcome" aria-label="Latest attempt" aria-live="polite">
+              <small>LATEST ATTEMPT</small><h2>{outcomeTitle(attemptOutcome)}</h2>
+              {#if attemptOutcome.detail}<p>{attemptOutcome.detail}</p>{/if}
+              {#if attemptOutcome.retry_at && !attemptOutcome.detail?.includes(attemptOutcome.retry_at)}<p>Retry at {attemptOutcome.retry_at}.</p>{/if}
+              {#if attemptOutcome.guidance}<p>{attemptOutcome.guidance}</p>{/if}
+              {#if attemptOutcome.reason}<p>{attemptOutcome.reason}</p>{/if}
+            </section>
+          {/if}
+
           {#if lastCompletedRun}
-            <section class="run-card" aria-live="polite">
+            <section class="run-card" aria-label="Completed query result" aria-live="polite">
               {#if completedQuestion}<p class="feed-question">{completedQuestion}</p>{/if}
               <small>{lastCompletedRun.kind.replaceAll('_', ' ')}</small><h2>{outcomeTitle(lastCompletedRun)}</h2>
               {#if lastCompletedRun.reason}<p>{lastCompletedRun.reason}</p>{/if}
@@ -392,15 +411,6 @@
             </section>
           {/if}
 
-          {#if attemptOutcome && attemptOutcome.kind !== 'needs_clarification'}
-            <section class="run-card problem attempt-outcome" aria-live="polite">
-              <small>LATEST ATTEMPT</small><h2>{outcomeTitle(attemptOutcome)}</h2>
-              {#if attemptOutcome.detail}<p>{attemptOutcome.detail}</p>{/if}
-              {#if attemptOutcome.retry_at && !attemptOutcome.detail?.includes(attemptOutcome.retry_at)}<p>Retry at {attemptOutcome.retry_at}.</p>{/if}
-              {#if attemptOutcome.guidance}<p>{attemptOutcome.guidance}</p>{/if}
-              {#if attemptOutcome.reason}<p>{attemptOutcome.reason}</p>{/if}
-            </section>
-          {/if}
           {#if error}<div class="inline-error" role="alert">{error}</div>{/if}
         </article>
       {/if}

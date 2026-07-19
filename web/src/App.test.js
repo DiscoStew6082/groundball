@@ -89,9 +89,12 @@ function inputText(label, value) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-async function mountApp(runHandler = () => response(rowsRun)) {
+async function mountApp(
+  runHandler = () => response(rowsRun),
+  { capabilities: capabilitiesOverride = capabilities } = {},
+) {
   const fetchMock = vi.fn((url, options) => {
-    if (url === '/api/capabilities') return response(capabilities);
+    if (url === '/api/capabilities') return response(capabilitiesOverride);
     if (url === '/api/query-catalog') return response(catalog);
     if (url === '/api/query-runs') return runHandler(JSON.parse(options.body));
     throw new Error(`Unexpected URL ${url}`);
@@ -124,7 +127,8 @@ describe('Ground Ball answer-first application', () => {
       '/api/query-runs',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ question: '40-40' }) }),
     );
-    expect(document.body.textContent).toContain('2 matching rows');
+    expect(document.body.textContent).toContain('2 rows returned');
+    expect(document.body.textContent).not.toContain('2 matching rows');
 
     document.querySelector('[aria-label="Open query details"]').click();
     await tick();
@@ -189,6 +193,43 @@ describe('Ground Ball answer-first application', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it('shows a Browse-fields refusal above the preserved completed result with one request', async () => {
+    const refusal = {
+      error: 'rate_limited',
+      detail: 'Three starts per minute reached.',
+      retry_at: '2026-07-19T12:01:00+00:00',
+    };
+    let runCalls = 0;
+    const fetchMock = await mountApp(() => {
+      runCalls += 1;
+      return runCalls === 1 ? response(rowsRun) : response(refusal, false, 429);
+    });
+
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Jose Canseco'));
+
+    document.querySelector('[aria-label="Open application navigation"]').click();
+    await tick();
+    [...document.querySelectorAll('[role="menu"] button')]
+      .find((button) => button.textContent.includes('Browse fields'))
+      .click();
+    await tick();
+    expect(document.body.textContent).toContain('Browse fields');
+
+    const postsBeforeFieldAction = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST').length;
+    document.querySelector('[aria-label="Use Batting.GIDP"]').click();
+
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Latest attempt"]')).not.toBeNull());
+    const latestAttempt = document.querySelector('[aria-label="Latest attempt"]');
+    const preservedResult = document.querySelector('[aria-label="Completed query result"]');
+    expect(document.body.textContent).not.toContain('Browse fields');
+    expect(latestAttempt.textContent).toContain('Three starts per minute reached.');
+    expect(preservedResult.querySelector('[data-testid="results"]').textContent).toContain('Jose Canseco');
+    expect(latestAttempt.compareDocumentPosition(preservedResult) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const postsAfterFieldAction = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST').length;
+    expect(postsAfterFieldAction - postsBeforeFieldAction).toBe(1);
+  });
+
   it.each([
     ['unsupported query', { kind: 'rejected', reason: 'That comparison is not published.' }, 'That comparison is not published.'],
     ['unavailable query', { kind: 'unavailable', reason: 'Coverage proof is unavailable.' }, 'Coverage proof is unavailable.'],
@@ -231,6 +272,16 @@ describe('Ground Ball answer-first application', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it('retains the local matching-rows title for results without pagination metadata', async () => {
+    const { pagination: _pagination, returned_row_count: _returned, total_matched_count: _total, ...localRun } = rowsRun;
+    await mountApp(() => response(localRun));
+
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+
+    await vi.waitFor(() => expect(document.body.textContent).toContain('2 matching rows'));
+    expect(document.body.textContent).not.toContain('2 rows returned');
+  });
+
   it('paginates the same completed recipe by changing only output size and offset', async () => {
     const firstPage = {
       ...rowsRun,
@@ -255,6 +306,8 @@ describe('Ground Ball answer-first application', () => {
 
     document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
     await vi.waitFor(() => expect(document.body.textContent).toContain('returned 2 of 52 matched'));
+    expect(document.body.textContent).toContain('2 rows returned');
+    expect(document.body.textContent).not.toContain('2 matching rows');
     expect(document.querySelector('[aria-label="Previous page"]').disabled).toBe(true);
     expect(document.querySelector('[aria-label="Next page"]').disabled).toBe(false);
 
@@ -312,6 +365,8 @@ describe('Ground Ball answer-first application', () => {
     document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
 
     await vi.waitFor(() => expect(document.body.textContent).toContain('returned 0 of 52 matched'));
+    expect(document.body.textContent).toContain('0 rows returned');
+    expect(document.body.textContent).not.toContain('0 matching rows');
     expect(document.querySelector('[aria-label="Previous page"]').disabled).toBe(false);
     expect(document.querySelector('[aria-label="Next page"]').disabled).toBe(true);
     expect(document.querySelector('[data-testid="results"]')).toBeNull();
@@ -361,15 +416,22 @@ describe('Ground Ball answer-first application', () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain('Jose Canseco'));
     document.querySelector('[aria-label="Open query details"]').click();
     await tick();
+    const postsBeforeExport = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST').length;
     [...document.querySelectorAll('.details-actions button')]
       .find((button) => button.textContent === 'Export JSON')
       .click();
 
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Add filters to narrow the result, then export again.'));
-    expect(document.body.textContent).toContain('Jose Canseco');
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+    const latestAttempt = document.querySelector('[aria-label="Latest attempt"]');
+    const preservedResult = document.querySelector('[aria-label="Completed query result"]');
+    expect(latestAttempt.textContent).toContain('Add filters to narrow the result, then export again.');
+    expect(preservedResult.querySelector('[data-testid="results"]').textContent).toContain('Jose Canseco');
+    expect(latestAttempt.compareDocumentPosition(preservedResult) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.activeElement.getAttribute('aria-label')).toBe('Open query details');
     expect(clickSpy).not.toHaveBeenCalled();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const postsAfterExport = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST').length;
+    expect(postsAfterExport - postsBeforeExport).toBe(1);
   });
 
   it('renders a focused clarification inline and applies its structured recipe choice', async () => {
@@ -464,5 +526,34 @@ describe('Ground Ball answer-first application', () => {
     const submitted = JSON.parse(fetchMock.mock.calls.at(-1)[1].body);
     expect(submitted.recipe.selections).toEqual(['Batting.GIDP']);
     expect(submitted.recipe.grain).toBe('raw_rows');
+    expect(submitted.recipe.output).toEqual({ kind: 'interactive_page', size: 100, offset: 0 });
+  });
+
+  it('uses the public default page size when browsing a raw field', async () => {
+    const publicCapabilities = { ...capabilities, mode: 'public' };
+    const requests = [];
+    await mountApp(
+      (body) => {
+        requests.push(body);
+        return response(rowsRun);
+      },
+      { capabilities: publicCapabilities },
+    );
+
+    document.querySelector('[aria-label="Open application navigation"]').click();
+    await tick();
+    [...document.querySelectorAll('[role="menu"] button')]
+      .find((button) => button.textContent.includes('Browse fields'))
+      .click();
+    await tick();
+
+    document.querySelector('[aria-label="Use Batting.GIDP"]').click();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+
+    expect(requests[0].recipe.output).toEqual({
+      kind: 'interactive_page',
+      size: 25,
+      offset: 0,
+    });
   });
 });
