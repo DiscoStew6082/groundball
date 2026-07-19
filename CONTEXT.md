@@ -16,6 +16,15 @@ This is the canonical current architecture and domain context. Historical implem
 - Biography generation and open explanation are auxiliary. Lahman/DuckDB remains primary for extractable biography stat claims; Retrosheet may contribute optional consensus evidence.
 - There is no backwards-compatibility contract for deleted request, routing, stat-registry, grounded-template, review-queue, eval-manifest, or Go-verifier surfaces.
 
+## Current delivery
+
+The active delivery effort is the zero-Mac deterministic public release. Its execution source is `docs/public-release-implementation-ledger.md`; the completed Wayfinder map is supporting decision evidence, not an active ticket frontier.
+
+- Continuation branch: `implementation/public-deterministic-groundball-release`, based on `origin/main` at `a4084f1`.
+- Completed foundation: the immutable Release Bundle and offline container proof merged in PR #23 at `a4084f1`.
+- Current opportunity: finish the Public Admission Policy, public result envelope, deterministic parity, candidate proof, and release preparation.
+- External deployment, Blob or secret creation, production promotion, website cutover, paid services, Cloudflare activation, and Mac or tunnel operations remain outside current authorization until Stewart approves the exact action.
+
 ## Current modules
 
 - `src/baseball_rag/query/contracts.py`: recipe, plan, outcomes, and evidence types.
@@ -28,10 +37,36 @@ This is the canonical current architecture and domain context. Historical implem
 - `src/baseball_rag/query/adapters.py`: shared rendering-neutral HTTP, CLI, and browser payloads.
 - `src/baseball_rag/retrosheet_query.py`: separate deterministic Retrosheet adapter.
 - `src/baseball_rag/api/server.py`: FastAPI routes and built Svelte application.
+- `src/baseball_rag/release_bundle.py`: immutable Release Bundle identity, assembly, and verification.
+- `src/baseball_rag/release_runtime.py`: offline release startup and readiness checks.
+
+## Architecture ledger registry
+
+### Current opportunities
+
+- 2026-07-19: Public Deterministic Ground Ball release. Finish the server-owned admission seam, shared coordination Adapter, bounded public results and exports, named parity corpus, candidate identity, all-or-nothing gates, protected proof, and separately approved cutover. Preserve the Query contracts, exact Coverage Report, Release Bundle, dark Svelte/FastAPI shell, `$0` Vercel Hobby boundary, and zero-Mac rule. Detailed work and verification live in `docs/public-release-implementation-ledger.md`.
+
+### Completed work
+
+- 2026-07-18, merge `f77b1df`: Queryable Ground Ball clean cutover. Public contract: Published Query Catalog to Query Recipe to Query Plan to Query Run is the only structured-query path; deleted compatibility surfaces stay deleted.
+- 2026-07-19, merge `a4084f1`: Public Release Bundle foundation. Public contract: one immutable offline bundle contains the approved Lahman, catalog, proof, compact Retrosheet, provenance, and license payload and exposes only bundle-backed deterministic capabilities.
+
+### Frozen seams
+
+- Preserve the Published Query Catalog, Query Recipe, Query Plan, Query Run, QueryEvidence, and Coverage Report contracts.
+- Preserve the provider-neutral Release Bundle and provider-specific Deployment Attestation split.
+- Preserve one Svelte/FastAPI application for local and hosted use; public mode disables local-only capabilities at the server.
+- Do not add a Mac, tunnel, LLM, paid plan, alternate host, queue, hidden retry, legacy Adapter, or second query Interface as a fallback.
+
+### Update rule
+
+As a release wave lands, record its commit and evidence in the implementation ledger. Move the opportunity here to completed only when no repository implementation, candidate proof, or approved release action remains.
 
 ## Release gates
 
-The generated Coverage Report is the release proof. It contains six fixed gates and currently covers 5,253 obligations with zero uncovered. Its identity includes the report schema, complete catalog assets, semantic data manifest, query compiler contract sources, deterministic eval matrix, source row fingerprints, and data release.
+The generated Coverage Report is the deterministic query proof. It contains six fixed gates and currently covers 5,253 obligations with zero uncovered. Its identity includes the report schema, complete catalog assets, semantic data manifest, query compiler contract sources, deterministic eval matrix, source row fingerprints, and data release.
+
+The public release adds all-or-nothing bundle, admission, parity, performance, resource, security, live Browser, candidate-identity, attestation, and cutover gates. The canonical checklist is `docs/public-release-implementation-ledger.md`; the commands below are the baseline, not the complete release proof.
 
 Required checks:
 
@@ -47,9 +82,7 @@ npm --prefix web run build
 
 ## Working rules
 
-- Use TDD for development work.
-- Use subagents where possible and run an independent code-review subagent after every task.
 - Do not restore a deleted compatibility facade without an explicit product decision.
 - Regenerate the Coverage Report after any catalog, query implementation, or eval-matrix change.
-- Keep the browser smoke at `http://127.0.0.1:7861/`; verify `who had the most RBIs in 1962` returns Tommy Davis with 153 RBI.
-- A coding task is complete only after review, commit, push, green CI, and an explanation of any remaining unstaged changes.
+- Treat the current `AGENTS.md` as the instruction source; do not resurrect removed workflow mandates from historical branches or files.
+- Preserve unrelated worktree changes and use the active release ledger as the continuation source.
