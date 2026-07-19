@@ -20,7 +20,9 @@ from baseball_rag.public_admission import (
 from baseball_rag.public_execution import (
     ExecutionOutcome,
     ExecutionRequest,
+    SubprocessExecutionRunner,
 )
+from baseball_rag.public_results import compact_json_bytes
 
 client = TestClient(app)
 NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
@@ -302,6 +304,73 @@ def test_public_query_run_is_admitted_once_and_releases_only_its_lease(
     assert [item[0] for item in state.starts_by_visitor] == [
         visitor_digest(token, digest_key=b"test-visitor-digest-key" * 2)
     ]
+
+
+def test_public_api_runs_the_real_result_policy_in_the_hard_stop_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_public_proof(monkeypatch)
+    monkeypatch.setattr(api_server, "_public_execution_runner", SubprocessExecutionRunner())
+    public_client = TestClient(app)
+
+    page = public_client.post("/api/query-runs", json={"question": "40-40"})
+    invalid = public_client.post(
+        "/api/query-runs",
+        json={
+            "recipe": {
+                "source": "Batting",
+                "grain": "raw_rows",
+                "selections": ["Batting.playerID"],
+                "output": {"kind": "interactive_page", "size": 101, "offset": 0},
+            }
+        },
+    )
+    refused_export = public_client.post(
+        "/api/query-runs",
+        json={
+            "recipe": {
+                "source": "TeamReference",
+                "grain": "raw_rows",
+                "selections": ["TeamReference.name"],
+                "output": {"kind": "export", "format": "json"},
+            }
+        },
+    )
+
+    assert page.status_code == 200
+    assert page.json()["pagination"] == {"size": 25, "offset": 0, "has_more": False}
+    assert invalid.status_code == 422
+    assert "25, 50, or 100" in invalid.json()["detail"]
+    assert refused_export.status_code == 422
+    assert refused_export.json()["error"] == "export_too_large"
+    assert "rows" not in refused_export.json()
+    assert "export" not in refused_export.json()
+
+
+def test_public_export_refusal_is_structured_422_compact_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refusal = {
+        "kind": "export_too_large",
+        "error": "export_too_large",
+        "total_matched_count": 3_001,
+        "ceiling": {"name": "matched_rows", "maximum": 3_000, "observed": 3_001},
+        "detail": "The complete export exceeds the public matched rows ceiling.",
+        "guidance": "Add filters to narrow the result, then export again.",
+    }
+    configure_public_proof(
+        monkeypatch,
+        runner=RecordingRunner(ExecutionOutcome("completed", payload=refusal)),
+    )
+
+    response = TestClient(app).post(
+        "/api/query-runs",
+        json={"recipe": {"source": "TeamReference", "selections": ["TeamReference.name"]}},
+    )
+
+    assert response.status_code == 422
+    assert response.content == compact_json_bytes(refusal)
+    assert response.json() == refusal
 
 
 def test_public_allowance_pause_never_enters_execution(

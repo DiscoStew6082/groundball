@@ -3,6 +3,7 @@
 
   export let result;
   export let recipeText = '';
+  export let pending = false;
   export let onClose = () => {};
   export let onRunRecipe = () => {};
   export let onExport = () => {};
@@ -59,7 +60,7 @@
   <section>
     <h3>Query Recipe</h3>
     <textarea bind:value={draft} aria-label="Structured Query Recipe" rows="11"></textarea>
-    <button class="secondary-action" type="button" on:click={() => onRunRecipe(draft)}>Run edited recipe</button>
+    <button class="secondary-action" type="button" disabled={pending} on:click={() => onRunRecipe(draft)}>Run edited recipe</button>
     <button class="secondary-action" type="button" on:click={onBrowseFields}>Browse fields</button>
   </section>
 
@@ -115,8 +116,8 @@
 
   {#if result.rows}
     <div class="details-actions">
-      <button type="button" on:click={() => onExport('csv')}>Export CSV</button>
-      <button type="button" on:click={() => onExport('json')}>Export JSON</button>
+      <button type="button" disabled={pending} on:click={() => onExport('csv')}>Export CSV</button>
+      <button type="button" disabled={pending} on:click={() => onExport('json')}>Export JSON</button>
     </div>
   {/if}
 </div>

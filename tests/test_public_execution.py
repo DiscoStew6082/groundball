@@ -15,6 +15,22 @@ from baseball_rag.public_execution import (
 )
 
 
+def test_public_query_worker_applies_the_public_result_contract() -> None:
+    outcome = SubprocessExecutionRunner().run(
+        ExecutionRequest(operation="query", question="40-40", recipe=None),
+        timeout_seconds=10,
+    )
+
+    assert outcome.kind == "completed"
+    assert outcome.payload is not None
+    assert outcome.payload["recipe"]["output"] == {
+        "kind": "interactive_page",
+        "size": 25,
+        "offset": 0,
+    }
+    assert outcome.payload["returned_row_count"] == len(outcome.payload["rows"])
+
+
 def test_subprocess_execution_returns_only_the_worker_envelope() -> None:
     runner = SubprocessExecutionRunner(
         command=(
