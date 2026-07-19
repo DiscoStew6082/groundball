@@ -1,7 +1,7 @@
 # Prove stateless Public Admission Policy feasibility
 
 Type: `prototype`
-Status: open
+Status: claimed
 Blocked by: [Set public query, export, and abuse guardrails](05-set-public-query-export-and-abuse-guardrails.md)
 
 ## Question
