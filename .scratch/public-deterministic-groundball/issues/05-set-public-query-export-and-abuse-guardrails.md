@@ -1,7 +1,7 @@
 # Set public query, export, and abuse guardrails
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Choose the packaged deterministic data release](04-choose-packaged-data-release.md)
 
 ## Question
