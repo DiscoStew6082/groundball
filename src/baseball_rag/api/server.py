@@ -3,12 +3,16 @@
 import hmac
 import html
 import os
-from collections.abc import AsyncIterator
+import secrets
+import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import (
     FileResponse,
@@ -16,6 +20,20 @@ from starlette.responses import (
     JSONResponse,
     PlainTextResponse,
     Response,
+)
+
+from baseball_rag.public_admission import (
+    AdmissionAttempt,
+    AdmissionOutcome,
+    CasCoordinator,
+    CasStore,
+    InMemoryCasStore,
+    visitor_digest,
+)
+from baseball_rag.public_execution import (
+    ExecutionOutcome,
+    ExecutionRequest,
+    SubprocessExecutionRunner,
 )
 
 
@@ -33,6 +51,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from baseball_rag.release_runtime import release_readiness
 
         release_readiness()
+        _require_shared_public_admission()
     yield
 
 
@@ -41,9 +60,10 @@ _CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
 _ORIGIN_PROXY_TOKEN_ENV_VAR = "GROUNDBALL_ORIGIN_PROXY_TOKEN"
 _ORIGIN_PROXY_TOKEN_HEADER = "x-groundball-proxy-token"
 _PUBLIC_HEALTH_PATH = "/health"
-_CORS_QUERY_PATHS = {"/api/query-runs"}
+_CORS_QUERY_PATHS = {"/api/query-runs", "/api/retrosheet/queries"}
 _CORS_ALLOWED_METHOD = "POST"
 _CORS_ALLOWED_HEADERS = ("content-type",)
+_PUBLIC_QUERY_REQUEST_BYTES = 16_384
 _DEFAULT_CORS_ORIGINS = (
     "https://discostew.dev",
     "http://localhost:4321",
@@ -51,6 +71,52 @@ _DEFAULT_CORS_ORIGINS = (
 )
 _REPOSITORY_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 _PACKAGE_WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
+_PUBLIC_VISITOR_COOKIE = "groundball_visitor"
+_PUBLIC_EXECUTION_DEADLINE_SECONDS = 10.0
+
+# Wave 3 will configure the real shared-store Adapter. Import-time process state
+# is intentionally never authority for a public deployment.
+_public_admission: CasCoordinator | None = None
+_visitor_digest_key: bytes | None = None
+_public_admission_is_shared = False
+_public_execution_runner = SubprocessExecutionRunner()
+
+
+def configure_public_admission(
+    *,
+    store: CasStore,
+    digest_key: bytes,
+    clock: Callable[[], datetime] | None = None,
+) -> CasCoordinator:
+    """Install a future shared-store Adapter without coupling it to FastAPI."""
+    global _public_admission, _public_admission_is_shared, _visitor_digest_key
+
+    shared_store = getattr(store, "deployment_shared", False) is True
+    if isinstance(store, InMemoryCasStore) or not shared_store:
+        raise ValueError("Public admission requires a deployment-shared CAS store.")
+    if not isinstance(digest_key, bytes) or len(digest_key) < 32:
+        raise ValueError("The stable Visitor digest key must be at least 32 bytes.")
+    coordinator = CasCoordinator(store, clock=clock)
+    _public_admission = coordinator
+    _visitor_digest_key = bytes(digest_key)
+    _public_admission_is_shared = True
+    return coordinator
+
+
+def _shared_public_admission_components() -> tuple[CasCoordinator, bytes]:
+    if _public_admission is None or _visitor_digest_key is None or not _public_admission_is_shared:
+        raise RuntimeError("Public startup requires shared public admission configuration.")
+    return _public_admission, _visitor_digest_key
+
+
+def _require_shared_public_admission() -> tuple[CasCoordinator, bytes]:
+    coordinator, digest_key = _shared_public_admission_components()
+    readiness = coordinator.readiness()
+    if readiness.kind == "provider_unavailable":
+        raise RuntimeError("Public admission coordination store is unavailable.")
+    if readiness.kind != "ready":
+        raise RuntimeError("Public admission current monthly budget is invalid.")
+    return coordinator, digest_key
 
 
 def _public_demo_enabled() -> bool:
@@ -154,6 +220,27 @@ async def _query_cors_middleware(request: Request, call_next):
             return PlainTextResponse("Disallowed CORS request", status_code=400)
         return PlainTextResponse("OK", headers=_preflight_headers(origin or ""))
 
+    is_public_query_request = (
+        _public_demo_enabled()
+        and request.url.path in _CORS_QUERY_PATHS
+        and request.method == _CORS_ALLOWED_METHOD
+    )
+    if is_public_query_request:
+        request.state.public_execution_deadline = (
+            time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+        )
+    if is_public_query_request and len(await request.body()) > _PUBLIC_QUERY_REQUEST_BYTES:
+        refusal = JSONResponse(
+            {
+                "error": "request_too_large",
+                "detail": "Public Query Run requests may not exceed 16384 bytes.",
+            },
+            status_code=413,
+        )
+        if _cors_origin_is_allowed(origin):
+            return _add_query_cors_headers(refusal, origin or "")
+        return refusal
+
     response = await call_next(request)
     if (
         request.url.path in _CORS_QUERY_PATHS
@@ -223,20 +310,143 @@ def capabilities():
 
 
 @app.post("/api/query-runs")
-def query_run(req: QueryInputRequest):
+def query_run(req: QueryInputRequest, request: Request):
     """Plan and execute one natural-language or structured Query Recipe input."""
     _require_consistent_release_configuration()
-    from baseball_rag.query.adapters import run_query_input
-
     if (req.question is None) == (req.recipe is None):
         raise HTTPException(
             status_code=422,
             detail="Provide exactly one natural-language question or structured recipe.",
         )
+
+    if _public_demo_enabled():
+        return _execute_public_request(
+            request,
+            ExecutionRequest(operation="query", question=req.question, recipe=req.recipe),
+        )
+
+    from baseball_rag.query.adapters import run_query_input
+
     try:
         return run_query_input(question=req.question, recipe=req.recipe)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _execute_public_request(request: Request, execution: ExecutionRequest) -> JSONResponse:
+    try:
+        coordinator, digest_key = _shared_public_admission_components()
+    except RuntimeError:
+        return JSONResponse(
+            {
+                "error": "provider_unavailable",
+                "detail": "Ground Ball's public admission service is unavailable.",
+            },
+            status_code=503,
+        )
+
+    deadline = getattr(
+        request.state,
+        "public_execution_deadline",
+        time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS,
+    )
+    visitor_token = request.cookies.get(_PUBLIC_VISITOR_COOKIE)
+    new_visitor = visitor_token is None
+    if visitor_token is None:
+        visitor_token = secrets.token_urlsafe(32)
+    visitor = visitor_digest(visitor_token, digest_key=digest_key)
+    run_id = secrets.token_hex(16)
+    admission = coordinator.admit(
+        AdmissionAttempt(visitor=visitor, run_id=run_id, now=datetime.now(UTC))
+    )
+    if admission.kind != "admitted":
+        response = _admission_refusal_response(admission)
+    else:
+        remaining = deadline - time.monotonic()
+        try:
+            execution_outcome = (
+                _public_execution_runner.run(execution, timeout_seconds=remaining)
+                if remaining > 0
+                else ExecutionOutcome("timed_out")
+            )
+            response = _execution_outcome_response(execution_outcome)
+        finally:
+            coordinator.release(run_id)
+    if new_visitor:
+        _set_visitor_cookie(response, visitor_token)
+    return response
+
+
+def _execution_outcome_response(outcome: ExecutionOutcome) -> JSONResponse:
+    if outcome.kind == "completed" and outcome.payload is not None:
+        return JSONResponse(jsonable_encoder(outcome.payload))
+    if outcome.kind == "invalid":
+        return JSONResponse({"detail": outcome.detail}, status_code=422)
+    if outcome.kind == "timed_out":
+        return JSONResponse(
+            {
+                "error": "timed_out",
+                "detail": (
+                    "The Query Run reached its 10-second deadline and was stopped. "
+                    "Narrow the question before trying again."
+                ),
+            },
+            status_code=503,
+        )
+    return JSONResponse(
+        {
+            "error": "provider_unavailable",
+            "detail": "Public Query Run execution failed.",
+        },
+        status_code=503,
+    )
+
+
+def _set_visitor_cookie(response: Response, visitor_token: str) -> None:
+    response.set_cookie(
+        _PUBLIC_VISITOR_COOKIE,
+        visitor_token,
+        secure=True,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _admission_refusal_response(outcome: AdmissionOutcome) -> JSONResponse:
+    retry_at = outcome.retry_at.isoformat() if outcome.retry_at else None
+    messages = {
+        "visitor_run_active": "Another Query Run for this visitor is still running.",
+        "deployment_capacity_occupied": "Ground Ball is busy serving other Query Runs.",
+        "three_starts_per_minute": "This visitor reached three Query Runs per minute.",
+        "twelve_starts_per_hour": "This visitor reached twelve Query Runs per hour.",
+        "monthly_start_budget_exhausted": (
+            "Ground Ball's monthly public Query Run allowance is paused."
+        ),
+        "monthly_budget_unavailable": (
+            "Ground Ball's monthly public allowance state is unavailable."
+        ),
+        "monthly_budget_invalid": "Ground Ball's monthly public allowance state is invalid.",
+        "coordination_store_unavailable": "Ground Ball's public admission service is unavailable.",
+        "coordination_contention": "Ground Ball could not safely coordinate this Query Run.",
+    }
+    detail = messages.get(outcome.reason, "Ground Ball could not admit this Query Run.")
+    if retry_at:
+        detail = f"{detail} Retry at {retry_at}."
+    status_code = 429 if outcome.kind in {"busy", "rate_limited"} else 503
+    headers: dict[str, str] = {}
+    if outcome.retry_after_seconds is not None:
+        headers["Retry-After"] = str(outcome.retry_after_seconds)
+    return JSONResponse(
+        {
+            "error": outcome.kind,
+            "reason": outcome.reason,
+            "detail": detail,
+            "retry_at": retry_at,
+        },
+        status_code=status_code,
+        headers=headers,
+    )
 
 
 @app.get("/api/query-catalog")
@@ -297,9 +507,15 @@ def coverage_report():
 
 
 @app.post("/api/retrosheet/queries")
-def retrosheet_query(req: RetrosheetQueryRequest):
+def retrosheet_query(req: RetrosheetQueryRequest, request: Request):
     """Execute only the separately governed deterministic Retrosheet capabilities."""
     _require_consistent_release_configuration()
+    if _public_demo_enabled():
+        return _execute_public_request(
+            request,
+            ExecutionRequest(operation="retrosheet", question=req.question, recipe=None),
+        )
+
     from baseball_rag.retrosheet_query import execute_retrosheet_query
 
     try:
@@ -314,6 +530,13 @@ def release_readiness():
     _require_consistent_release_configuration()
     if not _public_demo_enabled():
         raise HTTPException(status_code=404, detail="Not found.")
+    try:
+        _require_shared_public_admission()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Ground Ball public admission is not ready.",
+        ) from exc
     from baseball_rag.release_runtime import release_readiness as read_release_readiness
 
     return read_release_readiness().as_dict()

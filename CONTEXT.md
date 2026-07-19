@@ -20,9 +20,10 @@ This is the canonical current architecture and domain context. Historical implem
 
 The active delivery effort is the zero-Mac deterministic public release. Its execution source is `docs/public-release-implementation-ledger.md`; the completed Wayfinder map is supporting decision evidence, not an active ticket frontier.
 
-- Continuation branch: `implementation/public-deterministic-groundball-release`, based on `origin/main` at `a4084f1`.
+- Continuation branch: `implementation/public-deterministic-groundball-release`, with current `origin/main` at `0afd947` integrated after preserving handoff commit `5ada351`.
 - Completed foundation: the immutable Release Bundle and offline container proof merged in PR #23 at `a4084f1`.
-- Current opportunity: finish the Public Admission Policy, public result envelope, deterministic parity, candidate proof, and release preparation.
+- Completed on this branch: Wave 2 Public Admission Policy core, including shared-store and stable-key configuration seams, fail-closed readiness, hard-stop public execution, and common protection for both deterministic POST routes.
+- Current opportunity: implement the Wave 3 Vercel Blob coordination Adapter, then the public result envelope, deterministic parity, candidate proof, and release preparation.
 - External deployment, Blob or secret creation, production promotion, website cutover, paid services, Cloudflare activation, and Mac or tunnel operations remain outside current authorization until Stewart approves the exact action.
 
 ## Current modules
@@ -36,7 +37,9 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 - `src/baseball_rag/query/coverage.py`: proof identity, validation, and verification binding.
 - `src/baseball_rag/query/adapters.py`: shared rendering-neutral HTTP, CLI, and browser payloads.
 - `src/baseball_rag/retrosheet_query.py`: separate deterministic Retrosheet adapter.
-- `src/baseball_rag/api/server.py`: FastAPI routes and built Svelte application.
+- `src/baseball_rag/api/server.py`: FastAPI routes, public admission boundary, and built Svelte application.
+- `src/baseball_rag/public_admission.py`: pure CAS admission state, leases, rates, monthly budget, Visitor digest, and readiness checks.
+- `src/baseball_rag/public_execution.py`: isolated child-process execution with a ten-second hard-stop outcome.
 - `src/baseball_rag/release_bundle.py`: immutable Release Bundle identity, assembly, and verification.
 - `src/baseball_rag/release_runtime.py`: offline release startup and readiness checks.
 
@@ -44,7 +47,7 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 
 ### Current opportunities
 
-- 2026-07-19: Public Deterministic Ground Ball release. Finish the server-owned admission seam, shared coordination Adapter, bounded public results and exports, named parity corpus, candidate identity, all-or-nothing gates, protected proof, and separately approved cutover. Preserve the Query contracts, exact Coverage Report, Release Bundle, dark Svelte/FastAPI shell, `$0` Vercel Hobby boundary, and zero-Mac rule. Detailed work and verification live in `docs/public-release-implementation-ledger.md`.
+- 2026-07-19: Public Deterministic Ground Ball release. Continue from the completed server-owned admission seam with the shared coordination Adapter, bounded public results and exports, named parity corpus, candidate identity, all-or-nothing gates, protected proof, and separately approved cutover. Preserve the Query contracts, exact Coverage Report, Release Bundle, dark Svelte/FastAPI shell, `$0` Vercel Hobby boundary, and zero-Mac rule. Detailed work and verification live in `docs/public-release-implementation-ledger.md`.
 
 ### Completed work
 

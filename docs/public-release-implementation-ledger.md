@@ -8,7 +8,7 @@ This is the execution handoff for the completed Public Deterministic Ground Ball
 
 - Working directory: `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release`
 - Branch: `implementation/public-deterministic-groundball-release`
-- Baseline: `origin/main` at merge commit `a4084f1`
+- Integrated baseline: `origin/main` at merge commit `0afd947`; local merge commit `e5159a7` preserves handoff commit `5ada351`
 - Completed planning source: `.scratch/public-deterministic-groundball/map.md` on `wayfinder/queryable-ground-ball` at `6675ad1`
 - Current context: `CONTEXT.md`
 - Current instructions: this worktree's `AGENTS.md`, aligned with the root worktree's removal of the former TDD, subagent, mandatory-review, auto-commit, CI-wait, and forced-browser directives
@@ -44,9 +44,9 @@ The landed foundation packages the four Lahman tables, catalog and registry asse
 
 This is foundation evidence, not final release evidence. It does not yet prove shared public admission, final parity, performance, live Browser behavior, real Blob coordination, a Deployment Attestation, or public cutover.
 
-### Preserved in-progress Public Admission Policy draft
+### Ported Public Admission Policy draft
 
-The previous worktree contains five uncommitted files that must be preserved and inspected before being ported here:
+Wave 2 ported and completed the useful behavior from the previous worktree's five uncommitted files. That source remains preserved and read-only at:
 
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/src/baseball_rag/api/server.py`
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/src/baseball_rag/public_admission.py`
@@ -54,15 +54,9 @@ The previous worktree contains five uncommitted files that must be preserved and
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/tests/test_public_admission.py`
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/tests/test_release_runtime.py`
 
-On 2026-07-19, the focused command below passed `25` tests with one upstream deprecation warning:
+The completed port preserves the upstream `release_proof` marker on `tests/test_release_runtime.py` and supersedes the draft's process-local production defaults. `InMemoryCasStore` is now explicitly proof-only; production configuration rejects it and requires a declared deployment-shared store plus an injected stable digest key. No real Vercel Blob Adapter, store, secret, budget state, deployment, or attestation exists yet.
 
-```bash
-uv run pytest tests/test_public_admission.py tests/test_query_api_v1.py tests/test_release_runtime.py -q
-```
-
-The draft proves an in-memory CAS state model, Visitor cookie digest, per-Visitor and deployment concurrency, minute and hour limits, leases, UTC-month rollover, a nonrefundable 100-start budget, 16 KiB body rejection, and basic HTTP refusal mapping. It is not production authority: its store and digest key are process-local, it has no Vercel Blob Adapter, and the real release path does not initialize or attest the budget.
-
-Do not commit more source work on the old `implementation/public-deterministic-groundball` branch. Its release-container CI assumes an artifact-only tip and is hard-coded to that retired branch name. Port the five-file draft into this continuation worktree, verify the resulting diff, and leave the old dirty worktree intact until the port is confirmed.
+Do not commit more source work on the old `implementation/public-deterministic-groundball` branch. Its release-container CI assumes an artifact-only tip and is hard-coded to that retired branch name. Leave the old dirty worktree intact until outside-Pi verification confirms this port.
 
 ## Frozen decisions and seams
 
@@ -80,8 +74,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | Wave | Status | Deliverable | Completion evidence |
 | --- | --- | --- | --- |
 | 1. Release Bundle foundation | Complete | Immutable payload, manifest, offline runtime, exact Coverage Report, restricted Retrosheet surface, container proof | Commits `944180a`, `7a6adbe`, `6106dd6`, `b3c20e6`, merged as `a4084f1` |
-| 2. Public Admission Policy core | In progress off-branch | Port and finish the pure state model and FastAPI seam; add stable configuration boundaries; enforce question/body limits, concurrency, rates, leases, monthly budget, timeout, and honest outcomes | Focused policy/API/runtime tests; no in-memory Adapter accepted as deployment authority |
-| 3. Shared coordination Adapter | Pending after wave 2 | Implement Vercel Blob uncached read plus conditional-write CAS, trusted time, stable keyed Visitor digest, schema/versioning, initialization, readiness, and operation accounting | Local contract proof first; real Blob proof only after external approval |
+| 2. Public Admission Policy core | Complete on this branch | Pure CAS state model, shared-store/stable-key configuration seam, 500-character and 16,384-byte limits, Visitor/deployment concurrency, rolling rates, 15-second leases, nonrefundable UTC-month budget, common primary/Retrosheet admission, exact retries, fail-closed readiness, and isolated ten-second hard-stop execution | Focused policy/API/runtime proof passes; `InMemoryCasStore` rejected as deployment authority; no Blob or deployment claim |
+| 3. Shared coordination Adapter | Next repository wave | Implement Vercel Blob uncached read plus conditional-write CAS, trusted time, stable keyed Visitor digest, schema/versioning, initialization, readiness, and operation accounting | Local contract proof first; real Blob proof only after external approval |
 | 4. Public result and Browser contract | Pending after wave 2 | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused API and web tests plus local Browser evidence |
 | 5. Deterministic parity closure | Pending | Prove or fix the exact Ohtani cross-discipline question, equivalent friendly-name recipe, deterministic two-turn follow-up, three bundled Retrosheet families, and all unbundled negative cases | Named parity corpus plus exhaustive catalog/raw-surface checks |
 | 6. Candidate identity and gate tooling | Pending after waves 2-5 | Bind one source commit, bundle digest, image digest, runtime config, admission config, evidence set, and Deployment Attestation; repair release-container CI so it is not tied to the retired branch | Machine-readable gate report and reproducible candidate assembly |
@@ -90,7 +84,7 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 
 ## Wave 2 completion details
 
-The Public Admission Policy must sit immediately before deterministic execution and jointly decide every limit. Finish these behaviors before moving to the real coordination Adapter:
+The Public Admission Policy now sits immediately before deterministic execution and jointly decides every Wave 2 limit. The completed repository behavior is:
 
 - natural-language question at most 500 characters;
 - complete request body at most 16,384 bytes before parsing;
@@ -106,7 +100,18 @@ The Public Admission Policy must sit immediately before deterministic execution 
 - refusal responses carry an exact retry time where one exists; and
 - the separate public Retrosheet route receives the same admission protection or is routed through the same admitted execution seam.
 
-The in-memory store remains a behavior-test Adapter only. Public startup must fail closed when a shared store, stable digest key, or valid monthly budget is unavailable.
+The in-memory store remains a behavior-test Adapter only. Public startup and readiness fail closed when a declared shared store, stable digest key, or budget valid for the current period or one safe atomic older-period rollover is unavailable. A hard deadline runs admitted deterministic work in a child process that is killed and reaped on timeout; no continuing background thread is described as stopped or allowed to occupy process concurrency indefinitely.
+
+### Wave 2 implementation evidence
+
+- The natural-language request model accepts exactly 500 characters and rejects 501.
+- Middleware measures the complete body before Pydantic parsing, accepts exactly 16,384 bytes, rejects 16,385 bytes, and preserves allowed-origin credentialed CORS headers on the early 413.
+- One CAS transition jointly prunes expired leases and rolling history, checks Visitor/deployment concurrency, minute/hour rates, and monthly allowance, then creates a 15-second lease and charges the start.
+- The 100th/101st and first-period initialization boundaries are tested with competing coordinators sharing one store.
+- Missing, malformed, contradictory, negative, boolean, impossible-year, and future budget records pause allowance. Store errors and bounded contention remain distinct provider-unavailable outcomes.
+- Success, deterministic failure, and timeout release only the lease. Starts and monthly charges remain; interrupted or restarted work relies on lease expiry and cannot refund.
+- Both `/api/query-runs` and `/api/retrosheet/queries` use the same public admission and execution seam while local routes continue calling their existing deterministic Adapters directly.
+- Query Recipe, Query Plan, Query Run, parameterized DuckDB, Coverage Report, Release Bundle, local mode, CLI, and eval contracts were not changed.
 
 ## Shared coordination rules
 
@@ -195,6 +200,25 @@ npm --prefix web run build
 ```
 
 These commands are necessary but do not replace the candidate-specific offline-container, real-Blob, resource, performance, security, and live Browser gates.
+
+### Wave 2 local verification (2026-07-19)
+
+- `uv run pytest tests/test_public_admission.py tests/test_public_execution.py tests/test_query_api_v1.py tests/test_release_runtime.py -q`: `53 passed`; one upstream Starlette/httpx deprecation warning. The marked offline release-runtime test remained included explicitly.
+- `uv run ruff check src/ tests/`: passed.
+- `uv run mypy src/baseball_rag/`: passed for `59` source files.
+- `uv run pytest tests/ -m 'not llm and not release_proof' -q`: `335 passed, 1 deselected`; one upstream Starlette/httpx deprecation warning.
+- `uv run python -m baseball_rag.query.generate_catalog_compatibility --check`: passed with no diff.
+- `uv run python -m baseball_rag.query.generate_raw_inventory --check`: passed with no diff.
+- `uv run python -m baseball_rag.query.generate_coverage_report --check`: passed with no diff.
+- `uv run python -m baseball_rag.query.eval_matrix`: passing, `17/17` cases.
+- The first `npm --prefix web test` and `npm --prefix web run build` attempts could not load Vite because this fresh worktree had no `web/node_modules`; this was classified as missing local dependency state. `npm --prefix web ci` installed the lockfile's `107` packages with `0` vulnerabilities. The rerun `npm --prefix web test` passed `4/4` tests, and `npm --prefix web run build` passed with `113` modules transformed.
+- `git diff --check`: passed. The review found no credential or private-path material in source or test changes; key and cookie literals are synthetic proof values only.
+
+This is local repository evidence only. It does not claim a real Blob Adapter, Blob initialization, deployment, provider operation accounting, candidate attestation, protected URL, Browser proof, performance/resource proof, account change, or public cutover.
+
+### Wave 2 self-review
+
+Pi had no subagent or review-agent facility, so Wave 2 received an explicit direct review of every changed enforcement path. The review verified that cookies, digest keys, keyed Visitor digests, provider errors, and child-process stderr do not enter public payloads or logs; every jointly enforced limit is decided in one successful CAS write; failed release CAS leaves a bounded expiring lease and never refunds; timeout kills and reaps the child rather than abandoning a thread; early 413 responses retain allowed-origin CORS; both public POST routes enter the same seam; and the old Query/compiler/runtime interfaces remain unchanged. Review fixes added impossible year-zero budget rejection, an explicit deployment-shared store declaration, hard-stop child reaping, and acceptance of only a well-formed older budget that the next admitted CAS can atomically roll forward. The stale-base `release_proof` marker remains present. No Wave 3 Adapter, external service, deployment, account, website, Cloudflare, or Mac behavior was added or touched.
 
 ## Abort and rollback rules
 
