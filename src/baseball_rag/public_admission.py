@@ -342,8 +342,9 @@ def _retry_outcome(
 
 
 def _next_month(now: datetime) -> datetime:
-    year = now.year + (1 if now.month == 12 else 0)
-    month = 1 if now.month == 12 else now.month + 1
+    utc_now = now.astimezone(UTC)
+    year = utc_now.year + (1 if utc_now.month == 12 else 0)
+    month = 1 if utc_now.month == 12 else utc_now.month + 1
     return datetime(year, month, 1, tzinfo=UTC)
 
 

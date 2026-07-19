@@ -203,7 +203,7 @@ These commands are necessary but do not replace the candidate-specific offline-c
 
 ### Wave 2 local verification (2026-07-19)
 
-- `uv run pytest tests/test_public_admission.py tests/test_public_execution.py tests/test_query_api_v1.py tests/test_release_runtime.py -q`: `53 passed`; one upstream Starlette/httpx deprecation warning. The marked offline release-runtime test remained included explicitly.
+- `uv run pytest tests/test_public_admission.py tests/test_public_execution.py tests/test_query_api_v1.py tests/test_release_runtime.py -q`: `55 passed`; one upstream Starlette/httpx deprecation warning. The marked offline release-runtime test remained included explicitly.
 - `uv run ruff check src/ tests/`: passed.
 - `uv run mypy src/baseball_rag/`: passed for `59` source files.
 - `uv run pytest tests/ -m 'not llm and not release_proof' -q`: `335 passed, 1 deselected`; one upstream Starlette/httpx deprecation warning.

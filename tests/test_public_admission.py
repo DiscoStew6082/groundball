@@ -1,7 +1,7 @@
 """Behavior contract for the server-owned Public Admission Policy."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import cast
 
 import pytest
@@ -50,6 +50,43 @@ def test_101st_monthly_start_is_refused_until_the_next_utc_month() -> None:
     assert transition.outcome.kind == "allowance_paused"
     assert transition.outcome.reason == "monthly_start_budget_exhausted"
     assert transition.outcome.retry_at.isoformat() == "2026-08-01T00:00:00+00:00"
+
+
+@pytest.mark.parametrize(
+    ("now", "budget_period", "expected_retry_at", "expected_retry_after_seconds"),
+    [
+        (
+            datetime(2026, 7, 31, 20, 30, tzinfo=timezone(-timedelta(hours=4))),
+            "2026-08",
+            datetime(2026, 9, 1, tzinfo=UTC),
+            2_676_600,
+        ),
+        (
+            datetime(2026, 11, 30, 20, 30, tzinfo=timezone(-timedelta(hours=4))),
+            "2026-12",
+            datetime(2027, 1, 1, tzinfo=UTC),
+            2_676_600,
+        ),
+    ],
+)
+def test_exhausted_budget_retry_uses_utc_calendar_for_offset_clock(
+    now: datetime,
+    budget_period: str,
+    expected_retry_at: datetime,
+    expected_retry_after_seconds: int,
+) -> None:
+    state = AdmissionState(monthly_budget=MonthlyBudget(period=budget_period, charged_starts=100))
+
+    transition = decide_admission(
+        state,
+        AdmissionAttempt(visitor="visitor-a", run_id="run-a", now=now),
+    )
+
+    assert transition.state == state
+    assert transition.outcome.kind == "allowance_paused"
+    assert transition.outcome.reason == "monthly_start_budget_exhausted"
+    assert transition.outcome.retry_at == expected_retry_at
+    assert transition.outcome.retry_after_seconds == expected_retry_after_seconds
 
 
 def test_first_start_in_a_later_month_atomically_rolls_the_budget_forward() -> None:
