@@ -120,9 +120,17 @@ jobs:
           release_source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
           test "$(git rev-parse HEAD^)" = "$release_source_commit"
           test -z "$(git diff --name-only HEAD^ HEAD | grep -Ev '^release/bundle/' || true)"
-      - run: uv run python -m pytest tests/ -m "not llm" --cov=baseball_rag --cov-report=xml --cov-report=term-missing -v
-      - name: Query coverage release gate
-        run: uv run python -m baseball_rag.query.generate_coverage_report --check
+      - name: Fast Python test suite
+        run: >-
+          uv run python -m pytest tests/
+          -m "not llm and not release_proof"
+          --cov=baseball_rag
+          --cov-report=xml
+          --cov-report=term-missing
+          --durations=20
+          -v
+      - name: Validate checked-in query coverage proof
+        run: uv run python -m baseball_rag.coverage_proof_validator
       - name: Query Plan and Query Run eval matrix
         run: uv run python -m baseball_rag.query.eval_matrix --json-report query-eval-report.json
       - name: Publish query proof summary

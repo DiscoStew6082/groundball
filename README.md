@@ -79,6 +79,7 @@ The canonical report is generated, not hand-maintained:
 ```bash
 uv run python -m baseball_rag.query.generate_coverage_report
 uv run python -m baseball_rag.query.generate_coverage_report --check
+uv run python -m baseball_rag.coverage_proof_validator
 uv run python -m baseball_rag.query.eval_matrix
 ```
 
@@ -91,7 +92,7 @@ The current proof covers 5,253 obligations across six release-blocking gates:
 - outcome and evidence integrity
 - zero-LLM, zero-network, zero-Mac independence
 
-Human and machine views are served at `/coverage-report` and `/api/query-coverage`. CI regenerates the proof, runs the deterministic 17-case query matrix, and uploads both report forms.
+Human and machine views are served at `/coverage-report` and `/api/query-coverage`. Fast CI validates the checked-in proof identity and contents without replaying every obligation. The path-scoped Release Proof workflow regenerates the exhaustive proof when query, catalog, data, or release inputs change and uploads both report forms.
 
 ## Data and provenance
 
