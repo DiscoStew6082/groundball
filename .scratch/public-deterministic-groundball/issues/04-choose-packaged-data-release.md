@@ -1,7 +1,7 @@
 # Choose the packaged deterministic data release
 
 Type: `grilling`
-Status: open
+Status: claimed
 Blocked by: [Prove the stateless Svelte/FastAPI Vercel fit](12-prove-stateless-svelte-fastapi-vercel-fit.md)
 
 ## Question
