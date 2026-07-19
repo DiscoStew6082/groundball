@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from baseball_rag.public_admission_blob import (
     BlobProviderError,
     HttpResponse,
     PublicAdmissionConfigurationError,
+    RequestsHttpTransport,
     load_blob_public_admission,
 )
 from baseball_rag.public_admission_state import (
@@ -38,8 +40,7 @@ from baseball_rag.public_admission_state import (
 
 NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
 VISITOR = "a" * 64
-STATE_ORIGIN = "https://proof.private.blob.vercel-storage.com"
-API_ORIGIN = "https://blob.vercel-storage.com"
+STORE_ID = "ProofStore123"
 DATE = "Sun, 19 Jul 2026 12:00:00 GMT"
 
 
@@ -64,6 +65,31 @@ class ScriptedTransport:
         if isinstance(response, Exception):
             raise response
         return response
+
+
+class FakeResponse:
+    def __init__(self, *chunks: bytes) -> None:
+        self.status_code = 200
+        self.headers = {"Content-Type": "application/json"}
+        self.chunks = chunks
+        self.closed = False
+
+    def iter_content(self, *, chunk_size: int) -> tuple[bytes, ...]:
+        assert chunk_size == 8192
+        return self.chunks
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakeSession:
+    def __init__(self, response: FakeResponse) -> None:
+        self.response = response
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def request(self, *args: Any, **kwargs: Any) -> FakeResponse:
+        self.calls.append((args, kwargs))
+        return self.response
 
 
 class SharedScriptedBlobBackend:
@@ -120,7 +146,7 @@ def json_write_response(config: BlobCoordinationConfig) -> bytes:
 def proof_config() -> BlobCoordinationConfig:
     return BlobCoordinationConfig.proof(
         token="synthetic-proof-token",
-        state_origin=STATE_ORIGIN,
+        store_id=f"store_{STORE_ID}",
         proof_id="wave-3",
     )
 
@@ -184,10 +210,92 @@ def test_state_codec_rejects_oversized_provider_state_before_json_parsing() -> N
         decode_admission_state(b"{" + b" " * MAX_STATE_BYTES)
 
 
+def test_state_codec_rejects_duplicate_json_object_keys() -> None:
+    payload = (
+        b'{"schema_version":1,"schema_version":1,"monthly_budget":null,'
+        b'"running":[],"starts_by_visitor":[]}'
+    )
+
+    with pytest.raises(AdmissionStateCodecError, match="malformed"):
+        decode_admission_state(payload)
+
+
+def test_state_codec_rejects_same_period_start_undercount() -> None:
+    payload = (
+        b'{"schema_version":1,'
+        b'"monthly_budget":{"period":"2026-07","charged_starts":1},'
+        b'"running":[],"starts_by_visitor":[{"visitor":"'
+        + VISITOR.encode()
+        + b'","starts":["2026-07-01T00:00:00Z","2026-07-19T12:00:00Z"]}]}'
+    )
+
+    with pytest.raises(AdmissionStateCodecError, match="contradictory"):
+        decode_admission_state(payload)
+
+
+def test_state_codec_preserves_previous_month_history_and_boundary_lease() -> None:
+    state = AdmissionState(
+        running=(
+            RunLease(
+                visitor=VISITOR,
+                run_id="month-boundary",
+                expires_at=datetime(2026, 7, 1, 0, 0, 10, tzinfo=UTC),
+            ),
+        ),
+        starts_by_visitor=((VISITOR, (datetime(2026, 6, 30, 23, 59, 55, tzinfo=UTC),)),),
+        monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0),
+    )
+
+    assert decode_admission_state(encode_admission_state(state)) == state
+
+
+def test_requests_transport_streams_with_bound_timeout_and_disables_redirects() -> None:
+    response = FakeResponse(b'{"ok":', b"true}")
+    session = FakeSession(response)
+    transport = RequestsHttpTransport(session)  # type: ignore[arg-type]
+
+    result = transport.request(
+        method="GET",
+        url="https://example.invalid/state?cache=0",
+        headers={"authorization": "Bearer synthetic"},
+        data=None,
+        timeout=3.5,
+        max_response_bytes=11,
+    )
+
+    assert result.body == b'{"ok":true}'
+    assert session.calls == [
+        (
+            ("GET", "https://example.invalid/state?cache=0"),
+            {
+                "headers": {"authorization": "Bearer synthetic"},
+                "data": None,
+                "timeout": 3.5,
+                "stream": True,
+                "allow_redirects": False,
+            },
+        )
+    ]
+    assert response.closed is True
+
+    oversized_response = FakeResponse(b"1234", b"56")
+    oversized_transport = RequestsHttpTransport(FakeSession(oversized_response))  # type: ignore[arg-type]
+    with pytest.raises(BlobProviderError):
+        oversized_transport.request(
+            method="GET",
+            url="https://example.invalid/state?cache=0",
+            headers={},
+            data=None,
+            timeout=1.0,
+            max_response_bytes=5,
+        )
+    assert oversized_response.closed is True
+
+
 def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> None:
     config = proof_config()
     created_body = (
-        b'{"url":"https://proof.private.blob.vercel-storage.com/'
+        b'{"url":"https://ProofStore123.private.blob.vercel-storage.com/'
         b'groundball/public-admission/v1/proof/wave-3/state.json",'
         b'"pathname":"groundball/public-admission/v1/proof/wave-3/state.json"}'
     )
@@ -195,7 +303,11 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
         HttpResponse(status_code=404, headers={"date": DATE}, body=b""),
         HttpResponse(status_code=201, headers={"date": DATE}, body=created_body),
     )
-    store = BlobCoordinationStore(config, transport=transport)
+    store = BlobCoordinationStore(
+        config,
+        transport=transport,
+        request_id_factory=lambda: "0123456789abcdef0123456789abcdef",
+    )
 
     snapshot = store.read()
     initialized = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
@@ -206,15 +318,12 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
     assert transport.requests[0] == RecordedRequest(
         method="GET",
         url=(
-            "https://proof.private.blob.vercel-storage.com/"
-            "groundball/public-admission/v1/proof/wave-3/state.json"
+            "https://ProofStore123.private.blob.vercel-storage.com/"
+            "groundball/public-admission/v1/proof/wave-3/state.json?cache=0"
         ),
         headers={
             "accept": "application/json",
             "authorization": "Bearer synthetic-proof-token",
-            "cache-control": "no-cache",
-            "x-vercel-blob-access": "private",
-            "x-vercel-blob-cache-control-max-age": "0",
         },
         data=None,
         timeout=5.0,
@@ -223,15 +332,19 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
     create = transport.requests[1]
     assert create.method == "PUT"
     assert create.url == (
-        "https://blob.vercel-storage.com/groundball/public-admission/v1/proof/wave-3/state.json"
+        "https://vercel.com/api/blob/groundball/public-admission/v1/proof/wave-3/state.json"
     )
     assert create.headers == {
         "authorization": "Bearer synthetic-proof-token",
         "content-type": "application/json",
         "x-add-random-suffix": "0",
         "x-allow-overwrite": "0",
+        "x-api-blob-request-attempt": "0",
+        "x-api-blob-request-id": "0123456789abcdef0123456789abcdef",
+        "x-api-version": "12",
         "x-content-type": "application/json",
         "x-vercel-blob-access": "private",
+        "x-vercel-blob-store-id": STORE_ID,
     }
     assert create.data == encode_admission_state(initialized)
     assert create.timeout == 5.0
@@ -255,13 +368,17 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
             status_code=200,
             headers={"date": DATE},
             body=(
-                b'{"url":"https://proof.private.blob.vercel-storage.com/'
+                b'{"url":"https://ProofStore123.private.blob.vercel-storage.com/'
                 b'groundball/public-admission/v1/proof/wave-3/state.json",'
                 b'"pathname":"groundball/public-admission/v1/proof/wave-3/state.json"}'
             ),
         ),
     )
-    store = BlobCoordinationStore(config, transport=transport)
+    store = BlobCoordinationStore(
+        config,
+        transport=transport,
+        request_id_factory=lambda: "fedcba9876543210fedcba9876543210",
+    )
 
     snapshot = store.read()
     updated = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=13))
@@ -273,10 +390,63 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
         "content-type": "application/json",
         "x-add-random-suffix": "0",
         "x-allow-overwrite": "1",
+        "x-api-blob-request-attempt": "0",
+        "x-api-blob-request-id": "fedcba9876543210fedcba9876543210",
+        "x-api-version": "12",
         "x-content-type": "application/json",
         "x-if-match": '"opaque-provider-etag-12"',
         "x-vercel-blob-access": "private",
+        "x-vercel-blob-store-id": STORE_ID,
     }
+
+
+def test_default_write_request_ids_are_unique_opaque_hex_and_not_retried() -> None:
+    backend = SharedScriptedBlobBackend(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0)))
+    store = BlobCoordinationStore(proof_config(), transport=backend)
+
+    first = store.read()
+    assert store.compare_and_swap(
+        first.version,
+        AdmissionState(monthly_budget=MonthlyBudget("2026-07", 1)),
+    )
+    second = store.read()
+    assert store.compare_and_swap(
+        second.version,
+        AdmissionState(monthly_budget=MonthlyBudget("2026-07", 2)),
+    )
+
+    request_ids = [
+        request.headers["x-api-blob-request-id"]
+        for request in backend.requests
+        if request.method == "PUT"
+    ]
+    assert len(request_ids) == 2
+    assert len(set(request_ids)) == 2
+    assert all(re.fullmatch(r"[0-9a-f]{32}", request_id) for request_id in request_ids)
+    assert all(
+        request.headers["x-api-blob-request-attempt"] == "0"
+        for request in backend.requests
+        if request.method == "PUT"
+    )
+
+
+def test_ambiguous_write_failure_is_not_automatically_retried() -> None:
+    state = AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))
+    transport = ScriptedTransport(
+        HttpResponse(
+            200,
+            {"content-type": "application/json", "date": DATE, "etag": "etag"},
+            encode_admission_state(state),
+        ),
+        BlobProviderError(),
+    )
+    store = BlobCoordinationStore(proof_config(), transport=transport)
+    snapshot = store.read()
+
+    with pytest.raises(BlobProviderError):
+        store.compare_and_swap(snapshot.version, state)
+
+    assert [request.method for request in transport.requests] == ["GET", "PUT"]
 
 
 def test_only_precondition_failure_is_a_conflict_and_other_failures_are_sanitized() -> None:
@@ -467,18 +637,28 @@ def test_provider_date_drives_hour_window_when_local_clock_disagrees() -> None:
     assert outcome.retry_at == NOW + timedelta(minutes=5)
 
 
-def test_missing_or_malformed_provider_date_fails_closed_without_guessing() -> None:
+@pytest.mark.parametrize(
+    "date",
+    [
+        None,
+        "not-a-date",
+        "Sun, 19 Jul 2026 12:00:00 UTC",
+        "Sunday, 19-Jul-26 12:00:00 GMT",
+        "Sun Jul 19 12:00:00 2026",
+        "Mon, 19 Jul 2026 12:00:00 GMT",
+    ],
+)
+def test_noncanonical_provider_date_fails_closed_without_guessing(date: str | None) -> None:
     body = encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0)))
-    for headers in (
-        {"content-type": "application/json", "etag": "etag"},
-        {"content-type": "application/json", "etag": "etag", "date": "not-a-date"},
-    ):
-        store = BlobCoordinationStore(
-            proof_config(),
-            transport=ScriptedTransport(HttpResponse(200, headers, body)),
-        )
-        outcome = CasCoordinator(store, clock=lambda: NOW).readiness()
-        assert outcome.kind == "provider_unavailable"
+    headers = {"content-type": "application/json", "etag": "etag"}
+    if date is not None:
+        headers["date"] = date
+    store = BlobCoordinationStore(
+        proof_config(),
+        transport=ScriptedTransport(HttpResponse(200, headers, body)),
+    )
+    outcome = CasCoordinator(store, clock=lambda: NOW).readiness()
+    assert outcome.kind == "provider_unavailable"
 
 
 def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rendering_it() -> None:
@@ -488,7 +668,7 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
         {
             "GROUNDBALL_BLOB_NAMESPACE": "proof",
             "GROUNDBALL_BLOB_PROOF_ID": "wave-3",
-            "GROUNDBALL_BLOB_STATE_ORIGIN": STATE_ORIGIN,
+            "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
             "GROUNDBALL_BLOB_TOKEN": "synthetic-proof-token",
             "GROUNDBALL_VISITOR_DIGEST_KEY": encoded_key,
         },
@@ -497,8 +677,60 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
 
     assert configured.digest_key == key
     assert configured.store.object_key.endswith("/proof/wave-3/state.json")
+    assert configured.store.state_url == (
+        "https://ProofStore123.private.blob.vercel-storage.com/"
+        "groundball/public-admission/v1/proof/wave-3/state.json"
+    )
+    assert configured.store.store_id == STORE_ID
     assert encoded_key not in repr(configured)
     assert "synthetic-proof-token" not in repr(configured)
+
+
+def test_store_id_normalization_preserves_case_and_derives_only_private_origin() -> None:
+    config = BlobCoordinationConfig.production(
+        token="synthetic-proof-token",
+        store_id="store_AbC123",
+    )
+
+    assert config.store_id == "AbC123"
+    assert config.state_url == (
+        "https://AbC123.private.blob.vercel-storage.com/"
+        "groundball/public-admission/v1/production/state.json"
+    )
+
+
+@pytest.mark.parametrize(
+    "store_id",
+    [
+        "",
+        "store_",
+        "contains-hyphen",
+        "contains.dot",
+        "public.blob.vercel-storage.com",
+        "user@host",
+        "host:443",
+        "host/path",
+        "host?cache=0",
+        "host#fragment",
+        "a" * 64,
+    ],
+)
+def test_store_id_cannot_select_an_arbitrary_or_public_origin(store_id: str) -> None:
+    with pytest.raises(ValueError, match="store identifier"):
+        BlobCoordinationConfig.production(
+            token="synthetic-proof-token",
+            store_id=store_id,
+        )
+
+
+def test_server_declares_only_the_strict_blob_configuration_environment() -> None:
+    assert api_server._BLOB_CONFIGURATION_ENV_VARS == {
+        "GROUNDBALL_BLOB_NAMESPACE",
+        "GROUNDBALL_BLOB_PROOF_ID",
+        "GROUNDBALL_BLOB_STORE_ID",
+        "GROUNDBALL_BLOB_TOKEN",
+        "GROUNDBALL_VISITOR_DIGEST_KEY",
+    }
 
 
 @pytest.mark.parametrize(
@@ -507,6 +739,7 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
         {},
         {"GROUNDBALL_BLOB_NAMESPACE": "unknown"},
         {"GROUNDBALL_BLOB_NAMESPACE": "proof", "GROUNDBALL_BLOB_PROOF_ID": ""},
+        {"GROUNDBALL_BLOB_STORE_ID": ""},
         {
             "GROUNDBALL_BLOB_NAMESPACE": "production",
             "GROUNDBALL_BLOB_PROOF_ID": "wave-3",
@@ -522,7 +755,7 @@ def test_missing_or_inconsistent_blob_configuration_fails_closed_and_sanitized(
     environment = {
         "GROUNDBALL_BLOB_NAMESPACE": "proof",
         "GROUNDBALL_BLOB_PROOF_ID": "wave-3",
-        "GROUNDBALL_BLOB_STATE_ORIGIN": STATE_ORIGIN,
+        "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
         "GROUNDBALL_BLOB_TOKEN": "synthetic-secret-token",
         "GROUNDBALL_VISITOR_DIGEST_KEY": secret_key_text,
         **overrides,
@@ -552,7 +785,7 @@ def test_blob_configuration_integrates_through_existing_server_cas_seam(
         environment={
             "GROUNDBALL_BLOB_NAMESPACE": "proof",
             "GROUNDBALL_BLOB_PROOF_ID": "wave-3",
-            "GROUNDBALL_BLOB_STATE_ORIGIN": STATE_ORIGIN,
+            "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
             "GROUNDBALL_BLOB_TOKEN": "synthetic-proof-token",
             "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(key).decode(),
         },
@@ -641,6 +874,6 @@ def test_proof_namespace_cannot_spell_the_production_object_key() -> None:
     with pytest.raises(ValueError, match="proof identifier"):
         BlobCoordinationConfig.proof(
             token="synthetic-proof-token",
-            state_origin=STATE_ORIGIN,
+            store_id=STORE_ID,
             proof_id="../production",
         )

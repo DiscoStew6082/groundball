@@ -31,6 +31,10 @@ class AdmissionStateCodecError(CoordinationStateError):
     """Provider state is unsafe to use for an admission decision."""
 
 
+class _DuplicateJsonKeyError(ValueError):
+    pass
+
+
 def encode_admission_state(state: AdmissionState) -> bytes:
     """Encode schema v1 using canonical compact JSON and UTC timestamps."""
     document = {
@@ -79,8 +83,8 @@ def decode_admission_state(payload: bytes) -> AdmissionState:
     if not isinstance(payload, bytes) or len(payload) > MAX_STATE_BYTES:
         raise AdmissionStateCodecError("Admission state exceeds the size limit.")
     try:
-        document = json.loads(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        document = json.loads(payload, object_pairs_hook=_object_without_duplicate_keys)
+    except (UnicodeDecodeError, json.JSONDecodeError, _DuplicateJsonKeyError) as exc:
         raise AdmissionStateCodecError("Admission state is malformed.") from exc
     if not isinstance(document, dict) or set(document) != {
         "schema_version",
@@ -95,11 +99,29 @@ def decode_admission_state(payload: bytes) -> AdmissionState:
     budget = _decode_budget(document["monthly_budget"])
     running = _decode_running(document["running"])
     starts_by_visitor = _decode_starts(document["starts_by_visitor"])
+    if budget is not None:
+        starts_in_budget_period = sum(
+            1
+            for _, starts in starts_by_visitor
+            for start in starts
+            if start.strftime("%Y-%m") == budget.period
+        )
+        if starts_in_budget_period > budget.charged_starts:
+            raise AdmissionStateCodecError("Admission state is contradictory.")
     return AdmissionState(
         running=running,
         starts_by_visitor=starts_by_visitor,
         monthly_budget=budget,
     )
+
+
+def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    document: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in document:
+            raise _DuplicateJsonKeyError
+        document[key] = value
+    return document
 
 
 def _decode_budget(value: Any) -> MonthlyBudget | None:
