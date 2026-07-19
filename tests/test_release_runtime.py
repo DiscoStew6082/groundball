@@ -31,7 +31,29 @@ socket.socket.connect = blocked
 socket.create_connection = blocked
 
 from fastapi.testclient import TestClient
-from baseball_rag.api.server import app
+from baseball_rag.api.server import app, configure_public_admission
+from baseball_rag.public_admission import AdmissionState, InMemoryCasStore
+
+class SharedProofStore:
+    def __init__(self):
+        self.inner = InMemoryCasStore(AdmissionState())
+
+    @property
+    def deployment_shared(self):
+        return True
+
+    def read(self):
+        return self.inner.read()
+
+    def compare_and_swap(self, version, state):
+        return self.inner.compare_and_swap(version, state)
+
+coordinator = configure_public_admission(
+    store=SharedProofStore(),
+    digest_key=b"offline-release-proof-key-material",
+)
+if not coordinator.initialize_current_budget():
+    raise AssertionError("release proof could not create the initial monthly budget")
 
 with TestClient(app) as client:
     ready_response = client.get("/api/release-readiness")

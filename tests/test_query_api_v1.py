@@ -1,11 +1,89 @@
 """FastAPI Adapter for the clean Query Recipe and Query Run contracts."""
 
+from datetime import UTC, datetime, timedelta
+from typing import cast
+
 import pytest
 from fastapi.testclient import TestClient
 
+import baseball_rag.api.server as api_server
 from baseball_rag.api.server import app
+from baseball_rag.public_admission import (
+    AdmissionState,
+    CasCoordinator,
+    CasStore,
+    InMemoryCasStore,
+    MonthlyBudget,
+    RunLease,
+    visitor_digest,
+)
+from baseball_rag.public_execution import (
+    ExecutionOutcome,
+    ExecutionRequest,
+)
 
 client = TestClient(app)
+NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
+
+
+class RecordingRunner:
+    def __init__(self, outcome: ExecutionOutcome) -> None:
+        self.outcome = outcome
+        self.requests: list[ExecutionRequest] = []
+
+    def run(
+        self,
+        request: ExecutionRequest,
+        *,
+        timeout_seconds: float,
+    ) -> ExecutionOutcome:
+        assert 0 < timeout_seconds <= 10
+        self.requests.append(request)
+        return self.outcome
+
+
+class SharedMemoryStore:
+    """Shared-store contract double; not production authority."""
+
+    def __init__(self, state: AdmissionState) -> None:
+        self.inner = InMemoryCasStore(state)
+
+    @property
+    def deployment_shared(self) -> bool:
+        return True
+
+    def read(self) -> tuple[AdmissionState, int]:
+        return self.inner.read()
+
+    def compare_and_swap(self, version: int, state: AdmissionState) -> bool:
+        return self.inner.compare_and_swap(version, state)
+
+
+def configure_public_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    budget: int = 0,
+    state: AdmissionState | None = None,
+    runner: RecordingRunner | None = None,
+) -> tuple[InMemoryCasStore, RecordingRunner]:
+    store = InMemoryCasStore(
+        state
+        or AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=budget))
+    )
+    configured_runner = runner or RecordingRunner(
+        ExecutionOutcome("completed", payload={"kind": "rows", "rows": []})
+    )
+    monkeypatch.setattr(
+        api_server,
+        "_public_admission",
+        CasCoordinator(store, clock=lambda: NOW),
+    )
+    monkeypatch.setattr(api_server, "_visitor_digest_key", b"test-visitor-digest-key" * 2)
+    monkeypatch.setattr(api_server, "_public_admission_is_shared", True)
+    monkeypatch.setattr(api_server, "_public_execution_runner", configured_runner)
+    monkeypatch.setattr(api_server, "_public_demo_enabled", lambda: True)
+    monkeypatch.setattr(api_server, "_require_consistent_release_configuration", lambda: None)
+    return store, configured_runner
 
 
 def test_query_run_endpoint_accepts_natural_language_and_structured_recipe():
@@ -186,3 +264,314 @@ def test_retrosheet_queries_remain_separate_and_never_fallback_from_primary_ques
         ).status_code
         == 422
     )
+
+
+def test_public_query_run_is_admitted_once_and_releases_only_its_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        ExecutionOutcome(
+            "completed",
+            payload={"kind": "rows", "rows": [{"batting.RBI": 153}]},
+        )
+    )
+    store, _ = configure_public_proof(monkeypatch, runner=runner)
+
+    response = TestClient(app, base_url="https://testserver").post(
+        "/api/query-runs",
+        json={"question": "who had the most RBIs in 1962"},
+    )
+
+    assert response.status_code == 200
+    assert runner.requests == [
+        ExecutionRequest(
+            operation="query",
+            question="who had the most RBIs in 1962",
+            recipe=None,
+        )
+    ]
+    cookie = response.headers["set-cookie"]
+    assert "groundball_visitor=" in cookie
+    assert "HttpOnly" in cookie
+    assert "Secure" in cookie
+    assert "SameSite=lax" in cookie
+    state, _ = store.read()
+    assert state.running == ()
+    assert state.monthly_budget.charged_starts == 1
+    token = response.cookies["groundball_visitor"]
+    assert [item[0] for item in state.starts_by_visitor] == [
+        visitor_digest(token, digest_key=b"test-visitor-digest-key" * 2)
+    ]
+
+
+def test_public_allowance_pause_never_enters_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, runner = configure_public_proof(monkeypatch, budget=100)
+
+    response = TestClient(app, base_url="https://testserver").post(
+        "/api/query-runs",
+        json={"question": "who had the most RBIs in 1962"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": "allowance_paused",
+        "reason": "monthly_start_budget_exhausted",
+        "detail": (
+            "Ground Ball's monthly public Query Run allowance is paused. "
+            "Retry at 2026-08-01T00:00:00+00:00."
+        ),
+        "retry_at": "2026-08-01T00:00:00+00:00",
+    }
+    assert response.headers["retry-after"] == "1080000"
+    assert "groundball_visitor=" in response.headers["set-cookie"]
+    assert runner.requests == []
+    state, _ = store.read()
+    assert state.monthly_budget.charged_starts == 100
+
+
+def test_public_request_body_boundary_and_early_cors_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_public_proof(monkeypatch)
+    exact = b'{"question":"x"}' + b" " * (16_384 - len(b'{"question":"x"}'))
+    headers = {
+        "content-type": "application/json",
+        "origin": "https://discostew.dev",
+    }
+
+    accepted = TestClient(app).post("/api/query-runs", content=exact, headers=headers)
+    refused = TestClient(app).post(
+        "/api/query-runs",
+        content=exact + b" ",
+        headers=headers,
+    )
+    malformed = TestClient(app).post(
+        "/api/query-runs",
+        content=b"{" + b"x" * 16_384,
+        headers=headers,
+    )
+
+    assert accepted.status_code == 200
+    assert refused.status_code == 413
+    assert malformed.status_code == 413
+    assert refused.json() == {
+        "error": "request_too_large",
+        "detail": "Public Query Run requests may not exceed 16384 bytes.",
+    }
+    assert refused.headers["access-control-allow-origin"] == "https://discostew.dev"
+    assert refused.headers["access-control-allow-credentials"] == "true"
+
+
+def test_natural_language_question_has_an_exact_500_character_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, runner = configure_public_proof(monkeypatch)
+
+    accepted = TestClient(app).post("/api/query-runs", json={"question": "x" * 500})
+    refused = TestClient(app).post("/api/query-runs", json={"question": "x" * 501})
+
+    assert accepted.status_code == 200
+    assert refused.status_code == 422
+    assert len(runner.requests) == 1
+
+
+def test_public_retrosheet_route_uses_the_same_admission_and_execution_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, runner = configure_public_proof(monkeypatch)
+
+    response = TestClient(app, base_url="https://testserver").post(
+        "/api/retrosheet/queries",
+        json={"question": "how many times did Nolan Ryan strike out the side"},
+    )
+
+    assert response.status_code == 200
+    assert runner.requests[0].operation == "retrosheet"
+    state, _ = store.read()
+    assert state.running == ()
+    assert state.monthly_budget.charged_starts == 1
+
+
+def test_public_busy_and_rate_refusals_expose_exact_retry_times(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "existing-opaque-token"
+    digest_key = b"test-visitor-digest-key" * 2
+    visitor = visitor_digest(token, digest_key=digest_key)
+    runner = RecordingRunner(ExecutionOutcome("completed", payload={"kind": "rows"}))
+    busy_state = AdmissionState(
+        running=(
+            RunLease(
+                visitor=visitor,
+                run_id="active",
+                expires_at=NOW + timedelta(seconds=15),
+            ),
+        ),
+        monthly_budget=MonthlyBudget(period="2026-07", charged_starts=1),
+    )
+    configure_public_proof(monkeypatch, state=busy_state, runner=runner)
+
+    public_client = TestClient(app, base_url="https://testserver")
+    public_client.cookies.set("groundball_visitor", token)
+    busy = public_client.post(
+        "/api/query-runs",
+        json={"question": "question"},
+    )
+
+    assert busy.status_code == 429
+    assert busy.json()["reason"] == "visitor_run_active"
+    assert busy.json()["retry_at"] == "2026-07-19T12:00:15+00:00"
+    assert busy.headers["retry-after"] == "15"
+    assert runner.requests == []
+
+    rate_state = AdmissionState(
+        starts_by_visitor=(
+            (
+                visitor,
+                (
+                    NOW - timedelta(seconds=50),
+                    NOW - timedelta(seconds=30),
+                    NOW - timedelta(seconds=10),
+                ),
+            ),
+        ),
+        monthly_budget=MonthlyBudget(period="2026-07", charged_starts=3),
+    )
+    configure_public_proof(monkeypatch, state=rate_state, runner=runner)
+    limited = public_client.post(
+        "/api/query-runs",
+        json={"question": "question"},
+    )
+
+    assert limited.status_code == 429
+    assert limited.json()["reason"] == "three_starts_per_minute"
+    assert limited.json()["retry_at"] == "2026-07-19T12:00:10+00:00"
+    assert limited.headers["retry-after"] == "10"
+
+
+def test_public_malformed_budget_and_store_failure_have_distinct_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    malformed = AdmissionState(
+        monthly_budget=cast(
+            MonthlyBudget,
+            {"period": "2026-07", "charged_starts": 0},
+        )
+    )
+    configure_public_proof(monkeypatch, state=malformed)
+
+    allowance = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert allowance.status_code == 503
+    assert allowance.json()["error"] == "allowance_paused"
+    assert allowance.json()["reason"] == "monthly_budget_invalid"
+
+    class UnavailableStore:
+        def read(self):
+            raise OSError("sensitive internal provider detail")
+
+        def compare_and_swap(self, version: int, state: AdmissionState) -> bool:
+            raise AssertionError("unreachable")
+
+    monkeypatch.setattr(
+        api_server,
+        "_public_admission",
+        CasCoordinator(cast(CasStore, UnavailableStore()), clock=lambda: NOW),
+    )
+    unavailable = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert unavailable.status_code == 503
+    assert unavailable.json()["error"] == "provider_unavailable"
+    assert unavailable.json()["reason"] == "coordination_store_unavailable"
+    assert "sensitive" not in unavailable.text
+
+
+def test_public_timeout_is_honest_and_never_refunds_the_charged_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(ExecutionOutcome("timed_out"))
+    store, _ = configure_public_proof(monkeypatch, runner=runner)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "slow question"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": "timed_out",
+        "detail": (
+            "The Query Run reached its 10-second deadline and was stopped. "
+            "Narrow the question before trying again."
+        ),
+    }
+    state, _ = store.read()
+    assert state.running == ()
+    assert state.monthly_budget.charged_starts == 1
+
+
+def test_public_execution_failure_releases_lease_but_keeps_charge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        ExecutionOutcome("failed", detail="Public Query Run execution failed.")
+    )
+    store, _ = configure_public_proof(monkeypatch, runner=runner)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "failing question"})
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "provider_unavailable"
+    state, _ = store.read()
+    assert state.running == ()
+    assert state.monthly_budget.charged_starts == 1
+
+
+def test_public_configuration_rejects_process_local_store_and_unstable_key() -> None:
+    state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
+
+    with pytest.raises(ValueError, match="shared"):
+        api_server.configure_public_admission(
+            store=InMemoryCasStore(state),
+            digest_key=b"x" * 32,
+        )
+    with pytest.raises(ValueError, match="32 bytes"):
+        api_server.configure_public_admission(
+            store=SharedMemoryStore(state),
+            digest_key=b"short",
+        )
+
+
+def test_public_startup_fails_closed_without_shared_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", "/proof/bundle")
+    monkeypatch.setattr("baseball_rag.release_runtime.release_readiness", lambda: object())
+    monkeypatch.setattr(api_server, "_public_admission", None)
+    monkeypatch.setattr(api_server, "_visitor_digest_key", None)
+    monkeypatch.setattr(api_server, "_public_admission_is_shared", False)
+
+    with pytest.raises(RuntimeError, match="shared public admission"):
+        with TestClient(app):
+            pass
+
+
+def test_public_startup_fails_closed_for_invalid_current_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", "/proof/bundle")
+    monkeypatch.setattr("baseball_rag.release_runtime.release_readiness", lambda: object())
+    store = SharedMemoryStore(
+        AdmissionState(monthly_budget=MonthlyBudget(period="2026-08", charged_starts=0))
+    )
+    coordinator = api_server.configure_public_admission(
+        store=store,
+        digest_key=b"stable-key" * 4,
+        clock=lambda: NOW,
+    )
+    assert coordinator.readiness().kind == "allowance_paused"
+
+    with pytest.raises(RuntimeError, match="budget"):
+        with TestClient(app):
+            pass
