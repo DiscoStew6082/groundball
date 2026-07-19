@@ -1,0 +1,63 @@
+name: Release Proof
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths: &release-proof-paths
+      - '.github/workflows/release-proof.yml'
+      - 'Dockerfile.vercel'
+      - 'data/**'
+      - 'pyproject.toml'
+      - 'release/bundle/**'
+      - 'src/baseball_rag/api/server.py'
+      - 'src/baseball_rag/coverage_proof_validator.py'
+      - 'src/baseball_rag/db/packaged_data.py'
+      - 'src/baseball_rag/query/**'
+      - 'src/baseball_rag/release_bundle.py'
+      - 'tests/test_query_coverage.py'
+      - 'tests/test_query_coverage_generator.py'
+      - 'tests/test_query_raw_surface.py'
+      - 'tests/test_release_runtime.py'
+      - 'uv.lock'
+  push:
+    branches:
+      - main
+      - implementation/**
+    paths: *release-proof-paths
+
+concurrency:
+  group: release-proof-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - name: Materialize legacy local-test inputs
+        run: uv run python -c "from baseball_rag.db.download import download_all; download_all()"
+      - name: Prove immutable release runtime
+        run: uv run python -m pytest tests/ -m "release_proof" --durations=20 -v
+      - name: Regenerate and compare exhaustive query coverage proof
+        run: uv run python -m baseball_rag.query.generate_coverage_report --check
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: exhaustive-query-release-proof
+          path: |
+            src/baseball_rag/query/coverage/coverage-report.json
+            src/baseball_rag/query/coverage/coverage-report.md

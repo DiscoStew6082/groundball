@@ -1,7 +1,7 @@
+from baseball_rag.query.coverage import load_coverage_report
 from baseball_rag.query.generate_coverage_report import (
     _outcome_gate,
     _plan_safety_gate,
-    _promoted_gate,
 )
 
 
@@ -21,18 +21,22 @@ def test_evidence_obligations_are_field_assertions_on_a_real_query_run():
     assert "outcome:ExecutionFailed" in {item["identity"] for item in gate["obligations"]}
 
 
-def test_promoted_obligations_only_count_exercised_public_operations():
-    gate = _promoted_gate()
+def test_checked_in_promoted_obligations_only_count_public_operations():
+    report = load_coverage_report()
+    gate = next(item for item in report["gates"] if item["identity"] == "promoted_exactness")
     identities = [item["identity"] for item in gate["obligations"]]
 
     assert not any(identity.startswith("internal-dependency:") for identity in identities)
     assert not any(identity.startswith("rollup:") for identity in identities)
     assert not any(identity.startswith("grouping:") for identity in identities)
     assert any(":group" in identity for identity in identities)
-    assert gate["relationship_directions"] == gate["relationships_observed_in_plans"]
-    assert len(gate["relationship_reverse_rejections"]) == len(gate["relationship_directions"])
+    details = gate["details"]
+    assert details["relationship_directions"] == details["relationships_observed_in_plans"]
+    assert len(details["relationship_reverse_rejections"]) == len(
+        details["relationship_directions"]
+    )
     assert [
         identity
         for identity in identities
         if identity.startswith(("rollup-allowed:", "rollup-forbidden:"))
-    ] == gate["rollup_assertions"]
+    ] == details["rollup_assertions"]
