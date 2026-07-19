@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "groupings": ["position"],
+  "default_null_policies": {"count": "preserve_unknown", "component": "preserve_unknown", "calculation": "preserve_unknown"},
+  "values": [
+    {"identity": "position", "friendly_name": "Position", "aliases": ["fielding position", "pos"], "kind": "dimension", "data_type": "text", "source_field": "Fielding.POS", "allowed_grains": ["player-position-season", "player-position-career"]},
+    {"identity": "fielding.G", "friendly_name": "Fielding games", "aliases": ["fielding games", "g"], "kind": "count", "data_type": "integer", "source_field": "Fielding.G", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career"]},
+    {"identity": "fielding.GS", "friendly_name": "Fielding games started", "aliases": ["fielding games started"], "kind": "count", "data_type": "integer", "source_field": "Fielding.GS", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career"]},
+    {"identity": "fielding.InnOuts", "friendly_name": "Fielding outs", "aliases": [], "kind": "component", "public": false, "data_type": "integer", "source_field": "Fielding.InnOuts", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career", "team-season", "league-season"]},
+    {"identity": "fielding.PO", "friendly_name": "Putouts", "aliases": ["putouts", "po"], "kind": "count", "data_type": "integer", "source_field": "Fielding.PO", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career", "team-season", "league-season"]},
+    {"identity": "fielding.A", "friendly_name": "Assists", "aliases": ["fielding assists", "assists"], "kind": "count", "data_type": "integer", "source_field": "Fielding.A", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career", "team-season", "league-season"]},
+    {"identity": "fielding.E", "friendly_name": "Errors", "aliases": ["errors"], "kind": "count", "data_type": "integer", "source_field": "Fielding.E", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career", "team-season", "league-season"]},
+    {"identity": "fielding.DP", "friendly_name": "Double-play participations", "aliases": ["double plays", "fielding double plays", "dp"], "kind": "count", "data_type": "integer", "source_field": "Fielding.DP", "rollup": "additive", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career"]},
+    {"identity": "fielding.innings", "friendly_name": "Fielding innings", "aliases": ["fielding innings"], "kind": "calculation", "data_type": "baseball_innings", "formula": "baseball innings from InnOuts", "expression": {"op": "baseball_innings", "args": [{"field": "Fielding.InnOuts"}]}, "components": ["Fielding.InnOuts"], "rollup": "recompute", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career", "team-season", "league-season"]},
+    {"identity": "fielding.FPCT", "friendly_name": "Fielding percentage", "aliases": ["fielding percentage", "fpct"], "kind": "calculation", "data_type": "number", "formula": "(PO + A) / (PO + A + E)", "expression": {"op": "divide", "args": [{"op": "add", "args": [{"field": "Fielding.PO"}, {"field": "Fielding.A"}]}, {"op": "add", "args": [{"field": "Fielding.PO"}, {"field": "Fielding.A"}, {"field": "Fielding.E"}]}]}, "components": ["Fielding.PO", "Fielding.A", "Fielding.E"], "eligibility_component": "fielding.InnOuts", "rollup": "recompute", "allowed_grains": ["player-position-season", "player-position-career", "player-team-season", "player-season", "player-career", "team-season", "league-season"]}
+  ],
+  "relationships": [
+    {"identity": "people-to-fielding", "left_source": "People", "right_source": "Fielding", "cardinality": "left_one_to_right_many", "keys": [["People.playerID", "Fielding.playerID"]]},
+    {"identity": "team-reference-to-fielding", "left_source": "TeamReference", "right_source": "Fielding", "cardinality": "left_one_to_right_many", "keys": [["TeamReference.yearID", "Fielding.yearID"], ["TeamReference.teamID", "Fielding.teamID"]]}
+  ],
+  "recipes": [],
+  "grains": []
+}

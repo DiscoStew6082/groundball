@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "groupings": ["player.id", "season", "team.id", "league"],
+  "combinations": [
+    {"identity": "combine-primary-facts", "sources": ["Batting", "Pitching", "Fielding"], "grains": ["player-season", "player-team-season", "player-career"]}
+  ],
+  "grains": [
+    {"identity": "player-record", "sources": ["People"], "dimensions": ["player.id"]},
+    {"identity": "player-team-season", "sources": ["Batting", "Pitching", "Fielding"], "dimensions": ["player.id", "season", "team.id"]},
+    {"identity": "player-season", "sources": ["Batting", "Pitching", "Fielding"], "dimensions": ["player.id", "season"]},
+    {"identity": "player-season-league", "sources": ["Batting"], "dimensions": ["player.id", "season", "league"]},
+    {"identity": "player-career", "sources": ["Batting", "Pitching", "Fielding"], "dimensions": ["player.id"]},
+    {"identity": "team-season", "sources": ["Batting", "Pitching", "Fielding"], "dimensions": ["season", "team.id"]},
+    {"identity": "league-season", "sources": ["Batting", "Pitching", "Fielding"], "dimensions": ["season", "league"]},
+    {"identity": "player-position-season", "sources": ["Fielding"], "dimensions": ["player.id", "season", "position"]},
+    {"identity": "player-position-career", "sources": ["Fielding"], "dimensions": ["player.id", "position"]}
+  ],
+  "values": [
+    {"identity": "player.id", "friendly_name": "Player ID", "aliases": ["player", "player id"], "kind": "dimension", "data_type": "text", "source_bindings": {"People": "People.playerID", "Batting": "Batting.playerID", "Pitching": "Pitching.playerID", "Fielding": "Fielding.playerID"}, "allowed_grains": ["player-record", "player-team-season", "player-season", "player-season-league", "player-career", "player-position-season", "player-position-career"]},
+    {"identity": "player.name", "friendly_name": "Player", "aliases": ["player name", "name"], "kind": "dimension", "data_type": "text", "source_fields": ["People.nameFirst", "People.nameLast"], "match_fields": ["People.nameGiven", "People.nameLast"], "match_composition": "join_nonempty_space", "composition": "join_nonempty_space", "allowed_grains": ["player-record", "player-team-season", "player-season", "player-season-league", "player-career", "player-position-season", "player-position-career"]},
+    {"identity": "season", "friendly_name": "Season", "aliases": ["year", "year id"], "kind": "dimension", "data_type": "integer", "source_bindings": {"Batting": "Batting.yearID", "Pitching": "Pitching.yearID", "Fielding": "Fielding.yearID"}, "allowed_grains": ["player-team-season", "player-season", "player-season-league", "team-season", "league-season", "player-position-season"]},
+    {"identity": "team.id", "friendly_name": "Team ID", "aliases": ["team code"], "kind": "dimension", "data_type": "text", "source_bindings": {"Batting": "Batting.teamID", "Pitching": "Pitching.teamID", "Fielding": "Fielding.teamID"}, "allowed_grains": ["player-team-season", "team-season"]},
+    {"identity": "team.name", "friendly_name": "Team", "aliases": ["team", "team name"], "kind": "dimension", "data_type": "text", "source_field": "TeamReference.name", "allowed_grains": ["player-team-season", "team-season"]},
+    {"identity": "league", "friendly_name": "League", "aliases": ["league id"], "kind": "dimension", "data_type": "text", "source_bindings": {"Batting": "Batting.lgID", "Pitching": "Pitching.lgID", "Fielding": "Fielding.lgID"}, "allowed_grains": ["player-season-league", "league-season"]}
+  ],
+  "relationships": [],
+  "recipes": []
+}

@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "default_null_policies": {"count": "preserve_unknown", "component": "preserve_unknown", "calculation": "preserve_unknown"},
+  "grains": [],
+  "values": [
+    {
+      "identity": "batting.G",
+      "friendly_name": "Games played",
+      "aliases": ["games", "games played", "g"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.G",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career"]
+    },
+    {
+      "identity": "batting.AB",
+      "friendly_name": "At-bats",
+      "aliases": ["at bats", "at-bats", "ab"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.AB",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.R",
+      "friendly_name": "Runs",
+      "aliases": ["runs", "r"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.R",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.H",
+      "friendly_name": "Hits",
+      "aliases": ["hits", "h"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.H",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.2B",
+      "friendly_name": "Doubles",
+      "aliases": ["doubles", "2b"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.2B",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.3B",
+      "friendly_name": "Triples",
+      "aliases": ["triples", "3b"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.3B",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.HR",
+      "friendly_name": "Home runs",
+      "aliases": ["home runs", "home run", "homers", "hr"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.HR",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.RBI",
+      "friendly_name": "Runs batted in",
+      "aliases": ["runs batted in", "rbis", "rbi"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.RBI",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.SB",
+      "friendly_name": "Stolen bases",
+      "aliases": ["stolen bases", "steals", "sb"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.SB",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.CS",
+      "friendly_name": "Caught stealing",
+      "aliases": ["caught stealing", "cs"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.CS",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.BB",
+      "friendly_name": "Walks",
+      "aliases": ["walks", "bases on balls", "bb"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.BB",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.SO",
+      "friendly_name": "Batting strikeouts",
+      "aliases": ["batting strikeouts", "strikeouts batting", "so"],
+      "kind": "count",
+      "data_type": "integer",
+      "source_field": "Batting.SO",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.HBP",
+      "friendly_name": "Hit by pitch component",
+      "aliases": [],
+      "kind": "component",
+      "public": false,
+      "data_type": "integer",
+      "source_field": "Batting.HBP",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.SF",
+      "friendly_name": "Sacrifice fly component",
+      "aliases": [],
+      "kind": "component",
+      "public": false,
+      "data_type": "integer",
+      "source_field": "Batting.SF",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.SH",
+      "friendly_name": "Sacrifice hit component",
+      "aliases": [],
+      "kind": "component",
+      "public": false,
+      "data_type": "integer",
+      "source_field": "Batting.SH",
+      "rollup": "additive",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.AVG",
+      "friendly_name": "Batting average",
+      "aliases": ["batting average", "average", "avg"],
+      "kind": "calculation",
+      "data_type": "number",
+      "formula": "H / AB",
+      "expression": {"op": "divide", "args": [{"field": "Batting.H"}, {"field": "Batting.AB"}]},
+      "components": ["Batting.H", "Batting.AB"],
+      "eligibility_component": "batting.AB",
+      "rollup": "recompute",
+      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.OBP",
+      "friendly_name": "On-base percentage",
+      "aliases": ["on base percentage", "on-base percentage", "obp"],
+      "kind": "calculation",
+      "data_type": "number",
+      "formula": "(H + BB + HBP) / (AB + BB + HBP + SF)",
+      "expression": {"op": "divide", "args": [{"op": "add", "args": [{"field": "Batting.H"}, {"field": "Batting.BB"}, {"field": "Batting.HBP"}]}, {"op": "add", "args": [{"field": "Batting.AB"}, {"field": "Batting.BB"}, {"field": "Batting.HBP"}, {"field": "Batting.SF"}]}]},
+      "components": ["Batting.H", "Batting.BB", "Batting.HBP", "Batting.AB", "Batting.SF"],
+      "eligibility_component": "batting.AB",
+      "rollup": "recompute",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.SLG",
+      "friendly_name": "Slugging percentage",
+      "aliases": ["slugging", "slugging percentage", "slg"],
+      "kind": "calculation",
+      "data_type": "number",
+      "formula": "((H - 2B - 3B - HR) + 2*2B + 3*3B + 4*HR) / AB",
+      "expression": {"op": "divide", "args": [{"op": "add", "args": [{"op": "subtract", "args": [{"field": "Batting.H"}, {"field": "Batting.2B"}, {"field": "Batting.3B"}, {"field": "Batting.HR"}]}, {"op": "multiply", "args": [{"constant": 2}, {"field": "Batting.2B"}]}, {"op": "multiply", "args": [{"constant": 3}, {"field": "Batting.3B"}]}, {"op": "multiply", "args": [{"constant": 4}, {"field": "Batting.HR"}]}]}, {"field": "Batting.AB"}]},
+      "components": ["Batting.H", "Batting.2B", "Batting.3B", "Batting.HR", "Batting.AB"],
+      "eligibility_component": "batting.AB",
+      "rollup": "recompute",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.OPS",
+      "friendly_name": "On-base plus slugging",
+      "aliases": ["on base plus slugging", "on-base plus slugging", "ops"],
+      "kind": "calculation",
+      "data_type": "number",
+      "formula": "OBP + SLG",
+      "expression": {"op": "add", "args": [{"value": "batting.OBP"}, {"value": "batting.SLG"}]},
+      "components": ["Batting.H", "Batting.BB", "Batting.HBP", "Batting.AB", "Batting.SF", "Batting.2B", "Batting.3B", "Batting.HR"],
+      "eligibility_component": "batting.AB",
+      "rollup": "recompute",
+      "allowed_grains": ["player-team-season", "player-season", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.PA",
+      "friendly_name": "Plate appearances for eligibility",
+      "aliases": [],
+      "kind": "calculation",
+      "public": false,
+      "data_type": "integer",
+      "formula": "AB + BB + HBP + SH + SF",
+      "expression": {"op": "add", "args": [{"field": "Batting.AB"}, {"field": "Batting.BB"}, {"field": "Batting.HBP"}, {"field": "Batting.SH"}, {"field": "Batting.SF"}]},
+      "components": ["Batting.AB", "Batting.BB", "Batting.HBP", "Batting.SH", "Batting.SF"],
+      "rollup": "recompute",
+      "allowed_grains": ["player-team-season", "player-season", "player-season-league", "player-career", "team-season", "league-season"]
+    },
+    {
+      "identity": "batting.HR.league_max",
+      "friendly_name": "League-season home-run lead",
+      "aliases": [],
+      "kind": "window",
+      "public": false,
+      "data_type": "integer",
+      "window_base": "batting.HR",
+      "window_partition": ["season", "league"],
+      "allowed_grains": ["player-season-league"]
+    },
+    {
+      "identity": "batting.RBI.league_max",
+      "friendly_name": "League-season RBI lead",
+      "aliases": [],
+      "kind": "window",
+      "public": false,
+      "data_type": "integer",
+      "window_base": "batting.RBI",
+      "window_partition": ["season", "league"],
+      "allowed_grains": ["player-season-league"]
+    },
+    {
+      "identity": "batting.AVG.league_max",
+      "friendly_name": "Eligible league-season batting-average lead",
+      "aliases": [],
+      "kind": "window",
+      "public": false,
+      "data_type": "number",
+      "window_base": "batting.AVG",
+      "window_partition": ["season", "league"],
+      "window_eligibility": "batting.PA",
+      "allowed_grains": ["player-season-league"]
+    }
+  ],
+  "relationships": [
+    {
+      "identity": "people-to-batting",
+      "left_source": "People",
+      "right_source": "Batting",
+      "cardinality": "left_one_to_right_many",
+      "keys": [["People.playerID", "Batting.playerID"]]
+    },
+    {
+      "identity": "team-reference-to-batting",
+      "left_source": "TeamReference",
+      "right_source": "Batting",
+      "cardinality": "left_one_to_right_many",
+      "keys": [["TeamReference.yearID", "Batting.yearID"], ["TeamReference.teamID", "Batting.teamID"]]
+    }
+  ],
+  "recipes": [
+    {
+      "identity": "batting.30-30",
+      "source": "Batting",
+      "grain": "player-season",
+      "selections": ["player.name", "season", "batting.HR", "batting.SB"],
+      "predicates": [
+        {"value": "batting.HR", "operator": "greater_or_equal", "literal": 30},
+        {"value": "batting.SB", "operator": "greater_or_equal", "literal": 30}
+      ],
+      "ordering": [
+        {"value": "season", "direction": "ascending"},
+        {"value": "player.name", "direction": "ascending"}
+      ]
+    },
+    {
+      "identity": "batting.40-40",
+      "source": "Batting",
+      "grain": "player-season",
+      "selections": ["player.name", "season", "batting.HR", "batting.SB"],
+      "predicates": [
+        {"value": "batting.HR", "operator": "greater_or_equal", "literal": 40},
+        {"value": "batting.SB", "operator": "greater_or_equal", "literal": 40}
+      ],
+      "ordering": [
+        {"value": "season", "direction": "ascending"},
+        {"value": "player.name", "direction": "ascending"}
+      ]
+    },
+    {
+      "identity": "batting.500-home-runs",
+      "source": "Batting",
+      "grain": "player-career",
+      "selections": ["player.name", "batting.HR"],
+      "predicates": [
+        {"value": "batting.HR", "operator": "greater_or_equal", "literal": 500}
+      ],
+      "ordering": [
+        {"value": "batting.HR", "direction": "descending"},
+        {"value": "player.name", "direction": "ascending"}
+      ]
+    },
+    {
+      "identity": "batting.triple-crown",
+      "source": "Batting",
+      "grain": "player-season-league",
+      "selections": ["player.name", "season", "league", "batting.HR", "batting.RBI", "batting.AVG"],
+      "predicates": [
+        {"value": "season", "operator": "equals", "parameter": "year"},
+        {"value": "league", "operator": "equals", "parameter": "league", "transform": "upper"},
+        {"eligibility_floor": true},
+        {"value": "batting.HR", "operator": "equals", "value_ref": "batting.HR.league_max"},
+        {"value": "batting.RBI", "operator": "equals", "value_ref": "batting.RBI.league_max"},
+        {"value": "batting.AVG", "operator": "equals", "value_ref": "batting.AVG.league_max"}
+      ],
+      "ordering": [
+        {"value": "player.name", "direction": "ascending"}
+      ],
+      "eligibility": [
+        {
+          "year": 2012,
+          "league": "AL",
+          "value": "batting.PA",
+          "minimum": 502,
+          "shortfall_exception": "audited_no_impact_for_this_league_season",
+          "rule": "Official Baseball Rule 9.22: 3.1 plate appearances per scheduled league game; 162 scheduled games rounds to 502",
+          "source": "https://www.mlb.com/glossary/standard-stats/rate-stats-qualifiers"
+        }
+      ]
+    }
+  ]
+}

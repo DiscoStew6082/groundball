@@ -1,0 +1,18 @@
+{
+  "catalog_revision": "published-query-catalog-v3",
+  "catalog_sha256": "14406e5679de6279de6ff0fa9ea0fb347d9f6b116811aa12978b3a7142496e2c",
+  "data_manifest_semantic_sha256": "5c533cb9e479c46f6c2825acf3ae0669825c017c3e125e8c969474200e46127e",
+  "promoted_catalog_sha256": {
+    "promoted_batting.json": "3832f55bf9edcc3e8742e1d56db2727474d32292b2fd6db004e6bd80cfaff1c9",
+    "promoted_common.json": "fcb1a00838a46f6cfc69d9e4758884cb3c1203b78e018eb6e690986c266121de",
+    "promoted_fielding.json": "01087531a18f715488dbad37bc6e496865721122d2eb3efe8948b5bab8bb2d4d",
+    "promoted_people.json": "b8a46b988373486ecf1b351b1fc4567efb5cf133eeb4b3bd288d7ebb8caed59a",
+    "promoted_pitching.json": "9244c375830b7a6ae81642a233b168e04d1254c202eb874f712e7b963109450f"
+  },
+  "raw_inventory_revision": "raw-fields-62c654dd3fddb1f6",
+  "raw_inventory_sha256": "a5e5e85f2cc2009c6df0e84bbe8cae7956a3a984b068471f50dae7b014b3509a",
+  "source_registry_revision": "lahman-sources-v1",
+  "source_registry_sha256": "b5f10ae08a1d6579b092ac4eb49c098f091838b59ec0a6df7a4561770c999a69",
+  "team_reference_manifest_sha256": "eb414305b28eeb5471834fabbb9c7e6da042433567aefa4fc0037fcdf289817a",
+  "team_reference_revision": "season-aware-v1"
+}
