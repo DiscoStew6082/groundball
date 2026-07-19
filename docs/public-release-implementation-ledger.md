@@ -7,8 +7,8 @@ This is the execution handoff for the completed Public Deterministic Ground Ball
 ## Canonical continuation
 
 - Working directory: `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release`
-- Branch: `implementation/public-deterministic-groundball-release`
-- Integrated baseline: `origin/main` at merge commit `0afd947`; local merge commit `e5159a7` preserves handoff commit `5ada351`
+- Branch: `implementation/public-deterministic-groundball-blob-adapter`
+- Integrated baseline: `origin/main` at PR #26 merge commit `427e189f97c274cb53529cad8e3f35aa92aec652`
 - Completed planning source: `.scratch/public-deterministic-groundball/map.md` on `wayfinder/queryable-ground-ball` at `6675ad1`
 - Current context: `CONTEXT.md`
 - Current instructions: this worktree's `AGENTS.md`, aligned with the root worktree's removal of the former TDD, subagent, mandatory-review, auto-commit, CI-wait, and forced-browser directives
@@ -39,14 +39,17 @@ Stewart must receive the final protected candidate link, open it, and explicitly
 - `6106dd6`: offline release-container CI proof.
 - `b3c20e6`: Release Manifest binding to the reviewed source commit.
 - `a4084f1`: PR #23 merge containing the complete Release Bundle foundation.
+- `0639c23`: Wave 2 Public Admission Policy core.
+- `a56fbe0`: Wave 2 UTC monthly retry-boundary correction.
+- `427e189`: PR #26 merge containing the complete Wave 2 public admission seam.
 
 The landed foundation packages the four Lahman tables, catalog and registry assets, generated raw inventory, team references, exact Coverage Report, compact strikeout-side Retrosheet projection, provenance, licenses, and canonical Release Manifest. It boots without acquiring data and advertises only the three bundle-backed Retrosheet families.
 
 This is foundation evidence, not final release evidence. It does not yet prove shared public admission, final parity, performance, live Browser behavior, real Blob coordination, a Deployment Attestation, or public cutover.
 
-### Ported Public Admission Policy draft
+### Landed Public Admission Policy
 
-Wave 2 ported and completed the useful behavior from the previous worktree's five uncommitted files. That source remains preserved and read-only at:
+Wave 2 ported and completed the useful behavior from the previous worktree's five uncommitted files and merged it in PR #26 at `427e189`. That source remains preserved and read-only at:
 
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/src/baseball_rag/api/server.py`
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/src/baseball_rag/public_admission.py`
@@ -54,7 +57,7 @@ Wave 2 ported and completed the useful behavior from the previous worktree's fiv
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/tests/test_public_admission.py`
 - `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-implementation/tests/test_release_runtime.py`
 
-The completed port preserves the upstream `release_proof` marker on `tests/test_release_runtime.py` and supersedes the draft's process-local production defaults. `InMemoryCasStore` is now explicitly proof-only; production configuration rejects it and requires a declared deployment-shared store plus an injected stable digest key. No real Vercel Blob Adapter, store, secret, budget state, deployment, or attestation exists yet.
+The completed port preserves the upstream `release_proof` marker on `tests/test_release_runtime.py` and supersedes the draft's process-local production defaults. `InMemoryCasStore` is explicitly proof-only; production configuration rejects it and requires a declared deployment-shared store plus an injected stable digest key. Wave 3 now supplies the local Vercel Blob Adapter contract, but no real Blob store, secret, budget state, deployment, or attestation exists.
 
 Do not commit more source work on the old `implementation/public-deterministic-groundball` branch. Its release-container CI assumes an artifact-only tip and is hard-coded to that retired branch name. Leave the old dirty worktree intact until outside-Pi verification confirms this port.
 
@@ -74,8 +77,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | Wave | Status | Deliverable | Completion evidence |
 | --- | --- | --- | --- |
 | 1. Release Bundle foundation | Complete | Immutable payload, manifest, offline runtime, exact Coverage Report, restricted Retrosheet surface, container proof | Commits `944180a`, `7a6adbe`, `6106dd6`, `b3c20e6`, merged as `a4084f1` |
-| 2. Public Admission Policy core | Complete on this branch | Pure CAS state model, shared-store/stable-key configuration seam, 500-character and 16,384-byte limits, Visitor/deployment concurrency, rolling rates, 15-second leases, nonrefundable UTC-month budget, common primary/Retrosheet admission, exact retries, fail-closed readiness, and isolated ten-second hard-stop execution | Focused policy/API/runtime proof passes; `InMemoryCasStore` rejected as deployment authority; no Blob or deployment claim |
-| 3. Shared coordination Adapter | Next repository wave | Implement Vercel Blob uncached read plus conditional-write CAS, trusted time, stable keyed Visitor digest, schema/versioning, initialization, readiness, and operation accounting | Local contract proof first; real Blob proof only after external approval |
+| 2. Public Admission Policy core | Complete on `main` in PR #26 (`427e189`) | Pure CAS state model, shared-store/stable-key configuration seam, 500-character and 16,384-byte limits, Visitor/deployment concurrency, rolling rates, 15-second leases, nonrefundable UTC-month budget, common primary/Retrosheet admission, exact retries, fail-closed readiness, and isolated ten-second hard-stop execution | Focused policy/API/runtime proof passes; `InMemoryCasStore` rejected as deployment authority; no Blob or deployment claim |
+| 3. Shared coordination Adapter | Complete on the Wave 3 branch after independent protocol/security correction | Exact private Vercel Blob `?cache=0` read plus current raw control-plane ETag CAS, canonical provider time, strict store identity, stable keyed Visitor digest configuration, strict schema/versioning, create-if-absent initialization, redirect refusal, readiness, namespace isolation, and local operation accounting | Injected fake/scripted transport contract proof only; real protected Blob compatibility/accounting remains blocked on external approval |
 | 4. Public result and Browser contract | Pending after wave 2 | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused API and web tests plus local Browser evidence |
 | 5. Deterministic parity closure | Pending | Prove or fix the exact Ohtani cross-discipline question, equivalent friendly-name recipe, deterministic two-turn follow-up, three bundled Retrosheet families, and all unbundled negative cases | Named parity corpus plus exhaustive catalog/raw-surface checks |
 | 6. Candidate identity and gate tooling | Pending after waves 2-5 | Bind one source commit, bundle digest, image digest, runtime config, admission config, evidence set, and Deployment Attestation; repair release-container CI so it is not tied to the retired branch | Machine-readable gate report and reproducible candidate assembly |
@@ -112,6 +115,41 @@ The in-memory store remains a behavior-test Adapter only. Public startup and rea
 - Success, deterministic failure, and timeout release only the lease. Starts and monthly charges remain; interrupted or restarted work relies on lease expiry and cannot refund.
 - Both `/api/query-runs` and `/api/retrosheet/queries` use the same public admission and execution seam while local routes continue calling their existing deterministic Adapters directly.
 - Query Recipe, Query Plan, Query Run, parameterized DuckDB, Coverage Report, Release Bundle, local mode, CLI, and eval contracts were not changed.
+
+## Wave 3 shared coordination Adapter
+
+Wave 3 commits `dc4a395` and `48f3158`, plus the narrow independent-review correction on PR #27, implement the provider contract behind the Wave 2 `CasStore` seam without changing Query Recipe, Query Plan, Query Run, compiler, Coverage Report, Release Bundle, public-result, or Browser contracts.
+
+### State object and version
+
+- Schema version: `1`.
+- Production object key: `groundball/public-admission/v1/production/state.json`.
+- Proof object-key template: `groundball/public-admission/v1/proof/<proof-id>/state.json`, where the proof identifier is a validated single path segment. The proof constructor cannot produce the production key.
+- The canonical compact JSON object contains only `schema_version`, `monthly_budget`, `running`, and `starts_by_visitor`. It never contains a credential, digest key, raw Visitor cookie, result payload, or private filesystem path.
+- Provider input is capped at 65,536 bytes before acceptance, duplicate JSON object keys are rejected, and leases, Visitors, per-Visitor starts, total starts, identifiers, UTC timestamp precision, field sets, types, ranges, uniqueness, and ordering are strictly validated. A budget cannot report fewer charges than retained starts from its own UTC period; retained earlier-period history and leases that cross a month boundary remain valid.
+- `CasVersion` is opaque. `InMemoryCasStore` retains an internal process version, while the Blob Adapter retains the exact read ETag solely for the next `x-if-match` write.
+
+### Private HTTP and time contract
+
+The project owns a narrow `HttpTransport` protocol implemented with bounded `requests` streaming. It does not import `vercel._internal.*` and does not claim that the current public Python SDK supplies CAS. An authenticated private `GET` targets the internally derived object URL with exactly `?cache=0`, bearer Authorization, JSON Accept, a five-second timeout, and redirects disabled. It does not claim uncached semantics from request `Cache-Control` or invented Blob cache headers. Writes target `https://vercel.com/api/blob/<object-key>` and include bearer Authorization, `x-api-version: 12`, the normalized bare `x-vercel-blob-store-id`, a fresh opaque `x-api-blob-request-id`, `x-api-blob-request-attempt: 0`, private access, JSON content type, and no random suffix. Existing-object writes additionally use the exact ETag in `x-if-match` with overwrite enabled; missing-object initialization uses overwrite disabled and no ETag. Only HTTP 412 is a CAS conflict. Other auth, transport, service, size, content type, ETag, Date, and malformed-response failures raise one sanitized provider error. Writes are never automatically retried: an ambiguous outcome fails closed, and only a later coordinator attempt after a fresh read may write again.
+
+Every Blob read snapshot must carry canonical IMF-fixdate provider HTTP `Date` text in GMT. That strict UTC observation drives the entire decision made from that snapshot: UTC month, both rolling windows, exact retries, and the 15-second lease. Each 412 contention retry rereads both state and time. In-memory policy proofs continue to use an injected deterministic clock. There is no shared mutable last-read clock.
+
+### Configuration, readiness, and accounting
+
+Strict startup configuration uses `GROUNDBALL_BLOB_NAMESPACE`, `GROUNDBALL_BLOB_STORE_ID`, `GROUNDBALL_BLOB_TOKEN`, `GROUNDBALL_VISITOR_DIGEST_KEY`, and, only for proof, `GROUNDBALL_BLOB_PROOF_ID`. The store ID strips one optional `store_` prefix while preserving case, accepts only a bounded alphanumeric bare ID, and internally derives `https://<bare-store-id>.private.blob.vercel-storage.com`; configuration cannot select a public Blob hostname, alternate host, port, userinfo, path, query, or fragment. `GROUNDBALL_BLOB_TOKEN` is the explicit bearer seam and may carry a read-write or OIDC bearer token paired with that explicit store ID. Token authentication and rotation against the live provider remain protected proof; token material is never parsed or rendered. The digest key is URL-safe base64 configuration that must decode to at least 32 bytes. Secret values are excluded from repr and sanitized errors. Missing or inconsistent fields fail startup closed. Initialization remains an explicit coordinator action against a genuinely missing object; an existing object, including one with a missing budget, is never rewritten as initialization.
+
+Digest-key rotation truth: changing the key may map the same cookie to a new per-Visitor identity and therefore fresh per-Visitor running/rate identity. It cannot reset live deployment-wide leases or the UTC-month budget because those remain in the same shared state object. Rotation is not a budget reset mechanism.
+
+Readiness performs a private uncached read and requires strict configuration, reachable coordination, supported schema, trusted Date, and either a current valid monthly budget or a valid older period that the next admitted CAS can roll forward safely. Malformed/unsupported state remains an Allowance Pause; transport/time/service failure remains Provider Unavailable.
+
+`OperationCounts` records local attempted reads, conditional writes, and create-if-absent operations plus successes, missing reads, conflicts, and failures. These are expected application operation classes, not Vercel billing units. Real operation charging, failed-precondition accounting, transfer observations, and Hobby-limit fit remain protected-proof gates.
+
+### Local-only proof boundary
+
+All Wave 3 tests use a no-network fake session, `ScriptedTransport`, or an atomic `SharedScriptedBlobBackend` and monkeypatch socket connection entry points to fail on accidental network access. The proof covers bounded streaming, timeout propagation, and redirect refusal; deterministic codec round trips, duplicate-key rejection, cross-field budget consistency, and valid month-boundary history; exact private `?cache=0` GET and ETag capture; exact current control-plane conditional and create-if-absent PUTs with unique request IDs; no automatic write retry; 412-only conflict classification and sanitized failures; one initialization winner; same-Visitor and 100th/101st races across two coordinators; canonical provider-Date-driven rollover, minute/hour limits, retries, and lease expiry despite disagreeing local clocks; proof/production isolation; strict store identity; digest-key validation; readiness; and attempted-operation counts.
+
+No real Blob store, token, credential, account, deployment, domain, website, Cloudflare service, Mac, tunnel, root checkout, or old draft worktree was contacted or changed. Live Python/raw-HTTP compatibility and operation accounting against an isolated protected Blob require separate explicit approval.
 
 ## Shared coordination rules
 
@@ -220,6 +258,41 @@ This is local repository evidence only. It does not claim a real Blob Adapter, B
 
 Pi had no subagent or review-agent facility, so Wave 2 received an explicit direct review of every changed enforcement path. The review verified that cookies, digest keys, keyed Visitor digests, provider errors, and child-process stderr do not enter public payloads or logs; every jointly enforced limit is decided in one successful CAS write; failed release CAS leaves a bounded expiring lease and never refunds; timeout kills and reaps the child rather than abandoning a thread; early 413 responses retain allowed-origin CORS; both public POST routes enter the same seam; and the old Query/compiler/runtime interfaces remain unchanged. Review fixes added impossible year-zero budget rejection, an explicit deployment-shared store declaration, hard-stop child reaping, and acceptance of only a well-formed older budget that the next admitted CAS can atomically roll forward. The stale-base `release_proof` marker remains present. No Wave 3 Adapter, external service, deployment, account, website, Cloudflare, or Mac behavior was added or touched.
 
+### Wave 3 TDD and local verification (2026-07-19)
+
+The vertical slices first failed for the missing codec module, missing Blob Adapter module, missing strict configuration loader, and missing server environment-integration seam, then passed after each smallest implementation. The cross-cutting review added `CasSnapshot.exists` after proving that an existing object with a null budget must not be rewritten as initialization; the marked offline release-runtime proof was updated to model a genuinely missing proof object and returned green. The first configured hook run reformatted four files and therefore exited nonzero as designed; the second run and both commit-time hook runs passed.
+
+Final local outputs for implementation commit `dc4a395` and the documentation closeout were:
+
+- Focused Adapter/codec/admission/execution/API/marked-runtime proof: `88 passed`; one upstream Starlette/httpx deprecation warning.
+- `uv run pytest tests/ -m 'not llm and not release_proof' -q`: `370 passed, 1 deselected`; the same upstream warning.
+- `uv run ruff check src/ tests/`: passed.
+- `uv run mypy src/baseball_rag/`: passed for `61` source files.
+- Catalog compatibility, raw inventory, and Coverage Report `--check` generators: passed with no output or diff.
+- `uv run python -m baseball_rag.query.eval_matrix`: passing, `17/17` cases.
+- `npm --prefix web test`: `4/4` tests passed.
+- `npm --prefix web run build`: passed with `113` modules transformed.
+- `git diff --check`: passed.
+- Configured pre-commit hooks: ruff, ruff-format, mypy, whitespace, EOF, YAML where applicable, and merge-conflict checks passed.
+
+The independent-review correction followed new red tests for the exact provider protocol, strict identity/time/codec contradictions, redirect refusal, and ambiguous-write handling. Final correction outputs were:
+
+- Adapter/codec protocol proof: `58 passed` with all socket connection entry points denied.
+- Focused Adapter/admission/execution/API/runtime proof: `113 passed`; one upstream Starlette/httpx deprecation warning.
+- CI-equivalent fast Python suite with coverage: `395 passed, 1 deselected`; the same upstream warning; aggregate coverage `75%`.
+- Relevant marked offline release proof: `1 passed`.
+- Ruff passed; mypy passed for `61` source files; configured pre-commit hooks passed.
+- Catalog compatibility, raw inventory, Coverage Report, and coverage proof validator checks passed with no generated diff.
+- Deterministic eval matrix passed `17/17` cases.
+- Web tests passed `4/4`; the web build passed with `113` modules transformed.
+- Root and nested `uv lock --check`, `git diff --check`, and the final changed-file/stale-contract searches passed.
+
+### Wave 3 self-review
+
+No subagent or review-agent facility was available, so Wave 3 received an explicit direct review of the complete diff. Independent protocol/security review then identified stale provider assumptions, and the correction rechecked the exact authenticated private `?cache=0` GET, current `vercel.com/api/blob` write origin and API/store/request headers, five-second transport timeout, redirects disabled, bounded bodies, private JSON content type, random-suffix prohibition, overwrite modes, exact ETag retention, 412-only conflict classification, one-winner creation, no ambiguous-write retry, canonical Date flow, no mutable shared time, duplicate-key and cross-field codec contradictions, collection and identifier limits, store-derived private origin, proof/production key construction, decoded key length, secret-safe repr/errors, readiness distinctions, and attempted-operation counters. It also rechecked that both existing public POST routes still enter Wave 2 unchanged, the ten-second execution deadline and 15-second lease remain intact, and no Query/compiler/Coverage/Bundle/result/Browser contract moved.
+
+This proof deliberately uses only injected fake/scripted transports and socket-denial guards. It does not establish that Vercel's live service accepts this raw-HTTP contract, how Vercel bills successful or failed operation attempts, or whether actual Hobby limits remain safe. Those are protected-proof gates requiring separate approval.
+
 ## Abort and rollback rules
 
 - Any gate miss, identity mismatch, warning-only substitution, unexpected route or network destination, resource overage, or Browser failure makes the candidate ineligible.
@@ -248,7 +321,7 @@ Work only in:
 /Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release
 
 Branch:
-implementation/public-deterministic-groundball-release
+implementation/public-deterministic-groundball-blob-adapter
 
 Read first:
 - AGENTS.md
@@ -257,9 +330,9 @@ Read first:
 
 The completed Wayfinder map is on wayfinder/queryable-ground-ball at 6675ad1. Do not reopen its decisions unless current evidence invalidates a gate.
 
-Begin with Wave 2. Preserve the dirty five-file admission-policy draft in the old public-deterministic-groundball-implementation worktree. Port it into this continuation worktree, verify the diff, and leave the old worktree untouched until the port is confirmed. The last focused run passed 25 tests.
+Wave 2 is merged in PR #26 at `427e189`. Wave 3 is implemented on PR #27 in `dc4a395`, `48f3158`, and the narrow independent-review correction, with fake/scripted transports only. Review its PR and protected-proof boundary without claiming live Blob compatibility. After Wave 3 merges, continue with Wave 4 public result and Browser contracts; do not reopen the completed admission or provider decisions.
 
-Continue through repository implementation and local validation without stopping after a narrow green test. Do not create Blob state or secrets, deploy, delete deployments, promote, change domains or website launchers, enable paid services, activate Cloudflare, or touch Mac/tunnel state without Stewart's explicit approval at that boundary.
+Continue through authorized repository implementation and local validation without stopping after a narrow green test. Do not create Blob state or secrets, deploy, delete deployments, promote, change domains or website launchers, enable paid services, activate Cloudflare, or touch Mac/tunnel state without Stewart's explicit approval at that boundary.
 
 Update this ledger as each wave lands. Keep completed work closed, record commit and verification evidence, and preserve the frozen Query and Release Bundle seams.
 ```

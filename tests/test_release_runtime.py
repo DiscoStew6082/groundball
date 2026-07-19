@@ -36,7 +36,7 @@ from baseball_rag.public_admission import AdmissionState, InMemoryCasStore
 
 class SharedProofStore:
     def __init__(self):
-        self.inner = InMemoryCasStore(AdmissionState())
+        self.inner = InMemoryCasStore()
 
     @property
     def deployment_shared(self):
