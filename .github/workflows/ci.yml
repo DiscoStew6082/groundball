@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - implementation/**
   pull_request:
     branches:
       - main
@@ -96,6 +97,8 @@ jobs:
     needs: [security, lint, typecheck, web-test]
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -104,8 +107,19 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra dev
-      # Download NeuML/baseballdata CSVs (runtime deps — not stored in repo)
+      # Materialize the legacy local-test inputs; the release image uses only release/bundle.
       - run: uv run python -c "from baseball_rag.db.download import download_all; download_all()"
+      - name: Verify immutable Release Bundle
+        run: |
+          release_source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
+          uv run python -m baseball_rag.release_bundle check release/bundle \
+            --expected-source-commit "$release_source_commit"
+      - name: Verify release branch source and artifact commit topology
+        if: github.ref == 'refs/heads/implementation/public-deterministic-groundball'
+        run: |
+          release_source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
+          test "$(git rev-parse HEAD^)" = "$release_source_commit"
+          test -z "$(git diff --name-only HEAD^ HEAD | grep -Ev '^release/bundle/' || true)"
       - run: uv run python -m pytest tests/ -m "not llm" --cov=baseball_rag --cov-report=xml --cov-report=term-missing -v
       - name: Query coverage release gate
         run: uv run python -m baseball_rag.query.generate_coverage_report --check

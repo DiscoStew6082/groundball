@@ -266,6 +266,15 @@ def retrosheet_event_capabilities() -> tuple[RetrosheetEventCapability, ...]:
     )
 
 
+def published_retrosheet_event_capabilities() -> tuple[RetrosheetEventCapability, ...]:
+    """Return only capabilities backed by the immutable public Release Bundle."""
+    return tuple(
+        capability
+        for capability in retrosheet_event_capabilities()
+        if capability.capability_id == "pitcher_strikeout_side"
+    )
+
+
 def retrosheet_event_support_matrix() -> tuple[Mapping[str, object], ...]:
     """Return the Retrosheet event support matrix as serializable rows."""
     return tuple(capability.as_matrix_row() for capability in retrosheet_event_capabilities())

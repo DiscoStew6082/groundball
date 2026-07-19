@@ -3,6 +3,8 @@
 import hmac
 import html
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +18,25 @@ from starlette.responses import (
     Response,
 )
 
-app = FastAPI(title="Groundball API")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Refuse to serve a configured Release Bundle that is not fully ready."""
+    public_demo = _public_demo_enabled()
+    bundle_configured = bool(os.environ.get("GROUNDBALL_RELEASE_BUNDLE"))
+    if public_demo != bundle_configured:
+        raise RuntimeError(
+            "Public release configuration requires both GROUNDBALL_PUBLIC_DEMO and "
+            "GROUNDBALL_RELEASE_BUNDLE."
+        )
+    if public_demo:
+        from baseball_rag.release_runtime import release_readiness
+
+        release_readiness()
+    yield
+
+
+app = FastAPI(title="Groundball API", lifespan=_lifespan)
 _CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
 _ORIGIN_PROXY_TOKEN_ENV_VAR = "GROUNDBALL_ORIGIN_PROXY_TOKEN"
 _ORIGIN_PROXY_TOKEN_HEADER = "x-groundball-proxy-token"
@@ -40,6 +60,16 @@ def _public_demo_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def _require_consistent_release_configuration() -> None:
+    public_demo = _public_demo_enabled()
+    bundle_configured = bool(os.environ.get("GROUNDBALL_RELEASE_BUNDLE"))
+    if public_demo != bundle_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Ground Ball public release configuration is incomplete.",
+        )
 
 
 def _cors_allowed_origins() -> list[str]:
@@ -155,7 +185,18 @@ def health():
 @app.get("/api/capabilities")
 def capabilities():
     """Return the server-enforced feature set for the unified web app."""
+    from baseball_rag.retrosheet_event_capabilities import (
+        published_retrosheet_event_capabilities,
+        retrosheet_event_capabilities,
+    )
+
+    _require_consistent_release_configuration()
     public_demo = _public_demo_enabled()
+    retrosheet_capabilities = (
+        published_retrosheet_event_capabilities()
+        if public_demo
+        else retrosheet_event_capabilities()
+    )
     return {
         "name": "Ground Ball",
         "mode": "public" if public_demo else "local",
@@ -168,6 +209,14 @@ def capabilities():
             "structured_recipe": True,
         },
         "retrosheet_endpoint": "/api/retrosheet/queries",
+        "retrosheet_capabilities": [
+            {
+                "capability_id": capability.capability_id,
+                "title": capability.title,
+                "query_families": list(capability.supported_query_families),
+            }
+            for capability in retrosheet_capabilities
+        ],
         "llm_required": False,
         "history": "browser_local",
     }
@@ -176,6 +225,7 @@ def capabilities():
 @app.post("/api/query-runs")
 def query_run(req: QueryInputRequest):
     """Plan and execute one natural-language or structured Query Recipe input."""
+    _require_consistent_release_configuration()
     from baseball_rag.query.adapters import run_query_input
 
     if (req.question is None) == (req.recipe is None):
@@ -197,6 +247,7 @@ def query_catalog(
     limit: int | None = None,
 ):
     """Return rendering-neutral source, raw-field, and promoted-value discovery."""
+    _require_consistent_release_configuration()
     from baseball_rag.query.adapters import catalog_payload
 
     try:
@@ -208,6 +259,7 @@ def query_catalog(
 @app.get("/api/query-coverage")
 def query_coverage():
     """Return the canonical machine-readable Coverage Report."""
+    _require_consistent_release_configuration()
     from baseball_rag.query.coverage import (
         CoverageProofUnavailableError,
         load_passing_coverage_report,
@@ -222,6 +274,7 @@ def query_coverage():
 @app.get("/coverage-report", response_class=HTMLResponse)
 def coverage_report():
     """Render the human report from the canonical machine read model."""
+    _require_consistent_release_configuration()
     from baseball_rag.query.coverage import (
         CoverageProofUnavailableError,
         load_passing_coverage_report,
@@ -246,12 +299,24 @@ def coverage_report():
 @app.post("/api/retrosheet/queries")
 def retrosheet_query(req: RetrosheetQueryRequest):
     """Execute only the separately governed deterministic Retrosheet capabilities."""
+    _require_consistent_release_configuration()
     from baseball_rag.retrosheet_query import execute_retrosheet_query
 
     try:
         return execute_retrosheet_query(req.question)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/release-readiness")
+def release_readiness():
+    """Return the checked public bundle, proof, and in-memory runtime identities."""
+    _require_consistent_release_configuration()
+    if not _public_demo_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    from baseball_rag.release_runtime import release_readiness as read_release_readiness
+
+    return read_release_readiness().as_dict()
 
 
 def _web_dist_path() -> Path:

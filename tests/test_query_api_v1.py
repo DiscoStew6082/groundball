@@ -142,6 +142,28 @@ def test_capabilities_publish_the_new_composition_root_only():
     }
     assert payload["llm_required"] is False
     assert payload["retrosheet_endpoint"] == "/api/retrosheet/queries"
+    assert {item["capability_id"] for item in payload["retrosheet_capabilities"]} == {
+        "pitcher_strikeout_side",
+        "batting_stat_streak",
+        "pitcher_daily_strikeout_game_log",
+        "player_batting_game_log",
+    }
+
+
+def test_public_mode_fails_closed_when_release_bundle_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.delenv("GROUNDBALL_RELEASE_BUNDLE", raising=False)
+
+    capabilities_response = client.get("/api/capabilities")
+    query_response = client.post(
+        "/api/retrosheet/queries",
+        json={"question": "how many times did Nolan Ryan strike out the side in his career"},
+    )
+
+    assert capabilities_response.status_code == 503
+    assert query_response.status_code == 503
 
 
 def test_retrosheet_queries_remain_separate_and_never_fallback_from_primary_questions():

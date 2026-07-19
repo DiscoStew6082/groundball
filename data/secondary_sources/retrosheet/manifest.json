@@ -78,6 +78,12 @@
       "source_url": "https://www.retrosheet.org/events/",
       "table": "retrosheet_pitcher_strikeout_side_events",
       "kind": "event_derived_evidence",
+      "provenance": {
+        "event_archives_accessed_at": "2026-07-03T13:52:15-04:00",
+        "projection_generated_at": "2026-07-03T13:52:15-04:00",
+        "generation_tool": "python -m baseball_rag.db.secondary_sources.retrosheet_events",
+        "derivation": "Derived from Retrosheet event archives; the projection retains only governed pitcher strikeout-side evidence."
+      },
       "rows": 50081,
       "year_coverage": {
         "min": 1910,

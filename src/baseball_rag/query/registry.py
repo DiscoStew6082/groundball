@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
-CATALOG_DIR = Path(__file__).with_name("catalog")
+_PACKAGE_CATALOG_DIR = Path(__file__).with_name("catalog")
+_RELEASE_BUNDLE = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+CATALOG_DIR = (
+    Path(_RELEASE_BUNDLE) / "src/baseball_rag/query/catalog"
+    if _RELEASE_BUNDLE
+    else _PACKAGE_CATALOG_DIR
+)
 
 
 @dataclass(frozen=True)

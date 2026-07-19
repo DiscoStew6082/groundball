@@ -129,6 +129,14 @@ _TEAM_NICKNAMES = (
     "royals",
 )
 
+PUBLISHED_RELEASE_TEMPLATE_IDS = frozenset(
+    {
+        "pitcher_strikeout_side_count",
+        "pitcher_strikeout_side_game_log",
+        "pitcher_strikeout_side_leaders",
+    }
+)
+
 
 def match_retrosheet_template(question: str) -> RetrosheetTemplateMatch | None:
     """Match one of the six published Retrosheet template families."""
@@ -146,6 +154,14 @@ def match_retrosheet_template(question: str) -> RetrosheetTemplateMatch | None:
             unsupported_reason=unsupported_reason,
         )
     return None
+
+
+def match_published_retrosheet_template(question: str) -> RetrosheetTemplateMatch | None:
+    """Match only a template backed by the immutable public Release Bundle."""
+    matched = match_retrosheet_template(question)
+    if matched is None or matched.template_id not in PUBLISHED_RELEASE_TEMPLATE_IDS:
+        return None
+    return matched
 
 
 def _normalize(question: str) -> str:
