@@ -7,9 +7,8 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
-from baseball_rag.query.adapters import run_query_input
+from baseball_rag.query.adapters import adapt_natural_query, run_query_input
 from baseball_rag.query.contracts import InteractivePage, QueryRecipe
-from baseball_rag.query.recipe_adapter import interpret_recipe
 
 PUBLIC_DEFAULT_PAGE_SIZE = 25
 PUBLIC_PAGE_SIZES = frozenset({25, 50, 100})
@@ -69,14 +68,21 @@ def run_public_query_input(
     *,
     question: str | None = None,
     recipe: Mapping[str, Any] | None = None,
+    previous_recipe: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one query through public-only result policy without changing local behavior."""
     if (question is None) == (recipe is None):
         raise ValueError("Provide exactly one natural-language question or structured recipe.")
+    if previous_recipe is not None and question is None:
+        raise ValueError(
+            "Previous recipe context is accepted only with a natural-language question."
+        )
     if question is not None:
-        adapted = interpret_recipe(question)
+        adapted = adapt_natural_query(question, previous_recipe=previous_recipe)
         if not isinstance(adapted, QueryRecipe):
-            return _apply_public_planning_defaults(run_query_input(question=question))
+            return _apply_public_planning_defaults(
+                run_query_input(question=question, previous_recipe=previous_recipe)
+            )
         public_recipe = replace(
             adapted,
             output=InteractivePage(size=PUBLIC_DEFAULT_PAGE_SIZE, offset=0),

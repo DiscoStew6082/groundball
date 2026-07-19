@@ -75,7 +75,10 @@
   async function runQuestion(question) {
     if (pending) return;
     submittedQuestion = question;
-    await runRequest({ question });
+    await runRequest({
+      question,
+      ...(lastCompletedRun?.recipe ? { previous_recipe: lastCompletedRun.recipe } : {}),
+    });
   }
 
   async function runRecipe(recipe) {

@@ -8,6 +8,7 @@ from baseball_rag.query import (
     ExecutionUnavailable,
     NeedsClarification,
     QueryRecipe,
+    RankSpec,
     Ready,
     Rejected,
     Rows,
@@ -85,6 +86,104 @@ def test_cross_discipline_sources_aggregate_before_shared_grain_join():
     assert 'FROM "batting"' in sql
     assert 'FROM "pitching"' in sql
     assert "JOIN fact_1" in sql
+
+
+def test_exact_ohtani_question_interprets_to_the_reviewed_composed_recipe():
+    recipe = QueryRecipe(
+        source="Batting",
+        grain="player-season",
+        selections=("player.name", "season", "batting.HR", "pitching.W"),
+        predicate=Compare("player.name", "equals", "Shohei Ohtani"),
+        ranking=RankSpec("pitching.W", "highest", 1, "include_ties"),
+    )
+
+    assert (
+        interpret_recipe(
+            "how many home runs did ohtani hit in the year he had the most wins as a pitcher"
+        )
+        == recipe
+    )
+
+
+def test_exact_ohtani_follow_up_derives_only_the_prior_recipe_player():
+    first = interpret_recipe("how many RBIs did Shohei Ohtani have in 2022")
+    assert isinstance(first, QueryRecipe)
+    first_plan = prepare(first)
+    assert isinstance(first_plan, Ready)
+    first_run = execute(first_plan.plan)
+    assert isinstance(first_run, Rows)
+    assert [dict(row) for row in first_run.rows] == [
+        {"player.name": "Shohei Ohtani", "season": 2022, "batting.RBI": 95}
+    ]
+
+    follow_up = interpret_recipe(
+        "what about his home runs in 2022?",
+        previous_recipe=first,
+    )
+    assert isinstance(follow_up, QueryRecipe)
+    follow_up_plan = prepare(follow_up)
+    assert isinstance(follow_up_plan, Ready)
+    follow_up_run = execute(follow_up_plan.plan)
+    assert isinstance(follow_up_run, Rows)
+    assert [dict(row) for row in follow_up_run.rows] == [
+        {"player.name": "Shohei Ohtani", "season": 2022, "batting.HR": 34}
+    ]
+
+
+def test_pronoun_follow_up_without_one_prior_player_name_fails_closed():
+    prior_without_name = QueryRecipe(
+        source="Batting",
+        grain="player-season",
+        selections=("season", "batting.RBI"),
+        predicate=Compare("season", "equals", 2022),
+    )
+
+    no_context = interpret_recipe("what about his home runs in 2022?")
+    ambiguous_context = interpret_recipe(
+        "what about his home runs in 2022?",
+        previous_recipe=prior_without_name,
+    )
+    independent = interpret_recipe(
+        "who had the most RBIs in 1962",
+        previous_recipe=prior_without_name,
+    )
+
+    assert isinstance(no_context, Rejected)
+    assert isinstance(ambiguous_context, Rejected)
+    assert isinstance(independent, QueryRecipe)
+
+
+def test_composed_name_filter_retains_hidden_match_aliases_and_bound_name():
+    recipe = QueryRecipe(
+        source="Batting",
+        grain="player-season",
+        selections=("player.name", "season", "batting.HR", "pitching.W"),
+        predicate=Compare("player.name", "equals", "Shohei Ohtani"),
+        ranking=RankSpec("pitching.W", "highest", 1, "include_ties"),
+    )
+
+    planned = prepare(recipe)
+    assert isinstance(planned, Ready)
+    executed = execute(planned.plan)
+
+    assert isinstance(executed, Rows)
+    assert [dict(row) for row in executed.rows] == [
+        {
+            "player.name": "Shohei Ohtani",
+            "season": 2022,
+            "batting.HR": 34,
+            "pitching.W": 15,
+        }
+    ]
+    assert executed.evidence.bound_values == (
+        "Shohei Ohtani",
+        "Shohei Ohtani",
+        "Shohei Ohtani",
+        "Shohei Ohtani",
+    )
+    assert '"__match_player.name_0"' in executed.evidence.parameterized_sql
+    assert '"__match_player.name_1"' in executed.evidence.parameterized_sql
+    assert '"__match_player.name_2"' in executed.evidence.parameterized_sql
 
 
 def test_forged_direct_fact_relationship_fails_before_sql():

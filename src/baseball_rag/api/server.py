@@ -298,6 +298,7 @@ class QueryInputRequest(BaseModel):
 
     question: str | None = Field(default=None, min_length=1, max_length=500)
     recipe: dict[str, Any] | None = None
+    previous_recipe: dict[str, Any] | None = None
 
 
 class RetrosheetQueryRequest(BaseModel):
@@ -360,17 +361,31 @@ def query_run(req: QueryInputRequest, request: Request):
             status_code=422,
             detail="Provide exactly one natural-language question or structured recipe.",
         )
+    if req.previous_recipe is not None and req.question is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Previous recipe context is accepted only with a natural-language question.",
+        )
 
     if _public_demo_enabled():
         return _execute_public_request(
             request,
-            ExecutionRequest(operation="query", question=req.question, recipe=req.recipe),
+            ExecutionRequest(
+                operation="query",
+                question=req.question,
+                recipe=req.recipe,
+                previous_recipe=req.previous_recipe,
+            ),
         )
 
     from baseball_rag.query.adapters import run_query_input
 
     try:
-        return run_query_input(question=req.question, recipe=req.recipe)
+        return run_query_input(
+            question=req.question,
+            recipe=req.recipe,
+            previous_recipe=req.previous_recipe,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

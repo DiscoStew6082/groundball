@@ -7,6 +7,60 @@
       "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Tommy Davis", "batting.RBI": 153}], "bound_values_include": [1962]}
     },
     {
+      "id": "ohtani_most_pitching_wins_natural",
+      "question": "how many home runs did ohtani hit in the year he had the most wins as a pitcher",
+      "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Shohei Ohtani", "season": 2022, "batting.HR": 34, "pitching.W": 15}], "bound_values_include": ["Shohei Ohtani"], "hidden_match_aliases": ["__match_player.name_0", "__match_player.name_1", "__match_player.name_2"]}
+    },
+    {
+      "id": "ohtani_most_pitching_wins_structured",
+      "recipe": {"source": "Batting", "grain": "player-season", "selections": ["player.name", "season", "batting.HR", "pitching.W"], "predicate": {"kind": "compare", "value": "player.name", "operator": "equals", "literal": "Shohei Ohtani"}, "ranking": {"value": "pitching.W", "direction": "highest", "count": 1, "tie_policy": "include_ties", "within": []}},
+      "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Shohei Ohtani", "season": 2022, "batting.HR": 34, "pitching.W": 15}], "bound_values_include": ["Shohei Ohtani"], "hidden_match_aliases": ["__match_player.name_0", "__match_player.name_1", "__match_player.name_2"]}
+    },
+    {
+      "id": "ohtani_two_turn_follow_up",
+      "turns": [
+        "how many RBIs did Shohei Ohtani have in 2022",
+        "what about his home runs in 2022?"
+      ],
+      "expect": {"kind": "rows", "row_count": 1, "rows_include": [{"player.name": "Shohei Ohtani", "season": 2022, "batting.HR": 34}], "bound_values_include": ["Shohei Ohtani", 2022]}
+    },
+    {
+      "id": "retrosheet_public_strikeout_side_count",
+      "retrosheet_question": "how many times did Nolan Ryan strike out the side in his career",
+      "public_capability_id": "pitcher_strikeout_side",
+      "expect": {"kind": "rows", "template": "pitcher_strikeout_side_count", "row_count_min": 1, "public_advertised": true, "public_match": true}
+    },
+    {
+      "id": "retrosheet_public_strikeout_side_game_log",
+      "retrosheet_question": "when did Nolan Ryan strike out the side in 1973",
+      "public_capability_id": "pitcher_strikeout_side",
+      "expect": {"kind": "rows", "template": "pitcher_strikeout_side_game_log", "row_count_min": 1, "public_advertised": true, "public_match": true}
+    },
+    {
+      "id": "retrosheet_public_strikeout_side_leaders",
+      "retrosheet_question": "which pitchers have the most strike out the side games in their careers",
+      "public_capability_id": "pitcher_strikeout_side",
+      "expect": {"kind": "rows", "template": "pitcher_strikeout_side_leaders", "row_count_min": 1, "public_advertised": true, "public_match": true}
+    },
+    {
+      "id": "retrosheet_public_rejects_batting_stat_streak",
+      "retrosheet_question": "what is the longest stolen base streak in MLB history",
+      "public_capability_id": "batting_stat_streak",
+      "expect": {"kind": "invalid", "template": "batting_stat_streak", "public_advertised": false, "public_match": false, "text_contains": "not a published Retrosheet capability"}
+    },
+    {
+      "id": "retrosheet_public_rejects_player_batting_game_log",
+      "retrosheet_question": "show Rickey Henderson games with at least 2 stolen bases",
+      "public_capability_id": "player_batting_game_log",
+      "expect": {"kind": "invalid", "template": "player_batting_game_log", "public_advertised": false, "public_match": false, "text_contains": "not a published Retrosheet capability"}
+    },
+    {
+      "id": "retrosheet_public_rejects_pitcher_daily_strikeout_game_log",
+      "retrosheet_question": "show Nolan Ryan games with at least 10 strikeouts",
+      "public_capability_id": "pitcher_daily_strikeout_game_log",
+      "expect": {"kind": "invalid", "template": "pitcher_daily_strikeout_game_log", "public_advertised": false, "public_match": false, "text_contains": "not a published Retrosheet capability"}
+    },
+    {
       "id": "forty_forty",
       "question": "40-40",
       "expect": {"kind": "rows", "row_count": 6, "rows_include": [{"player.name": "Jose Canseco", "season": 1988}, {"player.name": "Barry Bonds", "season": 1996}, {"player.name": "Alex Rodriguez", "season": 1998}, {"player.name": "Alfonso Soriano", "season": 2006}, {"player.name": "Ronald Acuña", "season": 2023}, {"player.name": "Shohei Ohtani", "season": 2024}]}

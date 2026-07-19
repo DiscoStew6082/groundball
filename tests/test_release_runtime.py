@@ -69,6 +69,14 @@ with TestClient(app) as client:
         "which pitchers have the most strike out the side games in their careers",
         )
     ]
+    unbundled_responses = [
+        client.post("/api/retrosheet/queries", json={"question": question})
+        for question in (
+        "what is the longest stolen base streak in MLB history",
+        "show Rickey Henderson games with at least 2 stolen bases",
+        "show Nolan Ryan games with at least 10 strikeouts",
+        )
+    ]
     capabilities_response = client.get("/api/capabilities")
     for response in (
         ready_response,
@@ -81,6 +89,10 @@ with TestClient(app) as client:
 ready = ready_response.json()
 answer = answer_response.json()
 retrosheet = [response.json() for response in retrosheet_responses]
+unbundled = [
+    {"status": response.status_code, "detail": response.json().get("detail")}
+    for response in unbundled_responses
+]
 capabilities = capabilities_response.json()
 print(json.dumps({
     "readiness": ready,
@@ -94,6 +106,7 @@ print(json.dumps({
         for result in retrosheet
     ],
     "capabilities": capabilities["retrosheet_capabilities"],
+    "unbundled": unbundled,
 }, sort_keys=True))
 """
     environment = {
@@ -135,4 +148,14 @@ print(json.dumps({
     assert all(item["rows"] > 0 for item in result["retrosheet"])
     assert result["retrosheet"][0]["first"]["career_strikeout_side_count"] == 324
     assert [item["capability_id"] for item in result["capabilities"]] == ["pitcher_strikeout_side"]
+    assert (
+        result["unbundled"]
+        == [
+            {
+                "status": 422,
+                "detail": "That question is not a published Retrosheet capability.",
+            }
+        ]
+        * 3
+    )
     assert not list(bundle.rglob("*.duckdb"))

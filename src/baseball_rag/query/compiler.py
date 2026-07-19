@@ -164,7 +164,11 @@ def _cast_scalar(literal: Literal) -> Scalar:
     return literal
 
 
-def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
+def compile_promoted_plan(
+    plan: QueryPlanV1,
+    *,
+    include_match_aliases: bool = False,
+) -> tuple[str, tuple[Scalar, ...]]:
     """Compile one validated promoted plan from catalog declarations only."""
     combination = next(
         (
@@ -339,8 +343,15 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
         rank_filter = f" WHERE __rank <= {rank.count}"
 
     order_parts = _ordering(plan, grain_keys)
+    result_identities = list(plan.selections)
+    if include_match_aliases:
+        result_identities.extend(
+            _match_alias(identity, index)
+            for identity in sorted(references)
+            for index in range(_match_expression_count(promoted_value_by_identity(identity)))
+        )
     ordered = (
-        f"SELECT {', '.join(_quote(item) for item in plan.selections)}, "
+        f"SELECT {', '.join(_quote(item) for item in result_identities)}, "
         f"ROW_NUMBER() OVER (ORDER BY {', '.join(order_parts)}) AS __row_number "
         f"FROM {source_name}{rank_filter}"
     )
@@ -349,7 +360,7 @@ def compile_promoted_plan(plan: QueryPlanV1) -> tuple[str, tuple[Scalar, ...]]:
         first_row = plan.output.offset + 1
         last_row = plan.output.offset + plan.output.size
         page_predicate = f"__row_number BETWEEN {first_row} AND {last_row}"
-    selected_aliases = ", ".join(_quote(item) for item in plan.selections)
+    selected_aliases = ", ".join(_quote(item) for item in result_identities)
     sql = (
         f"WITH rollups AS ({rollups}), calculated AS ({calculated}), "
         f"derived AS ({derived}), eligible AS ({eligible}), windowed AS ({windowed}), "
@@ -430,15 +441,24 @@ def _compile_composed_plan(
             relationships=relationships,
             output=Export(),
         )
-        sql, values = compile_promoted_plan(subplan)
+        sql, values = compile_promoted_plan(subplan, include_match_aliases=True)
         subqueries.append(f"fact_{index} AS ({sql})")
         bound_values.extend(values)
 
     source_index = {source: index for index, source in enumerate(ordered_sources)}
     projections = []
-    for identity in sorted(set(grain.dimensions) | references):
+    projected_identities = set(grain.dimensions) | references
+    for identity in sorted(projected_identities):
         owner = column_owner.get(identity, plan.source)
         projections.append(f"f{source_index[owner]}.{_quote(identity)} AS {_quote(identity)}")
+    for identity in sorted(_predicate_values(plan.predicate)):
+        owner = column_owner.get(identity, plan.source)
+        value = promoted_value_by_identity(identity)
+        projections.extend(
+            f"f{source_index[owner]}.{_quote(_match_alias(identity, index))} AS "
+            f"{_quote(_match_alias(identity, index))}"
+            for index in range(_match_expression_count(value))
+        )
     joins = []
     for index in range(1, len(ordered_sources)):
         conditions = " AND ".join(
