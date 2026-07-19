@@ -2,6 +2,24 @@
 
 This file is the canonical current architecture and domain context for Groundball. Start here for architecture review or worker handoff planning; open `README.md`, `docs/architecture.md`, or the completed architecture ledgers under `docs/archive/architecture/` only when you need supporting detail.
 
+## Language
+
+**Release Bundle**:
+The preassembled, immutable set of data, catalog, proof, provenance, and license artifacts that defines one hosted deterministic Ground Ball release and can be assembled and run without network acquisition.
+_Avoid_: build-fetched data, release files, container data
+
+**Published Retrosheet Capability**:
+A deterministic Retrosheet question family exposed publicly only when its reviewed compact projection and matching proof are present in the Release Bundle.
+_Avoid_: unbacked template, Retrosheet route
+
+**Release Manifest**:
+The provider-neutral, machine-readable identity of one Release Bundle, enumerating its payload members, source releases, checksums, proof identity, licenses, and source revision. The digest of the canonical manifest is the Release Bundle identity.
+_Avoid_: Docker manifest, deployment record
+
+**Deployment Attestation**:
+A provider-specific record binding one unchanged Release Bundle to a deployed image, runtime configuration, deployment identity, and verified hosting evidence.
+_Avoid_: release manifest, data release
+
 ## Architecture Vocabulary
 
 Use these words consistently:
@@ -99,7 +117,7 @@ Completed entries must not ask future agents to finish anything. If future work 
   Public contract: one dark browser application serves local and hosted use;
   the server owns capability enforcement; browser-owned history and conversation
   are bounded; the public Adapter is deterministic, zero-Mac, and has no LLM,
-  architecture-source, or developer-tool route. The protected 132.86 MB Vercel
+  architecture-source, or developer-tool route. The protected 132.84 MB Vercel
   proof passed two repeated `8/8 + 4/4` concurrent waves. Evidence is recorded
   in Wayfinder ticket 12.
 - 2026-07-17, commit `56b75b6`: Ground Ball Mobile Presentation Adapter.
