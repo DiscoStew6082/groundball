@@ -321,7 +321,7 @@ Vertical slices first failed for the missing public Adapter, unsupported page va
 Final local outputs before documentation closeout were:
 
 - Focused public-result/admission/Blob/execution/API/marked-runtime proof: `143 passed`; one upstream Starlette/httpx deprecation warning.
-- Focused public-result/execution/API proof after final boundary additions: `54 passed`; the same upstream warning.
+- Focused public-result/execution/API proof after final boundary additions: `56 passed`; the same upstream warning.
 - `uv run pytest tests/ -m 'not llm and not release_proof' -q`: `425 passed, 1 deselected`; the same upstream warning.
 - Explicit `uv run pytest tests/test_release_runtime.py -m release_proof -q`: `1 passed`.
 - `uv run ruff check src/ tests/`: passed. Ruff formatting check passed for all changed Python.
