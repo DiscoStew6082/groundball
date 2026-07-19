@@ -29,6 +29,7 @@ Reach a reviewed, proven zero-Mac Ground Ball application that preserves the det
 - [Prototype the website-framed hosted Ground Ball experience](issues/03-prototype-groundball-app-interior.md) — Keep the approved merged dark Svelte/FastAPI shell unchanged for local and hosted use; route discovered query defects through the canonical Query contracts and later parity proof rather than creating another interface or compatibility lane.
 - [Choose the packaged deterministic data release](issues/04-choose-packaged-data-release.md) — Ship a provider-neutral, offline Release Bundle containing the exact Lahman, catalog, proof, team-reference, strikeout-side, provenance, and license artifacts; identify it with one Release Manifest and bind each host separately through a Deployment Attestation.
 - [Set public query, export, and abuse guardrails](issues/05-set-public-query-export-and-abuse-guardrails.md) — Admit only bounded human-paced work, fail fast at explicit request, concurrency, rate, runtime, result, export, and 70%-of-Hobby allowance ceilings, and preserve the last result with an actionable refusal reason.
+- [Prove stateless Public Admission Policy feasibility](issues/13-prove-stateless-public-admission-policy-feasibility.md) — Vercel Blob can coordinate the approved Visitor and deployment limits at $0, but Hobby lacks the current CPU/memory feed required for the 70% Allowance Pause, so the allowance guardrail or hosting decision must reopen.
 
 ## Not yet specified
 
