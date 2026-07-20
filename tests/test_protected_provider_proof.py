@@ -34,7 +34,8 @@ BUNDLE = "3" * 64
 RUNTIME = "4" * 64
 POLICY = "5" * 64
 IMAGE = "sha256:" + "6" * 64
-DEPLOYMENT = "dpl_wave7proof"
+DEPLOYMENT = "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab"
+REPLACEMENT_DEPLOYMENT = "dpl_A6LMSbEbfgRQqSJ7RS4TfKKgv7ke"
 ORIGIN = "https://groundball-wave7.vercel.app"
 
 
@@ -158,7 +159,7 @@ def _document(schema: str) -> dict[str, object]:
     elif schema == EVIDENCE_SCHEMAS["lifecycle"]:
         observation = {
             "initial_deployment_id": DEPLOYMENT,
-            "replacement_deployment_id": "dpl_wave7replacement",
+            "replacement_deployment_id": REPLACEMENT_DEPLOYMENT,
             "restart_observed": True,
             "runtime_instance_transitions": ["instance-a:instance-b", "instance-b:instance-c"],
             "scale_to_zero_provider_reported": True,
@@ -382,6 +383,53 @@ def test_fixed_manifests_are_canonical_complete_and_immutable_in_shape() -> None
     assert {360, 390, 430} <= set(browser["mobile_widths"])
 
 
+def test_provider_evidence_preserves_exact_mixed_case_vercel_deployment_identity() -> None:
+    document = _document(EVIDENCE_SCHEMAS["blob_admission"])
+
+    validated = validate_provider_evidence(canonical_json_bytes(document))
+
+    assert validated["identity"]["deployment_id"] == DEPLOYMENT  # type: ignore[index]
+    assert DEPLOYMENT.encode("ascii") in canonical_json_bytes(validated)
+
+
+@pytest.mark.parametrize(
+    "deployment_id",
+    [
+        "9XW9KmE2rqe4XWZ7YBbmetEQLgab",
+        "dpl_",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLga",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab!",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLga ",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLga/",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLga:",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLga?",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgaé",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLga\n",
+        "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgabA",
+    ],
+)
+def test_provider_evidence_rejects_malformed_vercel_deployment_identity(
+    deployment_id: str,
+) -> None:
+    document = _document(EVIDENCE_SCHEMAS["blob_admission"])
+    document["identity"]["deployment_id"] = deployment_id  # type: ignore[index]
+
+    with pytest.raises(ProviderProofError, match="identity is invalid"):
+        validate_provider_evidence(canonical_json_bytes(document))
+
+
+def test_provider_evidence_candidate_binding_is_case_sensitive() -> None:
+    document = _document(EVIDENCE_SCHEMAS["blob_admission"])
+    changed = copy.deepcopy(document)
+    changed["identity"]["deployment_id"] = DEPLOYMENT.replace("X", "x", 1)  # type: ignore[index]
+
+    with pytest.raises(ProviderProofError, match="foreign identity"):
+        validate_provider_evidence(
+            canonical_json_bytes(changed),
+            expected_identity=document["identity"],  # type: ignore[arg-type]
+        )
+
+
 def test_provider_evidence_rejects_duplicate_keys_unknown_fields_secrets_paths_and_nonfinite() -> (
     None
 ):
@@ -553,7 +601,9 @@ def test_aggregator_blocks_missing_observation_and_fails_foreign_or_over_limit_e
     assert blocked["eligible"] is False
 
     foreign = _all_documents()
-    foreign[memory_index]["identity"]["deployment_id"] = "dpl_foreign"  # type: ignore[index]
+    foreign[memory_index]["identity"]["deployment_id"] = DEPLOYMENT.replace(  # type: ignore[index]
+        "X", "x", 1
+    )
     foreign_candidate = _candidate(tmp_path / "foreign", foreign)
     foreign_evidence = {
         f"provider-evidence-{index:02d}": canonical_json_bytes(document)

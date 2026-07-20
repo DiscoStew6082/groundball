@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from baseball_rag.provider_identity import is_exact_vercel_deployment_id
 from baseball_rag.public_release_config import (
     PublicReleaseConfigError,
     canonical_json_bytes,
@@ -427,7 +428,7 @@ def build_provider_attestation(
         raise CandidateError("Provider attestation requires an all-pass exact gate report.")
     if not isinstance(provider_name, str) or _CANONICAL_ID.fullmatch(provider_name) is None:
         raise CandidateError("Provider attestation provider name is invalid.")
-    if not isinstance(deployment_id, str) or _CANONICAL_ID.fullmatch(deployment_id) is None:
+    if not _provider_deployment_id_is_valid(provider_name, deployment_id):
         raise CandidateError("Provider attestation deployment ID is invalid.")
     if image_digest != checked_candidate["image_digest"]:
         raise CandidateError("Provider attestation image digest is foreign.")
@@ -558,6 +559,12 @@ def validate_deployment_attestation(
     return document
 
 
+def _provider_deployment_id_is_valid(provider_name: object, deployment_id: object) -> bool:
+    if provider_name == "vercel":
+        return is_exact_vercel_deployment_id(deployment_id)
+    return isinstance(deployment_id, str) and _CANONICAL_ID.fullmatch(deployment_id) is not None
+
+
 def _validate_provider_attestation(
     document: Mapping[str, object],
     candidate: Mapping[str, object],
@@ -590,8 +597,7 @@ def _validate_provider_attestation(
         or provider.get("image_size_bytes") != candidate["image_size_bytes"]
         or not isinstance(provider_name, str)
         or _CANONICAL_ID.fullmatch(provider_name) is None
-        or not isinstance(deployment_id, str)
-        or _CANONICAL_ID.fullmatch(deployment_id) is None
+        or not _provider_deployment_id_is_valid(provider_name, deployment_id)
         or measurement_kind != "provider-oci-manifest-size-bytes"
         or measurement_kind != candidate["image_size_measurement_kind"]
         or not isinstance(evidence, list)

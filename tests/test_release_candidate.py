@@ -36,6 +36,7 @@ IMAGE = "sha256:" + "3" * 64
 BUNDLE = "4" * 64
 RUNTIME = "5" * 64
 POLICY = "6" * 64
+DEPLOYMENT = "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab"
 
 
 def _smoke_document() -> dict[str, object]:
@@ -567,7 +568,7 @@ def test_provider_attestation_builder_emits_exact_all_pass_candidate_binding(
         candidate,
         report,
         provider_name="vercel",
-        deployment_id="deployment-123",
+        deployment_id=DEPLOYMENT,
         image_digest=IMAGE,
         image_size_bytes=123_456,
         image_size_measurement_kind="provider-oci-manifest-size-bytes",
@@ -575,7 +576,7 @@ def test_provider_attestation_builder_emits_exact_all_pass_candidate_binding(
     )
 
     assert attestation["status"] == "attested"
-    assert attestation["provider"]["deployment_id"] == "deployment-123"  # type: ignore[index]
+    assert attestation["provider"]["deployment_id"] == DEPLOYMENT  # type: ignore[index]
     assert attestation["observations"] == observations
     assert attestation["evidence"] == sorted(observations.values())
     assert (
@@ -611,7 +612,7 @@ def test_provider_attestation_builder_rejects_inexact_or_unsafe_input(
     observations = {identity: f"provider-{identity}" for identity in PROVIDER_OBSERVATION_IDS}
     kwargs: dict[str, object] = {
         "provider_name": "vercel",
-        "deployment_id": "deployment-123",
+        "deployment_id": DEPLOYMENT,
         "image_digest": candidate["image_digest"],
         "image_size_bytes": candidate["image_size_bytes"],
         "image_size_measurement_kind": candidate["image_size_measurement_kind"],
@@ -654,7 +655,7 @@ def test_provider_attestation_requires_every_external_observation(tmp_path: Path
         "observations": observations,
         "promotion_eligible": True,
         "provider": {
-            "deployment_id": "deployment-123",
+            "deployment_id": DEPLOYMENT,
             "image_digest": candidate["image_digest"],
             "image_size_bytes": 123_456,
             "image_size_measurement_kind": "provider-oci-manifest-size-bytes",
@@ -692,7 +693,7 @@ def test_blocked_hobby_report_cannot_build_or_validate_attested_record(tmp_path:
         candidate,
         all_pass_report,
         provider_name="vercel",
-        deployment_id="deployment-123",
+        deployment_id=DEPLOYMENT,
         image_digest=IMAGE,
         image_size_bytes=123_456,
         image_size_measurement_kind="provider-oci-manifest-size-bytes",
@@ -714,7 +715,7 @@ def test_blocked_hobby_report_cannot_build_or_validate_attested_record(tmp_path:
             candidate,
             blocked_report,
             provider_name="vercel",
-            deployment_id="deployment-123",
+            deployment_id=DEPLOYMENT,
             image_digest=IMAGE,
             image_size_bytes=123_456,
             image_size_measurement_kind="provider-oci-manifest-size-bytes",

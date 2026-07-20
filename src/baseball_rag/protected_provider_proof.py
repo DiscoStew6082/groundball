@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping, cast
 from urllib.parse import urlsplit
 
+from baseball_rag.provider_identity import is_exact_vercel_deployment_id
 from baseball_rag.public_release_config import canonical_json_bytes
 from baseball_rag.release_candidate import (
     MAX_CANDIDATE_IMAGE_SIZE_BYTES,
@@ -187,7 +188,7 @@ def validate_provider_evidence(
         raise ProviderProofError("Provider evidence status is invalid; warnings are forbidden.")
     _validate_observed_at(document.get("observed_at"))
     identity = document.get("identity")
-    _validate_identity(identity)
+    validate_provider_identity(identity)
     if expected_identity is not None and identity != dict(expected_identity):
         raise ProviderProofError("Provider evidence belongs to a foreign identity.")
     observation = document.get("observation")
@@ -607,7 +608,7 @@ def _validate_lifecycle(value: dict[str, object], identity: dict[str, object]) -
     transitions = value.get("runtime_instance_transitions")
     if (
         value.get("initial_deployment_id") != identity["deployment_id"]
-        or not _canonical_id(value.get("replacement_deployment_id"))
+        or not is_exact_vercel_deployment_id(value.get("replacement_deployment_id"))
         or any(
             type(value.get(key)) is not bool
             for key in ("restart_observed", "scale_to_zero_provider_reported", "state_persisted")
@@ -803,7 +804,7 @@ def _observation_passes(kind: str, observation: object, candidate: Mapping[str, 
     return False
 
 
-def _validate_identity(value: object) -> None:
+def validate_provider_identity(value: object) -> None:
     if not isinstance(value, dict) or set(value) != _REQUIRED_IDENTITY_FIELDS:
         raise ProviderProofError("Provider evidence identity shape is invalid.")
     if (
@@ -815,7 +816,7 @@ def _validate_identity(value: object) -> None:
             for key in ("admission_policy_digest", "bundle_digest", "runtime_configuration_digest")
         )
         or _IMAGE_DIGEST.fullmatch(str(value.get("provider_image_digest"))) is None
-        or not _canonical_id(value.get("deployment_id"))
+        or not is_exact_vercel_deployment_id(value.get("deployment_id"))
     ):
         raise ProviderProofError("Provider evidence identity is invalid.")
 

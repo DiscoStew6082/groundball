@@ -17,6 +17,7 @@ from baseball_rag.protected_provider_proof import (
     EVIDENCE_SCHEMAS,
     ProviderProofError,
     validate_provider_evidence,
+    validate_provider_identity,
 )
 from baseball_rag.public_admission import (
     AdmissionAttempt,
@@ -148,6 +149,7 @@ def run_live_blob_probe(
     observed_at: datetime | None = None,
 ) -> dict[str, object]:
     """Exercise isolated real Adapter semantics without reset/delete operations."""
+    validate_provider_identity(identity)
     if (
         not proof_id
         or len(proof_id) > 40

@@ -11,7 +11,10 @@ from baseball_rag.protected_blob_probe import (
     main,
     run_live_blob_probe,
 )
+from baseball_rag.protected_provider_proof import ProviderProofError
 from baseball_rag.public_admission_blob import HttpResponse, load_blob_public_admission
+
+DEPLOYMENT = "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab"
 
 
 def _identity() -> dict[str, object]:
@@ -19,7 +22,7 @@ def _identity() -> dict[str, object]:
         "admission_policy_digest": "1" * 64,
         "artifact_commit": "2" * 40,
         "bundle_digest": "3" * 64,
-        "deployment_id": "dpl_wave7proof",
+        "deployment_id": DEPLOYMENT,
         "provider_image_digest": "sha256:" + "4" * 64,
         "runtime_configuration_digest": "5" * 64,
         "source_commit": "6" * 40,
@@ -27,8 +30,34 @@ def _identity() -> dict[str, object]:
 
 
 class NoNetworkTransport:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def request(self, **kwargs: object):
+        self.calls += 1
         raise AssertionError(f"offline test attempted provider contact: {sorted(kwargs)}")
+
+
+def test_blob_probe_accepts_exact_mixed_case_identity_and_rejects_mutation_before_transport() -> (
+    None
+):
+    environment = {
+        "BLOB_STORE_ID": "store_ProofStore123",
+        "GROUNDBALL_BLOB_NAMESPACE": "proof",
+        "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(b"k" * 32).decode(),
+        "VERCEL_OIDC_TOKEN": ("eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJwcm9iZSJ9.probe-signature"),
+    }
+    accepted_transport = NoNetworkTransport()
+    with pytest.raises(AssertionError, match="provider contact"):
+        run_live_blob_probe(_identity(), environment, "wave-7", transport=accepted_transport)
+    assert accepted_transport.calls == 1
+
+    mutated = _identity()
+    mutated["deployment_id"] = DEPLOYMENT + "/"
+    rejected_transport = NoNetworkTransport()
+    with pytest.raises(ProviderProofError, match="identity is invalid"):
+        run_live_blob_probe(mutated, environment, "wave-7", transport=rejected_transport)
+    assert rejected_transport.calls == 0
 
 
 def test_blob_probe_rejects_production_or_ambiguous_namespace_before_transport() -> None:
@@ -124,7 +153,7 @@ def test_blob_cli_requires_explicit_live_guard_without_opening_a_socket(tmp_path
                 "--admission-policy-digest",
                 "1" * 64,
                 "--deployment-id",
-                "dpl_wave7proof",
+                DEPLOYMENT,
                 "--provider-image-digest",
                 "sha256:" + "4" * 64,
                 "--output",

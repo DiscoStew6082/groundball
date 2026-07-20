@@ -17,8 +17,10 @@ from urllib.parse import urlsplit
 
 from baseball_rag.protected_provider_proof import (
     EVIDENCE_SCHEMAS,
+    ProviderProofError,
     load_warm_manifest,
     validate_provider_evidence,
+    validate_provider_identity,
 )
 from baseball_rag.public_release_config import canonical_json_bytes
 
@@ -116,6 +118,7 @@ def run_protected_http_probe(
     utc_now: Callable[[], datetime] | None = None,
 ) -> dict[str, object]:
     """Run the exact corpus once; no request is retried or substituted."""
+    validate_provider_identity(identity)
     if not _https_origin(origin):
         raise ProtectedProbeError("Protected preview must be one exact HTTPS origin.")
     if type(idle_period_seconds) is not int or idle_period_seconds < 30:
@@ -281,6 +284,7 @@ def run_security_route_probe(
     utc_now: Callable[[], datetime] | None = None,
 ) -> dict[str, object]:
     """Probe only the fixed public route inventory; egress remains provider-sourced."""
+    validate_provider_identity(identity)
     if not _https_origin(origin):
         raise ProtectedProbeError("Security proof requires one exact HTTPS origin.")
     if type(egress_provider_reported) is not bool:
@@ -630,7 +634,7 @@ def main(argv: list[str] | None = None) -> int:
             sleep=time.sleep,
             bypass_secret=os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET"),
         )
-    except ProtectedProbeError as exc:
+    except (ProtectedProbeError, ProviderProofError) as exc:
         parser.error(str(exc))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for name, document in result.items():

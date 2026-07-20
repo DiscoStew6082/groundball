@@ -13,7 +13,7 @@ from baseball_rag.protected_provider_probe import (
     run_protected_http_probe,
     run_security_route_probe,
 )
-from baseball_rag.protected_provider_proof import EVIDENCE_SCHEMAS
+from baseball_rag.protected_provider_proof import EVIDENCE_SCHEMAS, ProviderProofError
 from baseball_rag.public_release_config import canonical_json_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +23,8 @@ BUNDLE = "3" * 64
 RUNTIME = "4" * 64
 POLICY = "5" * 64
 IMAGE = "sha256:" + "6" * 64
-DEPLOYMENT = "dpl_wave7proof"
+DEPLOYMENT = "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab"
+REPLACEMENT_DEPLOYMENT = "dpl_A6LMSbEbfgRQqSJ7RS4TfKKgv7ke"
 ORIGIN = "https://groundball-wave7.vercel.app"
 
 
@@ -202,7 +203,7 @@ def test_lifecycle_helper_binds_deployments_and_runtime_instance_transitions() -
 
     evidence = build_lifecycle_evidence(
         _identity(),
-        replacement_deployment_id="dpl_wave7replacement",
+        replacement_deployment_id=REPLACEMENT_DEPLOYMENT,
         runtime_instance_transitions=[
             "instance-a:instance-b",
             "instance-b:instance-c",
@@ -215,7 +216,24 @@ def test_lifecycle_helper_binds_deployments_and_runtime_instance_transitions() -
 
     assert evidence["status"] == "pass"
     assert evidence["observation"]["initial_deployment_id"] == DEPLOYMENT
-    assert evidence["observation"]["replacement_deployment_id"] == "dpl_wave7replacement"
+    assert evidence["observation"]["replacement_deployment_id"] == REPLACEMENT_DEPLOYMENT
+
+
+def test_security_probe_rejects_malformed_deployment_identity_before_transport() -> None:
+    transport = FakeTransport()
+    identity = _identity()
+    identity["deployment_id"] = DEPLOYMENT + "/"
+
+    with pytest.raises(ProviderProofError, match="identity is invalid"):
+        run_security_route_probe(
+            identity,
+            ORIGIN,
+            transport=transport,
+            provider_coordination_destinations=["https://vercel.com"],
+            egress_provider_reported=True,
+        )
+
+    assert transport.calls == []
 
 
 def test_security_probe_checks_only_fixed_origin_routes_before_body_processing() -> None:
