@@ -1,5 +1,6 @@
 """FastAPI server for Groundball."""
 
+import hashlib
 import hmac
 import html
 import os
@@ -25,9 +26,11 @@ from starlette.responses import (
 from baseball_rag.public_admission import (
     AdmissionAttempt,
     AdmissionOutcome,
+    AdmissionState,
     CasCoordinator,
     CasStore,
     InMemoryCasStore,
+    MonthlyBudget,
     visitor_digest,
 )
 from baseball_rag.public_admission_blob import HttpTransport
@@ -35,6 +38,19 @@ from baseball_rag.public_execution import (
     ExecutionOutcome,
     ExecutionRequest,
     SubprocessExecutionRunner,
+)
+from baseball_rag.public_release_config import (
+    COMPLETE_REQUEST_BODY_BYTE_LIMIT,
+    EXECUTION_DEADLINE_SECONDS,
+    MINIMUM_VISITOR_DIGEST_KEY_BYTES,
+    QUESTION_CHARACTER_LIMIT,
+    VISITOR_COOKIE_HTTP_ONLY,
+    VISITOR_COOKIE_NAME,
+    VISITOR_COOKIE_SAME_SITE,
+    VISITOR_COOKIE_SECURE,
+    RuntimeConfiguration,
+    load_runtime_configuration,
+    validate_release_environment,
 )
 
 
@@ -52,6 +68,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from baseball_rag.release_runtime import release_readiness
 
         release_readiness()
+        _configure_release_runtime_if_declared()
         _configure_public_admission_if_declared()
         _require_shared_public_admission()
     yield
@@ -65,7 +82,7 @@ _PUBLIC_HEALTH_PATH = "/health"
 _CORS_QUERY_PATHS = {"/api/query-runs", "/api/retrosheet/queries"}
 _CORS_ALLOWED_METHOD = "POST"
 _CORS_ALLOWED_HEADERS = ("content-type",)
-_PUBLIC_QUERY_REQUEST_BYTES = 16_384
+_PUBLIC_QUERY_REQUEST_BYTES = COMPLETE_REQUEST_BODY_BYTE_LIMIT
 _DEFAULT_CORS_ORIGINS = (
     "https://discostew.dev",
     "http://localhost:4321",
@@ -73,8 +90,8 @@ _DEFAULT_CORS_ORIGINS = (
 )
 _REPOSITORY_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 _PACKAGE_WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
-_PUBLIC_VISITOR_COOKIE = "groundball_visitor"
-_PUBLIC_EXECUTION_DEADLINE_SECONDS = 10.0
+_PUBLIC_VISITOR_COOKIE = VISITOR_COOKIE_NAME
+_PUBLIC_EXECUTION_DEADLINE_SECONDS = float(EXECUTION_DEADLINE_SECONDS)
 _BLOB_CONFIGURATION_ENV_VARS = frozenset(
     {
         "GROUNDBALL_BLOB_NAMESPACE",
@@ -90,6 +107,7 @@ _BLOB_CONFIGURATION_ENV_VARS = frozenset(
 _public_admission: CasCoordinator | None = None
 _visitor_digest_key: bytes | None = None
 _public_admission_is_shared = False
+_public_runtime_configuration: RuntimeConfiguration | None = None
 _public_execution_runner = SubprocessExecutionRunner()
 
 
@@ -105,8 +123,11 @@ def configure_public_admission(
     shared_store = getattr(store, "deployment_shared", False) is True
     if isinstance(store, InMemoryCasStore) or not shared_store:
         raise ValueError("Public admission requires a deployment-shared CAS store.")
-    if not isinstance(digest_key, bytes) or len(digest_key) < 32:
-        raise ValueError("The stable Visitor digest key must be at least 32 bytes.")
+    if not isinstance(digest_key, bytes) or len(digest_key) < MINIMUM_VISITOR_DIGEST_KEY_BYTES:
+        raise ValueError(
+            f"The stable Visitor digest key must be at least "
+            f"{MINIMUM_VISITOR_DIGEST_KEY_BYTES} bytes."
+        )
     coordinator = CasCoordinator(store, clock=clock)
     _public_admission = coordinator
     _visitor_digest_key = bytes(digest_key)
@@ -132,6 +153,36 @@ def configure_public_admission_from_environment(
     )
 
 
+def _configure_release_runtime_if_declared() -> None:
+    global _public_admission, _public_admission_is_shared, _public_runtime_configuration
+    global _visitor_digest_key
+
+    configured_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
+    if configured_path is None:
+        return
+    validate_release_environment(os.environ)
+    configuration = load_runtime_configuration(configured_path)
+    _public_runtime_configuration = configuration
+    if configuration.scope != "local_ci":
+        return
+    if any(name in os.environ for name in _BLOB_CONFIGURATION_ENV_VARS):
+        raise RuntimeError("Local CI runtime cannot use provider coordination configuration.")
+    now = datetime.now(UTC)
+    store = InMemoryCasStore(
+        AdmissionState(
+            monthly_budget=MonthlyBudget(
+                period=now.strftime("%Y-%m"),
+                charged_starts=0,
+            )
+        )
+    )
+    _public_admission = CasCoordinator(store)
+    _visitor_digest_key = hashlib.sha256(
+        b"ground-ball-local-ci-ephemeral-visitor-identity"
+    ).digest()
+    _public_admission_is_shared = False
+
+
 def _configure_public_admission_if_declared() -> None:
     if _public_admission is not None:
         return
@@ -146,7 +197,16 @@ def _configure_public_admission_if_declared() -> None:
 
 
 def _shared_public_admission_components() -> tuple[CasCoordinator, bytes]:
-    if _public_admission is None or _visitor_digest_key is None or not _public_admission_is_shared:
+    local_ci = (
+        _public_runtime_configuration is not None
+        and _public_runtime_configuration.scope == "local_ci"
+        and _public_runtime_configuration.provider_deployment is False
+    )
+    if (
+        _public_admission is None
+        or _visitor_digest_key is None
+        or (not _public_admission_is_shared and not local_ci)
+    ):
         raise RuntimeError("Public startup requires shared public admission configuration.")
     return _public_admission, _visitor_digest_key
 
@@ -296,7 +356,7 @@ async def _query_cors_middleware(request: Request, call_next):
 class QueryInputRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    question: str | None = Field(default=None, min_length=1, max_length=500)
+    question: str | None = Field(default=None, min_length=1, max_length=QUESTION_CHARACTER_LIMIT)
     recipe: dict[str, Any] | None = None
     previous_recipe: dict[str, Any] | None = None
 
@@ -304,7 +364,7 @@ class QueryInputRequest(BaseModel):
 class RetrosheetQueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    question: str = Field(min_length=1, max_length=500)
+    question: str = Field(min_length=1, max_length=QUESTION_CHARACTER_LIMIT)
 
 
 @app.get("/health")
@@ -472,9 +532,9 @@ def _set_visitor_cookie(response: Response, visitor_token: str) -> None:
     response.set_cookie(
         _PUBLIC_VISITOR_COOKIE,
         visitor_token,
-        secure=True,
-        httponly=True,
-        samesite="lax",
+        secure=VISITOR_COOKIE_SECURE,
+        httponly=VISITOR_COOKIE_HTTP_ONLY,
+        samesite=VISITOR_COOKIE_SAME_SITE,
         path="/",
     )
 
@@ -605,7 +665,14 @@ def release_readiness():
         ) from exc
     from baseball_rag.release_runtime import release_readiness as read_release_readiness
 
-    return read_release_readiness().as_dict()
+    payload = read_release_readiness().as_dict()
+    if _public_runtime_configuration is not None:
+        payload["runtime_configuration"] = {
+            "digest": _public_runtime_configuration.digest,
+            "provider_deployment": _public_runtime_configuration.provider_deployment,
+            "scope": _public_runtime_configuration.scope,
+        }
+    return payload
 
 
 def _web_dist_path() -> Path:

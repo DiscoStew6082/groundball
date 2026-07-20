@@ -7,8 +7,8 @@ This is the execution handoff for the completed Public Deterministic Ground Ball
 ## Canonical continuation
 
 - Working directory: `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release`
-- Branch: `implementation/public-deterministic-groundball-parity`
-- Integrated baseline: `origin/main` at PR #28 Wave 4 merge commit `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`
+- Branch: `implementation/public-deterministic-groundball-candidate-gates`
+- Integrated baseline: `origin/main` at PR #29 Wave 5 merge commit `17d972d2c4a2c7f601c5908e707e7714e6fd7c35`
 - Completed planning source: `.scratch/public-deterministic-groundball/map.md` on `wayfinder/queryable-ground-ball` at `6675ad1`
 - Current context: `CONTEXT.md`
 - Current instructions: this worktree's `AGENTS.md`, aligned with the root worktree's removal of the former TDD, subagent, mandatory-review, auto-commit, CI-wait, and forced-browser directives
@@ -44,6 +44,7 @@ Stewart must receive the final protected candidate link, open it, and explicitly
 - `427e189`: PR #26 merge containing the complete Wave 2 public admission seam.
 - `30a2bc5`: PR #27 merge containing the complete Wave 3 shared coordination Adapter contract.
 - `91d1dfa`: PR #28 merge containing the complete Wave 4 public result and Browser contract.
+- `17d972d`: PR #29 merge containing the complete Wave 5 deterministic parity closure; post-merge ordinary CI and Release Proof passed.
 
 The landed foundation packages the four Lahman tables, catalog and registry assets, generated raw inventory, team references, exact Coverage Report, compact strikeout-side Retrosheet projection, provenance, licenses, and canonical Release Manifest. It boots without acquiring data and advertises only the three bundle-backed Retrosheet families.
 
@@ -82,8 +83,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | 2. Public Admission Policy core | Complete on `main` in PR #26 (`427e189`) | Pure CAS state model, shared-store/stable-key configuration seam, 500-character and 16,384-byte limits, Visitor/deployment concurrency, rolling rates, 15-second leases, nonrefundable UTC-month budget, common primary/Retrosheet admission, exact retries, fail-closed readiness, and isolated ten-second hard-stop execution | Focused policy/API/runtime proof passes; `InMemoryCasStore` rejected as deployment authority; no Blob or deployment claim |
 | 3. Shared coordination Adapter | Complete on `main` in PR #27 (`30a2bc5`) | Exact private Vercel Blob `?cache=0` read plus current raw control-plane ETag CAS, canonical provider time, strict store identity, stable keyed Visitor digest configuration, strict schema/versioning, create-if-absent initialization, redirect refusal, readiness, namespace isolation, and local operation accounting | Injected fake/scripted transport contract proof only; real protected Blob compatibility/accounting remains blocked on external approval |
 | 4. Public result and Browser contract | Complete on `main` in PR #28 (`91d1dfa`) | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused public Adapter/child/API tests, Browser DOM tests, full local fast suite, marked offline proof, static checks, generators, eval matrix, and web build; no live provider/deployment proof |
-| 5. Deterministic parity closure | Implemented on `implementation/public-deterministic-groundball-parity`; PR pending | Exact Ohtani natural/structured parity, hidden composed name-match projections, recipe-only deterministic two-turn follow-up, and all bundled/unbundled Retrosheet boundaries | 26-case named eval/parity matrix; focused compiler/Adapter/API/child/Browser/Retrosheet proof; regenerated exact Coverage Report and Release Bundle; no live provider/deployment proof |
-| 6. Candidate identity and gate tooling | Pending after waves 2-5 | Bind one source commit, bundle digest, image digest, runtime config, admission config, evidence set, and Deployment Attestation; repair release-container CI so it is not tied to the retired branch | Machine-readable gate report and reproducible candidate assembly |
+| 5. Deterministic parity closure | Complete on `main` in PR #29 (`17d972d`) | Exact Ohtani natural/structured parity, hidden composed name-match projections, recipe-only deterministic two-turn follow-up, and all bundled/unbundled Retrosheet boundaries | 26-case named eval/parity matrix; focused compiler/Adapter/API/child/Browser/Retrosheet proof; regenerated exact Coverage Report and Release Bundle; no live provider/deployment proof |
+| 6. Candidate identity and gate tooling | Implemented on `implementation/public-deterministic-groundball-candidate-gates`; PR pending | Bind exact source/artifact topology, bundle, local image, actual admission policy, strict runtime config, evidence set, all-or-nothing gates, and a no-deployment attestation template; replace retired branch-only container CI | Canonical machine records and branch-independent exact-head candidate-container proof; protected/provider gates blocked and candidate ineligible |
 | 7. Protected Vercel proof | Blocked on explicit external approval | Provision isolated proof coordination, deploy protected candidate, and run real Blob, restart, scale-to-zero, performance, security, and live Browser gates | All gates pass for one candidate; no promotion |
 | 8. Production and website cutover | Blocked on gates and explicit approvals | Build and attest final production artifact, send Stewart its link, receive acceptance, then make one reversible launcher change and externally verify | Stewart acceptance, attestation, post-switch proof, rollback proof |
 
@@ -189,7 +190,7 @@ Every result must belong to the same candidate. Evidence does not transfer acros
 - Shell and capabilities ready within five seconds.
 - First cold supported Query Run completes within ten seconds.
 - Every run in a fixed, predeclared twenty-run warm manifest completes within three seconds.
-- Image is at most 1 GB and peak runtime memory is at most 1.5 GB.
+- Image is at most 1,073,741,824 bytes (exactly 1 GiB) and peak runtime memory is at most 1.5 GB.
 - Record image digest and size, peak memory, build duration, cold and warm timings, and provider observations.
 
 ### Bundle and readiness
@@ -337,11 +338,11 @@ Final local outputs before documentation closeout were:
 
 Pi exposed no subagent or review-agent facility, so Wave 4 received an explicit direct review of the complete diff. The review checked public-only limit placement, off-by-one equality, UTF-8 rather than character counts, exact compact response encoding, row/content/response ceiling order, refusal material removal, exhausted/no-data truth, local 100-row and exhaustive export preservation, child stdout behavior, state separation, one-request actions, structured error retention, accessibility/mobile CSS, frozen seam preservation, and absence of secrets, cookies, private values, or fallback paths.
 
-This is repository and local no-network DOM/API evidence only. It does not prove live Vercel Blob compatibility, provider accounting, a deployment, protected or production Browser behavior, candidate parity, performance/resources, a Deployment Attestation, website integration, or cutover. Wave 5 addresses repository deterministic parity separately below; Waves 6, 7, and 8 remain incomplete, and protected proof plus every external mutation still require separate explicit approval.
+This Wave 4 evidence is repository and local no-network DOM/API evidence only. It does not prove live Vercel Blob compatibility, provider accounting, a deployment, protected or production Browser behavior, candidate parity, performance/resources, a Deployment Attestation, website integration, or cutover. Wave 5 addresses repository deterministic parity separately below; protected proof plus every external mutation still require separate explicit approval.
 
 ## Wave 5 deterministic parity closure
 
-Wave 5 is implemented on `implementation/public-deterministic-groundball-parity`, based exactly on PR #28 merge `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`. It preserves every Wave 1–4 query, admission, result, export, Browser-state, Release Bundle, and fail-closed boundary.
+Wave 5 merged in PR #29 at `17d972d2c4a2c7f601c5908e707e7714e6fd7c35`. It was implemented from PR #28 merge `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc` and preserves every Wave 1–4 query, admission, result, export, Browser-state, Release Bundle, and fail-closed boundary.
 
 ### Composed-plan and exact Ohtani parity
 
@@ -373,7 +374,46 @@ Wave 5 is implemented on `implementation/public-deterministic-groundball-parity`
 
 Pi exposed no subagent or review-agent facility, so Wave 5 received an explicit direct review. The review checked hidden aliases remain internal and catalog-owned, values stay bound, natural and structured plans stay canonical, context cannot accompany structured input or contain rows, pronouns fail closed without one name predicate, independent questions ignore context, Browser actions remain one request, completed results survive pending/refusal, public limits and hard-stop execution are unchanged, all Retrosheet negatives fail before runtime fallback, full local Retrosheet behavior remains intact, and no external/provider/Mac/deployment behavior was touched.
 
-This remains repository and local no-network proof only. No live provider, Blob, deployment, protected Browser, performance/resource, website/domain, Cloudflare, Mac, tunnel, candidate attestation, or cutover proof has occurred. Wave 6 candidate identity and gate tooling is the next pending wave; it has not started.
+This remains repository and local no-network proof only. No live provider, Blob, deployment, protected Browser, performance/resource, website/domain, Cloudflare, Mac, tunnel, candidate attestation, or cutover proof occurred in Wave 5.
+
+## Wave 6 candidate identity and gate tooling
+
+Wave 6 is implemented on `implementation/public-deterministic-groundball-candidate-gates`, based exactly on PR #29 merge `17d972d2c4a2c7f601c5908e707e7714e6fd7c35`. It preserves the provider-neutral Release Manifest and non-circular source-then-bundle artifact freeze.
+
+- `public_release_config.py` owns the rendering-neutral read model derived from the actual enforced limits, cookie flags, state schema, digest-key minimum, deadline, lease, and bounded CAS constants. `release/config/public-admission-policy.json` is canonical generated JSON and its `--check` command fails on drift.
+- `release/config/local-ci-runtime.json` is strict non-secret configuration. It says `local_ci`, `provider_deployment: false`, `network_policy: none`, and `local_ci_ephemeral`; unknown fields, unknown release environment keys, secret values, or a provider claim fail closed.
+- `release_candidate.py` emits and validates canonical candidate identity, the fixed Release Gate inventory, and Deployment Attestation records. It rejects duplicate keys or evidence IDs, unknown fields, booleans used as integers, malformed or truncated identities, secret/path content, topology and binding mismatches, and foreign evidence. Candidate ID hashing excludes only its own field. Its authoritative `MAX_CANDIDATE_IMAGE_SIZE_BYTES` ceiling is 1,073,741,824 bytes for every scope; provider image size and measurement kind must exactly equal the protected candidate fields.
+- Every gate is exactly `pass`, `fail`, or `blocked`; a pass requires candidate evidence, and eligibility requires all fixed gates to pass for that candidate. Local CI passes only topology/identity, bundle/Coverage Report, deterministic public-envelope parity, offline/prohibited-surface, preliminary local image-size, and runtime/admission-config gates. Protected/provider gates remain blocked, so the report is intentionally ineligible.
+- A Wave 6 local Deployment Attestation template explicitly says no provider deployment exists and cannot be promotion-eligible. No Vercel attestation is fabricated. Protected/production validation later requires exact provider deployment/image identity, unchanged bundle/config/gate bindings, observations, all-pass gates, and external evidence.
+- `.github/workflows/candidate-proof.yml` replaces the dormant retired-branch job. Automatic PR proof is branch-independent and triggered only by a changed canonical `release/bundle/release-manifest.json`; ordinary source/dependency/configuration/workflow/test PRs stay in ordinary CI, while `workflow_dispatch` remains available. Candidate proof checks out the exact selected head with full history, derives source/artifact topology from the Release Manifest and Git commits, requires an artifact-only bundle commit, builds the exact-source Dockerfile, records local Docker ID/size, enforces exactly 1 GiB, boots with `--network none`, exercises the Wave 5 natural/structured/follow-up/paging/export/Retrosheet corpus, checks prohibited files and persistent authority, then uploads candidate, gate, template, evidence, and summary artifacts even on safe failures.
+
+Exact artifact meanings, freeze steps, and pasteable assembly/validation commands are in `docs/release-candidates.md`. Local Docker ID/size are explicitly not future provider OCI digest/size. No Blob, credential, preview, deployment, provider accounting, protected Browser, performance, restart, scale-to-zero, memory, website, domain, Cloudflare, Mac, or tunnel state is contacted or changed in Wave 6.
+
+### Wave 6 TDD, review, and local verification (2026-07-20)
+
+Vertical tests first failed for the missing actual-policy/config module, candidate/gate/attestation module, and candidate workflow. Final pre-freeze source results were:
+
+- Focused policy/candidate/gate/attestation/workflow plus admission/API/runtime proof: `149 passed`; one upstream Starlette/httpx deprecation warning.
+- Fast Python suite: `472 passed, 1 deselected`; the same upstream warning.
+- Marked offline Release Proof: `1 passed, 472 deselected`; the same upstream warning.
+- Deterministic eval/parity matrix: `26/26` passing. Catalog compatibility, raw inventory, Coverage Report generation check, and Coverage Report validator passed with no generated diff.
+- Ruff lint and full format check passed; mypy passed for `65` source files; configured pre-commit passed all hooks.
+- Browser DOM suite: `25/25` passing. Web production build passed with `113` transformed modules.
+- A synthetic aggregate CLI dry run emitted and revalidated all three canonical records with `6` local passes, `9` protected/provider blocks, `eligible: false`, and `deployment_exists: false`.
+- Docker Engine `29.4.3` was reachable, but the exact local build could not acquire uncached `python:3.12-slim` and `node:22-alpine` base images because the host Docker credential helper terminated. No credential configuration was inspected or changed. Therefore no local image ID/size or container result is claimed; the fresh exact-head GitHub candidate-container job is mandatory before PR readiness.
+
+Pi exposed no subagent/review-agent facility. Direct self-review covered canonical/duplicate-key behavior, integer-versus-boolean checks, secret/path exclusion, source/artifact and candidate/report/attestation bindings, fixed gate and provider-observation inventories, scope-specific local-versus-provider image measurements, generated-policy drift, provider fail-closed startup, explicit local-CI isolation, exact-head workflow checkout, artifact-only topology, safe failure uploads, prohibited-surface checks, and the absence of any provider/account/Mac/tunnel mutation or green substitution for blocked evidence.
+
+### Wave 6 review corrections (2026-07-20)
+
+Focused red/green corrections make the automatic candidate trigger manifest-only, enforce the 1 GiB domain ceiling for local and provider scopes, bind provider size evidence exactly to candidate identity, and require the public builder to validate the caller's real changed-path inventory. A malformed non-object gate result now exits through `CandidateError`/argparse without a traceback. No provider or protected state was contacted or changed.
+
+- Focused candidate/workflow contract proof: `52 passed`.
+- Fast Python suite: `496 passed, 1 deselected`; one upstream Starlette/httpx deprecation warning.
+- Marked offline Release Proof: `1 passed, 496 deselected`; the same upstream warning.
+- Deterministic eval/parity matrix: `26/26` passing. Catalog compatibility, raw inventory, Coverage Report generation, and Coverage Report validation checks passed with no generated diff.
+- Ruff lint and full format check passed; mypy passed for `65` source files; configured pre-commit passed all hooks.
+- Browser DOM suite: `25/25` passing. Web production build passed with `113` transformed modules.
 
 ## Abort and rollback rules
 
@@ -403,7 +443,7 @@ Work only in:
 /Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release
 
 Branch:
-implementation/public-deterministic-groundball-parity
+implementation/public-deterministic-groundball-candidate-gates
 
 Read first:
 - AGENTS.md
@@ -412,7 +452,7 @@ Read first:
 
 The completed Wayfinder map is on wayfinder/queryable-ground-ball at 6675ad1. Do not reopen its decisions unless current evidence invalidates a gate.
 
-Waves 2 and 3 are merged in PRs #26 and #27. Wave 4 is merged in PR #28 at `91d1dfa`. Wave 5 is implemented on this branch with exact Ohtani natural/structured parity, internal composed-plan name-match aliases, recipe-only deterministic follow-up context, and the 26-case named eval/parity corpus. Review and merge its repository/local contract proof without claiming live provider or deployment compatibility. Do not start Wave 6 unless it is separately scoped, and do not reopen completed query, admission, result, or provider decisions.
+Waves 2-5 are merged through PR #29 at `17d972d`. Wave 6 implements canonical candidate identity, actual-policy/runtime binding, all-or-nothing gates, strict provider-attestation validation, an explicit no-deployment local template, and branch-independent candidate-container CI. Review and merge only this repository/local tooling proof without claiming provider, protected Browser, deployment, performance, persistence, accounting, or promotion evidence. Do not begin Wave 7 external proof without Stewart's separate explicit authorization, and do not reopen completed query, admission, result, parity, or candidate-identity decisions.
 
 Continue through authorized repository implementation and local validation without stopping after a narrow green test. Do not create Blob state or secrets, deploy, delete deployments, promote, change domains or website launchers, enable paid services, activate Cloudflare, or touch Mac/tunnel state without Stewart's explicit approval at that boundary.
 

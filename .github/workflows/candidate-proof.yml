@@ -1,0 +1,232 @@
+name: Candidate Container Proof
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'release/bundle/release-manifest.json'
+
+concurrency:
+  group: candidate-proof-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - name: Establish exact source and artifact topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-artifacts/evidence
+          artifact_commit="$(git rev-parse HEAD)"
+          artifact_parent_commit="$(git rev-parse HEAD^)"
+          source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
+          test "$artifact_parent_commit" = "$source_commit"
+          git merge-base --is-ancestor "$source_commit" "$artifact_commit"
+          git diff --name-only "$source_commit" "$artifact_commit" > candidate-artifacts/artifact-changed-paths.txt
+          test -s candidate-artifacts/artifact-changed-paths.txt
+          test -z "$(grep -Ev '^release/bundle/' candidate-artifacts/artifact-changed-paths.txt || true)"
+          grep -Fx 'release/bundle/release-manifest.json' candidate-artifacts/artifact-changed-paths.txt
+          if test "${{ github.event_name }}" = "pull_request"; then
+            test "$artifact_commit" = "${{ github.event.pull_request.head.sha }}"
+            git merge-base --is-ancestor "${{ github.event.pull_request.base.sha }}" "$source_commit"
+          fi
+          printf 'SOURCE_COMMIT=%s\nARTIFACT_COMMIT=%s\nARTIFACT_PARENT_COMMIT=%s\n' \
+            "$source_commit" "$artifact_commit" "$artifact_parent_commit" >> "$GITHUB_ENV"
+          SOURCE_COMMIT="$source_commit" ARTIFACT_COMMIT="$artifact_commit" \
+            ARTIFACT_PARENT_COMMIT="$artifact_parent_commit" \
+            uv run python - <<'PY'
+          import os
+          from pathlib import Path
+          from baseball_rag.public_release_config import canonical_json_bytes
+          value = {
+              "artifact_commit": os.environ["ARTIFACT_COMMIT"],
+              "artifact_parent_commit": os.environ["ARTIFACT_PARENT_COMMIT"],
+              "changed_paths": Path("candidate-artifacts/artifact-changed-paths.txt").read_text().splitlines(),
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "schema_version": "ground-ball-candidate-topology-proof-v1",
+              "source_commit": os.environ["SOURCE_COMMIT"],
+          }
+          Path("candidate-artifacts/evidence/topology.json").write_bytes(canonical_json_bytes(value))
+          PY
+      - name: Verify immutable Release Bundle and policy artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_digest="$(uv run python -m baseball_rag.release_bundle check release/bundle --expected-source-commit "$SOURCE_COMMIT")"
+          policy_digest="$(uv run python -m baseball_rag.public_release_config --check)"
+          BUNDLE_DIGEST="$bundle_digest" POLICY_DIGEST="$policy_digest" uv run python - <<'PY'
+          import os
+          from pathlib import Path
+          from baseball_rag.public_release_config import canonical_json_bytes
+          value = {
+              "bundle_digest": os.environ["BUNDLE_DIGEST"],
+              "policy_digest": os.environ["POLICY_DIGEST"],
+              "schema_version": "ground-ball-release-bundle-check-v1",
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "status": "pass",
+          }
+          Path("candidate-artifacts/evidence/release-bundle-check.json").write_bytes(canonical_json_bytes(value))
+          PY
+      - name: Build exact-source local candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="groundball-candidate:${ARTIFACT_COMMIT}"
+          docker build -f Dockerfile.vercel \
+            --build-arg GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
+            -t "$image_tag" .
+          image_digest="$(docker image inspect "$image_tag" --format '{{.Id}}')"
+          image_size="$(docker image inspect "$image_tag" --format '{{.Size}}')"
+          test "$image_size" -le 1073741824
+          printf 'IMAGE_TAG=%s\nIMAGE_DIGEST=%s\nIMAGE_SIZE_BYTES=%s\n' \
+            "$image_tag" "$image_digest" "$image_size" >> "$GITHUB_ENV"
+          IMAGE_DIGEST="$image_digest" IMAGE_SIZE_BYTES="$image_size" uv run python - <<'PY'
+          import os
+          from pathlib import Path
+          from baseball_rag.public_release_config import canonical_json_bytes
+          value = {
+              "ceiling_bytes": 1073741824,
+              "image_digest": os.environ["IMAGE_DIGEST"],
+              "measurement_kind": "docker-image-inspect-size-bytes",
+              "schema_version": "ground-ball-local-image-measurement-v1",
+              "size_bytes": int(os.environ["IMAGE_SIZE_BYTES"]),
+              "status": "pass",
+              "statement": "local Docker evidence is not provider OCI proof",
+          }
+          Path("candidate-artifacts/evidence/local-image.json").write_bytes(canonical_json_bytes(value))
+          PY
+      - name: Prove network-disabled packaged behavior and prohibited-surface absence
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="groundball-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run --detach --network none \
+            --env GROUNDBALL_RUNTIME_CONFIG=/app/release-config/local-ci-runtime.json \
+            --name "$container_name" "$IMAGE_TAG"
+          trap 'docker logs "$container_name" > candidate-artifacts/container.log 2>&1 || true; docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
+          ready=0
+          for _attempt in $(seq 1 30); do
+            if docker exec "$container_name" /app/.venv/bin/python -c \
+              'import urllib.request; urllib.request.urlopen("http://127.0.0.1/health", timeout=1).read()'
+            then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = 1
+          docker exec "$container_name" /app/.venv/bin/python -m baseball_rag.candidate_container_probe \
+            > candidate-artifacts/evidence/container-proof.json
+          docker exec "$container_name" /bin/sh -c \
+            'test ! -e /app/src/baseball_rag/db/download.py && test ! -e /app/src/baseball_rag/db/generate_retrosheet_team_reference.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_database.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_events.py && test ! -e /app/src/baseball_rag/generation/llm.py && test ! -e /app/src/baseball_rag/query/catalog && test ! -e /app/src/baseball_rag/query/coverage && test -z "$(find /app -type f \( -name "*.duckdb" -o -name "*.zip" -o -name "coverage-report.md" \) -print -quit)" && test -z "$(find /app/release-bundle -iname "*cache*" -print -quit)"'
+          uv run python - <<'PY'
+          from pathlib import Path
+          from baseball_rag.public_release_config import canonical_json_bytes
+          value = {
+              "absent": [
+                  "acquisition-tools", "catalog-development-files", "llm", "mac-or-tunnel-fallback",
+                  "persistent-cache-authority", "persistent-duckdb-authority", "raw-retrosheet-archives",
+              ],
+              "network_mode": "none",
+              "schema_version": "ground-ball-prohibited-surface-proof-v1",
+              "status": "pass",
+          }
+          Path("candidate-artifacts/evidence/prohibited-surfaces.json").write_bytes(canonical_json_bytes(value))
+          PY
+      - name: Assemble and revalidate local candidate records
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+          from baseball_rag.public_release_config import canonical_json_bytes
+          evidence = [
+              {"logical_id":"container-proof","media_type":"application/json","path":"candidate-artifacts/evidence/container-proof.json","schema_identity":"ground-ball-candidate-container-proof-v1"},
+              {"logical_id":"coverage-report","media_type":"application/json","path":"release/bundle/src/baseball_rag/query/coverage/coverage-report.json","schema_identity":"query-coverage-report-v1"},
+              {"logical_id":"local-image","media_type":"application/json","path":"candidate-artifacts/evidence/local-image.json","schema_identity":"ground-ball-local-image-measurement-v1"},
+              {"logical_id":"local-runtime-config","media_type":"application/json","path":"release/config/local-ci-runtime.json","schema_identity":"ground-ball-runtime-configuration-v1"},
+              {"logical_id":"prohibited-surfaces","media_type":"application/json","path":"candidate-artifacts/evidence/prohibited-surfaces.json","schema_identity":"ground-ball-prohibited-surface-proof-v1"},
+              {"logical_id":"public-admission-policy","media_type":"application/json","path":"release/config/public-admission-policy.json","schema_identity":"ground-ball-public-admission-policy-v1"},
+              {"logical_id":"release-bundle-check","media_type":"application/json","path":"candidate-artifacts/evidence/release-bundle-check.json","schema_identity":"ground-ball-release-bundle-check-v1"},
+              {"logical_id":"topology","media_type":"application/json","path":"candidate-artifacts/evidence/topology.json","schema_identity":"ground-ball-candidate-topology-proof-v1"},
+          ]
+          Path("candidate-artifacts/evidence-spec.json").write_bytes(canonical_json_bytes({"evidence": evidence}))
+          PY
+          printf '%s\n' '{"gates":{"candidate_identity_topology":{"evidence":["topology"],"status":"pass"},"cold_wake_warm_performance":{"evidence":[],"status":"blocked"},"deterministic_parity_public_envelope":{"evidence":["container-proof","coverage-report"],"status":"pass"},"local_image_size":{"evidence":["local-image"],"status":"pass"},"network_egress_public_routes":{"evidence":[],"status":"blocked"},"offline_container_security":{"evidence":["container-proof","prohibited-surfaces"],"status":"pass"},"protected_blob_coordination":{"evidence":[],"status":"blocked"},"protected_browser_desktop_mobile":{"evidence":[],"status":"blocked"},"protected_deployment_image":{"evidence":[],"status":"blocked"},"provider_deployment_attestation":{"evidence":[],"status":"blocked"},"provider_operation_accounting":{"evidence":[],"status":"blocked"},"provider_peak_memory":{"evidence":[],"status":"blocked"},"release_bundle_coverage":{"evidence":["coverage-report","release-bundle-check"],"status":"pass"},"restart_replacement_scale_to_zero":{"evidence":[],"status":"blocked"},"runtime_admission_configuration":{"evidence":["local-runtime-config","public-admission-policy"],"status":"pass"}}}' > candidate-artifacts/gate-results.json
+          uv run python -m baseball_rag.release_candidate assemble \
+            --scope local_ci \
+            --source-commit "$SOURCE_COMMIT" \
+            --artifact-commit "$ARTIFACT_COMMIT" \
+            --artifact-parent-commit "$ARTIFACT_PARENT_COMMIT" \
+            --artifact-changed-paths candidate-artifacts/artifact-changed-paths.txt \
+            --bundle-root release/bundle \
+            --image-digest "$IMAGE_DIGEST" \
+            --image-size-bytes "$IMAGE_SIZE_BYTES" \
+            --image-size-measurement-kind docker-image-inspect-size-bytes \
+            --runtime-config release/config/local-ci-runtime.json \
+            --admission-policy release/config/public-admission-policy.json \
+            --evidence-spec candidate-artifacts/evidence-spec.json \
+            --gate-results candidate-artifacts/gate-results.json \
+            --output candidate-artifacts/candidate-identity.json \
+            --gate-report-output candidate-artifacts/gate-report.json \
+            --attestation-output candidate-artifacts/deployment-attestation-template.json
+          uv run python -m baseball_rag.release_candidate validate candidate \
+            --candidate candidate-artifacts/candidate-identity.json
+          uv run python -m baseball_rag.release_candidate validate gates \
+            --candidate candidate-artifacts/candidate-identity.json \
+            --gate-report candidate-artifacts/gate-report.json
+          uv run python -m baseball_rag.release_candidate validate attestation \
+            --candidate candidate-artifacts/candidate-identity.json \
+            --gate-report candidate-artifacts/gate-report.json \
+            --attestation candidate-artifacts/deployment-attestation-template.json
+      - name: Publish concise candidate summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Ground Ball candidate-container proof'
+            echo
+            echo "- Exact workflow head: \`${ARTIFACT_COMMIT:-unavailable}\`"
+            echo '- Local Docker evidence is not provider OCI proof.'
+            if test -f candidate-artifacts/candidate-identity.json; then
+              python - <<'PY'
+          import json
+          candidate = json.load(open("candidate-artifacts/candidate-identity.json"))
+          report = json.load(open("candidate-artifacts/gate-report.json"))
+          print(f"- Candidate: `{candidate['candidate_id']}`")
+          print(f"- Source/artifact: `{candidate['source_commit']}` / `{candidate['artifact_commit']}`")
+          print(f"- Local image: `{candidate['image_digest']}` ({candidate['image_size_bytes']} bytes; `{candidate['image_size_measurement_kind']}`)")
+          passed = sum(gate["status"] == "pass" for gate in report["gates"])
+          blocked = sum(gate["status"] == "blocked" for gate in report["gates"])
+          failed = sum(gate["status"] == "fail" for gate in report["gates"])
+          print(f"- Gates: {passed} pass, {blocked} blocked, {failed} fail; eligible=`{str(report['eligible']).lower()}`")
+          print("- No provider deployment or Deployment Attestation exists.")
+          PY
+            else
+              echo '- Candidate records were not emitted because an earlier exact check failed.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ground-ball-candidate-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: warn
+          path: candidate-artifacts/
