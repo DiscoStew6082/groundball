@@ -131,7 +131,7 @@ Wave 3 commits `dc4a395` and `48f3158`, plus the narrow independent-review corre
 - Proof object-key template: `groundball/public-admission/v1/proof/<proof-id>/state.json`, where the proof identifier is a validated single path segment. The proof constructor cannot produce the production key.
 - The canonical compact JSON object contains only `schema_version`, `monthly_budget`, `running`, and `starts_by_visitor`. It never contains a credential, digest key, raw Visitor cookie, result payload, or private filesystem path.
 - Provider input is capped at 65,536 bytes before acceptance, duplicate JSON object keys are rejected, and leases, Visitors, per-Visitor starts, total starts, identifiers, UTC timestamp precision, field sets, types, ranges, uniqueness, and ordering are strictly validated. A budget cannot report fewer charges than retained starts from its own UTC period; retained earlier-period history and leases that cross a month boundary remain valid.
-- `CasVersion` is opaque. `InMemoryCasStore` retains an internal process version, while the Blob Adapter retains the exact read ETag solely for the next `x-if-match` write.
+- `CasVersion` is opaque. `InMemoryCasStore` retains an internal process version, while the Blob Adapter strictly accepts quoted strong tags, preserving an exact strong read ETag and converting an exact uppercase `W/"opaque"` read ETag to `"opaque"` solely for the next `x-if-match` write.
 
 ### Private HTTP and time contract
 

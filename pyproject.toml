@@ -7,6 +7,8 @@ dependencies = [
     "requests",
     "duckdb",
     "fastapi",
+    "pydantic",
+    "starlette",
     "uvicorn[standard]>=0.24.0",
     "unidecode>=1.4.0",
     "pyyaml>=6.0",
@@ -18,7 +20,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "mypy",
-    "httpx",
+    "httpx2>=2.0.0",
     "types-pyyaml>=6.0.12.20260508",
     "types-requests>=2.33.0.20260508",
 ]
@@ -37,6 +39,12 @@ packages = ["src/baseball_rag"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+    "error::FutureWarning",
+    "error::starlette.exceptions.StarletteDeprecationWarning",
+]
 markers = [
     "unit: fast, mocked tests — no external services required",
     "integration: requires live services (LM Studio, web app, etc.)",
