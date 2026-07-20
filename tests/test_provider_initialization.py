@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 import baseball_rag.api.server as api_server
 from baseball_rag.api.server import app
-from baseball_rag.public_admission_blob import OidcBlobCredentialProvider
+from baseball_rag.public_admission_blob import BlobProviderError, OidcBlobCredentialProvider
 from baseball_rag.public_release_config import RuntimeConfiguration
 from baseball_rag.release_runtime import ReleaseReadiness
 
@@ -25,7 +25,7 @@ def provider_configuration() -> RuntimeConfiguration:
         admission_adapter="vercel_blob",
         release_bundle="ground-ball-release-bundle",
         resource_references=("BLOB_STORE_ID",),
-        startup_credential_references=("VERCEL_OIDC_TOKEN",),
+        startup_credential_references=(),
         request_credential_headers=("x-vercel-oidc-token",),
         secret_references=("GROUNDBALL_VISITOR_DIGEST_KEY",),
     )
@@ -78,6 +78,46 @@ def test_provider_lifespan_yields_while_initializer_is_blocked_beyond_fifteen_se
         assert startup_seconds < 1
         assert response.status_code == 503
         assert response.json() == {"status": "initializing"}
+
+
+def test_provider_lifespan_without_startup_oidc_constructs_admission_and_yields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+
+    def blocked_bundle_initializer() -> ReleaseReadiness:
+        started.set()
+        assert release.wait(timeout=30)
+        return readiness()
+
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", "/private/release/bundle")
+    monkeypatch.setenv("BLOB_STORE_ID", "store_ProofStore123")
+    monkeypatch.setenv("GROUNDBALL_BLOB_NAMESPACE", "protected_preview")
+    monkeypatch.setenv(
+        "GROUNDBALL_VISITOR_DIGEST_KEY",
+        "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s=",
+    )
+    monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
+    monkeypatch.setattr(api_server, "_public_runtime_configuration", provider_configuration())
+    monkeypatch.setattr(api_server, "_configure_release_runtime_if_declared", lambda: None)
+    monkeypatch.setattr(api_server, "_public_admission", None)
+    monkeypatch.setattr(api_server, "_visitor_digest_key", None)
+    monkeypatch.setattr(api_server, "_public_admission_is_shared", False)
+    monkeypatch.setattr(api_server, "_provider_runtime_initializer", blocked_bundle_initializer)
+    monkeypatch.setattr(
+        api_server,
+        "_provider_initialization",
+        api_server._ProviderInitialization(),
+    )
+
+    with TestClient(app) as client:
+        try:
+            assert started.wait(timeout=1)
+            assert client.get("/health").json() == {"status": "initializing"}
+        finally:
+            release.set()
 
 
 def test_every_non_health_public_surface_is_fixed_503_before_provider_readiness(
@@ -145,34 +185,33 @@ def test_every_non_health_public_surface_is_fixed_503_before_provider_readiness(
             release.set()
 
 
-def test_provider_background_initialization_uses_startup_oidc_fallback(
+def test_provider_background_initialization_performs_only_local_bundle_readiness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    startup_oidc = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJzdGFydHVwIn0.startup-signature"
-    provider = OidcBlobCredentialProvider(startup_token=startup_oidc)
-    observed: list[str] = []
+    expected = readiness()
+    calls = 0
 
-    def initializer() -> ReleaseReadiness:
-        observed.append(provider.resolve())
-        return readiness()
+    def heavy_readiness() -> ReleaseReadiness:
+        nonlocal calls
+        calls += 1
+        return expected
 
-    configure_provider_lifespan(monkeypatch, initializer)
+    def forbidden_provider_io():
+        raise AssertionError("background initialization must not perform provider I/O")
 
-    with TestClient(app) as client:
-        for _ in range(100):
-            response = client.get("/health")
-            if response.status_code == 200:
-                break
-            time.sleep(0.01)
+    monkeypatch.setattr("baseball_rag.release_runtime.release_readiness", heavy_readiness)
+    monkeypatch.setattr(api_server, "_require_shared_public_admission", forbidden_provider_io)
 
-    assert response.status_code == 200
-    assert observed == [startup_oidc]
+    assert api_server._provider_runtime_initializer() is expected
+    assert calls == 1
 
 
-def test_provider_initialization_transitions_once_to_ready_and_caches_exact_readiness(
+def test_provider_initialization_transitions_once_to_ready_and_request_readiness_proves_blob(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     expected_readiness = readiness()
+    request_oidc = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXF1ZXN0In0.request-signature"
+    provider = OidcBlobCredentialProvider()
     calls = {"heavy": 0, "admission": 0}
     calls_lock = Lock()
 
@@ -182,6 +221,10 @@ def test_provider_initialization_transitions_once_to_ready_and_caches_exact_read
         return expected_readiness
 
     def admission_readiness():
+        try:
+            assert provider.resolve() == request_oidc
+        except BlobProviderError:
+            raise RuntimeError("request-scoped Blob credential unavailable") from None
         with calls_lock:
             calls["admission"] += 1
         return object(), b"x" * 32
@@ -199,14 +242,21 @@ def test_provider_initialization_transitions_once_to_ready_and_caches_exact_read
         assert health.status_code == 200
         assert health.json() == {"status": "ok"}
 
-        first = client.get("/api/release-readiness")
-        second = client.get("/api/release-readiness")
+        first = client.get("/api/release-readiness", headers={"x-vercel-oidc-token": request_oidc})
+        second = client.get("/api/release-readiness", headers={"x-vercel-oidc-token": request_oidc})
+        missing = client.get("/api/release-readiness")
+        invalid = client.get("/api/release-readiness", headers={"x-vercel-oidc-token": "not-a-jwt"})
 
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["release_bundle_digest"] == "a" * 64
     assert second.json() == first.json()
-    assert calls == {"heavy": 1, "admission": 3}
+    assert missing.status_code == 503
+    assert invalid.status_code == 503
+    assert (
+        missing.json() == invalid.json() == {"detail": "Ground Ball public admission is not ready."}
+    )
+    assert calls == {"heavy": 1, "admission": 2}
 
 
 def test_provider_initializer_cannot_mark_an_invalid_readiness_object_ready(

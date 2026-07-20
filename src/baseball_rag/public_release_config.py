@@ -239,7 +239,7 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
             or adapter != "vercel_blob"
             or network != "provider_coordination_only"
             or resource_references != ["BLOB_STORE_ID"]
-            or startup_references != ["VERCEL_OIDC_TOKEN"]
+            or startup_references != []
             or request_headers != ["x-vercel-oidc-token"]
             or secret_references != ["GROUNDBALL_VISITOR_DIGEST_KEY"]
         ):

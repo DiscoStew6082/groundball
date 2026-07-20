@@ -102,9 +102,7 @@ class _ProviderInitialization:
 def _provider_runtime_initializer() -> ReleaseReadiness:
     from baseball_rag.release_runtime import release_readiness
 
-    readiness = release_readiness()
-    _require_shared_public_admission()
-    return readiness
+    return release_readiness()
 
 
 @asynccontextmanager

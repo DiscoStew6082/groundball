@@ -88,7 +88,7 @@ def test_protected_preview_runtime_is_provider_scoped_secret_free_and_oidc_nativ
     assert config.network_policy == "provider_coordination_only"
     assert config.release_bundle == "ground-ball-release-bundle"
     assert config.resource_references == ("BLOB_STORE_ID",)
-    assert config.startup_credential_references == ("VERCEL_OIDC_TOKEN",)
+    assert config.startup_credential_references == ()
     assert config.request_credential_headers == ("x-vercel-oidc-token",)
     assert config.secret_references == ("GROUNDBALL_VISITOR_DIGEST_KEY",)
     encoded = PROTECTED_RUNTIME_PATH.read_text(encoding="utf-8")
@@ -105,6 +105,7 @@ def test_protected_preview_runtime_is_provider_scoped_secret_free_and_oidc_nativ
         lambda value: value.update({"secret_references": ["SECRET=value"]}),
         lambda value: value.update({"request_credential_headers": ["x-vercel-oidc-token"]}),
         lambda value: value.update({"resource_references": ["BLOB_READ_WRITE_TOKEN"]}),
+        lambda value: value.update({"startup_credential_references": ["VERCEL_OIDC_TOKEN"]}),
     ],
 )
 def test_runtime_configuration_fails_closed_on_unknown_or_masquerading_input(

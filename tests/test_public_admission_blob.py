@@ -186,6 +186,19 @@ def block_accidental_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("socket.create_connection", blocked)
 
 
+def test_request_only_oidc_provider_requires_a_valid_bound_request_credential() -> None:
+    provider = OidcBlobCredentialProvider()
+
+    with pytest.raises(BlobProviderError) as raised:
+        provider.resolve()
+    with request_oidc_token_context(REQUEST_OIDC_A):
+        assert provider.resolve() == REQUEST_OIDC_A
+
+    rendered = f"{raised.value!s} {raised.value!r} {provider!r}"
+    assert REQUEST_OIDC_A not in rendered
+    assert rendered.count("Blob coordination request failed.") == 2
+
+
 def test_blob_configuration_is_credential_free_and_oidc_resolution_is_request_scoped() -> None:
     config = BlobCoordinationConfig.proof(store_id=f"store_{STORE_ID}", proof_id="wave-7")
     provider = OidcBlobCredentialProvider(startup_token=STARTUP_OIDC)
@@ -1036,7 +1049,6 @@ def test_missing_or_inconsistent_blob_configuration_fails_closed_and_sanitized(
 @pytest.mark.parametrize(
     "ambiguous",
     [
-        {"BLOB_STORE_ID": f"store_{STORE_ID}"},
         {"VERCEL_OIDC_TOKEN": "synthetic-oidc"},
         {
             "BLOB_STORE_ID": f"store_{STORE_ID}",
@@ -1067,6 +1079,33 @@ def test_blob_configuration_rejects_partial_mixed_or_ambiguous_auth(
     rendered = f"{raised.value!s} {raised.value!r}"
     assert "synthetic" not in rendered
     assert "ForeignStore" not in rendered
+
+
+@pytest.mark.parametrize(
+    ("namespace", "expected_object_key"),
+    [
+        (
+            "protected_preview",
+            "groundball/public-admission/v1/protected-preview/state.json",
+        ),
+        ("production", "groundball/public-admission/v1/production/state.json"),
+    ],
+)
+def test_deployed_runtime_constructs_with_request_only_oidc_configuration(
+    namespace: str,
+    expected_object_key: str,
+) -> None:
+    configured = load_blob_public_admission(
+        {
+            "BLOB_STORE_ID": f"store_{STORE_ID}",
+            "GROUNDBALL_BLOB_NAMESPACE": namespace,
+            "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(b"k" * 32).decode(),
+        },
+        transport=ScriptedTransport(),
+    )
+
+    assert configured.authentication_mode == "vercel_oidc_request_scoped"
+    assert configured.store.object_key == expected_object_key
 
 
 def test_protected_preview_requires_oidc_store_namespace_digest_and_valid_startup_fallback() -> (

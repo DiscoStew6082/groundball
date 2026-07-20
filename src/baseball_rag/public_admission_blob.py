@@ -89,19 +89,19 @@ class BlobCredentialProvider(Protocol):
 
 
 class OidcBlobCredentialProvider:
-    """Request-scoped OIDC with a startup-only environment fallback."""
+    """Request-scoped OIDC with an optional startup/local fallback."""
 
-    def __init__(self, *, startup_token: str) -> None:
-        if not _valid_oidc_token(startup_token):
+    def __init__(self, *, startup_token: str | None = None) -> None:
+        if startup_token is not None and not _valid_oidc_token(startup_token):
             raise ValueError("Blob OIDC credential configuration is invalid.")
         self._startup_token = startup_token
 
     def resolve(self) -> str:
         request_token = _request_oidc_token.get()
-        if request_token is _NO_REQUEST:
-            return self._startup_token
         if isinstance(request_token, str):
             return request_token
+        if request_token is _NO_REQUEST and self._startup_token is not None:
+            return self._startup_token
         raise BlobProviderError
 
 
@@ -350,10 +350,10 @@ def load_blob_public_admission(
             store_id = environment["GROUNDBALL_BLOB_STORE_ID"]
             credential_provider = StaticBlobCredentialProvider(environment["GROUNDBALL_BLOB_TOKEN"])
             authentication_mode = "groundball_static_token"
-        elif supplied_oidc == oidc_keys and not supplied_static:
+        elif "BLOB_STORE_ID" in supplied_oidc and not supplied_static:
             store_id = environment["BLOB_STORE_ID"]
             credential_provider = OidcBlobCredentialProvider(
-                startup_token=environment["VERCEL_OIDC_TOKEN"]
+                startup_token=environment.get("VERCEL_OIDC_TOKEN")
             )
             authentication_mode = "vercel_oidc_request_scoped"
         else:

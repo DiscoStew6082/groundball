@@ -17,7 +17,7 @@ from baseball_rag.public_admission import (
     RunLease,
     visitor_digest,
 )
-from baseball_rag.public_admission_blob import OidcBlobCredentialProvider
+from baseball_rag.public_admission_blob import BlobProviderError, OidcBlobCredentialProvider
 from baseball_rag.public_execution import (
     ExecutionOutcome,
     ExecutionRequest,
@@ -449,7 +449,7 @@ def test_public_request_oidc_missing_malformed_or_oversized_fails_before_executi
     monkeypatch: pytest.MonkeyPatch,
     headers: dict[str, str],
 ) -> None:
-    provider = OidcBlobCredentialProvider(startup_token=STARTUP_OIDC)
+    provider = OidcBlobCredentialProvider()
     inner = InMemoryCasStore(
         AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
     )
@@ -491,7 +491,8 @@ def test_public_request_oidc_missing_malformed_or_oversized_fails_before_executi
         "retry_at": None,
     }
     assert runner.requests == []
-    assert provider.resolve() == STARTUP_OIDC
+    with pytest.raises(BlobProviderError):
+        provider.resolve()
     assert STARTUP_OIDC not in refused.text
     assert all(value not in refused.text for value in headers.values())
 
@@ -502,7 +503,8 @@ def test_public_request_oidc_missing_malformed_or_oversized_fails_before_executi
     )
     assert admitted.status_code == 200
     assert len(runner.requests) == 1
-    assert provider.resolve() == STARTUP_OIDC
+    with pytest.raises(BlobProviderError):
+        provider.resolve()
 
 
 def test_public_allowance_pause_never_enters_execution(
