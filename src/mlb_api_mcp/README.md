@@ -202,8 +202,8 @@ Once the server is running, visit `http://localhost:8002/docs` for comprehensive
 
 ## Dependencies
 
-- **mcp[cli]**: MCP-compliant server framework with CLI support
-- **FastAPI**: Web framework for HTTP transport
+- **FastMCP**: MCP-compliant server framework
+- **Starlette**: Web framework used directly for HTTP routes and middleware
 - **python-mlb-statsapi**: Official MLB Statistics API wrapper
 - **uvicorn[standard]**: ASGI server for running the app
 - **websockets**: WebSocket support (latest version to avoid deprecation warnings)
@@ -222,22 +222,18 @@ This project uses:
 
 ### Setup Pre-commit Hooks
 
-1. Install pre-commit:
+Sync the test extra, optional development tools, and the default development dependency group:
 
 ```bash
-pip install pre-commit
+uv sync --locked --extra test --extra dev
+uv run pre-commit install
 ```
 
-2. Initialize pre-commit hooks:
+Now, the linting checks will run automatically whenever you commit code. From this nested
+project directory in the Ground Ball monorepo, the manual command is scoped to this project:
 
 ```bash
-pre-commit install
-```
-
-Now, the linting checks will run automatically whenever you commit code. You can also run them manually:
-
-```bash
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 ## Contributing

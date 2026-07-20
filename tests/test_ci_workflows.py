@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_fast_ci_does_not_regenerate_exhaustive_release_proof() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert '-m "not llm and not release_proof"' in workflow
+    assert '-m "not release_proof"' in workflow
+    assert "not llm" not in workflow
     assert "python -m baseball_rag.coverage_proof_validator" in workflow
     assert "python -m baseball_rag.query.generate_coverage_report --check" not in workflow
     assert "--durations=20" in workflow
