@@ -11,7 +11,8 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
+from uuid import uuid4
 
 from baseball_rag.protected_provider_proof import (
     EVIDENCE_SCHEMAS,
@@ -41,7 +42,12 @@ from baseball_rag.public_admission_blob import (
     load_blob_public_admission,
     new_blob_request_id,
 )
-from baseball_rag.public_admission_state import encode_admission_state
+from baseball_rag.public_admission_state import (
+    MAX_RUNNING_LEASES,
+    MAX_STATE_BYTES,
+    decode_admission_state,
+    encode_admission_state,
+)
 from baseball_rag.public_release_config import canonical_json_bytes
 
 _REQUIRED_CHECKS = (
@@ -93,17 +99,33 @@ class _UnavailableTransport:
         raise BlobProviderError
 
 
+_CONFLICT_MARKER_VISITOR = "f" * 64
+_CONFLICT_MARKER_RUN_PREFIX = "blob-proof-contention-"
+_CONFLICT_MARKER_DEADLINE = datetime(1970, 1, 1, tzinfo=UTC)
+
+
 class _RealConflictTransport:
     """Cause a real ETag change immediately before each tested conditional PUT."""
 
-    def __init__(self, delegate: HttpTransport, config: BlobCoordinationConfig) -> None:
+    def __init__(
+        self,
+        delegate: HttpTransport,
+        config: BlobCoordinationConfig,
+        *,
+        marker_id_factory: Callable[[], str] | None = None,
+    ) -> None:
         self._delegate = delegate
         self._config = config
+        self._marker_id_factory = marker_id_factory or (
+            lambda: f"{_CONFLICT_MARKER_RUN_PREFIX}{uuid4().hex}"
+        )
 
     def request(self, **kwargs: object) -> HttpResponse:
         method = kwargs.get("method")
         headers = kwargs.get("headers")
-        if method == "PUT" and isinstance(headers, dict) and "x-if-match" in headers:
+        if method != "PUT" or not isinstance(headers, dict) or "x-if-match" not in headers:
+            return self._delegate.request(**kwargs)  # type: ignore[arg-type]
+        try:
             current = self._delegate.request(
                 method="GET",
                 url=f"{self._config.state_url}?cache=0",
@@ -113,9 +135,14 @@ class _RealConflictTransport:
                 },
                 data=None,
                 timeout=5.0,
-                max_response_bytes=65_536,
+                max_response_bytes=MAX_STATE_BYTES,
             )
-            etag = _header(current.headers, "etag")
+            if current.status_code != 200:
+                raise BlobProviderError
+            etag = _validated_etag(current.headers)
+            competing_body = _competing_state_body(current.body, self._marker_id_factory())
+            if competing_body == current.body:
+                raise BlobProviderError
             competing_headers = dict(headers)
             competing_headers["x-if-match"] = etag
             competing_headers["x-api-blob-request-id"] = new_blob_request_id(self._config.store_id)
@@ -131,13 +158,69 @@ class _RealConflictTransport:
                 method="PUT",
                 url=str(kwargs["url"]),
                 headers=competing_headers,
-                data=current.body,
+                data=competing_body,
                 timeout=float(timeout),
                 max_response_bytes=max_response_bytes,
             )
             if competing.status_code not in {200, 201}:
                 raise BlobProviderError
-        return self._delegate.request(**kwargs)  # type: ignore[arg-type]
+            competing_etag = _validated_etag(competing.headers)
+            if competing_etag == etag:
+                raise BlobProviderError
+            original = self._delegate.request(**kwargs)  # type: ignore[arg-type]
+            if original.status_code != 412:
+                raise BlobProviderError
+            return original
+        except BlobProviderError:
+            raise
+        except Exception:
+            raise BlobProviderError from None
+
+
+def _competing_state_body(current_body: bytes, marker_run_id: str) -> bytes:
+    if not _is_conflict_marker_run_id(marker_run_id):
+        raise BlobProviderError
+    state = decode_admission_state(current_body)
+    if any(visitor == _CONFLICT_MARKER_VISITOR for visitor, _ in state.starts_by_visitor):
+        raise BlobProviderError
+    retained: list[RunLease] = []
+    for lease in state.running:
+        owned_marker = (
+            lease.visitor == _CONFLICT_MARKER_VISITOR
+            and _is_conflict_marker_run_id(lease.run_id)
+            and lease.expires_at == _CONFLICT_MARKER_DEADLINE
+        )
+        if owned_marker:
+            continue
+        if lease.visitor == _CONFLICT_MARKER_VISITOR or lease.run_id.startswith(
+            _CONFLICT_MARKER_RUN_PREFIX
+        ):
+            raise BlobProviderError
+        retained.append(lease)
+    if len(retained) >= MAX_RUNNING_LEASES or any(
+        lease.run_id == marker_run_id for lease in retained
+    ):
+        raise BlobProviderError
+    competing = AdmissionState(
+        running=(
+            *retained,
+            RunLease(
+                visitor=_CONFLICT_MARKER_VISITOR,
+                run_id=marker_run_id,
+                expires_at=_CONFLICT_MARKER_DEADLINE,
+            ),
+        ),
+        starts_by_visitor=state.starts_by_visitor,
+        monthly_budget=state.monthly_budget,
+    )
+    return encode_admission_state(competing)
+
+
+def _is_conflict_marker_run_id(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith(_CONFLICT_MARKER_RUN_PREFIX):
+        return False
+    suffix = value.removeprefix(_CONFLICT_MARKER_RUN_PREFIX)
+    return len(suffix) == 32 and all(character in "0123456789abcdef" for character in suffix)
 
 
 def run_live_blob_probe(
@@ -461,6 +544,15 @@ def _header(headers: Mapping[str, str], name: str) -> str:
     raise BlobProviderError
 
 
+def _validated_etag(headers: Mapping[str, str]) -> str:
+    etag = _header(headers, "etag")
+    if not etag or len(etag) > 1024 or etag.strip() != etag:
+        raise BlobProviderError
+    if any(ord(char) < 32 or ord(char) == 127 for char in etag):
+        raise BlobProviderError
+    return etag
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
@@ -496,7 +588,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(canonical_json_bytes(document))
-    return 0
+    return 0 if document.get("status") == "pass" else 1
 
 
 if __name__ == "__main__":

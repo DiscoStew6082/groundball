@@ -1,18 +1,43 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 import re
+from datetime import UTC, datetime
 
 import pytest
 
+import baseball_rag.protected_blob_probe as protected_blob_probe
 from baseball_rag.protected_blob_probe import (
+    _CONFLICT_MARKER_DEADLINE,
+    _CONFLICT_MARKER_RUN_PREFIX,
+    _CONFLICT_MARKER_VISITOR,
     BlobProbeError,
+    _RealConflictTransport,
     _write_raw_missing,
     main,
     run_live_blob_probe,
 )
 from baseball_rag.protected_provider_proof import ProviderProofError
-from baseball_rag.public_admission_blob import HttpResponse, load_blob_public_admission
+from baseball_rag.public_admission import (
+    AdmissionAttempt,
+    AdmissionState,
+    CasCoordinator,
+    MonthlyBudget,
+    RunLease,
+)
+from baseball_rag.public_admission_blob import (
+    BlobCoordinationConfig,
+    BlobCoordinationStore,
+    BlobProviderError,
+    HttpResponse,
+    StaticBlobCredentialProvider,
+    blob_upload_url,
+    load_blob_public_admission,
+)
+from baseball_rag.public_admission_state import decode_admission_state, encode_admission_state
+from baseball_rag.public_release_config import MAXIMUM_CAS_ATTEMPTS, canonical_json_bytes
 
 DEPLOYMENT = "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab"
 
@@ -29,6 +54,73 @@ def _identity() -> dict[str, object]:
     }
 
 
+class ContentAddressedEtagTransport:
+    """A Blob-like CAS transport where ETags identify body bytes."""
+
+    def __init__(
+        self,
+        config: BlobCoordinationConfig,
+        body: bytes,
+        *,
+        competing_status: int | None = None,
+        missing_get_etag: bool = False,
+        missing_put_etag: bool = False,
+        preserve_changed_body_etag: bool = False,
+        accept_stale_original: bool = False,
+    ) -> None:
+        self.config = config
+        self.body = body
+        self.etag = self._etag(body)
+        self.competing_status = competing_status
+        self.missing_get_etag = missing_get_etag
+        self.missing_put_etag = missing_put_etag
+        self.preserve_changed_body_etag = preserve_changed_body_etag
+        self.accept_stale_original = accept_stale_original
+        self.put_attempts: list[bytes] = []
+        self.put_bodies: list[bytes] = []
+
+    @staticmethod
+    def _etag(body: bytes) -> str:
+        return hashlib.sha256(body).hexdigest()
+
+    def request(self, **kwargs: object) -> HttpResponse:
+        method = kwargs["method"]
+        headers = kwargs["headers"]
+        assert isinstance(headers, dict)
+        if method == "GET":
+            response_headers = {
+                "content-type": "application/json",
+                "date": "Sun, 19 Jul 2026 12:00:00 GMT",
+            }
+            if not self.missing_get_etag:
+                response_headers["etag"] = self.etag
+            return HttpResponse(200, response_headers, self.body)
+        assert method == "PUT"
+        assert kwargs["url"] == blob_upload_url(self.config.object_key)
+        body = kwargs["data"]
+        assert isinstance(body, bytes)
+        self.put_attempts.append(body)
+        if headers.get("x-if-match") != self.etag and not self.accept_stale_original:
+            return HttpResponse(412, {}, b"")
+        if self.competing_status is not None and not self.put_bodies:
+            return HttpResponse(self.competing_status, {}, b"")
+        previous_etag = self.etag
+        self.put_bodies.append(body)
+        self.body = body
+        if not self.preserve_changed_body_etag:
+            self.etag = self._etag(body)
+        response_headers = {} if self.missing_put_etag else {"etag": self.etag}
+        assert self.etag == previous_etag or self.etag == self._etag(body)
+        return HttpResponse(
+            200,
+            response_headers,
+            json.dumps(
+                {"pathname": self.config.object_key, "url": self.config.state_url},
+                separators=(",", ":"),
+            ).encode(),
+        )
+
+
 class NoNetworkTransport:
     def __init__(self) -> None:
         self.calls = 0
@@ -36,6 +128,261 @@ class NoNetworkTransport:
     def request(self, **kwargs: object):
         self.calls += 1
         raise AssertionError(f"offline test attempted provider contact: {sorted(kwargs)}")
+
+
+def test_real_conflict_transport_changes_content_addressed_etag_before_original_put() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    current = encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0)))
+    backend = ContentAddressedEtagTransport(config, current)
+    transport = _RealConflictTransport(backend, config)
+    original_etag = backend.etag
+
+    response = transport.request(
+        method="PUT",
+        url=blob_upload_url(config.object_key),
+        headers={"authorization": "Bearer proof", "x-if-match": original_etag},
+        data=encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 1))),
+        timeout=5.0,
+        max_response_bytes=4096,
+    )
+
+    assert response.status_code == 412
+    assert backend.etag != original_etag
+    assert backend.put_bodies[0] != current
+
+
+def test_real_contention_replaces_expired_markers_until_coordinator_exhausts_retries() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    history = (("1" * 64, (datetime(2026, 7, 19, 11, 0, tzinfo=UTC),)),)
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(
+            AdmissionState(
+                starts_by_visitor=history,
+                monthly_budget=MonthlyBudget("2026-07", 1),
+            )
+        ),
+    )
+    marker_ids = iter(
+        f"{_CONFLICT_MARKER_RUN_PREFIX}{index:032x}" for index in range(MAXIMUM_CAS_ATTEMPTS)
+    )
+    conflict_transport = _RealConflictTransport(
+        backend,
+        config,
+        marker_id_factory=lambda: next(marker_ids),
+    )
+    store = BlobCoordinationStore(
+        config,
+        credential_provider=StaticBlobCredentialProvider("proof-token"),
+        transport=conflict_transport,
+    )
+
+    outcome = CasCoordinator(store).admit(
+        AdmissionAttempt("5" * 64, "bounded-contention", datetime(2026, 7, 19, 12, tzinfo=UTC))
+    )
+
+    assert (outcome.kind, outcome.reason) == (
+        "provider_unavailable",
+        "coordination_contention",
+    )
+    assert store.operation_counts().conditional_conflicts == MAXIMUM_CAS_ATTEMPTS
+    assert len(backend.put_bodies) == MAXIMUM_CAS_ATTEMPTS
+    observed_marker_ids = []
+    for body in backend.put_bodies:
+        state = decode_admission_state(body)
+        assert state.monthly_budget == MonthlyBudget("2026-07", 1)
+        assert state.starts_by_visitor == history
+        assert len(state.running) == 1
+        marker = state.running[0]
+        assert marker.visitor == _CONFLICT_MARKER_VISITOR
+        assert marker.expires_at == _CONFLICT_MARKER_DEADLINE
+        observed_marker_ids.append(marker.run_id)
+    assert len(set(observed_marker_ids)) == MAXIMUM_CAS_ATTEMPTS
+
+
+def _conditional_request(
+    transport: _RealConflictTransport,
+    config: BlobCoordinationConfig,
+    etag: str,
+) -> HttpResponse:
+    return transport.request(
+        method="PUT",
+        url=blob_upload_url(config.object_key),
+        headers={"authorization": "Bearer proof", "x-if-match": etag},
+        data=encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 1))),
+        timeout=5.0,
+        max_response_bytes=4096,
+    )
+
+
+def test_real_conflict_transport_rejects_malformed_current_state() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(config, b"{")
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_full_running_cardinality() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    leases = tuple(
+        RunLease(
+            visitor=f"{index:064x}",
+            run_id=f"running-{index}",
+            expires_at=datetime(2026, 7, 19, 12, 1, tzinfo=UTC),
+        )
+        for index in range(1, 5)
+    )
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(
+            AdmissionState(running=leases, monthly_budget=MonthlyBudget("2026-07", 0))
+        ),
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+@pytest.mark.parametrize(
+    "lease",
+    [
+        RunLease(
+            _CONFLICT_MARKER_VISITOR,
+            "foreign-run",
+            _CONFLICT_MARKER_DEADLINE,
+        ),
+        RunLease(
+            "e" * 64,
+            f"{_CONFLICT_MARKER_RUN_PREFIX}foreign",
+            _CONFLICT_MARKER_DEADLINE,
+        ),
+    ],
+    ids=("reserved-visitor", "reserved-run"),
+)
+def test_real_conflict_transport_rejects_reserved_marker_collisions(lease: RunLease) -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(
+            AdmissionState(running=(lease,), monthly_budget=MonthlyBudget("2026-07", 0))
+        ),
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_reserved_visitor_history_collision() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(
+            AdmissionState(
+                starts_by_visitor=(
+                    (
+                        _CONFLICT_MARKER_VISITOR,
+                        (datetime(2026, 7, 19, 11, tzinfo=UTC),),
+                    ),
+                ),
+                monthly_budget=MonthlyBudget("2026-07", 1),
+            )
+        ),
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_noncanonical_marker_id() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+    )
+    transport = _RealConflictTransport(
+        backend,
+        config,
+        marker_id_factory=lambda: "foreign-run",
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(transport, config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_unchanged_competing_body() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    run_id = f"{_CONFLICT_MARKER_RUN_PREFIX}{'0' * 32}"
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(
+            AdmissionState(
+                running=(
+                    RunLease(
+                        _CONFLICT_MARKER_VISITOR,
+                        run_id,
+                        _CONFLICT_MARKER_DEADLINE,
+                    ),
+                ),
+                monthly_budget=MonthlyBudget("2026-07", 0),
+            )
+        ),
+    )
+    transport = _RealConflictTransport(backend, config, marker_id_factory=lambda: run_id)
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(transport, config, backend.etag)
+    assert backend.put_attempts == []
+
+
+@pytest.mark.parametrize("missing_at", ["read", "competing-write"])
+def test_real_conflict_transport_rejects_missing_etag(missing_at: str) -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        missing_get_etag=missing_at == "read",
+        missing_put_etag=missing_at == "competing-write",
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_unchanged_competing_etag() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        preserve_changed_body_etag=True,
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_competing_non_2xx() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        competing_status=503,
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_unexpected_original_success() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        accept_stale_original=True,
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
 
 
 def test_blob_probe_accepts_exact_mixed_case_identity_and_rejects_mutation_before_transport() -> (
@@ -134,6 +481,60 @@ def test_protected_raw_probe_injection_uses_the_pinned_v12_query_contract() -> N
         r"ProofStore123:\d{13}:[0-9a-f]{32}",
         str(headers["x-api-blob-request-id"]),
     )
+
+
+def _cli_args(output: str) -> list[str]:
+    return [
+        "--live",
+        "--proof-id",
+        "wave-7",
+        "--source-commit",
+        "6" * 40,
+        "--artifact-commit",
+        "2" * 40,
+        "--bundle-digest",
+        "3" * 64,
+        "--runtime-configuration-digest",
+        "5" * 64,
+        "--admission-policy-digest",
+        "1" * 64,
+        "--deployment-id",
+        DEPLOYMENT,
+        "--provider-image-digest",
+        "sha256:" + "4" * 64,
+        "--output",
+        output,
+    ]
+
+
+def test_blob_cli_writes_failure_evidence_and_returns_one(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "blob.json"
+    document = {"observation": {"checks": {"bounded_contention": False}}, "status": "fail"}
+    monkeypatch.setattr(
+        protected_blob_probe,
+        "run_live_blob_probe",
+        lambda *args, **kwargs: document,
+    )
+
+    exit_status = main(_cli_args(str(output)))
+
+    assert exit_status == 1
+    assert output.read_bytes() == canonical_json_bytes(document)
+
+
+def test_blob_cli_writes_passing_evidence_and_returns_zero(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "blob.json"
+    document = {"observation": {"checks": {"bounded_contention": True}}, "status": "pass"}
+    monkeypatch.setattr(
+        protected_blob_probe,
+        "run_live_blob_probe",
+        lambda *args, **kwargs: document,
+    )
+
+    exit_status = main(_cli_args(str(output)))
+
+    assert exit_status == 0
+    assert output.read_bytes() == canonical_json_bytes(document)
 
 
 def test_blob_cli_requires_explicit_live_guard_without_opening_a_socket(tmp_path) -> None:
