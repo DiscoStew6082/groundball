@@ -247,6 +247,7 @@ class OperationCounts:
 @dataclass(frozen=True)
 class ConfiguredPublicAdmission:
     store: BlobCoordinationStore
+    authentication_mode: str
     digest_key: bytes = field(repr=False)
 
 
@@ -258,9 +259,23 @@ def load_blob_public_admission(
     """Build strict shared coordination from explicit environment configuration."""
     try:
         namespace = environment["GROUNDBALL_BLOB_NAMESPACE"]
-        token = environment["GROUNDBALL_BLOB_TOKEN"]
-        store_id = environment["GROUNDBALL_BLOB_STORE_ID"]
         encoded_digest_key = environment["GROUNDBALL_VISITOR_DIGEST_KEY"]
+        static_keys = {"GROUNDBALL_BLOB_STORE_ID", "GROUNDBALL_BLOB_TOKEN"}
+        oidc_keys = {"BLOB_STORE_ID", "VERCEL_OIDC_TOKEN"}
+        supplied_static = {key for key in static_keys if key in environment}
+        supplied_oidc = {key for key in oidc_keys if key in environment}
+        if supplied_static == static_keys and not supplied_oidc:
+            if namespace != "proof":
+                raise ValueError
+            store_id = environment["GROUNDBALL_BLOB_STORE_ID"]
+            token = environment["GROUNDBALL_BLOB_TOKEN"]
+            authentication_mode = "groundball_static_token"
+        elif supplied_oidc == oidc_keys and not supplied_static:
+            store_id = environment["BLOB_STORE_ID"]
+            token = environment["VERCEL_OIDC_TOKEN"]
+            authentication_mode = "vercel_oidc"
+        else:
+            raise ValueError
         proof_id = environment.get("GROUNDBALL_BLOB_PROOF_ID")
         if namespace == "proof":
             if proof_id is None:
@@ -290,6 +305,7 @@ def load_blob_public_admission(
         raise PublicAdmissionConfigurationError from None
     return ConfiguredPublicAdmission(
         store=BlobCoordinationStore(config, transport=transport),
+        authentication_mode=authentication_mode,
         digest_key=digest_key,
     )
 

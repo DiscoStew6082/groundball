@@ -25,6 +25,7 @@ CANDIDATE_SCOPES = frozenset({"local_ci", "protected_preview", "production"})
 MAX_CANDIDATE_IMAGE_SIZE_BYTES = 1_073_741_824
 PROVIDER_OBSERVATION_IDS = (
     "cold_wakes",
+    "deployment_metadata_configuration",
     "network_security_public_routes",
     "peak_memory",
     "protected_blob_coordination",
@@ -34,6 +35,18 @@ PROVIDER_OBSERVATION_IDS = (
     "restart_replacement_scale_to_zero",
     "warm_manifest",
 )
+PROVIDER_OBSERVATION_SCHEMA_IDENTITIES = {
+    "cold_wakes": "ground-ball-provider-cold-wakes-v1",
+    "deployment_metadata_configuration": "ground-ball-provider-deployment-metadata-v1",
+    "network_security_public_routes": "ground-ball-provider-network-security-proof-v1",
+    "peak_memory": "ground-ball-provider-peak-memory-v1",
+    "protected_blob_coordination": "ground-ball-protected-blob-admission-proof-v1",
+    "protected_browser_desktop_mobile": "ground-ball-protected-browser-proof-v1",
+    "provider_image_measurement": "ground-ball-provider-image-measurement-v1",
+    "provider_operation_accounting": "ground-ball-provider-operation-accounting-v1",
+    "restart_replacement_scale_to_zero": "ground-ball-provider-lifecycle-proof-v1",
+    "warm_manifest": "ground-ball-provider-warm-results-v1",
+}
 REQUIRED_GATE_IDS = (
     "candidate_identity_topology",
     "release_bundle_coverage",
@@ -384,6 +397,96 @@ def build_local_attestation_template(
     return template
 
 
+def build_provider_attestation(
+    candidate: Mapping[str, object],
+    report: Mapping[str, object],
+    *,
+    provider_name: str,
+    deployment_id: str,
+    image_digest: str,
+    image_size_bytes: int,
+    image_size_measurement_kind: str,
+    observation_to_evidence: Mapping[str, str],
+) -> dict[str, object]:
+    """Build an exact provider attestation only for one all-pass candidate."""
+    checked_candidate = validate_candidate_identity(candidate)
+    checked_report = validate_gate_report(report, checked_candidate)
+    if checked_candidate["scope"] not in {"protected_preview", "production"}:
+        raise CandidateError("Provider attestation candidate scope is invalid.")
+    if checked_report["eligible"] is not True:
+        raise CandidateError("Provider attestation requires an all-pass exact gate report.")
+    if not isinstance(provider_name, str) or _CANONICAL_ID.fullmatch(provider_name) is None:
+        raise CandidateError("Provider attestation provider name is invalid.")
+    if not isinstance(deployment_id, str) or _CANONICAL_ID.fullmatch(deployment_id) is None:
+        raise CandidateError("Provider attestation deployment ID is invalid.")
+    if image_digest != checked_candidate["image_digest"]:
+        raise CandidateError("Provider attestation image digest is foreign.")
+    if (
+        type(image_size_bytes) is not int
+        or image_size_bytes < 0
+        or image_size_bytes > MAX_CANDIDATE_IMAGE_SIZE_BYTES
+        or image_size_bytes != checked_candidate["image_size_bytes"]
+    ):
+        raise CandidateError("Provider attestation image size is invalid or mismatched.")
+    if (
+        image_size_measurement_kind != "provider-oci-manifest-size-bytes"
+        or image_size_measurement_kind != checked_candidate["image_size_measurement_kind"]
+    ):
+        raise CandidateError("Provider attestation image measurement kind is invalid.")
+    if set(observation_to_evidence) != set(PROVIDER_OBSERVATION_IDS):
+        raise CandidateError("Provider attestation observation inventory is incomplete.")
+    if not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in observation_to_evidence.items()
+    ):
+        raise CandidateError("Provider attestation observation map is invalid.")
+    candidate_evidence = _candidate_evidence_ids(checked_candidate)
+    evidence = sorted(set(observation_to_evidence.values()))
+    if not evidence or not set(evidence) <= candidate_evidence:
+        raise CandidateError("Provider attestation evidence is foreign or incomplete.")
+    raw_candidate_evidence = checked_candidate.get("evidence")
+    if not isinstance(raw_candidate_evidence, list):  # validated above; keeps typing explicit
+        raise CandidateError("Provider attestation candidate evidence is invalid.")
+    evidence_schemas = {
+        item["logical_id"]: item["schema_identity"]
+        for item in raw_candidate_evidence
+        if isinstance(item, dict)
+        and isinstance(item.get("logical_id"), str)
+        and isinstance(item.get("schema_identity"), str)
+    }
+    if any(
+        evidence_schemas.get(logical_id) != PROVIDER_OBSERVATION_SCHEMA_IDENTITIES[observation]
+        for observation, logical_id in observation_to_evidence.items()
+    ):
+        raise CandidateError("Provider attestation observation evidence schema is invalid.")
+    attestation = {
+        "admission_policy_digest": checked_candidate["admission_policy_digest"],
+        "bundle_digest": checked_candidate["bundle_digest"],
+        "candidate_id": checked_candidate["candidate_id"],
+        "candidate_identity_digest": candidate_identity_digest(checked_candidate),
+        "deployment_exists": True,
+        "evidence": evidence,
+        "gate_report_digest": gate_report_digest(checked_report),
+        "image_digest": checked_candidate["image_digest"],
+        "observations": dict(sorted(observation_to_evidence.items())),
+        "promotion_eligible": True,
+        "provider": {
+            "deployment_id": deployment_id,
+            "image_digest": image_digest,
+            "image_size_bytes": image_size_bytes,
+            "image_size_measurement_kind": image_size_measurement_kind,
+            "name": provider_name,
+        },
+        "runtime_configuration_digest": checked_candidate["runtime_configuration_digest"],
+        "schema_version": ATTESTATION_SCHEMA,
+        "scope": checked_candidate["scope"],
+        "statement": "Exact protected provider observations are attached.",
+        "status": "attested",
+    }
+    validate_deployment_attestation(attestation, checked_candidate, checked_report)
+    return attestation
+
+
 def validate_deployment_attestation(
     payload: bytes | Mapping[str, object],
     candidate: Mapping[str, object],
@@ -492,12 +595,26 @@ def _validate_provider_attestation(
         raise CandidateError("Provider Deployment Attestation lacks exact external evidence.")
     candidate_evidence = _candidate_evidence_ids(candidate)
     observation_evidence = set(observations.values())
+    raw_candidate_evidence = candidate.get("evidence")
+    if not isinstance(raw_candidate_evidence, list):
+        raise CandidateError("Provider Deployment Attestation candidate evidence is invalid.")
+    evidence_schemas = {
+        item["logical_id"]: item["schema_identity"]
+        for item in raw_candidate_evidence
+        if isinstance(item, dict)
+        and isinstance(item.get("logical_id"), str)
+        and isinstance(item.get("schema_identity"), str)
+    }
     if (
         not all(isinstance(item, str) for item in evidence)
         or evidence != sorted(evidence)
         or len(evidence) != len(set(evidence))
         or not set(evidence) <= candidate_evidence
         or not observation_evidence <= set(evidence)
+        or any(
+            evidence_schemas.get(logical_id) != PROVIDER_OBSERVATION_SCHEMA_IDENTITIES[observation]
+            for observation, logical_id in observations.items()
+        )
     ):
         raise CandidateError("Provider Deployment Attestation evidence is invalid.")
 
@@ -678,6 +795,17 @@ def main(argv: list[str] | None = None) -> int:
     template.add_argument("--gate-report", type=Path, required=True)
     template.add_argument("--output", type=Path, required=True)
 
+    provider_attestation = commands.add_parser("provider-attestation")
+    provider_attestation.add_argument("--candidate", type=Path, required=True)
+    provider_attestation.add_argument("--gate-report", type=Path, required=True)
+    provider_attestation.add_argument("--provider", required=True)
+    provider_attestation.add_argument("--deployment-id", required=True)
+    provider_attestation.add_argument("--image-digest", required=True)
+    provider_attestation.add_argument("--image-size-bytes", type=int, required=True)
+    provider_attestation.add_argument("--image-size-measurement-kind", required=True)
+    provider_attestation.add_argument("--observation-map", type=Path, required=True)
+    provider_attestation.add_argument("--output", type=Path, required=True)
+
     validate = commands.add_parser("validate")
     validate.add_argument("kind", choices=("candidate", "gates", "attestation"))
     validate.add_argument("--candidate", type=Path, required=True)
@@ -761,6 +889,26 @@ def main(argv: list[str] | None = None) -> int:
             candidate = validate_candidate_identity(args.candidate.read_bytes())
             report = validate_gate_report(args.gate_report.read_bytes(), candidate)
             attestation = build_local_attestation_template(candidate, report)
+            _write_document(args.output, attestation)
+            print(hashlib.sha256(canonical_json_bytes(attestation)).hexdigest())
+        elif args.command == "provider-attestation":
+            candidate = validate_candidate_identity(args.candidate.read_bytes())
+            report = validate_gate_report(args.gate_report.read_bytes(), candidate)
+            observation_document = _read_json_file(args.observation_map, "observation map")
+            if set(observation_document) != {"observations"} or not isinstance(
+                observation_document["observations"], dict
+            ):
+                raise CandidateError("Provider attestation observation map shape is invalid.")
+            attestation = build_provider_attestation(
+                candidate,
+                report,
+                provider_name=args.provider,
+                deployment_id=args.deployment_id,
+                image_digest=args.image_digest,
+                image_size_bytes=args.image_size_bytes,
+                image_size_measurement_kind=args.image_size_measurement_kind,
+                observation_to_evidence=observation_document["observations"],
+            )
             _write_document(args.output, attestation)
             print(hashlib.sha256(canonical_json_bytes(attestation)).hexdigest())
         else:

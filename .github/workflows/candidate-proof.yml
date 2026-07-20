@@ -90,9 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           image_tag="groundball-candidate:${ARTIFACT_COMMIT}"
-          docker build -f Dockerfile.vercel \
-            --build-arg GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
-            -t "$image_tag" .
+          docker build -f Dockerfile.vercel -t "$image_tag" .
           image_digest="$(docker image inspect "$image_tag" --format '{{.Id}}')"
           image_size="$(docker image inspect "$image_tag" --format '{{.Size}}')"
           test "$image_size" -le 1073741824
@@ -119,6 +117,7 @@ jobs:
           set -euo pipefail
           container_name="groundball-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker run --detach --network none \
+            --env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
             --env GROUNDBALL_RUNTIME_CONFIG=/app/release-config/local-ci-runtime.json \
             --name "$container_name" "$IMAGE_TAG"
           trap 'docker logs "$container_name" > candidate-artifacts/container.log 2>&1 || true; docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT

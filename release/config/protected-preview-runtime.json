@@ -1,0 +1,1 @@
+{"admission_adapter":"vercel_blob","network_policy":"provider_coordination_only","provider_deployment":true,"public_mode":true,"release_bundle":"ground-ball-release-bundle","schema_version":"ground-ball-runtime-configuration-v1","scope":"protected_preview","secret_references":["BLOB_STORE_ID","GROUNDBALL_VISITOR_DIGEST_KEY","VERCEL_OIDC_TOKEN"]}

@@ -195,6 +195,7 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
         or bundle != "ground-ball-release-bundle"
         or not isinstance(references, list)
         or not all(isinstance(item, str) and item for item in references)
+        or references != sorted(references)
         or len(references) != len(set(references))
     ):
         raise PublicReleaseConfigError("Runtime configuration values are invalid.")
@@ -215,7 +216,12 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
             provider_deployment is not True
             or adapter != "vercel_blob"
             or network != "provider_coordination_only"
-            or set(references) != {"GROUNDBALL_BLOB_TOKEN", "GROUNDBALL_VISITOR_DIGEST_KEY"}
+            or set(references)
+            != {
+                "BLOB_STORE_ID",
+                "GROUNDBALL_VISITOR_DIGEST_KEY",
+                "VERCEL_OIDC_TOKEN",
+            }
         ):
             raise PublicReleaseConfigError("Provider runtime configuration is incomplete.")
     _reject_secret_content(document)

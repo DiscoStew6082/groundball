@@ -9,12 +9,14 @@ from baseball_rag.public_release_config import canonical_json_bytes
 from baseball_rag.release_candidate import (
     MAX_CANDIDATE_IMAGE_SIZE_BYTES,
     PROVIDER_OBSERVATION_IDS,
+    PROVIDER_OBSERVATION_SCHEMA_IDENTITIES,
     REQUIRED_GATE_IDS,
     CandidateError,
     EvidenceInput,
     build_candidate_identity,
     build_gate_report,
     build_local_attestation_template,
+    build_provider_attestation,
     candidate_identity_digest,
     gate_report_digest,
     validate_artifact_topology,
@@ -36,11 +38,16 @@ POLICY = "6" * 64
 
 def _evidence(tmp_path: Path) -> tuple[EvidenceInput, ...]:
     inputs = []
-    for logical_id, schema in (
+    base_evidence = (
         ("coverage-report", "query-coverage-report-v1"),
         ("release-bundle-check", "ground-ball-release-bundle-check-v1"),
         ("container-proof", "ground-ball-candidate-container-proof-v1"),
-    ):
+    )
+    provider_evidence = tuple(
+        (f"provider-{observation}", schema)
+        for observation, schema in PROVIDER_OBSERVATION_SCHEMA_IDENTITIES.items()
+    )
+    for logical_id, schema in (*base_evidence, *provider_evidence):
         path = tmp_path / f"{logical_id}.json"
         path.write_bytes(canonical_json_bytes({"schema_version": schema, "ok": True}))
         inputs.append(
@@ -405,19 +412,102 @@ def test_local_attestation_template_explicitly_records_no_deployment(tmp_path: P
     )
 
 
+def test_provider_attestation_builder_emits_exact_all_pass_candidate_binding(
+    tmp_path: Path,
+) -> None:
+    candidate = _candidate(tmp_path, scope="protected_preview")
+    report = build_gate_report(candidate, _all_pass_results())
+    observations = {identity: f"provider-{identity}" for identity in PROVIDER_OBSERVATION_IDS}
+
+    attestation = build_provider_attestation(
+        candidate,
+        report,
+        provider_name="vercel",
+        deployment_id="deployment-123",
+        image_digest=IMAGE,
+        image_size_bytes=123_456,
+        image_size_measurement_kind="provider-oci-manifest-size-bytes",
+        observation_to_evidence=observations,
+    )
+
+    assert attestation["status"] == "attested"
+    assert attestation["provider"]["deployment_id"] == "deployment-123"  # type: ignore[index]
+    assert attestation["observations"] == observations
+    assert attestation["evidence"] == sorted(observations.values())
+    assert (
+        validate_deployment_attestation(canonical_json_bytes(attestation), candidate, report)
+        == attestation
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("wrong_scope", "scope"),
+        ("blocked_gate", "all-pass"),
+        ("foreign_deployment", "deployment"),
+        ("foreign_image", "image"),
+        ("size_mismatch", "size"),
+        ("size_overage", "size"),
+        ("measurement", "measurement"),
+        ("missing_observation", "observation"),
+        ("foreign_evidence", "evidence"),
+        ("secret_provider", "provider"),
+    ],
+)
+def test_provider_attestation_builder_rejects_inexact_or_unsafe_input(
+    tmp_path: Path, mutation: str, expected: str
+) -> None:
+    scope = "local_ci" if mutation == "wrong_scope" else "protected_preview"
+    candidate = _candidate(tmp_path, scope=scope)
+    results = _all_pass_results()
+    if mutation == "blocked_gate":
+        results["provider_peak_memory"] = {"status": "blocked", "evidence": []}
+    report = build_gate_report(candidate, results)
+    observations = {identity: f"provider-{identity}" for identity in PROVIDER_OBSERVATION_IDS}
+    kwargs: dict[str, object] = {
+        "provider_name": "vercel",
+        "deployment_id": "deployment-123",
+        "image_digest": candidate["image_digest"],
+        "image_size_bytes": candidate["image_size_bytes"],
+        "image_size_measurement_kind": candidate["image_size_measurement_kind"],
+        "observation_to_evidence": observations,
+    }
+    if mutation == "foreign_deployment":
+        kwargs["deployment_id"] = "foreign/deployment"
+    elif mutation == "foreign_image":
+        kwargs["image_digest"] = "sha256:" + "9" * 64
+    elif mutation == "size_mismatch":
+        kwargs["image_size_bytes"] = int(candidate["image_size_bytes"]) + 1
+    elif mutation == "size_overage":
+        kwargs["image_size_bytes"] = MAX_CANDIDATE_IMAGE_SIZE_BYTES + 1
+    elif mutation == "measurement":
+        kwargs["image_size_measurement_kind"] = "docker-image-inspect-size-bytes"
+    elif mutation == "missing_observation":
+        observations.pop(PROVIDER_OBSERVATION_IDS[0])
+    elif mutation == "foreign_evidence":
+        observations[PROVIDER_OBSERVATION_IDS[0]] = "foreign-evidence"
+    elif mutation == "secret_provider":
+        kwargs["provider_name"] = "token=secret"
+
+    with pytest.raises(CandidateError, match=expected):
+        build_provider_attestation(candidate, report, **kwargs)  # type: ignore[arg-type]
+
+
 def test_provider_attestation_requires_every_external_observation(tmp_path: Path) -> None:
     candidate = _candidate(tmp_path, scope="protected_preview")
     report = build_gate_report(candidate, _all_pass_results())
+    observations = {identity: f"provider-{identity}" for identity in PROVIDER_OBSERVATION_IDS}
     attestation = {
         "admission_policy_digest": candidate["admission_policy_digest"],
         "bundle_digest": candidate["bundle_digest"],
         "candidate_id": candidate["candidate_id"],
         "candidate_identity_digest": candidate_identity_digest(candidate),
         "deployment_exists": True,
-        "evidence": ["container-proof"],
+        "evidence": sorted(observations.values()),
         "gate_report_digest": gate_report_digest(report),
         "image_digest": candidate["image_digest"],
-        "observations": {identity: "container-proof" for identity in PROVIDER_OBSERVATION_IDS},
+        "observations": observations,
         "promotion_eligible": True,
         "provider": {
             "deployment_id": "deployment-123",

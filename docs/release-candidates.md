@@ -50,7 +50,6 @@ ARTIFACT_PARENT_COMMIT="$(git rev-parse HEAD^)"
 git diff --name-only "$SOURCE_COMMIT" "$ARTIFACT_COMMIT" > candidate-artifacts/artifact-changed-paths.txt
 
 docker build -f Dockerfile.vercel \
-  --build-arg GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
   -t "groundball-candidate:$ARTIFACT_COMMIT" .
 IMAGE_DIGEST="$(docker image inspect "groundball-candidate:$ARTIFACT_COMMIT" --format '{{.Id}}')"
 IMAGE_SIZE_BYTES="$(docker image inspect "groundball-candidate:$ARTIFACT_COMMIT" --format '{{.Size}}')"
@@ -83,7 +82,9 @@ uv run python -m baseball_rag.release_candidate validate attestation \
 
 `evidence-spec.json` is a canonical local input whose entries contain `logical_id`, `path`, `media_type`, and `schema_identity`. Machine-local paths are consumed only to hash files and never appear in candidate output. `gate-results.json` must contain exactly every ID exported as `REQUIRED_GATE_IDS`; prepare both canonical inputs before the aggregate command.
 
-The authoritative CI implementation is `.github/workflows/candidate-proof.yml`. It supplies those inputs, boots the image with `--network none`, runs the Wave 5 packaged probe, checks prohibited surfaces, enforces the same 1,073,741,824-byte (exactly 1 GiB) domain ceiling, and uploads all three records even though protected/provider gates remain blocked.
+The authoritative CI implementation is `.github/workflows/candidate-proof.yml`. It supplies `GROUNDBALL_SOURCE_COMMIT` at `docker run`, not through an undocumented provider build argument, boots the image with `--network none`, runs the Wave 5 packaged probe, checks prohibited surfaces, enforces the same 1,073,741,824-byte (exactly 1 GiB) domain ceiling, and uploads all three records even though protected/provider gates remain blocked. `Dockerfile.vercel` validates the copied bundle against its own canonical Release Manifest during build; runtime still fails closed unless the externally declared source commit exactly matches that immutable manifest.
+
+Wave 7 protected-provider commands, immutable workload/Browser manifests, proof-only namespace rules, evidence derivation, attestation construction, and cleanup boundaries are recorded in `docs/public-release-implementation-ledger.md`. Repository fixtures validate the tooling only and are never provider evidence.
 
 ## Proof boundary
 

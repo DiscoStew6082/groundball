@@ -48,6 +48,8 @@ def test_candidate_container_proof_is_branch_independent_and_exact_head() -> Non
     assert MAX_CANDIDATE_IMAGE_SIZE_BYTES == 1_073_741_824
     assert f'test "$image_size" -le {MAX_CANDIDATE_IMAGE_SIZE_BYTES}' in workflow
     assert f'"ceiling_bytes": {MAX_CANDIDATE_IMAGE_SIZE_BYTES}' in workflow
+    assert "--build-arg GROUNDBALL_SOURCE_COMMIT" not in workflow
+    assert '--env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT"' in workflow
     assert "baseball_rag.release_candidate assemble" in workflow
     assert "--gate-report-output candidate-artifacts/gate-report.json" in workflow
     assert (

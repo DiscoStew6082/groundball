@@ -7,11 +7,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from baseball_rag.query.coverage import load_passing_coverage_report
 from baseball_rag.query.runtime import published_data_runtime
 from baseball_rag.release_bundle import ReleaseBundleError, check_release_bundle
 from baseball_rag.retrosheet_event_capabilities import published_retrosheet_event_capabilities
+
+_RUNTIME_INSTANCE_ID = uuid4().hex
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,7 @@ class ReleaseReadiness:
             "data_release": self.data_release,
             "coverage_report": self.coverage_report,
             "duckdb": {"database": ":memory:", "relations": list(self.relations)},
+            "hosting": {"runtime_instance_id": _RUNTIME_INSTANCE_ID},
         }
 
 

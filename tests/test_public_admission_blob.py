@@ -661,6 +661,28 @@ def test_noncanonical_provider_date_fails_closed_without_guessing(date: str | No
     assert outcome.kind == "provider_unavailable"
 
 
+def test_vercel_oidc_configuration_uses_connected_private_blob_identity_without_rendering_it() -> (
+    None
+):
+    key = b"stable-synthetic-digest-key-material"
+    oidc = "synthetic-oidc-material"
+    configured = load_blob_public_admission(
+        {
+            "GROUNDBALL_BLOB_NAMESPACE": "proof",
+            "GROUNDBALL_BLOB_PROOF_ID": "wave-7",
+            "BLOB_STORE_ID": f"store_{STORE_ID}",
+            "VERCEL_OIDC_TOKEN": oidc,
+            "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(key).decode(),
+        },
+        transport=ScriptedTransport(),
+    )
+
+    assert configured.authentication_mode == "vercel_oidc"
+    assert configured.store.store_id == STORE_ID
+    assert oidc not in repr(configured)
+    assert oidc not in repr(configured.store)
+
+
 def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rendering_it() -> None:
     key = b"stable-synthetic-digest-key-material"
     encoded_key = base64.urlsafe_b64encode(key).decode()
@@ -675,6 +697,7 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
         transport=ScriptedTransport(),
     )
 
+    assert configured.authentication_mode == "groundball_static_token"
     assert configured.digest_key == key
     assert configured.store.object_key.endswith("/proof/wave-3/state.json")
     assert configured.store.state_url == (
@@ -725,6 +748,8 @@ def test_store_id_cannot_select_an_arbitrary_or_public_origin(store_id: str) -> 
 
 def test_server_declares_only_the_strict_blob_configuration_environment() -> None:
     assert api_server._BLOB_CONFIGURATION_ENV_VARS == {
+        "BLOB_STORE_ID",
+        "VERCEL_OIDC_TOKEN",
         "GROUNDBALL_BLOB_NAMESPACE",
         "GROUNDBALL_BLOB_PROOF_ID",
         "GROUNDBALL_BLOB_STORE_ID",
@@ -770,6 +795,55 @@ def test_missing_or_inconsistent_blob_configuration_fails_closed_and_sanitized(
     assert "synthetic-secret-token" not in rendered
     assert secret_key_text not in rendered
     assert "private-key-material-not-base64" not in rendered
+
+
+@pytest.mark.parametrize(
+    "ambiguous",
+    [
+        {"BLOB_STORE_ID": f"store_{STORE_ID}"},
+        {"VERCEL_OIDC_TOKEN": "synthetic-oidc"},
+        {
+            "BLOB_STORE_ID": f"store_{STORE_ID}",
+            "VERCEL_OIDC_TOKEN": "synthetic-oidc",
+            "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
+            "GROUNDBALL_BLOB_TOKEN": "synthetic-static",
+        },
+        {
+            "BLOB_STORE_ID": "store_ForeignStore",
+            "VERCEL_OIDC_TOKEN": "synthetic-oidc",
+            "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
+        },
+    ],
+)
+def test_blob_configuration_rejects_partial_mixed_or_ambiguous_auth(
+    ambiguous: dict[str, str],
+) -> None:
+    environment = {
+        "GROUNDBALL_BLOB_NAMESPACE": "proof",
+        "GROUNDBALL_BLOB_PROOF_ID": "wave-7",
+        "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(b"k" * 32).decode(),
+        **ambiguous,
+    }
+
+    with pytest.raises(PublicAdmissionConfigurationError) as raised:
+        load_blob_public_admission(environment, transport=ScriptedTransport())
+
+    rendered = f"{raised.value!s} {raised.value!r}"
+    assert "synthetic" not in rendered
+    assert "ForeignStore" not in rendered
+
+
+def test_static_token_mode_is_bounded_to_isolated_operator_proof() -> None:
+    with pytest.raises(PublicAdmissionConfigurationError):
+        load_blob_public_admission(
+            {
+                "GROUNDBALL_BLOB_NAMESPACE": "production",
+                "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
+                "GROUNDBALL_BLOB_TOKEN": "synthetic-static-token",
+                "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(b"k" * 32).decode(),
+            },
+            transport=ScriptedTransport(),
+        )
 
 
 def test_blob_configuration_integrates_through_existing_server_cas_seam(

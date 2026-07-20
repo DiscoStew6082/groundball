@@ -16,6 +16,7 @@ from baseball_rag.public_release_config import (
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "release/config/public-admission-policy.json"
 RUNTIME_PATH = ROOT / "release/config/local-ci-runtime.json"
+PROTECTED_RUNTIME_PATH = ROOT / "release/config/protected-preview-runtime.json"
 
 
 def test_generated_admission_policy_is_derived_from_enforced_constants() -> None:
@@ -72,6 +73,25 @@ def test_local_ci_runtime_configuration_is_strict_and_cannot_claim_deployment() 
     assert config.admission_adapter == "local_ci_ephemeral"
     assert config.network_policy == "none"
     assert config.secret_references == ()
+
+
+def test_protected_preview_runtime_is_provider_scoped_secret_free_and_oidc_native() -> None:
+    config = load_runtime_configuration(PROTECTED_RUNTIME_PATH)
+
+    assert config.scope == "protected_preview"
+    assert config.provider_deployment is True
+    assert config.public_mode is True
+    assert config.admission_adapter == "vercel_blob"
+    assert config.network_policy == "provider_coordination_only"
+    assert config.release_bundle == "ground-ball-release-bundle"
+    assert config.secret_references == (
+        "BLOB_STORE_ID",
+        "GROUNDBALL_VISITOR_DIGEST_KEY",
+        "VERCEL_OIDC_TOKEN",
+    )
+    encoded = PROTECTED_RUNTIME_PATH.read_text(encoding="utf-8")
+    assert "=" not in encoded
+    assert "Bearer " not in encoded
 
 
 @pytest.mark.parametrize(

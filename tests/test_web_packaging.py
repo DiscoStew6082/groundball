@@ -20,9 +20,11 @@ def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
     assert "COPY --from=web-build /web/dist /app/web/dist" in dockerfile
     assert "COPY release/bundle/ /app/release-bundle/" in dockerfile
     assert "GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle" in dockerfile
-    assert "GROUNDBALL_SOURCE_COMMIT=${GROUNDBALL_SOURCE_COMMIT}" in dockerfile
-    assert "--expected-source-commit" in dockerfile
-    assert "baseball_rag.release_runtime import release_readiness" in dockerfile
+    assert "ARG GROUNDBALL_SOURCE_COMMIT" not in dockerfile
+    assert "GROUNDBALL_SOURCE_COMMIT=${GROUNDBALL_SOURCE_COMMIT}" not in dockerfile
+    assert "baseball_rag.release_bundle check /app/release-bundle" in dockerfile
+    assert "--expected-source-commit" not in dockerfile
+    assert "baseball_rag.release_runtime import release_readiness" not in dockerfile
     assert "baseball_rag.db.download" not in dockerfile
     assert "huggingface.co" not in dockerfile
     assert "rm -f /app/src/baseball_rag/db/download.py" in dockerfile

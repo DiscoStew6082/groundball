@@ -10,11 +10,50 @@ from pathlib import Path
 
 import pytest
 
-from baseball_rag.release_bundle import assemble_release_bundle
+from baseball_rag.release_bundle import ReleaseBundleError, assemble_release_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_COMMIT = "a" * 40
 pytestmark = pytest.mark.release_proof
+
+
+def test_provider_runtime_source_identity_fails_closed_when_missing_or_mismatched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from baseball_rag.release_runtime import release_readiness
+
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(ROOT / "release/bundle"))
+    monkeypatch.delenv("GROUNDBALL_SOURCE_COMMIT", raising=False)
+    with pytest.raises(ReleaseBundleError, match="GROUNDBALL_SOURCE_COMMIT is required"):
+        release_readiness()
+
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", "9" * 40)
+    with pytest.raises(ReleaseBundleError, match="does not match expectation"):
+        release_readiness()
+
+
+def test_release_readiness_exposes_only_a_safe_volatile_runtime_instance_marker() -> None:
+    from baseball_rag.release_runtime import ReleaseReadiness
+
+    readiness = ReleaseReadiness(
+        release_bundle_digest="a" * 64,
+        source_commit="b" * 40,
+        data_release="lahman-csv-2023",
+        coverage_report={"status": "pass"},
+        relations=("people",),
+    )
+
+    first = readiness.as_dict()
+    second = readiness.as_dict()
+    marker = first["hosting"]["runtime_instance_id"]
+    assert marker == second["hosting"]["runtime_instance_id"]
+    assert len(marker) == 32
+    assert marker.isalnum()
+    rendered = json.dumps(first).lower()
+    assert "hostname" not in rendered
+    assert "pid" not in rendered
+    assert "filesystem" not in rendered
+    assert "token" not in rendered
 
 
 def test_release_bundle_cold_boot_is_offline_in_memory_and_proof_exact(tmp_path: Path) -> None:

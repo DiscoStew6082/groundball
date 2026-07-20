@@ -7,8 +7,8 @@ This is the execution handoff for the completed Public Deterministic Ground Ball
 ## Canonical continuation
 
 - Working directory: `/Volumes/Envoy/projects/groundball/.worktrees/public-deterministic-groundball-release`
-- Branch: `implementation/public-deterministic-groundball-candidate-gates`
-- Integrated baseline: `origin/main` at PR #29 Wave 5 merge commit `17d972d2c4a2c7f601c5908e707e7714e6fd7c35`
+- Branch: `implementation/public-deterministic-groundball-protected-proof`
+- Integrated baseline: `origin/main` at PR #30 Wave 6 merge commit `2a732f24d7bddbd1f3bd21ac4bbdcb66b60c259f`; post-merge ordinary CI and Release Proof passed
 - Completed planning source: `.scratch/public-deterministic-groundball/map.md` on `wayfinder/queryable-ground-ball` at `6675ad1`
 - Current context: `CONTEXT.md`
 - Current instructions: this worktree's `AGENTS.md`, aligned with the root worktree's removal of the former TDD, subagent, mandatory-review, auto-commit, CI-wait, and forced-browser directives
@@ -45,6 +45,7 @@ Stewart must receive the final protected candidate link, open it, and explicitly
 - `30a2bc5`: PR #27 merge containing the complete Wave 3 shared coordination Adapter contract.
 - `91d1dfa`: PR #28 merge containing the complete Wave 4 public result and Browser contract.
 - `17d972d`: PR #29 merge containing the complete Wave 5 deterministic parity closure; post-merge ordinary CI and Release Proof passed.
+- `2a732f2`: PR #30 merge containing Wave 6 candidate identity and all-or-nothing gate tooling; post-merge ordinary CI and Release Proof passed.
 
 The landed foundation packages the four Lahman tables, catalog and registry assets, generated raw inventory, team references, exact Coverage Report, compact strikeout-side Retrosheet projection, provenance, licenses, and canonical Release Manifest. It boots without acquiring data and advertises only the three bundle-backed Retrosheet families.
 
@@ -84,8 +85,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | 3. Shared coordination Adapter | Complete on `main` in PR #27 (`30a2bc5`) | Exact private Vercel Blob `?cache=0` read plus current raw control-plane ETag CAS, canonical provider time, strict store identity, stable keyed Visitor digest configuration, strict schema/versioning, create-if-absent initialization, redirect refusal, readiness, namespace isolation, and local operation accounting | Injected fake/scripted transport contract proof only; real protected Blob compatibility/accounting remains blocked on external approval |
 | 4. Public result and Browser contract | Complete on `main` in PR #28 (`91d1dfa`) | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused public Adapter/child/API tests, Browser DOM tests, full local fast suite, marked offline proof, static checks, generators, eval matrix, and web build; no live provider/deployment proof |
 | 5. Deterministic parity closure | Complete on `main` in PR #29 (`17d972d`) | Exact Ohtani natural/structured parity, hidden composed name-match projections, recipe-only deterministic two-turn follow-up, and all bundled/unbundled Retrosheet boundaries | 26-case named eval/parity matrix; focused compiler/Adapter/API/child/Browser/Retrosheet proof; regenerated exact Coverage Report and Release Bundle; no live provider/deployment proof |
-| 6. Candidate identity and gate tooling | Implemented on `implementation/public-deterministic-groundball-candidate-gates`; PR pending | Bind exact source/artifact topology, bundle, local image, actual admission policy, strict runtime config, evidence set, all-or-nothing gates, and a no-deployment attestation template; replace retired branch-only container CI | Canonical machine records and branch-independent exact-head candidate-container proof; protected/provider gates blocked and candidate ineligible |
-| 7. Protected Vercel proof | Blocked on explicit external approval | Provision isolated proof coordination, deploy protected candidate, and run real Blob, restart, scale-to-zero, performance, security, and live Browser gates | All gates pass for one candidate; no promotion |
+| 6. Candidate identity and gate tooling | Complete on `main` in PR #30 (`2a732f2`) | Bind exact source/artifact topology, bundle, local image, actual admission policy, strict runtime config, evidence set, all-or-nothing gates, and a no-deployment attestation template; replace retired branch-only container CI | Canonical machine records and branch-independent exact-head candidate-container proof; protected/provider gates blocked and candidate ineligible |
+| 7. Protected Vercel proof | Repository tooling implemented; live proof pending independent review/execution | Immutable protected manifests, strict evidence schemas, guarded HTTP/Blob probes, provider gate derivation, and provider-attestation builder. Hermes separately executes any authorized provider side effects. | Repository tests prove validators only. One exact protected candidate still needs all real provider, Browser, lifecycle, performance, resource, security, and accounting evidence; no promotion. |
 | 8. Production and website cutover | Blocked on gates and explicit approvals | Build and attest final production artifact, send Stewart its link, receive acceptance, then make one reversible launcher change and externally verify | Stewart acceptance, attestation, post-switch proof, rollback proof |
 
 ## Wave 2 completion details
@@ -414,6 +415,128 @@ Focused red/green corrections make the automatic candidate trigger manifest-only
 - Deterministic eval/parity matrix: `26/26` passing. Catalog compatibility, raw inventory, Coverage Report generation, and Coverage Report validation checks passed with no generated diff.
 - Ruff lint and full format check passed; mypy passed for `65` source files; configured pre-commit passed all hooks.
 - Browser DOM suite: `25/25` passing. Web production build passed with `113` transformed modules.
+
+## Wave 7 protected-provider proof tooling
+
+Wave 7 starts from PR #30 merge `2a732f24d7bddbd1f3bd21ac4bbdcb66b60c259f`. This Pi pass is repository-only. It does not create or inspect a Blob store, credential, environment value, deployment, bypass secret, domain, provider setting, paid plan, Cloudflare resource, website change, Mac process, tunnel, or alternate host.
+
+The repository now owns:
+
+- `release/config/protected-preview-runtime.json`, a canonical protected-preview identity naming only `BLOB_STORE_ID`, `VERCEL_OIDC_TOKEN`, and `GROUNDBALL_VISITOR_DIGEST_KEY`. The runtime also retains the explicit `GROUNDBALL_BLOB_STORE_ID` plus `GROUNDBALL_BLOB_TOKEN` mode for bounded operator proof. Missing, partial, mixed, or ambiguous modes fail closed. OIDC use of the raw Blob API remains unproven until the live probe succeeds; checked-in fixtures cannot establish provider compatibility.
+- `release/proof/warm-workloads-v1.json`, the immutable twenty-run provider workload inventory, and `release/proof/browser-scenarios-v1.json`, the exact desktop and 360/390/430 px Browser inventory.
+- `baseball_rag.protected_provider_proof`, which rejects duplicate keys, unknown fields, noncanonical JSON, non-finite or boolean-as-integer values, mutable image tags, missing/extra samples, foreign identities, secret/path fields, and warning-only outcomes. Its pure aggregator derives the fixed fifteen gates from exact candidate-bound evidence. Missing observations are blocked; malformed, foreign, over-limit, or failed observations fail.
+- `baseball_rag.protected_provider_probe`, a one-origin HTTPS probe guarded by `--live`. It reads the optional Vercel automation bypass only from `VERCEL_AUTOMATION_BYPASS_SECRET`, never serializes it, performs no hidden retry, sleeps for each declared cold interval, records five samples separately, and executes the fixed warm manifest exactly once.
+- `baseball_rag.protected_blob_probe`, a `--live`-guarded exercise of the real project Blob Adapter. It permits only unique `proof` namespaces, performs no reset/delete, and exercises private uncached reads, initialization, ETag CAS/conflict, trusted Date, codec and invalid state behavior, Visitor/deployment/rate/month boundaries, nonrefund/noncharge, lease expiry, unavailability, and real bounded contention. Its application `OperationCounts` and byte observations are not provider billing. Provider-reported accounting remains a separate required evidence document.
+- a random 32-character per-process runtime instance identifier under release-readiness `hosting`. It is volatile hosting metadata only: no hostname, PID, path, token, cookie, state, source excerpt, or Query meaning is exposed.
+- `build_provider_attestation(...)` plus `python -m baseball_rag.release_candidate provider-attestation`. It accepts only protected-preview/production scope, an exact all-pass report, exact candidate image values, the complete observation map, and candidate evidence IDs; it validates before writing.
+
+Offline tests and scripted transports prove these validators and guards only. They are never live provider proof. Browser pixels, provider OCI measurement, peak memory, deployment/replacement/scale-to-zero status, egress, and provider operation/accounting facts must come from the actual protected deployment and provider observations. Sleeping for 30 seconds is not itself provider scale-to-zero evidence, code scanning is not egress evidence, app counters are not billing evidence, and the runtime marker is not provider status.
+
+### Repository validation commands
+
+```bash
+uv run python -m baseball_rag.public_release_config --check
+uv run python -m baseball_rag.protected_provider_proof validate-manifests
+uv run pytest tests/ -m 'not llm and not release_proof' -q
+uv run pytest tests/ -m 'release_proof' -q
+uv run python -m baseball_rag.query.eval_matrix
+uv run python -m baseball_rag.query.generate_catalog_compatibility --check
+uv run python -m baseball_rag.query.generate_raw_inventory --check
+uv run python -m baseball_rag.query.generate_coverage_report --check
+uv run pytest tests/test_query_coverage.py tests/test_query_coverage_generator.py -q
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run mypy src/baseball_rag/
+npm --prefix web test
+npm --prefix web run build
+pre-commit run --all-files
+git diff --check origin/main...HEAD
+```
+
+### Wave 7 repository-only TDD and verification
+
+Vertical red/green slices first failed for the Vercel build/runtime source split, missing protected runtime configuration and OIDC mode, missing evidence/manifests/aggregator module, missing attestation builder, missing guarded HTTP and Blob probes, missing runtime instance marker, and missing security/lifecycle helpers. Each focused slice passed before the next was added.
+
+Final pre-freeze repository results:
+
+- Fast Python suite: `525 passed, 3 deselected`; one upstream Starlette/httpx deprecation warning.
+- Marked Release Proof: `3 passed, 525 deselected`; the same upstream warning.
+- Focused Wave 7 policy, Blob, provider evidence/probe, candidate/attestation, runtime, packaging, and workflow proof: `149 passed` before the final security/lifecycle additions; all later focused suites remained green.
+- Deterministic eval/parity matrix: `26/26` passing.
+- Catalog compatibility, raw inventory, Coverage Report generation, and Coverage Report validator tests: passed; validator tests reported `10 passed`.
+- Canonical Public Admission Policy and both immutable proof manifests validated. Manifest SHA-256 values were `9f53dec198a7f59e470c22c617d538ec4776f0f88f6c84310222c70db7c5d636` for warm workloads and `f4044087d31f88f3d035330452f343d3147d317150aff74b421c52e8f8860674` for Browser scenarios.
+- Ruff lint and full format check passed; mypy passed for `68` source files.
+- Browser DOM suite passed `25/25`; the production web build passed with `113` transformed modules.
+- Configured pre-commit and both `git diff --check` scopes passed.
+
+Pi exposed no subagent/review-agent facility, so this wave received an explicit direct self-review. The review checked fail-closed source identity, no build-argument dependency, auth-mode ambiguity, token-safe repr/errors, canonical/duplicate-key behavior, integer/NaN/Infinity rejection, fixed sample inventories, no hidden retries, exact preview/deployment/image/config binding, candidate evidence hashes, provider observation schemas, blocked-versus-fail derivation, app-versus-provider accounting separation, proof/production namespace isolation, no reset/delete path, route destination restrictions, runtime marker safety, attestation schema mapping, validate-before-write behavior, and the absence of provisioning/deployment/account/domain/website/Mac/tunnel mutations.
+
+### Independently reviewed protected-proof sequence
+
+Hermes must resolve every uppercase identity from the exact artifact commit or provider response, keep credential values out of command output, and stop on any mismatch. These commands do not provision a store, set an environment value, deploy, or alter an account by themselves:
+
+```bash
+uv run python -m baseball_rag.release_bundle check release/bundle \
+  --expected-source-commit "$SOURCE_COMMIT"
+uv run python -m baseball_rag.protected_provider_proof validate-manifests
+uv run python -m baseball_rag.protected_blob_probe --live \
+  --proof-id "$UNIQUE_PROOF_ID" \
+  --source-commit "$SOURCE_COMMIT" \
+  --artifact-commit "$ARTIFACT_COMMIT" \
+  --bundle-digest "$BUNDLE_DIGEST" \
+  --runtime-configuration-digest "$RUNTIME_CONFIG_DIGEST" \
+  --admission-policy-digest "$ADMISSION_POLICY_DIGEST" \
+  --deployment-id "$DEPLOYMENT_ID" \
+  --provider-image-digest "$PROVIDER_IMAGE_DIGEST" \
+  --output candidate-artifacts/provider/protected-blob.json
+uv run python -m baseball_rag.protected_provider_probe --live \
+  --origin "$EXACT_PROTECTED_HTTPS_ORIGIN" \
+  --idle-period-seconds 30 \
+  --source-commit "$SOURCE_COMMIT" \
+  --artifact-commit "$ARTIFACT_COMMIT" \
+  --bundle-digest "$BUNDLE_DIGEST" \
+  --runtime-configuration-digest "$RUNTIME_CONFIG_DIGEST" \
+  --admission-policy-digest "$ADMISSION_POLICY_DIGEST" \
+  --deployment-id "$DEPLOYMENT_ID" \
+  --provider-image-digest "$PROVIDER_IMAGE_DIGEST" \
+  --output-dir candidate-artifacts/provider/http
+uv run python -m baseball_rag.release_candidate assemble \
+  --scope protected_preview \
+  --source-commit "$SOURCE_COMMIT" \
+  --artifact-commit "$ARTIFACT_COMMIT" \
+  --artifact-parent-commit "$SOURCE_COMMIT" \
+  --artifact-changed-paths candidate-artifacts/artifact-changed-paths.txt \
+  --bundle-root release/bundle \
+  --image-digest "$PROVIDER_IMAGE_DIGEST" \
+  --image-size-bytes "$PROVIDER_IMAGE_SIZE_BYTES" \
+  --image-size-measurement-kind provider-oci-manifest-size-bytes \
+  --runtime-config release/config/protected-preview-runtime.json \
+  --admission-policy release/config/public-admission-policy.json \
+  --evidence-spec candidate-artifacts/provider/evidence-spec.json \
+  --output candidate-artifacts/provider/candidate-identity.json
+uv run python -m baseball_rag.protected_provider_proof derive-gates \
+  --candidate candidate-artifacts/provider/candidate-identity.json \
+  --evidence-index candidate-artifacts/provider/evidence-index.json \
+  --output candidate-artifacts/provider/gate-report.json
+uv run python -m baseball_rag.release_candidate provider-attestation \
+  --candidate candidate-artifacts/provider/candidate-identity.json \
+  --gate-report candidate-artifacts/provider/gate-report.json \
+  --provider vercel \
+  --deployment-id "$DEPLOYMENT_ID" \
+  --image-digest "$PROVIDER_IMAGE_DIGEST" \
+  --image-size-bytes "$PROVIDER_IMAGE_SIZE_BYTES" \
+  --image-size-measurement-kind provider-oci-manifest-size-bytes \
+  --observation-map candidate-artifacts/provider/observation-map.json \
+  --output candidate-artifacts/provider/deployment-attestation.json
+uv run python -m baseball_rag.release_candidate validate attestation \
+  --candidate candidate-artifacts/provider/candidate-identity.json \
+  --gate-report candidate-artifacts/provider/gate-report.json \
+  --attestation candidate-artifacts/provider/deployment-attestation.json
+```
+
+Before those live commands, independent review must separately confirm the protected deployment, exact runtime source environment, private connected Blob, unique proof namespace, protected-origin setting, provider image measurement source, Browser capture method, lifecycle observation method, egress source, and provider accounting source. The repository does not create any of them. `VERCEL_AUTOMATION_BYPASS_SECRET`, if approved and present, is consumed only from the process environment by the HTTP probe.
+
+Cleanup is also an external, separately reviewed action. The probes never delete or reset state. After evidence retention is confirmed, Hermes may remove only the exact protected deployment, exact unique proof objects/store connection, and exact temporary environment entries it created. Cleanup must not touch production state, domains, website launchers, paid-plan settings, Cloudflare, Mac/tunnel/LLM state, or historical deployments. Rollback before promotion is simply removal/disablement of the protected preview; no production or website route changes exist in Wave 7.
 
 ## Abort and rollback rules
 
