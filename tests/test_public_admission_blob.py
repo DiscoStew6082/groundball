@@ -393,7 +393,7 @@ def test_requests_transport_streams_with_bound_timeout_and_disables_redirects() 
 def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> None:
     config = proof_config()
     created_body = (
-        b'{"url":"https://ProofStore123.private.blob.vercel-storage.com/'
+        b'{"url":"https://proofstore123.private.blob.vercel-storage.com/'
         b'groundball/public-admission/v1/proof/wave-3/state.json",'
         b'"pathname":"groundball/public-admission/v1/proof/wave-3/state.json"}'
     )
@@ -416,7 +416,7 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
     assert transport.requests[0] == RecordedRequest(
         method="GET",
         url=(
-            "https://ProofStore123.private.blob.vercel-storage.com/"
+            "https://proofstore123.private.blob.vercel-storage.com/"
             "groundball/public-admission/v1/proof/wave-3/state.json?cache=0"
         ),
         headers={
@@ -467,7 +467,7 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
             status_code=200,
             headers={"date": DATE},
             body=(
-                b'{"url":"https://ProofStore123.private.blob.vercel-storage.com/'
+                b'{"url":"https://proofstore123.private.blob.vercel-storage.com/'
                 b'groundball/public-admission/v1/proof/wave-3/state.json",'
                 b'"pathname":"groundball/public-admission/v1/proof/wave-3/state.json"}'
             ),
@@ -877,7 +877,7 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
     assert configured.digest_key == key
     assert configured.store.object_key.endswith("/proof/wave-3/state.json")
     assert configured.store.state_url == (
-        "https://ProofStore123.private.blob.vercel-storage.com/"
+        "https://proofstore123.private.blob.vercel-storage.com/"
         "groundball/public-admission/v1/proof/wave-3/state.json"
     )
     assert configured.store.store_id == STORE_ID
@@ -885,12 +885,12 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
     assert "synthetic-proof-token" not in repr(configured)
 
 
-def test_store_id_normalization_preserves_case_and_derives_only_private_origin() -> None:
-    config = BlobCoordinationConfig.production(store_id="store_AbC123")
+def test_mixed_case_store_id_preserves_header_identity_and_uses_canonical_lowercase_host() -> None:
+    config = BlobCoordinationConfig.production(store_id="store_xgwLdzdOghF780pq")
 
-    assert config.store_id == "AbC123"
+    assert config.store_id == "xgwLdzdOghF780pq"
     assert config.state_url == (
-        "https://AbC123.private.blob.vercel-storage.com/"
+        "https://xgwldzdoghf780pq.private.blob.vercel-storage.com/"
         "groundball/public-admission/v1/production/state.json"
     )
 
@@ -914,6 +914,71 @@ def test_store_id_normalization_preserves_case_and_derives_only_private_origin()
 def test_store_id_cannot_select_an_arbitrary_or_public_origin(store_id: str) -> None:
     with pytest.raises(ValueError, match="store identifier"):
         BlobCoordinationConfig.production(store_id=store_id)
+
+
+def test_mixed_case_store_write_accepts_only_the_exact_canonical_provider_response() -> None:
+    config = BlobCoordinationConfig.production(store_id="store_xgwLdzdOghF780pq")
+    state = AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))
+    transport = ScriptedTransport(
+        HttpResponse(404, {"date": DATE}, b""),
+        HttpResponse(200, {}, json_write_response(config)),
+    )
+    store = BlobCoordinationStore(
+        config,
+        transport=transport,
+        request_id_factory=lambda: (
+            "xgwLdzdOghF780pq:1721390400000:0123456789abcdef0123456789abcdef"
+        ),
+    )
+
+    snapshot = store.read()
+
+    assert store.compare_and_swap(snapshot.version, state) is True
+    assert transport.requests[1].headers["x-vercel-blob-store-id"] == "xgwLdzdOghF780pq"
+    assert config.state_url == (
+        "https://xgwldzdoghf780pq.private.blob.vercel-storage.com/"
+        "groundball/public-admission/v1/production/state.json"
+    )
+
+
+@pytest.mark.parametrize(
+    "url,pathname",
+    [
+        (
+            "https://foreign.private.blob.vercel-storage.com/"
+            "groundball/public-admission/v1/production/state.json",
+            PRODUCTION_OBJECT_KEY,
+        ),
+        (
+            "https://xgwldzdoghf780pq.private.blob.vercel-storage.com/"
+            "groundball/public-admission/v1/production/state.json",
+            "groundball/public-admission/v1/production/foreign.json",
+        ),
+        (
+            "https://xgwLdzdOghF780pq.private.blob.vercel-storage.com/"
+            "groundball/public-admission/v1/production/state.json",
+            PRODUCTION_OBJECT_KEY,
+        ),
+    ],
+)
+def test_mixed_case_store_write_rejects_noncanonical_host_or_foreign_pathname(
+    url: str,
+    pathname: str,
+) -> None:
+    config = BlobCoordinationConfig.production(store_id="store_xgwLdzdOghF780pq")
+    transport = ScriptedTransport(
+        HttpResponse(404, {"date": DATE}, b""),
+        HttpResponse(
+            200,
+            {},
+            json.dumps({"url": url, "pathname": pathname}).encode(),
+        ),
+    )
+    store = BlobCoordinationStore(config, transport=transport)
+    snapshot = store.read()
+
+    with pytest.raises(BlobProviderError):
+        store.compare_and_swap(snapshot.version, AdmissionState())
 
 
 def test_server_declares_only_the_strict_blob_configuration_environment() -> None:

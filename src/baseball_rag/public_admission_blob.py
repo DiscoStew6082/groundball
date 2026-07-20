@@ -248,7 +248,7 @@ class BlobCoordinationConfig:
             or not 0 < self.timeout_seconds <= 30
         ):
             raise ValueError("Blob timeout configuration is invalid.")
-        state_origin = f"https://{bare_store_id}.private.blob.vercel-storage.com"
+        state_origin = f"https://{bare_store_id.lower()}.private.blob.vercel-storage.com"
         object.__setattr__(self, "store_id", bare_store_id)
         object.__setattr__(self, "state_url", f"{state_origin}/{self.object_key}")
 

@@ -13,7 +13,7 @@ The default origin is `http://127.0.0.1:7861`.
 
 ## `GET /health`
 
-Returns `{ "status": "ok" }`. This is the only route exempt from the optional origin-proxy token.
+This is the only route exempt from the optional origin-proxy token and the only provider route available before release readiness. Unconfigured development and local CI return `200 {"status":"ok"}` under their existing startup contract. Provider deployments return fixed sanitized responses: `503 {"status":"initializing"}` while the one-time background release/admission check runs, `503 {"status":"failed"}` permanently after an initialization failure, and `200 {"status":"ok"}` only after readiness succeeds. Every other provider route returns the same fixed `503` service-unavailable body until that transition.
 
 ## `GET /api/capabilities`
 

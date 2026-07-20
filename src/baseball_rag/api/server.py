@@ -1,5 +1,6 @@
 """FastAPI server for Groundball."""
 
+import asyncio
 import hashlib
 import hmac
 import html
@@ -10,7 +11,8 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from threading import Lock
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -52,11 +54,62 @@ from baseball_rag.public_release_config import (
     load_runtime_configuration,
     validate_release_environment,
 )
+from baseball_rag.release_runtime import ReleaseReadiness
+
+
+class _ProviderInitialization:
+    """Concurrency-safe, one-shot provider readiness state for this process."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._state: Literal["initializing", "ready", "failed"] = "initializing"
+        self._readiness: ReleaseReadiness | None = None
+        self._task: asyncio.Task[None] | None = None
+
+    def snapshot(
+        self,
+    ) -> tuple[Literal["initializing", "ready", "failed"], ReleaseReadiness | None]:
+        with self._lock:
+            return self._state, self._readiness
+
+    def start(self, initializer: Callable[[], ReleaseReadiness]) -> None:
+        with self._lock:
+            if self._task is not None or self._state != "initializing":
+                return
+            self._task = asyncio.create_task(self._run(initializer))
+
+    async def _run(self, initializer: Callable[[], ReleaseReadiness]) -> None:
+        try:
+            readiness = await asyncio.to_thread(initializer)
+            if not isinstance(readiness, ReleaseReadiness):
+                raise TypeError
+        except BaseException:
+            with self._lock:
+                self._state = "failed"
+                self._readiness = None
+            return
+        with self._lock:
+            self._readiness = readiness
+            self._state = "ready"
+
+    async def shutdown(self) -> None:
+        with self._lock:
+            task = self._task
+        if task is not None:
+            await task
+
+
+def _provider_runtime_initializer() -> ReleaseReadiness:
+    from baseball_rag.release_runtime import release_readiness
+
+    readiness = release_readiness()
+    _require_shared_public_admission()
+    return readiness
 
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Refuse to serve a configured Release Bundle that is not fully ready."""
+    """Fail closed while validating one configured public Release Bundle."""
     public_demo = _public_demo_enabled()
     bundle_configured = bool(os.environ.get("GROUNDBALL_RELEASE_BUNDLE"))
     if public_demo != bundle_configured:
@@ -65,11 +118,19 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "GROUNDBALL_RELEASE_BUNDLE."
         )
     if public_demo:
+        _configure_release_runtime_if_declared()
+        _configure_public_admission_if_declared()
+        if _provider_deployment_enabled():
+            _provider_initialization.start(_provider_runtime_initializer)
+            try:
+                yield
+            finally:
+                await _provider_initialization.shutdown()
+            return
+
         from baseball_rag.release_runtime import release_readiness
 
         release_readiness()
-        _configure_release_runtime_if_declared()
-        _configure_public_admission_if_declared()
         _require_shared_public_admission()
     yield
 
@@ -112,6 +173,7 @@ _visitor_digest_key: bytes | None = None
 _public_admission_is_shared = False
 _public_runtime_configuration: RuntimeConfiguration | None = None
 _public_execution_runner = SubprocessExecutionRunner()
+_provider_initialization = _ProviderInitialization()
 
 
 def configure_public_admission(
@@ -244,6 +306,13 @@ def _public_demo_enabled() -> bool:
     }
 
 
+def _provider_deployment_enabled() -> bool:
+    return bool(
+        _public_runtime_configuration is not None
+        and _public_runtime_configuration.provider_deployment
+    )
+
+
 def _require_consistent_release_configuration() -> None:
     public_demo = _public_demo_enabled()
     bundle_configured = bool(os.environ.get("GROUNDBALL_RELEASE_BUNDLE"))
@@ -373,6 +442,22 @@ async def _query_cors_middleware(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def _provider_readiness_middleware(request: Request, call_next):
+    is_health_check = request.method == "GET" and request.url.path == _PUBLIC_HEALTH_PATH
+    if _provider_deployment_enabled() and not is_health_check:
+        state, _readiness = _provider_initialization.snapshot()
+        if state != "ready":
+            return JSONResponse(
+                {
+                    "error": "service_unavailable",
+                    "detail": "Ground Ball is not ready.",
+                },
+                status_code=503,
+            )
+    return await call_next(request)
+
+
 class QueryInputRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -389,6 +474,10 @@ class RetrosheetQueryRequest(BaseModel):
 
 @app.get("/health")
 def health():
+    if _provider_deployment_enabled():
+        state, _readiness = _provider_initialization.snapshot()
+        if state != "ready":
+            return JSONResponse({"status": state}, status_code=503)
     return {"status": "ok"}
 
 
@@ -683,9 +772,18 @@ def release_readiness():
             status_code=503,
             detail="Ground Ball public admission is not ready.",
         ) from exc
-    from baseball_rag.release_runtime import release_readiness as read_release_readiness
+    if _provider_deployment_enabled():
+        state, cached_readiness = _provider_initialization.snapshot()
+        if state != "ready" or cached_readiness is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Ground Ball public release is not ready.",
+            )
+        payload = cached_readiness.as_dict()
+    else:
+        from baseball_rag.release_runtime import release_readiness as read_release_readiness
 
-    payload = read_release_readiness().as_dict()
+        payload = read_release_readiness().as_dict()
     if _public_runtime_configuration is not None:
         payload["runtime_configuration"] = {
             "digest": _public_runtime_configuration.digest,
