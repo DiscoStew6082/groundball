@@ -115,6 +115,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          docker run --rm --network none \
+            --env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
+            --env GROUNDBALL_RUNTIME_CONFIG=/app/release-config/protected-preview-runtime.json \
+            "$IMAGE_TAG" /app/.venv/bin/python -m baseball_rag.provider_runtime_cache_smoke \
+            > candidate-artifacts/evidence/provider-runtime-cache-smoke.json
           container_name="groundball-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker run --detach --network none \
             --env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
@@ -163,13 +168,14 @@ jobs:
               {"logical_id":"local-image","media_type":"application/json","path":"candidate-artifacts/evidence/local-image.json","schema_identity":"ground-ball-local-image-measurement-v1"},
               {"logical_id":"local-runtime-config","media_type":"application/json","path":"release/config/local-ci-runtime.json","schema_identity":"ground-ball-runtime-configuration-v1"},
               {"logical_id":"prohibited-surfaces","media_type":"application/json","path":"candidate-artifacts/evidence/prohibited-surfaces.json","schema_identity":"ground-ball-prohibited-surface-proof-v1"},
+              {"logical_id":"provider-runtime-cache-smoke","media_type":"application/json","path":"candidate-artifacts/evidence/provider-runtime-cache-smoke.json","schema_identity":"ground-ball-provider-runtime-cache-smoke-v1"},
               {"logical_id":"public-admission-policy","media_type":"application/json","path":"release/config/public-admission-policy.json","schema_identity":"ground-ball-public-admission-policy-v1"},
               {"logical_id":"release-bundle-check","media_type":"application/json","path":"candidate-artifacts/evidence/release-bundle-check.json","schema_identity":"ground-ball-release-bundle-check-v1"},
               {"logical_id":"topology","media_type":"application/json","path":"candidate-artifacts/evidence/topology.json","schema_identity":"ground-ball-candidate-topology-proof-v1"},
           ]
           Path("candidate-artifacts/evidence-spec.json").write_bytes(canonical_json_bytes({"evidence": evidence}))
           PY
-          printf '%s\n' '{"gates":{"candidate_identity_topology":{"evidence":["topology"],"status":"pass"},"cold_wake_warm_performance":{"evidence":[],"status":"blocked"},"deterministic_parity_public_envelope":{"evidence":["container-proof","coverage-report"],"status":"pass"},"local_image_size":{"evidence":["local-image"],"status":"pass"},"network_egress_public_routes":{"evidence":[],"status":"blocked"},"offline_container_security":{"evidence":["container-proof","prohibited-surfaces"],"status":"pass"},"protected_blob_coordination":{"evidence":[],"status":"blocked"},"protected_browser_desktop_mobile":{"evidence":[],"status":"blocked"},"protected_deployment_image":{"evidence":[],"status":"blocked"},"provider_deployment_attestation":{"evidence":[],"status":"blocked"},"provider_operation_accounting":{"evidence":[],"status":"blocked"},"provider_peak_memory":{"evidence":[],"status":"blocked"},"release_bundle_coverage":{"evidence":["coverage-report","release-bundle-check"],"status":"pass"},"restart_replacement_scale_to_zero":{"evidence":[],"status":"blocked"},"runtime_admission_configuration":{"evidence":["local-runtime-config","public-admission-policy"],"status":"pass"}}}' > candidate-artifacts/gate-results.json
+          printf '%s\n' '{"gates":{"candidate_identity_topology":{"evidence":["topology"],"status":"pass"},"cold_wake_warm_performance":{"evidence":[],"status":"blocked"},"deterministic_parity_public_envelope":{"evidence":["container-proof","coverage-report","provider-runtime-cache-smoke"],"status":"pass"},"local_image_size":{"evidence":["local-image"],"status":"pass"},"network_egress_public_routes":{"evidence":[],"status":"blocked"},"offline_container_security":{"evidence":["container-proof","prohibited-surfaces"],"status":"pass"},"protected_blob_coordination":{"evidence":[],"status":"blocked"},"protected_browser_desktop_mobile":{"evidence":[],"status":"blocked"},"protected_deployment_image":{"evidence":[],"status":"blocked"},"provider_deployment_attestation":{"evidence":[],"status":"blocked"},"provider_operation_accounting":{"evidence":[],"status":"blocked"},"provider_peak_memory":{"evidence":[],"status":"blocked"},"release_bundle_coverage":{"evidence":["coverage-report","release-bundle-check"],"status":"pass"},"restart_replacement_scale_to_zero":{"evidence":[],"status":"blocked"},"runtime_admission_configuration":{"evidence":["local-runtime-config","public-admission-policy"],"status":"pass"}}}' > candidate-artifacts/gate-results.json
           uv run python -m baseball_rag.release_candidate assemble \
             --scope local_ci \
             --source-commit "$SOURCE_COMMIT" \

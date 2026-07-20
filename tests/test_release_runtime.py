@@ -56,6 +56,39 @@ def test_release_readiness_exposes_only_a_safe_volatile_runtime_instance_marker(
     assert "token" not in rendered
 
 
+def test_assembled_provider_mode_prepares_cache_then_runs_real_40_40_worker(
+    tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "provider-bundle"
+    identity = assemble_release_bundle(ROOT, bundle, source_commit=SOURCE_COMMIT)
+    environment = {
+        **os.environ,
+        "GROUNDBALL_PUBLIC_DEMO": "1",
+        "GROUNDBALL_RELEASE_BUNDLE": str(bundle),
+        "GROUNDBALL_RUNTIME_CONFIG": str(ROOT / "release/config/protected-preview-runtime.json"),
+        "GROUNDBALL_SOURCE_COMMIT": SOURCE_COMMIT,
+    }
+    environment.pop("GROUNDBALL_PROVIDER_RUNTIME_CACHE", None)
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "baseball_rag.provider_runtime_cache_smoke"],
+        cwd=ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    result = json.loads(completed.stdout)
+
+    assert result["status"] == "pass"
+    assert result["release_bundle_digest"] == identity.digest
+    assert result["source_commit"] == SOURCE_COMMIT
+    assert result["rows"]
+    assert result["cache_prepare_seconds"] > 0
+    assert 0 < result["worker_seconds"] < 10
+
+
 def test_release_bundle_cold_boot_is_offline_in_memory_and_proof_exact(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     identity = assemble_release_bundle(ROOT, bundle, source_commit=SOURCE_COMMIT)

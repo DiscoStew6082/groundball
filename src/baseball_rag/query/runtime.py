@@ -44,12 +44,67 @@ class PublishedDataRuntime:
 
 def published_data_runtime() -> PublishedDataRuntime:
     bundle_root = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+    cached = _published_provider_runtime(
+        bundle_root,
+        os.environ.get("GROUNDBALL_PROVIDER_RUNTIME_CACHE"),
+        os.environ.get("GROUNDBALL_RUNTIME_CONFIG"),
+        os.environ.get("GROUNDBALL_SOURCE_COMMIT"),
+    )
+    if cached is not None:
+        return cached
     if bundle_root:
         check_release_bundle(bundle_root)
         configured = (Path(bundle_root) / "data").resolve()
     else:
         configured = Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
     return _runtime_for(str(configured))
+
+
+@lru_cache(maxsize=None)
+def _published_provider_runtime(
+    bundle_root: str | None,
+    reference: str | None,
+    runtime_config_path: str | None,
+    source_commit: str | None,
+) -> PublishedDataRuntime | None:
+    from baseball_rag.provider_runtime_cache import load_provider_runtime_cache
+    from baseball_rag.public_release_config import load_runtime_configuration
+
+    if reference is None or runtime_config_path is None:
+        return None
+    configuration = load_runtime_configuration(runtime_config_path)
+    if not configuration.provider_deployment:
+        return None
+    if bundle_root is None or source_commit is None:
+        raise PublishedDataUnavailableError("Provider runtime cache identity is unavailable.")
+    manifest_path = Path(bundle_root) / "release-manifest.json"
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        release_manifest = json.loads(manifest_bytes)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PublishedDataUnavailableError(
+            "Provider Release Bundle identity is unreadable."
+        ) from exc
+    if (
+        not isinstance(release_manifest, dict)
+        or release_manifest.get("source_commit") != source_commit
+    ):
+        raise PublishedDataUnavailableError(
+            "Provider Release Bundle source identity does not match."
+        )
+    cached = load_provider_runtime_cache(
+        expected_source_commit=source_commit,
+        expected_release_bundle_digest=hashlib.sha256(manifest_bytes).hexdigest(),
+        expected_runtime_configuration_digest=configuration.digest,
+    )
+    return PublishedDataRuntime(
+        connection=cached.connection,
+        connection_lock=RLock(),
+        data_dir=cached.data_dir,
+        manifest=cached.manifest,
+        data_release=cached.data_release,
+        source_fingerprints=MappingProxyType(dict(cached.source_fingerprints)),
+    )
 
 
 @lru_cache(maxsize=None)

@@ -105,6 +105,9 @@ def _decode_worker_outcome(stdout: bytes) -> ExecutionOutcome:
 
 def _execute(request: ExecutionRequest) -> dict[str, Any]:
     try:
+        from baseball_rag.provider_runtime_cache import require_provider_runtime_cache_for_worker
+
+        require_provider_runtime_cache_for_worker()
         if request.operation == "query":
             from baseball_rag.public_results import run_public_query_input
 

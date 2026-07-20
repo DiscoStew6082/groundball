@@ -50,6 +50,9 @@ def test_candidate_container_proof_is_branch_independent_and_exact_head() -> Non
     assert f'"ceiling_bytes": {MAX_CANDIDATE_IMAGE_SIZE_BYTES}' in workflow
     assert "--build-arg GROUNDBALL_SOURCE_COMMIT" not in workflow
     assert '--env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT"' in workflow
+    assert "baseball_rag.provider_runtime_cache_smoke" in workflow
+    assert "/app/release-config/protected-preview-runtime.json" in workflow
+    assert "candidate-artifacts/evidence/provider-runtime-cache-smoke.json" in workflow
     assert "baseball_rag.release_candidate assemble" in workflow
     assert "--gate-report-output candidate-artifacts/gate-report.json" in workflow
     assert (
