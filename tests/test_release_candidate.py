@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -36,20 +38,89 @@ RUNTIME = "5" * 64
 POLICY = "6" * 64
 
 
+def _smoke_document() -> dict[str, object]:
+    coverage = {
+        "proof_id": "7" * 64,
+        "proof_identity": {"source_fingerprints": {"Batting": "8" * 64, "People": "9" * 64}},
+    }
+    return {
+        "coverage": copy.deepcopy(coverage),
+        "identity": {
+            "cache_metadata_sha256": "a" * 64,
+            "cache_reference": "a" * 64,
+            "database_sha256": "b" * 64,
+            "release_bundle_digest": BUNDLE,
+            "runtime_configuration_digest": RUNTIME,
+            "source_commit": SOURCE,
+        },
+        "outcome": {
+            "columns": ["player.name", "season", "batting.HR", "batting.SB"],
+            "kind": "completed",
+            "payload_kind": "rows",
+            "returned_row_count": 6,
+            "rows": [
+                {"player.name": "Jose Canseco", "season": 1988, "batting.HR": 42, "batting.SB": 40},
+                {"player.name": "Barry Bonds", "season": 1996, "batting.HR": 42, "batting.SB": 40},
+                {
+                    "player.name": "Alex Rodriguez",
+                    "season": 1998,
+                    "batting.HR": 42,
+                    "batting.SB": 46,
+                },
+                {
+                    "player.name": "Alfonso Soriano",
+                    "season": 2006,
+                    "batting.HR": 46,
+                    "batting.SB": 41,
+                },
+                {"player.name": "Ronald Acuña", "season": 2023, "batting.HR": 41, "batting.SB": 73},
+                {
+                    "player.name": "Shohei Ohtani",
+                    "season": 2024,
+                    "batting.HR": 54,
+                    "batting.SB": 59,
+                },
+            ],
+            "total_matched_count": 6,
+        },
+        "schema_version": "ground-ball-provider-runtime-cache-smoke-v2",
+        "status": "pass",
+        "timing": {
+            "activation_validation_seconds": 0.1,
+            "image_build_preparation_seconds": 1.0,
+            "worker_seconds": 0.5,
+        },
+    }
+
+
 def _evidence(tmp_path: Path) -> tuple[EvidenceInput, ...]:
     inputs = []
+    coverage = {
+        "proof_id": "7" * 64,
+        "proof_identity": {"source_fingerprints": {"Batting": "8" * 64, "People": "9" * 64}},
+        "schema_version": "query-coverage-report-v1",
+    }
     base_evidence = (
-        ("coverage-report", "query-coverage-report-v1"),
-        ("release-bundle-check", "ground-ball-release-bundle-check-v1"),
-        ("container-proof", "ground-ball-candidate-container-proof-v1"),
+        ("coverage-report", "query-coverage-report-v1", coverage),
+        ("release-bundle-check", "ground-ball-release-bundle-check-v1", None),
+        ("container-proof", "ground-ball-candidate-container-proof-v1", None),
+        (
+            "provider-runtime-cache-smoke",
+            "ground-ball-provider-runtime-cache-smoke-v2",
+            _smoke_document(),
+        ),
     )
     provider_evidence = tuple(
-        (f"provider-{observation}", schema)
+        (f"provider-{observation}", schema, None)
         for observation, schema in PROVIDER_OBSERVATION_SCHEMA_IDENTITIES.items()
     )
-    for logical_id, schema in (*base_evidence, *provider_evidence):
+    for logical_id, schema, document in (*base_evidence, *provider_evidence):
         path = tmp_path / f"{logical_id}.json"
-        path.write_bytes(canonical_json_bytes({"schema_version": schema, "ok": True}))
+        path.write_bytes(
+            canonical_json_bytes(
+                document if document is not None else {"schema_version": schema, "ok": True}
+            )
+        )
         inputs.append(
             EvidenceInput(
                 logical_id=logical_id,
@@ -90,10 +161,67 @@ def _candidate(
 
 
 def _all_pass_results() -> dict[str, dict[str, object]]:
-    return {
+    results = {
         gate_id: {"status": "pass", "evidence": ["container-proof"]}
         for gate_id in REQUIRED_GATE_IDS
     }
+    results["deterministic_parity_public_envelope"] = {
+        "status": "pass",
+        "evidence": ["coverage-report", "provider-runtime-cache-smoke"],
+    }
+    return results
+
+
+def test_candidate_builder_accepts_verified_pretty_coverage_report_evidence(
+    tmp_path: Path,
+) -> None:
+    evidence = _evidence(tmp_path)
+    coverage = next(item for item in evidence if item.logical_id == "coverage-report")
+    document = json.loads(coverage.path.read_text(encoding="utf-8"))
+    coverage.path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+
+    candidate = build_candidate_identity(
+        scope="local_ci",
+        source_commit=SOURCE,
+        artifact_commit=ARTIFACT,
+        artifact_parent_commit=SOURCE,
+        artifact_changed_paths=("release/bundle/release-manifest.json",),
+        bundle_digest=BUNDLE,
+        image_digest=IMAGE,
+        image_size_bytes=123,
+        image_size_measurement_kind="docker-image-inspect-size-bytes",
+        runtime_configuration_digest=RUNTIME,
+        admission_policy_digest=POLICY,
+        evidence_inputs=evidence,
+    )
+
+    assert candidate["source_commit"] == SOURCE
+
+
+def test_candidate_builder_semantically_rejects_arbitrary_runtime_cache_smoke(
+    tmp_path: Path,
+) -> None:
+    evidence = _evidence(tmp_path)
+    smoke = next(item for item in evidence if item.logical_id == "provider-runtime-cache-smoke")
+    document = _smoke_document()
+    document["outcome"]["rows"][0]["batting.HR"] = 41  # type: ignore[index]
+    smoke.path.write_bytes(canonical_json_bytes(document))
+
+    with pytest.raises(CandidateError, match="runtime-cache smoke"):
+        build_candidate_identity(
+            scope="local_ci",
+            source_commit=SOURCE,
+            artifact_commit=ARTIFACT,
+            artifact_parent_commit=SOURCE,
+            artifact_changed_paths=("release/bundle/release-manifest.json",),
+            bundle_digest=BUNDLE,
+            image_digest=IMAGE,
+            image_size_bytes=123,
+            image_size_measurement_kind="docker-image-inspect-size-bytes",
+            runtime_configuration_digest=RUNTIME,
+            admission_policy_digest=POLICY,
+            evidence_inputs=evidence,
+        )
 
 
 def test_candidate_identity_is_canonical_deterministic_and_path_free(tmp_path: Path) -> None:
@@ -306,6 +434,22 @@ def test_candidate_rejects_foreign_expected_identity(
         validate_candidate_identity(
             canonical_json_bytes(_candidate(tmp_path)), **{expected_name: expected_value}
         )
+
+
+def test_gate_validation_rejects_parity_pass_without_canonical_smoke_evidence(
+    tmp_path: Path,
+) -> None:
+    candidate = _candidate(tmp_path)
+    report = build_gate_report(candidate, _all_pass_results())
+    parity = next(
+        gate
+        for gate in report["gates"]  # type: ignore[union-attr]
+        if gate["gate_id"] == "deterministic_parity_public_envelope"
+    )
+    parity["evidence"] = ["container-proof"]
+
+    with pytest.raises(CandidateError, match="provider-cache smoke"):
+        validate_gate_report(canonical_json_bytes(report), candidate)
 
 
 def test_all_pass_gate_report_is_eligible_and_deterministic(tmp_path: Path) -> None:

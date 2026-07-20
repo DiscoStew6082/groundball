@@ -314,10 +314,26 @@ def derive_provider_gate_report(
             return "blocked", refs
         return "pass", refs
 
+    semantic_parity_refs = sorted(
+        item["logical_id"]
+        for item in raw_candidate_evidence
+        if isinstance(item, dict)
+        and item.get("schema_identity")
+        in {
+            "ground-ball-provider-runtime-cache-smoke-v2",
+            "query-coverage-report-v1",
+        }
+        and isinstance(item.get("logical_id"), str)
+    )
+    parity_status = metadata_status
+    parity_refs = sorted({*metadata_refs, *semantic_parity_refs})
+    if metadata_status == "pass" and len(semantic_parity_refs) != 2:
+        parity_status = "fail"
+
     derived = {
         "candidate_identity_topology": (metadata_status, metadata_refs),
         "release_bundle_coverage": (metadata_status, metadata_refs),
-        "deterministic_parity_public_envelope": (metadata_status, metadata_refs),
+        "deterministic_parity_public_envelope": (parity_status, parity_refs),
         "offline_container_security": combine("deployment_metadata", "network_security"),
         "local_image_size": (image_status, image_refs),
         "runtime_admission_configuration": (metadata_status, metadata_refs),

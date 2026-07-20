@@ -23,6 +23,8 @@ GATE_REPORT_SCHEMA = "ground-ball-release-gate-report-v1"
 ATTESTATION_SCHEMA = "ground-ball-deployment-attestation-v1"
 CANDIDATE_SCOPES = frozenset({"local_ci", "protected_preview", "production"})
 MAX_CANDIDATE_IMAGE_SIZE_BYTES = 1_073_741_824
+_PROVIDER_CACHE_SMOKE_SCHEMA = "ground-ball-provider-runtime-cache-smoke-v2"
+_COVERAGE_REPORT_SCHEMA = "query-coverage-report-v1"
 PROVIDER_OBSERVATION_IDS = (
     "cold_wakes",
     "deployment_metadata_configuration",
@@ -142,6 +144,12 @@ def build_candidate_identity(
         artifact_commit=artifact_commit,
         artifact_parent_commit=artifact_parent_commit,
         changed_paths=artifact_changed_paths,
+    )
+    _validate_semantic_evidence(
+        evidence_inputs,
+        source_commit=source_commit,
+        bundle_digest=bundle_digest,
+        runtime_configuration_digest=runtime_configuration_digest,
     )
     evidence = [_evidence_entry(item) for item in evidence_inputs]
     evidence.sort(key=lambda item: str(item["logical_id"]))
@@ -295,6 +303,7 @@ def build_gate_report(
             or (status == "pass" and not references)
         ):
             raise CandidateError(f"Gate evidence is invalid for {gate_id}.")
+        _validate_parity_gate_evidence(checked_candidate, gate_id, status, references)
         gates.append({"evidence": references, "gate_id": gate_id, "status": status})
     report = {
         "candidate_id": checked_candidate["candidate_id"],
@@ -357,6 +366,7 @@ def validate_gate_report(
             or (status == "pass" and not refs)
         ):
             raise CandidateError(f"Gate evidence is invalid for {gate_id}.")
+        _validate_parity_gate_evidence(checked_candidate, gate_id, status, refs)
     expected_eligible = all(results[item]["status"] == "pass" for item in REQUIRED_GATE_IDS)
     if document["eligible"] is not expected_eligible:
         raise CandidateError("Gate eligibility is inconsistent.")
@@ -633,6 +643,98 @@ def _candidate_evidence_ids(candidate: Mapping[str, object]) -> set[str]:
 
 def _candidate_id(body: Mapping[str, object]) -> str:
     return "gbc_" + hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+
+
+def _validate_parity_gate_evidence(
+    candidate: Mapping[str, object],
+    gate_id: str,
+    status: object,
+    references: list[object],
+) -> None:
+    if gate_id != "deterministic_parity_public_envelope" or status != "pass":
+        return
+    raw_evidence = candidate.get("evidence")
+    if not isinstance(raw_evidence, list):
+        raise CandidateError("Candidate evidence set is invalid.")
+    evidence_schemas = {
+        item["logical_id"]: item["schema_identity"]
+        for item in raw_evidence
+        if isinstance(item, dict)
+        and isinstance(item.get("logical_id"), str)
+        and isinstance(item.get("schema_identity"), str)
+    }
+    referenced_schemas = {
+        evidence_schemas[item]
+        for item in references
+        if isinstance(item, str) and item in evidence_schemas
+    }
+    if not {_PROVIDER_CACHE_SMOKE_SCHEMA, _COVERAGE_REPORT_SCHEMA} <= referenced_schemas:
+        raise CandidateError(
+            "Deterministic parity requires semantically validated provider-cache smoke."
+        )
+
+
+def _validate_semantic_evidence(
+    evidence_inputs: Sequence[EvidenceInput],
+    *,
+    source_commit: str,
+    bundle_digest: str,
+    runtime_configuration_digest: str,
+) -> None:
+    smoke_inputs = [
+        item for item in evidence_inputs if item.schema_identity == _PROVIDER_CACHE_SMOKE_SCHEMA
+    ]
+    if not smoke_inputs:
+        return
+    coverage_inputs = [
+        item for item in evidence_inputs if item.schema_identity == _COVERAGE_REPORT_SCHEMA
+    ]
+    if len(smoke_inputs) != 1 or len(coverage_inputs) != 1:
+        raise CandidateError("Provider runtime-cache smoke evidence inventory is invalid.")
+    try:
+        smoke_bytes = smoke_inputs[0].path.read_bytes()
+        coverage_bytes = coverage_inputs[0].path.read_bytes()
+    except OSError as exc:
+        raise CandidateError("Provider runtime-cache smoke evidence is unreadable.") from exc
+    try:
+        coverage = json.loads(coverage_bytes.decode("utf-8"), object_pairs_hook=_unique_object)
+    except (UnicodeError, json.JSONDecodeError, _DuplicateKeyError) as exc:
+        raise CandidateError("Coverage Report evidence JSON is malformed.") from exc
+    if not isinstance(coverage, dict):
+        raise CandidateError("Coverage Report evidence must be an object.")
+    expected_coverage = {
+        "proof_id": coverage.get("proof_id"),
+        "proof_identity": coverage.get("proof_identity"),
+    }
+    smoke_runtime_digest = runtime_configuration_digest
+    provider_runtime_inputs = [
+        item for item in evidence_inputs if item.logical_id == "provider-runtime-config"
+    ]
+    if len(provider_runtime_inputs) > 1:
+        raise CandidateError("Provider runtime configuration evidence is duplicated.")
+    if provider_runtime_inputs:
+        try:
+            provider_runtime = load_runtime_configuration(provider_runtime_inputs[0].path)
+        except (OSError, PublicReleaseConfigError) as exc:
+            raise CandidateError("Provider runtime configuration evidence is invalid.") from exc
+        if not provider_runtime.provider_deployment:
+            raise CandidateError("Provider runtime configuration evidence is invalid.")
+        smoke_runtime_digest = provider_runtime.digest
+    try:
+        from baseball_rag.provider_runtime_cache_smoke import (
+            ProviderRuntimeCacheSmokeError,
+            validate_provider_runtime_cache_smoke,
+        )
+
+        validate_provider_runtime_cache_smoke(
+            smoke_bytes,
+            expected_source_commit=source_commit,
+            expected_release_bundle_digest=bundle_digest,
+            expected_runtime_configuration_digest=smoke_runtime_digest,
+            expected_coverage=expected_coverage,
+        )
+    except ProviderRuntimeCacheSmokeError as exc:
+        raise CandidateError("Provider runtime-cache smoke evidence is invalid.") from exc
 
 
 def _evidence_entry(item: EvidenceInput) -> dict[str, str]:

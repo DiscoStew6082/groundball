@@ -108,6 +108,9 @@ def _execute(request: ExecutionRequest) -> dict[str, Any]:
         from baseball_rag.provider_runtime_cache import require_provider_runtime_cache_for_worker
 
         require_provider_runtime_cache_for_worker()
+    except Exception:  # noqa: BLE001 - provider activation is always sanitized
+        return {"kind": "failed"}
+    try:
         if request.operation == "query":
             from baseball_rag.public_results import run_public_query_input
 
@@ -130,6 +133,13 @@ def _execute(request: ExecutionRequest) -> dict[str, Any]:
 
 
 def main() -> int:
+    try:
+        from baseball_rag.provider_runtime_cache import require_provider_runtime_cache_for_worker
+
+        require_provider_runtime_cache_for_worker()
+    except Exception:  # noqa: BLE001 - worker activation failures are always sanitized
+        print(json.dumps({"kind": "failed"}, separators=(",", ":")))
+        return 2
     try:
         raw_request = json.loads(sys.stdin.buffer.read())
         operation = raw_request["operation"]

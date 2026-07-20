@@ -209,6 +209,81 @@ def _document(schema: str) -> dict[str, object]:
     return {**base, "observation": observation}
 
 
+def _semantic_parity_evidence(tmp_path: Path) -> tuple[EvidenceInput, EvidenceInput]:
+    coverage = {
+        "proof_id": "a" * 64,
+        "proof_identity": {"source_fingerprints": {"Batting": "b" * 64, "People": "c" * 64}},
+    }
+    coverage_path = tmp_path / "coverage-report.json"
+    coverage_path.write_bytes(
+        canonical_json_bytes({**coverage, "schema_version": "query-coverage-report-v1"})
+    )
+    smoke = {
+        "coverage": copy.deepcopy(coverage),
+        "identity": {
+            "cache_metadata_sha256": "d" * 64,
+            "cache_reference": "d" * 64,
+            "database_sha256": "e" * 64,
+            "release_bundle_digest": BUNDLE,
+            "runtime_configuration_digest": RUNTIME,
+            "source_commit": SOURCE,
+        },
+        "outcome": {
+            "columns": ["player.name", "season", "batting.HR", "batting.SB"],
+            "kind": "completed",
+            "payload_kind": "rows",
+            "returned_row_count": 6,
+            "rows": [
+                {"player.name": "Jose Canseco", "season": 1988, "batting.HR": 42, "batting.SB": 40},
+                {"player.name": "Barry Bonds", "season": 1996, "batting.HR": 42, "batting.SB": 40},
+                {
+                    "player.name": "Alex Rodriguez",
+                    "season": 1998,
+                    "batting.HR": 42,
+                    "batting.SB": 46,
+                },
+                {
+                    "player.name": "Alfonso Soriano",
+                    "season": 2006,
+                    "batting.HR": 46,
+                    "batting.SB": 41,
+                },
+                {"player.name": "Ronald Acuña", "season": 2023, "batting.HR": 41, "batting.SB": 73},
+                {
+                    "player.name": "Shohei Ohtani",
+                    "season": 2024,
+                    "batting.HR": 54,
+                    "batting.SB": 59,
+                },
+            ],
+            "total_matched_count": 6,
+        },
+        "schema_version": "ground-ball-provider-runtime-cache-smoke-v2",
+        "status": "pass",
+        "timing": {
+            "activation_validation_seconds": 0.1,
+            "image_build_preparation_seconds": 1.0,
+            "worker_seconds": 0.5,
+        },
+    }
+    smoke_path = tmp_path / "provider-runtime-cache-smoke.json"
+    smoke_path.write_bytes(canonical_json_bytes(smoke))
+    return (
+        EvidenceInput(
+            logical_id="coverage-report",
+            path=coverage_path,
+            media_type="application/json",
+            schema_identity="query-coverage-report-v1",
+        ),
+        EvidenceInput(
+            logical_id="provider-runtime-cache-smoke",
+            path=smoke_path,
+            media_type="application/json",
+            schema_identity="ground-ball-provider-runtime-cache-smoke-v2",
+        ),
+    )
+
+
 def _candidate(tmp_path: Path, documents: list[dict[str, object]]) -> dict[str, object]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     evidence = []
@@ -235,7 +310,7 @@ def _candidate(tmp_path: Path, documents: list[dict[str, object]]) -> dict[str, 
         image_size_measurement_kind="provider-oci-manifest-size-bytes",
         runtime_configuration_digest=RUNTIME,
         admission_policy_digest=POLICY,
-        evidence_inputs=tuple(evidence),
+        evidence_inputs=(*evidence, *_semantic_parity_evidence(tmp_path)),
     )
 
 

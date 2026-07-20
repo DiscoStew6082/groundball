@@ -109,25 +109,12 @@ class _ProviderInitialization:
 
 
 def _provider_runtime_initializer() -> ReleaseReadiness:
-    from baseball_rag.provider_runtime_cache import (
-        clear_provider_runtime_cache_reference,
-        prepare_provider_runtime_cache,
-    )
-    from baseball_rag.query.runtime import published_data_runtime
     from baseball_rag.release_runtime import release_readiness
 
     configuration = _public_runtime_configuration
     if configuration is None or not configuration.provider_deployment:
         raise RuntimeError("Protected provider runtime configuration is unavailable.")
-    clear_provider_runtime_cache_reference()
-    readiness = release_readiness()
-    prepare_provider_runtime_cache(
-        published_data_runtime(),
-        source_commit=readiness.source_commit,
-        release_bundle_digest=readiness.release_bundle_digest,
-        runtime_configuration_digest=configuration.digest,
-    )
-    return readiness
+    return release_readiness()
 
 
 @asynccontextmanager

@@ -56,37 +56,66 @@ def test_release_readiness_exposes_only_a_safe_volatile_runtime_instance_marker(
     assert "token" not in rendered
 
 
-def test_assembled_provider_mode_prepares_cache_then_runs_real_40_40_worker(
+def test_assembled_provider_mode_builds_fixed_cache_then_runs_exact_40_40(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+    import baseball_rag.query.runtime as query_runtime
+    from baseball_rag.public_execution import ExecutionRequest, _execute
+    from baseball_rag.public_release_config import load_runtime_configuration
+    from baseball_rag.query.runtime import (
+        _published_provider_runtime,
+        _runtime_for,
+        published_data_runtime,
+    )
+
     bundle = tmp_path / "provider-bundle"
     identity = assemble_release_bundle(ROOT, bundle, source_commit=SOURCE_COMMIT)
-    environment = {
-        **os.environ,
-        "GROUNDBALL_PUBLIC_DEMO": "1",
-        "GROUNDBALL_RELEASE_BUNDLE": str(bundle),
-        "GROUNDBALL_RUNTIME_CONFIG": str(ROOT / "release/config/protected-preview-runtime.json"),
-        "GROUNDBALL_SOURCE_COMMIT": SOURCE_COMMIT,
-    }
-    environment.pop("GROUNDBALL_PROVIDER_RUNTIME_CACHE", None)
-
-    completed = subprocess.run(
-        [sys.executable, "-m", "baseball_rag.provider_runtime_cache_smoke"],
-        cwd=ROOT,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
+    monkeypatch.setattr(query_runtime, "_PROVIDER_BUNDLE_ROOT", bundle)
+    monkeypatch.setattr(
+        query_runtime,
+        "_PROVIDER_RUNTIME_CONFIG_PATH",
+        ROOT / "release/config/protected-preview-runtime.json",
     )
-    result = json.loads(completed.stdout)
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(bundle))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", SOURCE_COMMIT)
+    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
+    _published_provider_runtime.cache_clear()
+    _runtime_for.cache_clear()
+    runtime = published_data_runtime()
+    monkeypatch.setattr(cache, "_CACHE_ROOT", tmp_path / "provider-runtime-cache")
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
+    configuration = load_runtime_configuration(
+        ROOT / "release/config/protected-preview-runtime.json"
+    )
+    reference = cache.build_provider_runtime_cache(
+        runtime,
+        source_commit=SOURCE_COMMIT,
+        release_bundle_digest=identity.digest,
+        runtime_configuration_digest=configuration.digest,
+        image_build_preparation_seconds=0.5,
+    )
+    monkeypatch.setenv(
+        "GROUNDBALL_RUNTIME_CONFIG",
+        str(ROOT / "release/config/protected-preview-runtime.json"),
+    )
+    _published_provider_runtime.cache_clear()
 
-    assert result["status"] == "pass"
-    assert result["release_bundle_digest"] == identity.digest
-    assert result["source_commit"] == SOURCE_COMMIT
-    assert result["rows"]
-    assert result["cache_prepare_seconds"] > 0
-    assert 0 < result["worker_seconds"] < 10
+    outcome = _execute(ExecutionRequest("query", "40-40", None))
+
+    assert os.environ[cache.CACHE_REFERENCE_ENV] == reference
+    assert outcome["kind"] == "completed"
+    assert outcome["payload"]["rows"][-1] == {
+        "player.name": "Shohei Ohtani",
+        "season": 2024,
+        "batting.HR": 54,
+        "batting.SB": 59,
+    }
+    assert outcome["payload"]["returned_row_count"] == 6
+    assert outcome["payload"]["total_matched_count"] == 6
 
 
 def test_release_bundle_cold_boot_is_offline_in_memory_and_proof_exact(tmp_path: Path) -> None:

@@ -21711,12 +21711,12 @@
       "total": 5
     }
   ],
-  "proof_id": "08efd5b8d4da083ed1625e19f6fdcb58e024466c6a6de2398be77effafee36a5",
+  "proof_id": "15ba3bf68d1750652d481ba369a6daa339ff98695613d6a7f2234c8490388aed",
   "proof_identity": {
     "catalog_revision": "published-query-catalog-v3",
     "catalog_sha256": "49aa7fcb05d9d00efd73a8c15bc703e759259e6f2a099f042ed794f8aeb9325f",
     "compiler_contract": "query-plan-v1",
-    "compiler_sha256": "8b6e7dbb0972adac35acc5b957b28883015be633319f3d762f655a4bc78f13ba",
+    "compiler_sha256": "b68e6a8560628d088ed59194763982e55c0c62fa7df148e203ab67899789cb6f",
     "data_manifest_semantic_sha256": "5c533cb9e479c46f6c2825acf3ae0669825c017c3e125e8c969474200e46127e",
     "data_release": "neuml-baseballdata:lahman-2025:2026-01-11",
     "report_schema_version": "query-coverage-report-v1",

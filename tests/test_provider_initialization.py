@@ -235,56 +235,32 @@ def test_concurrent_cold_requests_coalesce_behind_one_initializer(
     assert all(response.status_code == 200 for response in responses)
 
 
-def test_provider_background_initialization_fully_verifies_then_publishes_cache_without_io(
+def test_provider_background_initialization_validates_prebuilt_cache_without_runtime_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     expected = readiness()
-    canonical_runtime = object()
-    calls: list[object] = []
-
-    def clear_reference() -> None:
-        calls.append("clear")
+    calls: list[str] = []
 
     def heavy_readiness() -> ReleaseReadiness:
         calls.append("readiness")
         return expected
 
-    def loaded_runtime():
-        calls.append("runtime")
-        return canonical_runtime
-
-    def prepare(runtime, **identities) -> None:
-        calls.append((runtime, identities))
+    def forbidden_runtime_build(*_args, **_kwargs):
+        raise AssertionError("provider startup must never build a runtime cache")
 
     def forbidden_provider_io():
         raise AssertionError("background initialization must not perform provider I/O")
 
     monkeypatch.setattr(api_server, "_public_runtime_configuration", provider_configuration())
-    monkeypatch.setattr(
-        "baseball_rag.provider_runtime_cache.clear_provider_runtime_cache_reference",
-        clear_reference,
-    )
     monkeypatch.setattr("baseball_rag.release_runtime.release_readiness", heavy_readiness)
-    monkeypatch.setattr("baseball_rag.query.runtime.published_data_runtime", loaded_runtime)
     monkeypatch.setattr(
-        "baseball_rag.provider_runtime_cache.prepare_provider_runtime_cache", prepare
+        "baseball_rag.provider_runtime_cache.build_provider_runtime_cache",
+        forbidden_runtime_build,
     )
     monkeypatch.setattr(api_server, "_require_shared_public_admission", forbidden_provider_io)
 
     assert api_server._provider_runtime_initializer() is expected
-    assert calls == [
-        "clear",
-        "readiness",
-        "runtime",
-        (
-            canonical_runtime,
-            {
-                "source_commit": "b" * 40,
-                "release_bundle_digest": "a" * 64,
-                "runtime_configuration_digest": provider_configuration().digest,
-            },
-        ),
-    ]
+    assert calls == ["readiness"]
 
 
 def test_provider_initialization_transitions_once_to_ready_and_request_readiness_proves_blob(
@@ -293,7 +269,7 @@ def test_provider_initialization_transitions_once_to_ready_and_request_readiness
     expected_readiness = readiness()
     request_oidc = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXF1ZXN0In0.request-signature"
     provider = OidcBlobCredentialProvider()
-    calls = {"heavy": 0, "cache": 0, "admission": 0}
+    calls = {"heavy": 0, "admission": 0}
     calls_lock = Lock()
 
     def heavy_readiness() -> ReleaseReadiness:
@@ -310,16 +286,8 @@ def test_provider_initialization_transitions_once_to_ready_and_request_readiness
             calls["admission"] += 1
         return object(), b"x" * 32
 
-    def prepare_cache(*_args, **_kwargs) -> None:
-        with calls_lock:
-            calls["cache"] += 1
-
     configure_provider_lifespan(monkeypatch, api_server._provider_runtime_initializer)
     monkeypatch.setattr("baseball_rag.release_runtime.release_readiness", heavy_readiness)
-    monkeypatch.setattr("baseball_rag.query.runtime.published_data_runtime", lambda: object())
-    monkeypatch.setattr(
-        "baseball_rag.provider_runtime_cache.prepare_provider_runtime_cache", prepare_cache
-    )
     monkeypatch.setattr(api_server, "_require_shared_public_admission", admission_readiness)
 
     with TestClient(app) as client:
@@ -345,7 +313,7 @@ def test_provider_initialization_transitions_once_to_ready_and_request_readiness
     assert (
         missing.json() == invalid.json() == {"detail": "Ground Ball public admission is not ready."}
     )
-    assert calls == {"heavy": 1, "cache": 1, "admission": 2}
+    assert calls == {"heavy": 1, "admission": 2}
 
 
 def test_provider_initializer_cannot_mark_an_invalid_readiness_object_ready(

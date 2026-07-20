@@ -22,9 +22,18 @@ def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
     assert "GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle" in dockerfile
     assert "ARG GROUNDBALL_SOURCE_COMMIT" not in dockerfile
     assert "GROUNDBALL_SOURCE_COMMIT=${GROUNDBALL_SOURCE_COMMIT}" not in dockerfile
-    assert "baseball_rag.release_bundle check /app/release-bundle" in dockerfile
+    assert "baseball_rag.provider_runtime_cache" in dockerfile
+    assert "baseball_rag.release_bundle check /app/release-bundle" not in dockerfile
     assert "--expected-source-commit" not in dockerfile
     assert "baseball_rag.release_runtime import release_readiness" not in dockerfile
+    assert "PYTHONDONTWRITEBYTECODE=1" in dockerfile
+    assert "groupadd --system --gid 10001 groundball" in dockerfile
+    assert "useradd --system --uid 10001" in dockerfile
+    assert "USER 10001:10001" in dockerfile
+    assert dockerfile.index("baseball_rag.provider_runtime_cache") < dockerfile.index(
+        "USER 10001:10001"
+    )
+    assert "chmod -R a-w /app/release-bundle /app/release-config" in dockerfile
     assert "baseball_rag.db.download" not in dockerfile
     assert "huggingface.co" not in dockerfile
     assert "rm -f /app/src/baseball_rag/db/download.py" in dockerfile

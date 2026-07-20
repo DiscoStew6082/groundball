@@ -16,7 +16,7 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.10.0 /uv /usr/local/bin/uv
 
 ENV PYTHONPATH=/app/src \
-    UV_COMPILE_BYTECODE=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     GROUNDBALL_PUBLIC_DEMO=1 \
     GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle
@@ -27,7 +27,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src/baseball_rag/ ./src/baseball_rag/
 COPY release/bundle/ /app/release-bundle/
 COPY release/config/ /app/release-config/
-RUN /app/.venv/bin/python -m baseball_rag.release_bundle check /app/release-bundle \
+RUN /app/.venv/bin/python -m baseball_rag.provider_runtime_cache \
     && rm -f /app/src/baseball_rag/db/download.py \
         /app/src/baseball_rag/db/generate_retrosheet_team_reference.py \
         /app/src/baseball_rag/db/secondary_sources/retrosheet.py \
@@ -38,6 +38,15 @@ RUN /app/.venv/bin/python -m baseball_rag.release_bundle check /app/release-bund
         /app/src/baseball_rag/query/coverage
 
 COPY --from=web-build /web/dist /app/web/dist
+
+RUN groupadd --system --gid 10001 groundball \
+    && useradd --system --uid 10001 --gid groundball --home-dir /nonexistent \
+        --shell /usr/sbin/nologin groundball \
+    && chmod -R a-w /app/release-bundle /app/release-config \
+    && test "$(find /app/provider-runtime-cache -user root | wc -l)" = \
+        "$(find /app/provider-runtime-cache | wc -l)"
+
+USER 10001:10001
 
 EXPOSE 80
 

@@ -1,10 +1,11 @@
-"""Strict process-local provider runtime-cache contracts."""
+"""Fixed root-owned provider runtime-cache and worker activation contracts."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import duckdb
@@ -24,398 +25,398 @@ PROVIDER_CONFIG = ROOT / "release/config/protected-preview-runtime.json"
 
 
 def _source_commit() -> str:
-    manifest = json.loads((BUNDLE / "release-manifest.json").read_text(encoding="utf-8"))
-    return str(manifest["source_commit"])
+    return str(
+        json.loads((BUNDLE / "release-manifest.json").read_text(encoding="utf-8"))["source_commit"]
+    )
+
+
+def _bundle_digest() -> str:
+    return hashlib.sha256((BUNDLE / "release-manifest.json").read_bytes()).hexdigest()
 
 
 def _prepare_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, str]:
-    import baseball_rag.provider_runtime_cache as runtime_cache
+    import baseball_rag.provider_runtime_cache as cache
+    import baseball_rag.query.runtime as query_runtime
 
+    monkeypatch.setattr(query_runtime, "_PROVIDER_BUNDLE_ROOT", BUNDLE)
+    monkeypatch.setattr(query_runtime, "_PROVIDER_RUNTIME_CONFIG_PATH", PROVIDER_CONFIG)
     monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
     monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
     monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
     monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
-    monkeypatch.delenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", raising=False)
+    monkeypatch.delenv(cache.CACHE_REFERENCE_ENV, raising=False)
     _published_provider_runtime.cache_clear()
+    _runtime_for.cache_clear()
     runtime = published_data_runtime()
-    configuration = load_runtime_configuration(PROVIDER_CONFIG)
-    cache_root = tmp_path / "groundball-provider-cache-v1"
-    monkeypatch.setattr(runtime_cache, "_CACHE_ROOT", cache_root)
-    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(PROVIDER_CONFIG))
-    reference = runtime_cache.prepare_provider_runtime_cache(
+
+    cache_root = tmp_path / "provider-runtime-cache"
+    monkeypatch.setattr(cache, "_CACHE_ROOT", cache_root)
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
+    reference = cache.build_provider_runtime_cache(
         runtime,
         source_commit=_source_commit(),
-        release_bundle_digest=hashlib.sha256(
-            (BUNDLE / "release-manifest.json").read_bytes()
-        ).hexdigest(),
-        runtime_configuration_digest=configuration.digest,
+        release_bundle_digest=_bundle_digest(),
+        runtime_configuration_digest=load_runtime_configuration(PROVIDER_CONFIG).digest,
+        image_build_preparation_seconds=1.25,
     )
+    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(PROVIDER_CONFIG))
     _published_provider_runtime.cache_clear()
     return cache_root, reference
 
 
-def _rewrite_metadata(cache_root: Path, reference: str, mutate) -> str:
+def _make_mutable(cache_root: Path, reference: str) -> Path:
     cache_dir = cache_root / reference
-    metadata_path = cache_dir / "metadata.json"
-    os.chmod(cache_dir, 0o700)
-    os.chmod(metadata_path, 0o600)
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    mutate(metadata)
-    content = canonical_json_bytes(metadata)
-    metadata_path.write_bytes(content)
-    os.chmod(metadata_path, 0o400)
-    os.chmod(cache_dir, 0o500)
-    changed_reference = hashlib.sha256(content).hexdigest()
-    cache_dir.rename(cache_root / changed_reference)
-    os.environ["GROUNDBALL_PROVIDER_RUNTIME_CACHE"] = changed_reference
+    os.chmod(cache_root, 0o755)
+    os.chmod(cache_dir, 0o755)
+    return cache_dir
+
+
+def _seal(cache_root: Path, reference: str) -> None:
+    os.chmod(cache_root / reference, 0o555)
+    os.chmod(cache_root, 0o555)
     _published_provider_runtime.cache_clear()
-    return changed_reference
 
 
-def test_verified_runtime_cache_returns_the_exact_normal_40_40_payload(
+def test_builder_publishes_exact_pointer_and_one_root_owned_read_only_object(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import baseball_rag.provider_runtime_cache as runtime_cache
-    from baseball_rag.provider_runtime_cache import prepare_provider_runtime_cache
+    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
+    pointer = json.loads((cache_root / "pointer.json").read_text(encoding="utf-8"))
 
+    assert {item.name for item in cache_root.iterdir()} == {"pointer.json", reference}
+    assert {item.name for item in (cache_root / reference).iterdir()} == {
+        "metadata.json",
+        "runtime.duckdb",
+    }
+    assert pointer["cache_metadata_sha256"] == reference
+    assert pointer["image_build_preparation_seconds"] == 1.25
+    assert os.environ.get("GROUNDBALL_PROVIDER_RUNTIME_CACHE") is None
+    assert cache_root.stat().st_mode & 0o777 == 0o555
+    assert (cache_root / reference).stat().st_mode & 0o777 == 0o555
+    for path in (
+        cache_root / "pointer.json",
+        cache_root / reference / "metadata.json",
+        cache_root / reference / "runtime.duckdb",
+    ):
+        assert path.stat().st_uid == os.geteuid()
+        assert path.stat().st_mode & 0o777 == 0o444
+        assert path.stat().st_nlink == 1
+
+
+def test_fixed_cache_activates_once_and_returns_exact_40_40_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, reference = _prepare_cache(monkeypatch, tmp_path)
+
+    first = published_data_runtime()
+    second = published_data_runtime()
+    rows = first.connection.execute(
+        'SELECT trim(concat_ws(\' \', p."nameFirst", p."nameLast")), b."yearID", '
+        'sum(b."HR"), sum(b."SB") FROM batting b JOIN people p USING ("playerID") '
+        'GROUP BY b."playerID", p."nameFirst", p."nameLast", b."yearID" '
+        'HAVING sum(b."HR") >= 40 AND sum(b."SB") >= 40 '
+        'ORDER BY b."yearID", trim(concat_ws(\' \', p."nameFirst", p."nameLast"))'
+    ).fetchall()
+
+    assert rows == [
+        ("Jose Canseco", 1988, 42, 40),
+        ("Barry Bonds", 1996, 42, 40),
+        ("Alex Rodriguez", 1998, 42, 46),
+        ("Alfonso Soriano", 2006, 46, 41),
+        ("Ronald Acuña", 2023, 41, 73),
+        ("Shohei Ohtani", 2024, 54, 59),
+    ]
+    assert first is second
+    assert os.environ["GROUNDBALL_PROVIDER_RUNTIME_CACHE"] == reference
+    with pytest.raises(duckdb.Error):
+        first.connection.execute("CREATE TABLE forbidden(value INTEGER)")
+
+
+def test_provider_missing_cache_fails_for_supported_and_unsupported_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+    import baseball_rag.query.runtime as query_runtime
+
+    monkeypatch.setattr(query_runtime, "_PROVIDER_BUNDLE_ROOT", BUNDLE)
+    monkeypatch.setattr(query_runtime, "_PROVIDER_RUNTIME_CONFIG_PATH", PROVIDER_CONFIG)
+    monkeypatch.setattr(cache, "_CACHE_ROOT", tmp_path / "absent")
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(PROVIDER_CONFIG))
     monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
     monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
-    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
-    monkeypatch.delenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", raising=False)
-    _runtime_for.cache_clear()
-    normal = _execute(ExecutionRequest("query", "40-40", None))
-    runtime = published_data_runtime()
-
-    configuration = load_runtime_configuration(PROVIDER_CONFIG)
-    monkeypatch.setattr(runtime_cache, "_CACHE_ROOT", tmp_path / "groundball-provider-cache-v1")
-    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(PROVIDER_CONFIG))
-    reference = prepare_provider_runtime_cache(
-        runtime,
-        source_commit=_source_commit(),
-        release_bundle_digest=hashlib.sha256(
-            (BUNDLE / "release-manifest.json").read_bytes()
-        ).hexdigest(),
-        runtime_configuration_digest=configuration.digest,
-    )
+    monkeypatch.delenv(cache.CACHE_REFERENCE_ENV, raising=False)
     _published_provider_runtime.cache_clear()
 
-    cached = _execute(ExecutionRequest("query", "40-40", None))
-    metadata = json.loads(
-        (tmp_path / "groundball-provider-cache-v1" / reference / "metadata.json").read_text(
-            encoding="utf-8"
-        )
-    )
-
-    assert cached == normal
-    assert set(metadata["data_manifest"]) == {"dataset", "files"}
-    assert set(metadata["data_manifest"]["dataset"]) == {"release_id"}
-    assert "downloaded_at" not in json.dumps(metadata)
-
-
-def test_protected_worker_missing_cache_fails_instead_of_falling_back(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(PROVIDER_CONFIG))
-    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
-    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
-    monkeypatch.delenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", raising=False)
-    _runtime_for.cache_clear()
-
-    outcome = _execute(ExecutionRequest("query", "40-40", None))
-    subprocess_outcome = SubprocessExecutionRunner().run(
+    assert _execute(ExecutionRequest("query", "40-40", None)) == {"kind": "failed"}
+    assert _execute(ExecutionRequest("unsupported", "anything", None)) == {"kind": "failed"}
+    child = SubprocessExecutionRunner().run(
         ExecutionRequest("query", "40-40", None), timeout_seconds=10
     )
-
-    assert outcome == {"kind": "failed"}
-    assert subprocess_outcome.kind == "failed"
-    assert subprocess_outcome.detail == "Public Query Run execution failed."
-    assert "cache" not in repr(subprocess_outcome).lower()
+    assert child.kind == "failed"
+    assert child.detail == "Public Query Run execution failed."
 
 
-def test_cache_rejects_a_missing_required_relation_even_with_rehashed_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("target", "mutation"),
+    [
+        ("root", lambda root, _cache: (root / "foreign").write_text("x")),
+        ("object", lambda _root, cache: (cache / "foreign").write_text("x")),
+        ("pointer", lambda root, _cache: (root / "pointer.json").unlink()),
+        ("database-mode", lambda _root, cache: os.chmod(cache / "runtime.duckdb", 0o644)),
+        ("metadata-mode", lambda _root, cache: os.chmod(cache / "metadata.json", 0o440)),
+        ("database-link", lambda _root, cache: os.link(cache / "runtime.duckdb", cache / "link")),
+    ],
+)
+def test_activation_rejects_extra_missing_mode_and_link_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target: str, mutation
 ) -> None:
     from baseball_rag.provider_runtime_cache import ProviderRuntimeCacheError
 
     cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
-    _rewrite_metadata(cache_root, reference, lambda value: value["required_relations"].pop())
+    cache_dir = _make_mutable(cache_root, reference)
+    mutation(cache_root, cache_dir)
+    _seal(cache_root, reference)
 
-    with pytest.raises(ProviderRuntimeCacheError, match="relation"):
+    with pytest.raises(ProviderRuntimeCacheError):
         published_data_runtime()
 
 
-def test_cached_structured_recipe_and_retrosheet_payloads_match_normal_runtime(
+def test_activation_rejects_rehashed_unexpected_relation_and_wrong_owner(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    structured = {
-        "source": "Batting",
-        "grain": "player-season",
-        "selections": ["player.name", "season", "batting.HR", "pitching.W"],
-        "predicate": {
-            "kind": "compare",
-            "value": "player.name",
-            "operator": "equals",
-            "literal": "Shohei Ohtani",
-        },
-        "ranking": {
-            "value": "pitching.W",
-            "direction": "highest",
-            "count": 1,
-            "tie_policy": "include_ties",
-            "within": [],
-        },
-    }
-    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    import baseball_rag.provider_runtime_cache as cache
+
+    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
+    cache_dir = _make_mutable(cache_root, reference)
+    metadata_path = cache_dir / "metadata.json"
+    pointer_path = cache_root / "pointer.json"
+    os.chmod(metadata_path, 0o644)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["required_relations"].append("unexpected_relation")
+    metadata_bytes = canonical_json_bytes(metadata)
+    metadata_path.write_bytes(metadata_bytes)
+    os.chmod(metadata_path, 0o444)
+    changed_reference = hashlib.sha256(metadata_bytes).hexdigest()
+    cache_dir.rename(cache_root / changed_reference)
+    os.chmod(pointer_path, 0o644)
+    pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    pointer["cache_metadata_sha256"] = changed_reference
+    pointer_path.write_bytes(canonical_json_bytes(pointer))
+    os.chmod(pointer_path, 0o444)
+    _seal(cache_root, changed_reference)
+
+    with pytest.raises(cache.ProviderRuntimeCacheError, match="relation"):
+        published_data_runtime()
+
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid() + 1)
+    _published_provider_runtime.cache_clear()
+    with pytest.raises(cache.ProviderRuntimeCacheError, match="parent"):
+        published_data_runtime()
+
+
+@pytest.mark.parametrize("kind", ["pointer", "metadata", "database", "symlink", "foreign-env"])
+def test_activation_rejects_tampered_or_foreign_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str
+) -> None:
+    from baseball_rag.provider_runtime_cache import ProviderRuntimeCacheError
+
+    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
+    cache_dir = _make_mutable(cache_root, reference)
+    if kind == "pointer":
+        pointer = cache_root / "pointer.json"
+        os.chmod(pointer, 0o644)
+        pointer.write_text("{}\n", encoding="utf-8")
+        os.chmod(pointer, 0o444)
+    elif kind == "metadata":
+        metadata = cache_dir / "metadata.json"
+        os.chmod(metadata, 0o644)
+        metadata.write_bytes(metadata.read_bytes() + b" ")
+        os.chmod(metadata, 0o444)
+    elif kind == "database":
+        database = cache_dir / "runtime.duckdb"
+        os.chmod(database, 0o644)
+        with database.open("r+b") as stream:
+            stream.seek(-1, os.SEEK_END)
+            last = stream.read(1)
+            stream.seek(-1, os.SEEK_END)
+            stream.write(bytes([last[0] ^ 1]))
+        os.chmod(database, 0o444)
+    elif kind == "symlink":
+        database = cache_dir / "runtime.duckdb"
+        database.unlink()
+        database.symlink_to(BUNDLE / "release-manifest.json")
+    else:
+        monkeypatch.setenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", "f" * 64)
+    _seal(cache_root, reference)
+
+    with pytest.raises(ProviderRuntimeCacheError):
+        published_data_runtime()
+
+
+def test_concurrent_initial_builds_publish_one_complete_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+
     monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
     monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
     monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
-    monkeypatch.delenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", raising=False)
-    _published_provider_runtime.cache_clear()
-    normal_structured = _execute(ExecutionRequest("query", None, structured))
-    normal_retrosheet = _execute(
-        ExecutionRequest(
-            "retrosheet",
-            "how many times did Nolan Ryan strike out the side in his career",
-            None,
-        )
-    )
-    _prepare_cache(monkeypatch, tmp_path)
-
-    cached_structured = _execute(ExecutionRequest("query", None, structured))
-    cached_retrosheet = _execute(
-        ExecutionRequest(
-            "retrosheet",
-            "how many times did Nolan Ryan strike out the side in his career",
-            None,
-        )
-    )
-
-    assert cached_structured == normal_structured
-    assert cached_retrosheet == normal_retrosheet
-
-
-def test_cached_child_never_rechecks_bundle_rebuilds_csv_or_fingerprints(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _prepare_cache(monkeypatch, tmp_path)
-
-    def forbidden(*_args, **_kwargs):
-        raise AssertionError("expensive verified parent path reached cached child")
-
-    monkeypatch.setattr("baseball_rag.query.runtime.check_release_bundle", forbidden)
-    monkeypatch.setattr("baseball_rag.query.runtime._runtime_for", forbidden)
-    monkeypatch.setattr("baseball_rag.query.runtime._verify_packaged_asset", forbidden)
-    monkeypatch.setattr("baseball_rag.query.runtime._source_fingerprint", forbidden)
-    _published_provider_runtime.cache_clear()
-
-    outcome = _execute(ExecutionRequest("query", "40-40", None))
-
-    assert outcome["kind"] == "completed"
-
-
-def test_cached_database_connection_is_read_only(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _prepare_cache(monkeypatch, tmp_path)
+    _runtime_for.cache_clear()
     runtime = published_data_runtime()
+    cache_root = tmp_path / "concurrent-cache"
+    monkeypatch.setattr(cache, "_CACHE_ROOT", cache_root)
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
+    kwargs = {
+        "source_commit": _source_commit(),
+        "release_bundle_digest": _bundle_digest(),
+        "runtime_configuration_digest": load_runtime_configuration(PROVIDER_CONFIG).digest,
+        "image_build_preparation_seconds": 1.0,
+    }
 
-    with pytest.raises(duckdb.Error):
-        runtime.connection.execute("CREATE TABLE forbidden_write(value INTEGER)")
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        observed = list(
+            executor.map(
+                lambda _index: cache.build_provider_runtime_cache(runtime, **kwargs),
+                range(4),
+            )
+        )
 
-
-@pytest.mark.parametrize(
-    ("mutation", "match"),
-    [
-        (lambda value: value.__setitem__("unknown", True), "shape"),
-        (lambda value: value.__setitem__("database_sha256", "bad"), "digest"),
-        (lambda value: value.__setitem__("database_size_bytes", "1"), "values"),
-        (
-            lambda value: value.__setitem__(
-                "database_size_bytes", value["database_size_bytes"] + 1
-            ),
-            "invalid",
-        ),
-        (lambda value: value.__setitem__("source_commit", "9" * 40), "identity"),
-        (lambda value: value.__setitem__("release_bundle_digest", "8" * 64), "identity"),
-        (lambda value: value.__setitem__("runtime_configuration_digest", "7" * 64), "identity"),
-        (
-            lambda value: value["required_relations"].append("unexpected_relation"),
-            "relation",
-        ),
-    ],
-    ids=[
-        "unknown-sidecar-field",
-        "malformed-digest",
-        "malformed-size",
-        "mismatched-size",
-        "stale-source",
-        "foreign-bundle",
-        "wrong-runtime-config",
-        "extra-relation",
-    ],
-)
-def test_cache_rejects_strict_metadata_mutations(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mutation, match: str
-) -> None:
-    from baseball_rag.provider_runtime_cache import ProviderRuntimeCacheError
-
-    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
-    _rewrite_metadata(cache_root, reference, mutation)
-
-    with pytest.raises(ProviderRuntimeCacheError, match=match):
-        published_data_runtime()
+    assert len(set(observed)) == 1
+    assert {item.name for item in cache_root.iterdir()} == {"pointer.json", observed[0]}
+    assert not list(tmp_path.glob(".concurrent-cache.building-*"))
 
 
-@pytest.mark.parametrize("partial", [False, True], ids=["missing", "partial"])
-def test_cache_rejects_missing_or_partial_sidecar(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, partial: bool
-) -> None:
-    from baseball_rag.provider_runtime_cache import ProviderRuntimeCacheError
-
-    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
-    cache_dir = cache_root / reference
-    metadata = cache_dir / "metadata.json"
-    os.chmod(cache_dir, 0o700)
-    if partial:
-        os.chmod(metadata, 0o600)
-        metadata.write_bytes(b'{"schema_version":')
-        os.chmod(metadata, 0o400)
-    else:
-        metadata.unlink()
-    os.chmod(cache_dir, 0o500)
-    _published_provider_runtime.cache_clear()
-
-    with pytest.raises(ProviderRuntimeCacheError, match="invalid"):
-        published_data_runtime()
-
-
-@pytest.mark.parametrize(
-    ("target", "mode"),
-    [("runtime.duckdb", 0o600), ("metadata.json", 0o440)],
-    ids=["writable-database", "bad-sidecar-mode"],
-)
-def test_cache_rejects_nonminimal_final_file_modes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target: str, mode: int
-) -> None:
-    from baseball_rag.provider_runtime_cache import ProviderRuntimeCacheError
-
-    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
-    cache_dir = cache_root / reference
-    os.chmod(cache_dir, 0o700)
-    os.chmod(cache_dir / target, mode)
-    os.chmod(cache_dir, 0o500)
-    _published_provider_runtime.cache_clear()
-
-    with pytest.raises(ProviderRuntimeCacheError, match="file"):
-        published_data_runtime()
-
-
-def test_cache_rejects_symlink_and_wrong_owner_seam(
+def test_builder_is_idempotent_and_concurrent_callers_observe_one_object(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import baseball_rag.provider_runtime_cache as runtime_cache
+    import baseball_rag.provider_runtime_cache as cache
 
     cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
-    cache_dir = cache_root / reference
-    database = cache_dir / "runtime.duckdb"
-    os.chmod(cache_dir, 0o700)
-    database.unlink()
-    database.symlink_to(BUNDLE / "release-manifest.json")
-    os.chmod(cache_dir, 0o500)
-    _published_provider_runtime.cache_clear()
-    with pytest.raises(runtime_cache.ProviderRuntimeCacheError, match="file"):
-        published_data_runtime()
+    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
+    runtime = published_data_runtime()
+    kwargs = {
+        "source_commit": _source_commit(),
+        "release_bundle_digest": _bundle_digest(),
+        "runtime_configuration_digest": load_runtime_configuration(PROVIDER_CONFIG).digest,
+        "image_build_preparation_seconds": 1.25,
+    }
 
-    monkeypatch.setattr(runtime_cache, "_effective_uid", lambda: os.geteuid() + 1)
-    _published_provider_runtime.cache_clear()
-    with pytest.raises(runtime_cache.ProviderRuntimeCacheError, match="location"):
-        published_data_runtime()
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        observed = list(
+            executor.map(
+                lambda _index: cache.build_provider_runtime_cache(runtime, **kwargs), range(4)
+            )
+        )
+
+    assert observed == [reference] * 4
+    assert {item.name for item in cache_root.iterdir()} == {"pointer.json", reference}
 
 
-def test_cache_rejects_changed_database_bytes_and_user_controlled_path(
+def test_failed_postpublication_validation_removes_new_root_atomically(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from baseball_rag.provider_runtime_cache import ProviderRuntimeCacheError
+    import baseball_rag.provider_runtime_cache as cache
 
-    cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
-    cache_dir = cache_root / reference
-    database = cache_dir / "runtime.duckdb"
-    os.chmod(cache_dir, 0o700)
-    os.chmod(database, 0o600)
-    with database.open("r+b") as stream:
-        stream.seek(-1, os.SEEK_END)
-        final = stream.read(1)
-        stream.seek(-1, os.SEEK_END)
-        stream.write(bytes([final[0] ^ 1]))
-    os.chmod(database, 0o400)
-    os.chmod(cache_dir, 0o500)
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
+    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
+    runtime = published_data_runtime()
+    cache_root = tmp_path / "invalid-published-cache"
+    monkeypatch.setattr(cache, "_CACHE_ROOT", cache_root)
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
+    monkeypatch.setattr(
+        cache,
+        "_validate_root",
+        lambda **_kwargs: (_ for _ in ()).throw(cache.ProviderRuntimeCacheError("invalid")),
+    )
+
+    with pytest.raises(cache.ProviderRuntimeCacheError, match="invalid"):
+        cache.build_provider_runtime_cache(
+            runtime,
+            source_commit=_source_commit(),
+            release_bundle_digest=_bundle_digest(),
+            runtime_configuration_digest=load_runtime_configuration(PROVIDER_CONFIG).digest,
+            image_build_preparation_seconds=0.0,
+        )
+
+    assert not cache_root.exists()
+    assert not list(tmp_path.glob(".invalid-published-cache.building-*"))
+
+
+def test_failed_build_removes_partial_tree_and_publishes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
+    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
+    runtime = published_data_runtime()
+    cache_root = tmp_path / "failed-cache"
+    monkeypatch.setattr(cache, "_CACHE_ROOT", cache_root)
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
+    monkeypatch.setattr(
+        cache, "_copy_database", lambda *_args: (_ for _ in ()).throw(OSError("partial"))
+    )
+    monkeypatch.setenv(cache.CACHE_REFERENCE_ENV, "f" * 64)
+
+    with pytest.raises(OSError, match="partial"):
+        cache.build_provider_runtime_cache(
+            runtime,
+            source_commit=_source_commit(),
+            release_bundle_digest=_bundle_digest(),
+            runtime_configuration_digest=load_runtime_configuration(PROVIDER_CONFIG).digest,
+            image_build_preparation_seconds=0.0,
+        )
+
+    assert cache.CACHE_REFERENCE_ENV not in os.environ
+    assert not cache_root.exists()
+    assert not list(tmp_path.glob(".failed-cache.building-*"))
+
+
+def test_provider_runtime_rejects_arbitrary_bundle_and_configuration_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from baseball_rag.query.runtime import PublishedDataUnavailableError
+
+    foreign_config = tmp_path / "runtime.json"
+    foreign_config.write_bytes(PROVIDER_CONFIG.read_bytes())
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
+    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(foreign_config))
     _published_provider_runtime.cache_clear()
-    with pytest.raises(ProviderRuntimeCacheError, match="invalid"):
+
+    with pytest.raises(PublishedDataUnavailableError, match="fixed image paths"):
         published_data_runtime()
-
-    monkeypatch.setenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", "/tmp/user-selected.duckdb")
-    _published_provider_runtime.cache_clear()
-    with pytest.raises(ProviderRuntimeCacheError, match="digest"):
-        published_data_runtime()
+    assert _execute(ExecutionRequest("unsupported", "anything", None)) == {"kind": "failed"}
 
 
-def test_local_ci_ignores_cache_reference_and_keeps_full_bundle_verification(
+def test_local_ci_ignores_fixed_provider_cache_and_keeps_full_bundle_verification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import baseball_rag.query.runtime as query_runtime
 
     observed: list[Path | str] = []
-    original_check = query_runtime.check_release_bundle
+    original = query_runtime.check_release_bundle
 
-    def recording_check(path):
+    def recording(path, **kwargs):
         observed.append(path)
-        return original_check(path)
+        return original(path, **kwargs)
 
-    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
     monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
     monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
     monkeypatch.setenv(
         "GROUNDBALL_RUNTIME_CONFIG", str(ROOT / "release/config/local-ci-runtime.json")
     )
     monkeypatch.setenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", "f" * 64)
-    monkeypatch.setattr(query_runtime, "check_release_bundle", recording_check)
+    monkeypatch.setattr(query_runtime, "check_release_bundle", recording)
     _published_provider_runtime.cache_clear()
 
-    runtime = published_data_runtime()
-
-    assert runtime.connection is not None
+    assert published_data_runtime().connection is not None
     assert observed == [str(BUNDLE)]
-
-
-def test_failed_cache_build_publishes_nothing_and_removes_partial_files(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    import baseball_rag.provider_runtime_cache as runtime_cache
-
-    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
-    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
-    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
-    monkeypatch.setenv("GROUNDBALL_PROVIDER_RUNTIME_CACHE", "f" * 64)
-    _published_provider_runtime.cache_clear()
-    runtime = published_data_runtime()
-    configuration = load_runtime_configuration(PROVIDER_CONFIG)
-    cache_root = tmp_path / "failed-cache"
-    monkeypatch.setattr(runtime_cache, "_CACHE_ROOT", cache_root)
-    monkeypatch.setattr(
-        runtime_cache,
-        "_copy_database",
-        lambda *_args: (_ for _ in ()).throw(OSError("sensitive partial failure")),
-    )
-
-    with pytest.raises(OSError, match="partial failure"):
-        runtime_cache.prepare_provider_runtime_cache(
-            runtime,
-            source_commit=_source_commit(),
-            release_bundle_digest=hashlib.sha256(
-                (BUNDLE / "release-manifest.json").read_bytes()
-            ).hexdigest(),
-            runtime_configuration_digest=configuration.digest,
-        )
-
-    assert "GROUNDBALL_PROVIDER_RUNTIME_CACHE" not in os.environ
-    assert list(cache_root.iterdir()) == []

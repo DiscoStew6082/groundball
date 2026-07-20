@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 import os
 import sys
 import time
@@ -12,6 +14,7 @@ import pytest
 from baseball_rag.public_execution import (
     ExecutionRequest,
     SubprocessExecutionRunner,
+    main,
 )
 
 
@@ -107,6 +110,29 @@ def test_timeout_terminates_and_reaps_work_instead_of_leaving_a_thread(
     pid = int(pid_path.read_text(encoding="utf-8"))
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+def test_worker_eagerly_activates_provider_cache_before_parsing_unsupported_input(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[str] = []
+
+    def unavailable() -> None:
+        calls.append("activate")
+        raise RuntimeError("sensitive cache path")
+
+    class Input:
+        buffer = io.BytesIO(b'{"operation":"unsupported"}')
+
+    monkeypatch.setattr(
+        "baseball_rag.provider_runtime_cache.require_provider_runtime_cache_for_worker",
+        unavailable,
+    )
+    monkeypatch.setattr(sys, "stdin", Input())
+
+    assert main() == 2
+    assert calls == ["activate"]
+    assert json.loads(capsys.readouterr().out) == {"kind": "failed"}
 
 
 def test_failed_worker_never_exposes_sensitive_stderr() -> None:
