@@ -121,7 +121,7 @@ def run_probe() -> dict[str, object]:
     export_recipe["output"] = {"kind": "export", "format": "json"}
     status, exported = _post("/api/query-runs", {"recipe": export_recipe})
     assert status == 200 and exported["kind"] == "exported"
-    assert exported["total_matched_count"] == 1
+    assert exported["evidence"]["matched_row_count"] == 1
     checks.append("complete-export-envelope")
 
     for question, template in (
