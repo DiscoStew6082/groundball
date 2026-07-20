@@ -65,6 +65,7 @@ class _ProviderInitialization:
         self._state: Literal["initializing", "ready", "failed"] = "initializing"
         self._readiness: ReleaseReadiness | None = None
         self._task: asyncio.Task[None] | None = None
+        self._completion = asyncio.Event()
 
     def snapshot(
         self,
@@ -87,10 +88,18 @@ class _ProviderInitialization:
             with self._lock:
                 self._state = "failed"
                 self._readiness = None
+            self._completion.set()
             return
         with self._lock:
             self._readiness = readiness
             self._state = "ready"
+        self._completion.set()
+
+    async def wait_for_completion(
+        self, timeout_seconds: float
+    ) -> tuple[Literal["initializing", "ready", "failed"], ReleaseReadiness | None]:
+        await asyncio.wait_for(self._completion.wait(), timeout=timeout_seconds)
+        return self.snapshot()
 
     async def shutdown(self) -> None:
         with self._lock:
@@ -151,6 +160,8 @@ _REPOSITORY_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 _PACKAGE_WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
 _PUBLIC_VISITOR_COOKIE = VISITOR_COOKIE_NAME
 _PUBLIC_EXECUTION_DEADLINE_SECONDS = float(EXECUTION_DEADLINE_SECONDS)
+# Covers the observed 13.6-second provider cold initialization without an unbounded wait.
+_PROVIDER_READINESS_WAIT_SECONDS = 30.0
 _BLOB_CONFIGURATION_ENV_VARS = frozenset(
     {
         "BLOB_READ_WRITE_TOKEN",
@@ -440,19 +451,32 @@ async def _query_cors_middleware(request: Request, call_next):
     return response
 
 
+def _provider_unavailable_response() -> JSONResponse:
+    return JSONResponse(
+        {
+            "error": "service_unavailable",
+            "detail": "Ground Ball is not ready.",
+        },
+        status_code=503,
+    )
+
+
 @app.middleware("http")
 async def _provider_readiness_middleware(request: Request, call_next):
     is_health_check = request.method == "GET" and request.url.path == _PUBLIC_HEALTH_PATH
     if _provider_deployment_enabled() and not is_health_check:
-        state, _readiness = _provider_initialization.snapshot()
-        if state != "ready":
-            return JSONResponse(
-                {
-                    "error": "service_unavailable",
-                    "detail": "Ground Ball is not ready.",
-                },
-                status_code=503,
-            )
+        state, readiness = _provider_initialization.snapshot()
+        if state == "failed" or (state == "ready" and readiness is None):
+            return _provider_unavailable_response()
+        if state == "initializing":
+            try:
+                state, readiness = await _provider_initialization.wait_for_completion(
+                    _PROVIDER_READINESS_WAIT_SECONDS
+                )
+            except (TimeoutError, asyncio.CancelledError):
+                return _provider_unavailable_response()
+            if state != "ready" or readiness is None:
+                return _provider_unavailable_response()
     return await call_next(request)
 
 

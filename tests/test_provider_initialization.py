@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from threading import Event, Lock
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 import baseball_rag.api.server as api_server
 from baseball_rag.api.server import app
+from baseball_rag.public_admission import AdmissionOutcome
 from baseball_rag.public_admission_blob import BlobProviderError, OidcBlobCredentialProvider
+from baseball_rag.public_execution import ExecutionOutcome
 from baseball_rag.public_release_config import RuntimeConfiguration
 from baseball_rag.release_runtime import ReleaseReadiness
 
@@ -74,8 +79,11 @@ def test_provider_lifespan_yields_while_initializer_is_blocked_beyond_fifteen_se
     with TestClient(app) as client:
         startup_seconds = time.monotonic() - before
         assert started.wait(timeout=1)
+        before_health = time.monotonic()
         response = client.get("/health")
+        health_seconds = time.monotonic() - before_health
         assert startup_seconds < 1
+        assert health_seconds < 1
         assert response.status_code == 503
         assert response.json() == {"status": "initializing"}
 
@@ -120,11 +128,12 @@ def test_provider_lifespan_without_startup_oidc_constructs_admission_and_yields(
             release.set()
 
 
-def test_every_non_health_public_surface_is_fixed_503_before_provider_readiness(
+def test_direct_browser_request_waits_for_local_readiness_then_serves_html(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     started = Event()
     release = Event()
+    request_started = Event()
 
     def blocked_initializer() -> ReleaseReadiness:
         started.set()
@@ -133,56 +142,97 @@ def test_every_non_health_public_surface_is_fixed_503_before_provider_readiness(
 
     configure_provider_lifespan(monkeypatch, blocked_initializer)
 
-    class ForbiddenRunner:
-        def run(self, *_args, **_kwargs):
-            raise AssertionError("query execution started before readiness")
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
+        assert started.wait(timeout=1)
 
-    def forbidden(*_args, **_kwargs):
-        raise AssertionError("admission or public data access started before readiness")
+        def get_root():
+            request_started.set()
+            return client.get("/")
 
-    monkeypatch.setattr(api_server, "_public_execution_runner", ForbiddenRunner())
-    monkeypatch.setattr(api_server, "_shared_public_admission_components", forbidden)
-    monkeypatch.setattr(api_server, "_web_dist_path", forbidden)
-    monkeypatch.setattr("baseball_rag.query.adapters.catalog_payload", forbidden)
-    monkeypatch.setattr("baseball_rag.query.coverage.load_passing_coverage_report", forbidden)
-
-    expected = {
-        "error": "service_unavailable",
-        "detail": "Ground Ball is not ready.",
-    }
-    requests = (
-        ("POST", "/health", None),
-        ("GET", "/", None),
-        ("GET", "/api/capabilities", None),
-        ("GET", "/api/query-catalog", None),
-        ("GET", "/api/query-coverage", None),
-        ("GET", "/coverage-report", None),
-        ("GET", "/api/release-readiness", None),
-        ("POST", "/api/query-runs", {"question": "who had the most RBIs in 1962"}),
-        (
-            "POST",
-            "/api/query-runs",
-            {
-                "recipe": {
-                    "source": "TeamReference",
-                    "grain": "raw_rows",
-                    "selections": ["TeamReference.name"],
-                    "output": {"kind": "export", "format": "json"},
-                }
-            },
-        ),
-        ("POST", "/api/retrosheet/queries", {"question": "any question"}),
-    )
-
-    with TestClient(app) as client:
+        pending_response = executor.submit(get_root)
         try:
-            assert started.wait(timeout=1)
-            for method, path, body in requests:
-                response = client.request(method, path, json=body)
-                assert response.status_code == 503, path
-                assert response.json() == expected, path
+            assert request_started.wait(timeout=1)
+            with pytest.raises(FutureTimeoutError):
+                pending_response.result(timeout=0.1)
         finally:
             release.set()
+        response = pending_response.result(timeout=2)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Ground Ball" in response.text
+
+
+def test_direct_api_request_waits_for_local_readiness_then_serves_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+    request_started = Event()
+
+    def blocked_initializer() -> ReleaseReadiness:
+        started.set()
+        assert release.wait(timeout=30)
+        return readiness()
+
+    configure_provider_lifespan(monkeypatch, blocked_initializer)
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
+        assert started.wait(timeout=1)
+
+        def get_capabilities():
+            request_started.set()
+            return client.get("/api/capabilities")
+
+        pending_response = executor.submit(get_capabilities)
+        try:
+            assert request_started.wait(timeout=1)
+            with pytest.raises(FutureTimeoutError):
+                pending_response.result(timeout=0.1)
+        finally:
+            release.set()
+        response = pending_response.result(timeout=2)
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Ground Ball"
+    assert response.json()["mode"] == "public"
+
+
+def test_concurrent_cold_requests_coalesce_behind_one_initializer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+    calls = 0
+    calls_lock = Lock()
+
+    def blocked_initializer() -> ReleaseReadiness:
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        started.set()
+        assert release.wait(timeout=30)
+        return readiness()
+
+    configure_provider_lifespan(monkeypatch, blocked_initializer)
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=8) as executor:
+        assert started.wait(timeout=1)
+        requests = tuple(
+            executor.submit(client.get, "/" if index % 2 == 0 else "/api/capabilities")
+            for index in range(8)
+        )
+        try:
+            for pending_response in requests:
+                with pytest.raises(FutureTimeoutError):
+                    pending_response.result(timeout=0.05)
+            assert calls == 1
+        finally:
+            release.set()
+        responses = tuple(pending.result(timeout=2) for pending in requests)
+
+    assert calls == 1
+    assert all(response.status_code == 200 for response in responses)
 
 
 def test_provider_background_initialization_performs_only_local_bundle_readiness(
@@ -275,41 +325,185 @@ def test_provider_initializer_cannot_mark_an_invalid_readiness_object_ready(
     assert health.json() == {"status": "failed"}
 
 
-def test_provider_initialization_failure_is_permanent_fixed_and_secret_safe(
+def test_provider_initialization_failure_wakes_all_waiters_with_fixed_secret_safe_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    started = Event()
+    fail = Event()
     calls = 0
     secret = "super-secret-token /private/release/bundle"
 
     def failing_initializer() -> ReleaseReadiness:
         nonlocal calls
         calls += 1
+        started.set()
+        assert fail.wait(timeout=30)
         raise RuntimeError(secret)
 
     configure_provider_lifespan(monkeypatch, failing_initializer)
-
-    with TestClient(app) as client:
-        for _ in range(100):
-            health = client.get("/health")
-            if health.json() == {"status": "failed"}:
-                break
-            time.sleep(0.01)
-        public_response = client.get("/api/release-readiness")
-        repeated_health = tuple(client.get("/health") for _ in range(10))
-
-    assert health.status_code == 503
-    assert health.json() == {"status": "failed"}
-    assert public_response.status_code == 503
-    assert public_response.json() == {
+    expected = {
         "error": "service_unavailable",
         "detail": "Ground Ball is not ready.",
     }
-    rendered = public_response.text + health.text + "".join(item.text for item in repeated_health)
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=6) as executor:
+        assert started.wait(timeout=1)
+        waiters = tuple(executor.submit(client.get, "/api/capabilities") for _ in range(6))
+        try:
+            for waiter in waiters:
+                with pytest.raises(FutureTimeoutError):
+                    waiter.result(timeout=0.05)
+        finally:
+            fail.set()
+        responses = tuple(waiter.result(timeout=2) for waiter in waiters)
+        health = client.get("/health")
+        repeated = tuple(client.get("/api/release-readiness") for _ in range(3))
+
+    assert health.status_code == 503
+    assert health.json() == {"status": "failed"}
+    assert all(response.status_code == 503 for response in responses + repeated)
+    assert all(response.json() == expected for response in responses + repeated)
+    rendered = health.text + "".join(response.text for response in responses + repeated)
     assert secret not in rendered
     assert "token" not in rendered
     assert "/private" not in rendered
     assert calls == 1
-    assert all(item.status_code == 503 for item in repeated_health)
+
+
+def test_cold_request_timeout_does_not_cancel_or_restart_initializer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+    calls = 0
+
+    def blocked_initializer() -> ReleaseReadiness:
+        nonlocal calls
+        calls += 1
+        started.set()
+        assert release.wait(timeout=30)
+        return readiness()
+
+    configure_provider_lifespan(monkeypatch, blocked_initializer)
+    monkeypatch.setattr(api_server, "_PROVIDER_READINESS_WAIT_SECONDS", 0.05)
+
+    with TestClient(app) as client:
+        try:
+            assert started.wait(timeout=1)
+            timed_out = client.get("/")
+            assert timed_out.status_code == 503
+            assert timed_out.json() == {
+                "error": "service_unavailable",
+                "detail": "Ground Ball is not ready.",
+            }
+            assert client.get("/health").json() == {"status": "initializing"}
+            assert calls == 1
+        finally:
+            release.set()
+
+        for _ in range(100):
+            health = client.get("/health")
+            if health.status_code == 200:
+                break
+            time.sleep(0.01)
+        later = client.get("/")
+
+    assert health.status_code == 200
+    assert later.status_code == 200
+    assert calls == 1
+
+
+def test_query_body_admission_oidc_and_execution_deadline_begin_only_after_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+    request_oidc = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJjb2xkIn0.request-signature"
+    provider = OidcBlobCredentialProvider()
+    admission_calls: list[float] = []
+    execution_timeouts: list[float] = []
+
+    def blocked_initializer() -> ReleaseReadiness:
+        started.set()
+        assert release.wait(timeout=30)
+        return readiness()
+
+    class RecordingCoordinator:
+        def admit(self, _attempt):
+            admission_calls.append(time.monotonic())
+            return AdmissionOutcome("admitted", "admitted")
+
+        def release(self, _run_id):
+            return None
+
+    class RecordingRunner:
+        def run(self, _execution, *, timeout_seconds: float):
+            execution_timeouts.append(timeout_seconds)
+            return ExecutionOutcome("completed", payload={"kind": "rows", "rows": []})
+
+    coordinator = RecordingCoordinator()
+
+    def request_scoped_components():
+        try:
+            assert provider.resolve() == request_oidc
+        except BlobProviderError:
+            raise RuntimeError("request-scoped Blob credential unavailable") from None
+        return coordinator, b"x" * 32
+
+    configure_provider_lifespan(monkeypatch, blocked_initializer)
+    monkeypatch.setattr(
+        api_server, "_shared_public_admission_components", request_scoped_components
+    )
+    monkeypatch.setattr(api_server, "_public_execution_runner", RecordingRunner())
+
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as executor:
+        assert started.wait(timeout=1)
+        query = executor.submit(
+            client.post,
+            "/api/query-runs",
+            json={"question": "who had the most RBIs in 1962"},
+            headers={"x-vercel-oidc-token": request_oidc},
+        )
+        oversized = executor.submit(
+            client.post,
+            "/api/query-runs",
+            content=b"{" + b"x" * 16_384,
+            headers={"content-type": "application/json"},
+        )
+        try:
+            with pytest.raises(FutureTimeoutError):
+                query.result(timeout=0.1)
+            with pytest.raises(FutureTimeoutError):
+                oversized.result(timeout=0.1)
+            assert admission_calls == []
+            assert execution_timeouts == []
+        finally:
+            release.set()
+
+        query_response = query.result(timeout=2)
+        oversized_response = oversized.result(timeout=2)
+        missing = client.post("/api/query-runs", json={"question": "who had the most RBIs in 1962"})
+        invalid = client.post(
+            "/api/query-runs",
+            json={"question": "who had the most RBIs in 1962"},
+            headers={"x-vercel-oidc-token": "not-a-jwt"},
+        )
+
+    assert query_response.status_code == 200
+    assert oversized_response.status_code == 413
+    assert oversized_response.json()["error"] == "request_too_large"
+    assert len(admission_calls) == 1
+    assert len(execution_timeouts) == 1
+    assert 9.5 < execution_timeouts[0] <= 10
+    assert missing.status_code == 503
+    assert invalid.status_code == 503
+    assert missing.json() == {
+        "error": "provider_unavailable",
+        "detail": "Ground Ball's public admission service is unavailable.",
+    }
+    assert invalid.json() == missing.json()
+    with pytest.raises(BlobProviderError):
+        provider.resolve()
 
 
 def test_concurrent_initializing_health_checks_never_start_a_second_initializer(
@@ -340,6 +534,67 @@ def test_concurrent_initializing_health_checks_never_start_a_second_initializer(
             assert calls == 1
         finally:
             release.set()
+
+
+def test_cancelled_cold_request_returns_fixed_503_and_shutdown_leaks_no_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+    initialization = api_server._ProviderInitialization()
+
+    def blocked_initializer() -> ReleaseReadiness:
+        started.set()
+        assert release.wait(timeout=30)
+        return readiness()
+
+    monkeypatch.setattr(api_server, "_public_runtime_configuration", provider_configuration())
+    monkeypatch.setattr(api_server, "_provider_initialization", initialization)
+
+    async def scenario() -> None:
+        initialization.start(blocked_initializer)
+        assert await asyncio.to_thread(started.wait, 1)
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "https",
+                "path": "/",
+                "root_path": "",
+                "query_string": b"",
+                "headers": [],
+                "client": ("test", 1),
+                "server": ("testserver", 443),
+            }
+        )
+
+        async def forbidden_call_next(_request):
+            raise AssertionError("cancelled cold request must not reach the application")
+
+        pending = asyncio.create_task(
+            api_server._provider_readiness_middleware(request, forbidden_call_next)
+        )
+        await asyncio.sleep(0)
+        pending.cancel()
+        response = await pending
+
+        assert response.status_code == 503
+        assert response.body == (
+            b'{"error":"service_unavailable","detail":"Ground Ball is not ready."}'
+        )
+        assert initialization.snapshot()[0] == "initializing"
+
+        release.set()
+        await initialization.shutdown()
+        assert initialization.snapshot() == ("ready", readiness())
+        current = asyncio.current_task()
+        assert all(task is current or task.done() for task in asyncio.all_tasks())
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
 
 
 def test_local_ci_release_startup_remains_synchronous_and_fail_closed(
