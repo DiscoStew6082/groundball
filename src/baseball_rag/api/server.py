@@ -711,7 +711,9 @@ def _set_server_timing(
             if math.isfinite(duration_ms) and duration_ms >= 0:
                 metrics.append(f"{name};dur={duration_ms:.3f}")
         if metrics:
-            response.headers["Server-Timing"] = ", ".join(metrics)
+            metric_value = ", ".join(metrics)
+            response.headers["Server-Timing"] = metric_value
+            response.headers["X-Groundball-Timing"] = metric_value
     except Exception:
         return
 

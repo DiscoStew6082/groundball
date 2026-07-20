@@ -613,6 +613,7 @@ def test_public_query_run_success_exposes_safe_phase_timing(
     assert response.headers["server-timing"] == (
         "admission;dur=100.000, execution;dur=2500.000, release;dur=200.000, total;dur=3100.000"
     )
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
 
 
 def test_execution_timing_start_failure_preserves_response_deadline_and_release(
@@ -643,6 +644,7 @@ def test_execution_timing_start_failure_preserves_response_deadline_and_release(
         "admission;dur=100.000, release;dur=100.000, total;dur=600.000"
     )
     assert "execution" not in response.headers["server-timing"]
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
     assert runner.timeouts == [9.75]
     state, _version = store.read()
     assert state.running == ()
@@ -667,6 +669,7 @@ def test_timing_failure_does_not_change_response_or_skip_release(
     assert response.status_code == 200
     assert response.json() == {"kind": "rows", "rows": []}
     assert "release" not in response.headers["server-timing"]
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
     state, _version = store.read()
     assert state.running == ()
 
@@ -682,6 +685,23 @@ def test_public_timing_omits_nonfinite_and_negative_phase_durations(
 
     assert response.status_code == 200
     assert response.headers["server-timing"] == "total;dur=400.000"
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
+    state, _version = store.read()
+    assert state.running == ()
+
+
+def test_public_timing_headers_are_omitted_without_any_valid_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _runner = configure_public_proof(monkeypatch)
+    ticks = iter((100.0, 101.0, 100.0, 102.0, 101.0, 104.0, 103.0, 100.0))
+    monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert "server-timing" not in response.headers
+    assert "x-groundball-timing" not in response.headers
     state, _version = store.read()
     assert state.running == ()
 
@@ -698,6 +718,7 @@ def test_public_admission_refusal_exposes_only_measured_phase_timing(
     assert response.status_code == 503
     assert response.json()["reason"] == "monthly_start_budget_exhausted"
     assert response.headers["server-timing"] == ("admission;dur=500.000, total;dur=600.000")
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
     assert "execution" not in response.headers["server-timing"]
     assert "release" not in response.headers["server-timing"]
 
