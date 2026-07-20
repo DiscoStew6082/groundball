@@ -194,6 +194,7 @@ _public_runtime_configuration: RuntimeConfiguration | None = None
 _public_execution_runner = SubprocessExecutionRunner()
 _provider_initialization = _ProviderInitialization()
 _monotonic = time.monotonic
+_deadline_monotonic = time.monotonic
 
 
 def configure_public_admission(
@@ -453,6 +454,9 @@ async def _query_cors_middleware(request: Request, call_next):
     )
     if is_public_query_request:
         request.state.public_execution_deadline = _monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+        request.state.public_execution_fallback_deadline = (
+            _deadline_monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+        )
     if is_public_query_request and len(await request.body()) > _PUBLIC_QUERY_REQUEST_BYTES:
         refusal = JSONResponse(
             {
@@ -625,6 +629,9 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
     deadline = getattr(request.state, "public_execution_deadline", None)
     if deadline is None:
         deadline = request_started + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+    fallback_deadline = getattr(request.state, "public_execution_fallback_deadline", None)
+    if fallback_deadline is None:
+        fallback_deadline = _deadline_monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
     visitor_token = request.cookies.get(_PUBLIC_VISITOR_COOKIE)
     new_visitor = visitor_token is None
     if visitor_token is None:
@@ -639,9 +646,13 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
     if admission.kind != "admitted":
         response = _admission_refusal_response(admission)
     else:
-        execution_started = _monotonic()
-        remaining = deadline - execution_started
+        execution_started: float | None = None
         try:
+            execution_started = _safe_timing_now()
+            if execution_started is None:
+                remaining = fallback_deadline - _deadline_monotonic()
+            else:
+                remaining = deadline - execution_started
             try:
                 execution_outcome = (
                     _public_execution_runner.run(execution, timeout_seconds=remaining)

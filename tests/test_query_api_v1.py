@@ -35,6 +35,7 @@ class RecordingRunner:
     def __init__(self, outcome: ExecutionOutcome) -> None:
         self.outcome = outcome
         self.requests: list[ExecutionRequest] = []
+        self.timeouts: list[float] = []
 
     def run(
         self,
@@ -44,6 +45,7 @@ class RecordingRunner:
     ) -> ExecutionOutcome:
         assert 0 < timeout_seconds <= 10
         self.requests.append(request)
+        self.timeouts.append(timeout_seconds)
         return self.outcome
 
 
@@ -611,6 +613,39 @@ def test_public_query_run_success_exposes_safe_phase_timing(
     assert response.headers["server-timing"] == (
         "admission;dur=100.000, execution;dur=2500.000, release;dur=200.000, total;dur=3100.000"
     )
+
+
+def test_execution_timing_start_failure_preserves_response_deadline_and_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, runner = configure_public_proof(monkeypatch)
+    diagnostic_ticks = iter(
+        (80.0, 80.1, 80.2, RuntimeError("clock failed"), 80.4, 80.5, 80.6, 80.7)
+    )
+    deadline_ticks = iter((100.0, 100.25))
+
+    def diagnostic_monotonic() -> float:
+        tick = next(diagnostic_ticks)
+        if isinstance(tick, Exception):
+            raise tick
+        return tick
+
+    monkeypatch.setattr(api_server, "_monotonic", diagnostic_monotonic, raising=False)
+    monkeypatch.setattr(
+        api_server, "_deadline_monotonic", lambda: next(deadline_ticks), raising=False
+    )
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert response.json() == {"kind": "rows", "rows": []}
+    assert response.headers["server-timing"] == (
+        "admission;dur=100.000, release;dur=100.000, total;dur=600.000"
+    )
+    assert "execution" not in response.headers["server-timing"]
+    assert runner.timeouts == [9.75]
+    state, _version = store.read()
+    assert state.running == ()
 
 
 def test_timing_failure_does_not_change_response_or_skip_release(
