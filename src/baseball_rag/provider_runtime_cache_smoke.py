@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import math
 import os
@@ -18,9 +20,13 @@ from baseball_rag.public_release_config import (
 )
 from baseball_rag.release_runtime import release_readiness
 
-SMOKE_SCHEMA_VERSION = "ground-ball-provider-runtime-cache-smoke-v2"
-_EXPECTED_COLUMNS = ["player.name", "season", "batting.HR", "batting.SB"]
-_EXPECTED_ROWS = [
+SMOKE_SCHEMA_VERSION = "ground-ball-provider-runtime-cache-smoke-v3"
+_CANONICAL_COLUMNS = ("player.name", "season", "batting.HR", "batting.SB")
+_CANONICAL_CATALOG_REVISION = "published-query-catalog-v3"
+_CANONICAL_DATA_RELEASE = "neuml-baseballdata:lahman-2025:2026-01-11"
+_CANONICAL_SQL_SHA256 = "8cf16a156d1862a425150371ca69a29e9882f3adc9973a1c3ab085be6d4eed74"
+_CANONICAL_RESULT_FINGERPRINT = "e87866bf1c3211159214d54076f4485a70c5feae7714da0e40af887e728e39c3"
+_CANONICAL_ROWS = [
     {"player.name": "Jose Canseco", "season": 1988, "batting.HR": 42, "batting.SB": 40},
     {"player.name": "Barry Bonds", "season": 1996, "batting.HR": 42, "batting.SB": 40},
     {"player.name": "Alex Rodriguez", "season": 1998, "batting.HR": 42, "batting.SB": 46},
@@ -28,6 +34,46 @@ _EXPECTED_ROWS = [
     {"player.name": "Ronald Acuña", "season": 2023, "batting.HR": 41, "batting.SB": 73},
     {"player.name": "Shohei Ohtani", "season": 2024, "batting.HR": 54, "batting.SB": 59},
 ]
+_CANONICAL_SOURCES = [
+    {
+        "expected_rows": 128598,
+        "identity": "Batting",
+        "kind": "packaged_lahman_table",
+        "release": _CANONICAL_DATA_RELEASE,
+        "row_fingerprint": ("ee818d76adbb35e555f1520147dc064c04382c108d0c2bc3f59b18a3a2213e1a"),
+        "sha256": "007551e2fe3072aff396a8573de61dceabe14dbf8de20038c8b60e2abe16978f",
+    },
+    {
+        "expected_rows": 24270,
+        "identity": "People",
+        "kind": "packaged_lahman_table",
+        "release": _CANONICAL_DATA_RELEASE,
+        "row_fingerprint": ("3a222112cb582f48cd7ff917b292135fad288a6227357306860e4b0dabc7ca71"),
+        "sha256": "a3c6b79e388b509ddbe4097ccf4026856b7fe07f4b3b41fbe3a8551b3f516c20",
+    },
+]
+_CANONICAL_ORDERING = [
+    {"direction": "ascending", "nulls": "last", "value": "season"},
+    {"direction": "ascending", "nulls": "last", "value": "player.name"},
+]
+_CANONICAL_PREDICATE = {
+    "kind": "all",
+    "predicates": [
+        {
+            "kind": "compare",
+            "literal": 40,
+            "operator": "greater_or_equal",
+            "value": "batting.HR",
+        },
+        {
+            "kind": "compare",
+            "literal": 40,
+            "operator": "greater_or_equal",
+            "value": "batting.SB",
+        },
+    ],
+}
+_CANONICAL_OUTPUT = {"kind": "interactive_page", "offset": 0, "size": 25}
 
 
 class ProviderRuntimeCacheSmokeError(ValueError):
@@ -42,22 +88,59 @@ def validate_provider_runtime_cache_smoke(
     expected_runtime_configuration_digest: str,
     expected_coverage: Mapping[str, object],
 ) -> dict[str, object]:
-    """Validate one exact canonical 40-40 provider-cache smoke document."""
+    """Validate the full exact canonical 40-40 worker payload and image evidence."""
     document = _smoke_document(payload)
-    if set(document) != {
-        "coverage",
-        "identity",
-        "outcome",
-        "schema_version",
-        "status",
-        "timing",
-    }:
+    if set(document) != {"identity", "query_proof", "schema_version", "status", "timing"}:
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke shape is invalid.")
     if document.get("schema_version") != SMOKE_SCHEMA_VERSION or document.get("status") != "pass":
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke status is invalid.")
 
-    identity = document.get("identity")
-    if not isinstance(identity, dict) or set(identity) != {
+    _validate_identity(
+        document.get("identity"),
+        expected_source_commit=expected_source_commit,
+        expected_release_bundle_digest=expected_release_bundle_digest,
+        expected_runtime_configuration_digest=expected_runtime_configuration_digest,
+    )
+    _validate_timing(document.get("timing"))
+    _validate_query_proof(document.get("query_proof"), expected_coverage=expected_coverage)
+    return document
+
+
+def build_provider_runtime_cache_smoke(
+    *,
+    worker_payload: Mapping[str, object],
+    identity: Mapping[str, object],
+    timing: Mapping[str, object],
+    expected_source_commit: str,
+    expected_release_bundle_digest: str,
+    expected_runtime_configuration_digest: str,
+    expected_coverage: Mapping[str, object],
+) -> dict[str, object]:
+    """Preserve observed worker material verbatim and validate it before publication."""
+    document: dict[str, object] = {
+        "identity": copy.deepcopy(dict(identity)),
+        "query_proof": copy.deepcopy(dict(worker_payload)),
+        "schema_version": SMOKE_SCHEMA_VERSION,
+        "status": "pass",
+        "timing": copy.deepcopy(dict(timing)),
+    }
+    return validate_provider_runtime_cache_smoke(
+        document,
+        expected_source_commit=expected_source_commit,
+        expected_release_bundle_digest=expected_release_bundle_digest,
+        expected_runtime_configuration_digest=expected_runtime_configuration_digest,
+        expected_coverage=expected_coverage,
+    )
+
+
+def _validate_identity(
+    value: object,
+    *,
+    expected_source_commit: str,
+    expected_release_bundle_digest: str,
+    expected_runtime_configuration_digest: str,
+) -> None:
+    if not isinstance(value, dict) or set(value) != {
         "cache_metadata_sha256",
         "cache_reference",
         "database_sha256",
@@ -67,12 +150,12 @@ def validate_provider_runtime_cache_smoke(
     }:
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke identity is invalid.")
     if (
-        identity.get("source_commit") != expected_source_commit
-        or identity.get("release_bundle_digest") != expected_release_bundle_digest
-        or identity.get("runtime_configuration_digest") != expected_runtime_configuration_digest
-        or not _commit(identity.get("source_commit"))
+        value.get("source_commit") != expected_source_commit
+        or value.get("release_bundle_digest") != expected_release_bundle_digest
+        or value.get("runtime_configuration_digest") != expected_runtime_configuration_digest
+        or not _commit(value.get("source_commit"))
         or any(
-            not _digest(identity.get(key))
+            not _digest(value.get(key))
             for key in (
                 "cache_metadata_sha256",
                 "cache_reference",
@@ -81,51 +164,152 @@ def validate_provider_runtime_cache_smoke(
                 "runtime_configuration_digest",
             )
         )
-        or identity.get("cache_metadata_sha256") != identity.get("cache_reference")
+        or value.get("cache_metadata_sha256") != value.get("cache_reference")
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke identity is invalid.")
 
-    coverage = document.get("coverage")
-    if (
-        not isinstance(coverage, dict)
-        or set(coverage) != {"proof_id", "proof_identity"}
-        or not _digest(coverage.get("proof_id"))
-        or coverage != dict(expected_coverage)
-    ):
-        raise ProviderRuntimeCacheSmokeError("Provider cache smoke coverage identity is invalid.")
 
-    timing = document.get("timing")
-    if not isinstance(timing, dict) or set(timing) != {
+def _validate_timing(value: object) -> None:
+    if not isinstance(value, dict) or set(value) != {
         "activation_validation_seconds",
         "image_build_preparation_seconds",
         "worker_seconds",
     }:
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke timing is invalid.")
-    if any(not _nonnegative_finite(timing.get(key)) for key in timing) or not (
-        float(timing["worker_seconds"]) < EXECUTION_DEADLINE_SECONDS
+    if any(not _nonnegative_finite(value.get(key)) for key in value) or not (
+        float(value["worker_seconds"]) < EXECUTION_DEADLINE_SECONDS
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke timing is invalid.")
 
-    outcome = document.get("outcome")
-    if not isinstance(outcome, dict) or set(outcome) != {
-        "columns",
+
+def _validate_query_proof(value: object, *, expected_coverage: Mapping[str, object]) -> None:
+    if not isinstance(value, dict) or set(value) != {
+        "evidence",
         "kind",
-        "payload_kind",
+        "pagination",
+        "plan",
+        "recipe",
         "returned_row_count",
         "rows",
         "total_matched_count",
+        "verification",
     }:
-        raise ProviderRuntimeCacheSmokeError("Provider cache smoke outcome is invalid.")
-    if outcome != {
-        "columns": _EXPECTED_COLUMNS,
-        "kind": "completed",
-        "payload_kind": "rows",
-        "returned_row_count": 6,
-        "rows": _EXPECTED_ROWS,
-        "total_matched_count": 6,
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke query proof is invalid.")
+    recipe = value.get("recipe")
+    plan = value.get("plan")
+    rows = value.get("rows")
+    if (
+        not isinstance(recipe, dict)
+        or not isinstance(plan, dict)
+        or not isinstance(rows, list)
+        or recipe != _canonical_recipe()
+        or plan != _canonical_plan()
+        or rows != _CANONICAL_ROWS
+    ):
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke canonical query is invalid.")
+    recipe_columns = tuple(recipe["selections"])
+    plan_columns = tuple(plan["selections"])
+    row_columns = [set(row) for row in rows]
+    if not (
+        recipe_columns == plan_columns == _CANONICAL_COLUMNS
+        and row_columns == [set(_CANONICAL_COLUMNS)] * 6
+    ):
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke columns are invalid.")
+    if (
+        value.get("kind") != "rows"
+        or value.get("returned_row_count") != 6
+        or value.get("total_matched_count") != 6
+        or value.get("pagination") != {"has_more": False, "offset": 0, "size": 25}
+    ):
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke result envelope is invalid.")
+    _validate_verification(value.get("verification"), expected_coverage=expected_coverage)
+    _validate_evidence(value.get("evidence"), expected_coverage=expected_coverage)
+
+
+def _validate_verification(value: object, *, expected_coverage: Mapping[str, object]) -> None:
+    if not isinstance(value, dict) or set(value) != {
+        "coverage_report",
+        "proof_id",
+        "proof_identity",
+        "reason",
+        "status",
     }:
-        raise ProviderRuntimeCacheSmokeError("Provider cache smoke 40-40 result is invalid.")
-    return document
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke verification is invalid.")
+    if (
+        set(expected_coverage) != {"proof_id", "proof_identity"}
+        or not _digest(expected_coverage.get("proof_id"))
+        or value
+        != {
+            "coverage_report": "/coverage-report",
+            "proof_id": expected_coverage["proof_id"],
+            "proof_identity": expected_coverage["proof_identity"],
+            "reason": "Verified for this data release.",
+            "status": "verified",
+        }
+    ):
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke verification is invalid.")
+
+
+def _validate_evidence(value: object, *, expected_coverage: Mapping[str, object]) -> None:
+    if not isinstance(value, dict) or set(value) != {
+        "bound_values",
+        "calculations",
+        "catalog_revision",
+        "data_release",
+        "matched_row_count",
+        "parameterized_sql",
+        "result_fingerprint",
+        "row_count",
+        "sources",
+    }:
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke QueryEvidence is invalid.")
+    sql = value.get("parameterized_sql")
+    proof_identity = expected_coverage.get("proof_identity")
+    if not isinstance(proof_identity, dict):
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke coverage identity is invalid.")
+    expected_fingerprints = proof_identity.get("source_fingerprints")
+    observed_sources = value.get("sources")
+    if (
+        not isinstance(sql, str)
+        or hashlib.sha256(sql.encode("utf-8")).hexdigest() != _CANONICAL_SQL_SHA256
+        or value.get("bound_values") != [40, 40]
+        or value.get("calculations") != []
+        or value.get("catalog_revision") != _CANONICAL_CATALOG_REVISION
+        or value.get("data_release") != _CANONICAL_DATA_RELEASE
+        or value.get("row_count") != 6
+        or value.get("matched_row_count") != 6
+        or value.get("result_fingerprint") != _CANONICAL_RESULT_FINGERPRINT
+        or observed_sources != _CANONICAL_SOURCES
+        or proof_identity.get("catalog_revision") != _CANONICAL_CATALOG_REVISION
+        or proof_identity.get("data_release") != _CANONICAL_DATA_RELEASE
+        or not isinstance(expected_fingerprints, dict)
+        or {source["identity"]: source["row_fingerprint"] for source in _CANONICAL_SOURCES}
+        != {identity: expected_fingerprints.get(identity) for identity in ("Batting", "People")}
+    ):
+        raise ProviderRuntimeCacheSmokeError("Provider cache smoke QueryEvidence is invalid.")
+
+
+def _canonical_recipe() -> dict[str, object]:
+    return {
+        "catalog_revision": None,
+        "grain": "player-season",
+        "groupings": [],
+        "ordering": copy.deepcopy(_CANONICAL_ORDERING),
+        "output": dict(_CANONICAL_OUTPUT),
+        "predicate": copy.deepcopy(_CANONICAL_PREDICATE),
+        "ranking": None,
+        "selections": list(_CANONICAL_COLUMNS),
+        "source": "Batting",
+    }
+
+
+def _canonical_plan() -> dict[str, object]:
+    return {
+        **_canonical_recipe(),
+        "catalog_revision": _CANONICAL_CATALOG_REVISION,
+        "relationships": ["people-to-batting"],
+        "version": "query-plan-v1",
+    }
 
 
 def _smoke_document(payload: bytes | Mapping[str, object]) -> dict[str, object]:
@@ -177,7 +361,7 @@ def _nonnegative_finite(value: object) -> bool:
 
 
 def run_smoke() -> dict[str, object]:
-    """Activate the prebuilt cache, then execute and validate the real 40-40 child."""
+    """Activate the prebuilt cache, then preserve and validate the real 40-40 child."""
     runtime_config_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
     if runtime_config_path is None:
         raise RuntimeError("Provider runtime configuration is required.")
@@ -202,14 +386,13 @@ def run_smoke() -> dict[str, object]:
     worker_seconds = time.monotonic() - worker_started
     if outcome.kind != "completed" or outcome.payload is None:
         raise RuntimeError("Prepared provider runtime-cache worker smoke failed.")
-    payload = outcome.payload
     coverage: dict[str, object] = {
         "proof_id": readiness.coverage_report["proof_id"],
         "proof_identity": readiness.coverage_report["proof_identity"],
     }
-    document: dict[str, object] = {
-        "coverage": coverage,
-        "identity": {
+    return build_provider_runtime_cache_smoke(
+        worker_payload=outcome.payload,
+        identity={
             "cache_metadata_sha256": cache["cache_reference"],
             "cache_reference": cache["cache_reference"],
             "database_sha256": cache["database_sha256"],
@@ -217,24 +400,11 @@ def run_smoke() -> dict[str, object]:
             "runtime_configuration_digest": configuration.digest,
             "source_commit": readiness.source_commit,
         },
-        "outcome": {
-            "columns": list(_EXPECTED_COLUMNS),
-            "kind": outcome.kind,
-            "payload_kind": payload.get("kind"),
-            "returned_row_count": payload.get("returned_row_count"),
-            "rows": payload.get("rows"),
-            "total_matched_count": payload.get("total_matched_count"),
-        },
-        "schema_version": SMOKE_SCHEMA_VERSION,
-        "status": "pass",
-        "timing": {
+        timing={
             "activation_validation_seconds": round(activation_seconds, 6),
             "image_build_preparation_seconds": cache["image_build_preparation_seconds"],
             "worker_seconds": round(worker_seconds, 6),
         },
-    }
-    return validate_provider_runtime_cache_smoke(
-        document,
         expected_source_commit=readiness.source_commit,
         expected_release_bundle_digest=readiness.release_bundle_digest,
         expected_runtime_configuration_digest=configuration.digest,

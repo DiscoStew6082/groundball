@@ -235,6 +235,45 @@ def test_concurrent_cold_requests_coalesce_behind_one_initializer(
     assert all(response.status_code == 200 for response in responses)
 
 
+def test_corrupt_provider_image_boundary_starts_failed_health_without_heavy_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+
+    calls: list[str] = []
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", "/app/release-bundle")
+    monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
+    monkeypatch.setattr(cache, "provider_image_boundary_detected", lambda: True)
+    monkeypatch.setattr(
+        cache,
+        "require_provider_image_boundary",
+        lambda: (_ for _ in ()).throw(cache.ProviderRuntimeCacheError("corrupt image")),
+    )
+    monkeypatch.setattr(api_server, "_public_runtime_configuration", None)
+    monkeypatch.setattr(api_server, "_configure_public_admission_if_declared", lambda: None)
+    monkeypatch.setattr(
+        "baseball_rag.release_runtime.release_readiness",
+        lambda: calls.append("heavy") or readiness(),
+    )
+    monkeypatch.setattr(
+        api_server,
+        "_provider_initialization",
+        api_server._ProviderInitialization(),
+    )
+
+    with TestClient(app) as client:
+        for _ in range(100):
+            health = client.get("/health")
+            if health.json() == {"status": "failed"}:
+                break
+            time.sleep(0.01)
+
+    assert health.status_code == 503
+    assert health.json() == {"status": "failed"}
+    assert calls == []
+
+
 def test_provider_background_initialization_validates_prebuilt_cache_without_runtime_build(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

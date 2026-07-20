@@ -4,10 +4,13 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from baseball_rag.public_release_config import canonical_json_bytes
+from baseball_rag.public_results import run_public_query_input
+from baseball_rag.query.coverage import load_coverage_report
 from baseball_rag.release_candidate import (
     MAX_CANDIDATE_IMAGE_SIZE_BYTES,
     PROVIDER_OBSERVATION_IDS,
@@ -39,13 +42,27 @@ POLICY = "6" * 64
 DEPLOYMENT = "dpl_9XW9KmE2rqe4XWZ7YBbmetEQLgab"
 
 
-def _smoke_document() -> dict[str, object]:
-    coverage = {
-        "proof_id": "7" * 64,
-        "proof_identity": {"source_fingerprints": {"Batting": "8" * 64, "People": "9" * 64}},
-    }
+def _coverage_document() -> dict[str, object]:
+    report = load_coverage_report()
     return {
-        "coverage": copy.deepcopy(coverage),
+        "proof_id": report["proof_id"],
+        "proof_identity": copy.deepcopy(report["proof_identity"]),
+        "schema_version": "query-coverage-report-v1",
+    }
+
+
+def _smoke_document() -> dict[str, object]:
+    coverage = _coverage_document()
+    verification = {
+        "coverage_report": "/coverage-report",
+        "proof_id": coverage["proof_id"],
+        "proof_identity": copy.deepcopy(coverage["proof_identity"]),
+        "reason": "Verified for this data release.",
+        "status": "verified",
+    }
+    with patch("baseball_rag.query.adapters.verification_payload", return_value=verification):
+        query_proof = run_public_query_input(question="40-40")
+    return {
         "identity": {
             "cache_metadata_sha256": "a" * 64,
             "cache_reference": "a" * 64,
@@ -54,37 +71,8 @@ def _smoke_document() -> dict[str, object]:
             "runtime_configuration_digest": RUNTIME,
             "source_commit": SOURCE,
         },
-        "outcome": {
-            "columns": ["player.name", "season", "batting.HR", "batting.SB"],
-            "kind": "completed",
-            "payload_kind": "rows",
-            "returned_row_count": 6,
-            "rows": [
-                {"player.name": "Jose Canseco", "season": 1988, "batting.HR": 42, "batting.SB": 40},
-                {"player.name": "Barry Bonds", "season": 1996, "batting.HR": 42, "batting.SB": 40},
-                {
-                    "player.name": "Alex Rodriguez",
-                    "season": 1998,
-                    "batting.HR": 42,
-                    "batting.SB": 46,
-                },
-                {
-                    "player.name": "Alfonso Soriano",
-                    "season": 2006,
-                    "batting.HR": 46,
-                    "batting.SB": 41,
-                },
-                {"player.name": "Ronald Acuña", "season": 2023, "batting.HR": 41, "batting.SB": 73},
-                {
-                    "player.name": "Shohei Ohtani",
-                    "season": 2024,
-                    "batting.HR": 54,
-                    "batting.SB": 59,
-                },
-            ],
-            "total_matched_count": 6,
-        },
-        "schema_version": "ground-ball-provider-runtime-cache-smoke-v2",
+        "query_proof": query_proof,
+        "schema_version": "ground-ball-provider-runtime-cache-smoke-v3",
         "status": "pass",
         "timing": {
             "activation_validation_seconds": 0.1,
@@ -96,18 +84,14 @@ def _smoke_document() -> dict[str, object]:
 
 def _evidence(tmp_path: Path) -> tuple[EvidenceInput, ...]:
     inputs = []
-    coverage = {
-        "proof_id": "7" * 64,
-        "proof_identity": {"source_fingerprints": {"Batting": "8" * 64, "People": "9" * 64}},
-        "schema_version": "query-coverage-report-v1",
-    }
+    coverage = _coverage_document()
     base_evidence = (
         ("coverage-report", "query-coverage-report-v1", coverage),
         ("release-bundle-check", "ground-ball-release-bundle-check-v1", None),
         ("container-proof", "ground-ball-candidate-container-proof-v1", None),
         (
             "provider-runtime-cache-smoke",
-            "ground-ball-provider-runtime-cache-smoke-v2",
+            "ground-ball-provider-runtime-cache-smoke-v3",
             _smoke_document(),
         ),
     )
@@ -199,13 +183,25 @@ def test_candidate_builder_accepts_verified_pretty_coverage_report_evidence(
     assert candidate["source_commit"] == SOURCE
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value["query_proof"]["rows"][0].__setitem__("batting.HR", 41),
+        lambda value: value["query_proof"]["plan"]["selections"].reverse(),
+        lambda value: value["query_proof"]["verification"].__setitem__("status", "unavailable"),
+        lambda value: value["query_proof"]["evidence"].__setitem__("result_fingerprint", "f" * 64),
+        lambda value: value["query_proof"].__setitem__("unknown", True),
+    ],
+    ids=["row", "plan", "verification", "evidence", "unknown-field"],
+)
 def test_candidate_builder_semantically_rejects_arbitrary_runtime_cache_smoke(
     tmp_path: Path,
+    mutation,
 ) -> None:
     evidence = _evidence(tmp_path)
     smoke = next(item for item in evidence if item.logical_id == "provider-runtime-cache-smoke")
     document = _smoke_document()
-    document["outcome"]["rows"][0]["batting.HR"] = 41  # type: ignore[index]
+    mutation(document)
     smoke.path.write_bytes(canonical_json_bytes(document))
 
     with pytest.raises(CandidateError, match="runtime-cache smoke"):

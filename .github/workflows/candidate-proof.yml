@@ -93,6 +93,15 @@ jobs:
           docker build -f Dockerfile.vercel -t "$image_tag" .
           image_digest="$(docker image inspect "$image_tag" --format '{{.Id}}')"
           image_size="$(docker image inspect "$image_tag" --format '{{.Size}}')"
+          image_environment="$(docker image inspect "$image_tag" --format '{{json .Config.Env}}')"
+          IMAGE_ENVIRONMENT="$image_environment" python - <<'PY'
+          import json
+          import os
+          values = json.loads(os.environ["IMAGE_ENVIRONMENT"])
+          assert values.count(
+              "GROUNDBALL_RUNTIME_CONFIG=/app/release-config/protected-preview-runtime.json"
+          ) == 1
+          PY
           test "$image_size" -le 1073741824
           printf 'IMAGE_TAG=%s\nIMAGE_DIGEST=%s\nIMAGE_SIZE_BYTES=%s\n' \
             "$image_tag" "$image_digest" "$image_size" >> "$GITHUB_ENV"
@@ -146,36 +155,76 @@ jobs:
             test ! -e /tmp/groundball-provider-runtime-cache-v1
             test ! -e /tmp/groundball-provider-cache-v1
           '
-          container_name="groundball-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          docker run --detach --network none \
-            --env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
-            --env GROUNDBALL_RUNTIME_CONFIG=/app/release-config/local-ci-runtime.json \
-            --name "$container_name" "$IMAGE_TAG"
-          trap 'docker logs "$container_name" > candidate-artifacts/container.log 2>&1 || true; docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
-          ready=0
-          for _attempt in $(seq 1 30); do
-            if docker exec "$container_name" /app/.venv/bin/python -c \
-              'import urllib.request; urllib.request.urlopen("http://127.0.0.1/health", timeout=1).read()'
-            then
-              ready=1
-              break
+          docker run --rm --network none "$IMAGE_TAG" /bin/sh -eu -c '
+            reference=$(/app/.venv/bin/python -c "import json; print(json.load(open(\"/app/provider-runtime-cache/pointer.json\"))[\"cache_metadata_sha256\"])")
+            before=$(sha256sum /app/provider-runtime-cache/pointer.json)
+            test -e /app/src/baseball_rag/provider_runtime_cache.py
+            ! /app/.venv/bin/python -m baseball_rag.provider_runtime_cache >/tmp/builder.out 2>&1
+            /app/.venv/bin/python -c "from pathlib import Path; from baseball_rag.provider_runtime_cache import _remove_build_tree; _remove_build_tree(Path(\"/app/provider-runtime-cache\"))"
+            test "$(sha256sum /app/provider-runtime-cache/pointer.json)" = "$before"
+            test "$(find /app -type f -name \*.duckdb -print)" = "/app/provider-runtime-cache/$reference/runtime.duckdb"
+            test ! -e /app/src/baseball_rag/db/download.py
+            test ! -e /app/src/baseball_rag/db/generate_retrosheet_team_reference.py
+            test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet.py
+            test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_database.py
+            test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_events.py
+            test ! -e /app/src/baseball_rag/generation/llm.py
+            test ! -e /app/src/baseball_rag/query/catalog
+            test ! -e /app/src/baseball_rag/query/coverage
+            test -z "$(find /app -type f \( -name "*.zip" -o -name "coverage-report.md" \) -print -quit)"
+            test -z "$(find /app/release-bundle -iname "*cache*" -print -quit)"
+          '
+          probe_failed_container() {
+            container_name="$1"
+            shift
+            docker run --detach --network none \
+              --env GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" \
+              --env BLOB_STORE_ID=store_ProofStore123 \
+              --env GROUNDBALL_BLOB_NAMESPACE=protected_preview \
+              --env GROUNDBALL_VISITOR_DIGEST_KEY=a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s= \
+              --name "$container_name" "$@"
+            for _attempt in $(seq 1 30); do
+              health="$(docker exec "$container_name" /app/.venv/bin/python -c \
+                'import http.client; connection=http.client.HTTPConnection("127.0.0.1", 80, timeout=1); connection.request("GET", "/health"); print(connection.getresponse().read().decode())' 2>/dev/null || true)"
+              if test "$health" = '{"status":"failed"}'; then break; fi
+              sleep 1
+            done
+            test "$health" = '{"status":"failed"}'
+            for request in \
+              '{"operation":"query","question":"40-40","recipe":null,"previous_recipe":null}' \
+              '{"operation":"unsupported","question":"anything","recipe":null,"previous_recipe":null}'
+            do
+              ! printf '%s' "$request" | timeout 3 docker exec -i "$container_name" \
+                /app/.venv/bin/python -m baseball_rag.public_execution > /tmp/worker.out
+              test "$(cat /tmp/worker.out)" = '{"kind":"failed"}'
+            done
+            if test "$container_name" = groundball-hidden; then
+              test -z "$(docker exec "$container_name" find /app/provider-runtime-cache -type f -name runtime.duckdb -print)"
             fi
-            sleep 1
-          done
-          test "$ready" = 1
-          docker exec "$container_name" /app/.venv/bin/python -m baseball_rag.candidate_container_probe \
-            > candidate-artifacts/evidence/container-proof.json
-          docker exec "$container_name" /bin/sh -c \
-            'reference=$(/app/.venv/bin/python -c "import json; print(json.load(open(\"/app/provider-runtime-cache/pointer.json\"))[\"cache_metadata_sha256\"])") && test ! -e /app/src/baseball_rag/db/download.py && test ! -e /app/src/baseball_rag/db/generate_retrosheet_team_reference.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_database.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_events.py && test ! -e /app/src/baseball_rag/generation/llm.py && test ! -e /app/src/baseball_rag/query/catalog && test ! -e /app/src/baseball_rag/query/coverage && test "$(find /app -type f -name "*.duckdb" -print)" = "/app/provider-runtime-cache/$reference/runtime.duckdb" && test -z "$(find /app -type f \( -name "*.zip" -o -name "coverage-report.md" \) -print -quit)" && test -z "$(find /app/release-bundle -iname "*cache*" -print -quit)"'
+            docker rm --force "$container_name" >/dev/null
+          }
+          probe_failed_container groundball-empty \
+            --env GROUNDBALL_RUNTIME_CONFIG= "$IMAGE_TAG"
+          probe_failed_container groundball-foreign \
+            --env GROUNDBALL_RUNTIME_CONFIG=/tmp/foreign-runtime.json "$IMAGE_TAG"
+          probe_failed_container groundball-unset "$IMAGE_TAG" /usr/bin/env \
+            -u GROUNDBALL_RUNTIME_CONFIG /app/.venv/bin/python -m baseball_rag.web_app \
+            --server-name 0.0.0.0 --server-port 80
+          probe_failed_container groundball-hidden \
+            --tmpfs /app/provider-runtime-cache:rw,uid=10001,gid=10001,mode=755 "$IMAGE_TAG"
           uv run python - <<'PY'
           from pathlib import Path
           from baseball_rag.public_release_config import canonical_json_bytes
           value = {
               "absent": [
                   "acquisition-tools", "catalog-development-files", "llm", "mac-or-tunnel-fallback",
-                  "runtime-cache-build-tools", "runtime-cache-garbage-collection", "raw-retrosheet-archives",
+                  "raw-retrosheet-archives",
               ],
               "network_mode": "none",
+              "present_but_denied_against_immutable_image_cache": [
+                  "runtime-cache-builder-module",
+                  "runtime-cache-materialization-and-removal-routines",
+              ],
               "schema_version": "ground-ball-prohibited-surface-proof-v1",
               "status": "pass",
           }
@@ -189,12 +238,11 @@ jobs:
           from pathlib import Path
           from baseball_rag.public_release_config import canonical_json_bytes
           evidence = [
-              {"logical_id":"container-proof","media_type":"application/json","path":"candidate-artifacts/evidence/container-proof.json","schema_identity":"ground-ball-candidate-container-proof-v1"},
               {"logical_id":"coverage-report","media_type":"application/json","path":"release/bundle/src/baseball_rag/query/coverage/coverage-report.json","schema_identity":"query-coverage-report-v1"},
               {"logical_id":"local-image","media_type":"application/json","path":"candidate-artifacts/evidence/local-image.json","schema_identity":"ground-ball-local-image-measurement-v1"},
               {"logical_id":"local-runtime-config","media_type":"application/json","path":"release/config/local-ci-runtime.json","schema_identity":"ground-ball-runtime-configuration-v1"},
               {"logical_id":"prohibited-surfaces","media_type":"application/json","path":"candidate-artifacts/evidence/prohibited-surfaces.json","schema_identity":"ground-ball-prohibited-surface-proof-v1"},
-              {"logical_id":"provider-runtime-cache-smoke","media_type":"application/json","path":"candidate-artifacts/evidence/provider-runtime-cache-smoke.json","schema_identity":"ground-ball-provider-runtime-cache-smoke-v2"},
+              {"logical_id":"provider-runtime-cache-smoke","media_type":"application/json","path":"candidate-artifacts/evidence/provider-runtime-cache-smoke.json","schema_identity":"ground-ball-provider-runtime-cache-smoke-v3"},
               {"logical_id":"provider-runtime-config","media_type":"application/json","path":"release/config/protected-preview-runtime.json","schema_identity":"ground-ball-runtime-configuration-v1"},
               {"logical_id":"public-admission-policy","media_type":"application/json","path":"release/config/public-admission-policy.json","schema_identity":"ground-ball-public-admission-policy-v1"},
               {"logical_id":"release-bundle-check","media_type":"application/json","path":"candidate-artifacts/evidence/release-bundle-check.json","schema_identity":"ground-ball-release-bundle-check-v1"},
@@ -202,7 +250,7 @@ jobs:
           ]
           Path("candidate-artifacts/evidence-spec.json").write_bytes(canonical_json_bytes({"evidence": evidence}))
           PY
-          printf '%s\n' '{"gates":{"candidate_identity_topology":{"evidence":["topology"],"status":"pass"},"cold_wake_warm_performance":{"evidence":[],"status":"blocked"},"deterministic_parity_public_envelope":{"evidence":["container-proof","coverage-report","provider-runtime-cache-smoke","provider-runtime-config"],"status":"pass"},"local_image_size":{"evidence":["local-image"],"status":"pass"},"network_egress_public_routes":{"evidence":[],"status":"blocked"},"offline_container_security":{"evidence":["container-proof","prohibited-surfaces"],"status":"pass"},"protected_blob_coordination":{"evidence":[],"status":"blocked"},"protected_browser_desktop_mobile":{"evidence":[],"status":"blocked"},"protected_deployment_image":{"evidence":[],"status":"blocked"},"provider_deployment_attestation":{"evidence":[],"status":"blocked"},"provider_operation_accounting":{"evidence":[],"status":"blocked"},"provider_peak_memory":{"evidence":[],"status":"blocked"},"release_bundle_coverage":{"evidence":["coverage-report","release-bundle-check"],"status":"pass"},"restart_replacement_scale_to_zero":{"evidence":[],"status":"blocked"},"runtime_admission_configuration":{"evidence":["local-runtime-config","public-admission-policy"],"status":"pass"}}}' > candidate-artifacts/gate-results.json
+          printf '%s\n' '{"gates":{"candidate_identity_topology":{"evidence":["topology"],"status":"pass"},"cold_wake_warm_performance":{"evidence":[],"status":"blocked"},"deterministic_parity_public_envelope":{"evidence":["coverage-report","provider-runtime-cache-smoke","provider-runtime-config"],"status":"pass"},"local_image_size":{"evidence":["local-image"],"status":"pass"},"network_egress_public_routes":{"evidence":[],"status":"blocked"},"offline_container_security":{"evidence":["prohibited-surfaces"],"status":"pass"},"protected_blob_coordination":{"evidence":[],"status":"blocked"},"protected_browser_desktop_mobile":{"evidence":[],"status":"blocked"},"protected_deployment_image":{"evidence":[],"status":"blocked"},"provider_deployment_attestation":{"evidence":[],"status":"blocked"},"provider_operation_accounting":{"evidence":[],"status":"blocked"},"provider_peak_memory":{"evidence":[],"status":"blocked"},"release_bundle_coverage":{"evidence":["coverage-report","release-bundle-check"],"status":"pass"},"restart_replacement_scale_to_zero":{"evidence":[],"status":"blocked"},"runtime_admission_configuration":{"evidence":["local-runtime-config","public-admission-policy"],"status":"pass"}}}' > candidate-artifacts/gate-results.json
           uv run python -m baseball_rag.release_candidate assemble \
             --scope local_ci \
             --source-commit "$SOURCE_COMMIT" \

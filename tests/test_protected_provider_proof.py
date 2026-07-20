@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -17,6 +18,8 @@ from baseball_rag.protected_provider_proof import (
     validate_provider_evidence,
 )
 from baseball_rag.public_release_config import canonical_json_bytes
+from baseball_rag.public_results import run_public_query_input
+from baseball_rag.query.coverage import load_coverage_report
 from baseball_rag.release_candidate import (
     PROVIDER_OBSERVATION_IDS,
     REQUIRED_GATE_IDS,
@@ -211,16 +214,25 @@ def _document(schema: str) -> dict[str, object]:
 
 
 def _semantic_parity_evidence(tmp_path: Path) -> tuple[EvidenceInput, EvidenceInput]:
+    report = load_coverage_report()
     coverage = {
-        "proof_id": "a" * 64,
-        "proof_identity": {"source_fingerprints": {"Batting": "b" * 64, "People": "c" * 64}},
+        "proof_id": report["proof_id"],
+        "proof_identity": copy.deepcopy(report["proof_identity"]),
     }
     coverage_path = tmp_path / "coverage-report.json"
     coverage_path.write_bytes(
         canonical_json_bytes({**coverage, "schema_version": "query-coverage-report-v1"})
     )
+    verification = {
+        "coverage_report": "/coverage-report",
+        "proof_id": coverage["proof_id"],
+        "proof_identity": copy.deepcopy(coverage["proof_identity"]),
+        "reason": "Verified for this data release.",
+        "status": "verified",
+    }
+    with patch("baseball_rag.query.adapters.verification_payload", return_value=verification):
+        query_proof = run_public_query_input(question="40-40")
     smoke = {
-        "coverage": copy.deepcopy(coverage),
         "identity": {
             "cache_metadata_sha256": "d" * 64,
             "cache_reference": "d" * 64,
@@ -229,37 +241,8 @@ def _semantic_parity_evidence(tmp_path: Path) -> tuple[EvidenceInput, EvidenceIn
             "runtime_configuration_digest": RUNTIME,
             "source_commit": SOURCE,
         },
-        "outcome": {
-            "columns": ["player.name", "season", "batting.HR", "batting.SB"],
-            "kind": "completed",
-            "payload_kind": "rows",
-            "returned_row_count": 6,
-            "rows": [
-                {"player.name": "Jose Canseco", "season": 1988, "batting.HR": 42, "batting.SB": 40},
-                {"player.name": "Barry Bonds", "season": 1996, "batting.HR": 42, "batting.SB": 40},
-                {
-                    "player.name": "Alex Rodriguez",
-                    "season": 1998,
-                    "batting.HR": 42,
-                    "batting.SB": 46,
-                },
-                {
-                    "player.name": "Alfonso Soriano",
-                    "season": 2006,
-                    "batting.HR": 46,
-                    "batting.SB": 41,
-                },
-                {"player.name": "Ronald Acuña", "season": 2023, "batting.HR": 41, "batting.SB": 73},
-                {
-                    "player.name": "Shohei Ohtani",
-                    "season": 2024,
-                    "batting.HR": 54,
-                    "batting.SB": 59,
-                },
-            ],
-            "total_matched_count": 6,
-        },
-        "schema_version": "ground-ball-provider-runtime-cache-smoke-v2",
+        "query_proof": query_proof,
+        "schema_version": "ground-ball-provider-runtime-cache-smoke-v3",
         "status": "pass",
         "timing": {
             "activation_validation_seconds": 0.1,
@@ -280,7 +263,7 @@ def _semantic_parity_evidence(tmp_path: Path) -> tuple[EvidenceInput, EvidenceIn
             logical_id="provider-runtime-cache-smoke",
             path=smoke_path,
             media_type="application/json",
-            schema_identity="ground-ball-provider-runtime-cache-smoke-v2",
+            schema_identity="ground-ball-provider-runtime-cache-smoke-v3",
         ),
     )
 

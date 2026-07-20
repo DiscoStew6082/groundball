@@ -109,8 +109,14 @@ class _ProviderInitialization:
 
 
 def _provider_runtime_initializer() -> ReleaseReadiness:
+    from baseball_rag.provider_runtime_cache import (
+        provider_image_boundary_detected,
+        require_provider_image_boundary,
+    )
     from baseball_rag.release_runtime import release_readiness
 
+    if provider_image_boundary_detected():
+        require_provider_image_boundary()
     configuration = _public_runtime_configuration
     if configuration is None or not configuration.provider_deployment:
         raise RuntimeError("Protected provider runtime configuration is unavailable.")
@@ -245,8 +251,21 @@ def _configure_release_runtime_if_declared() -> None:
     global _public_admission, _public_admission_is_shared, _public_runtime_configuration
     global _visitor_digest_key
 
+    from baseball_rag.provider_runtime_cache import (
+        ProviderRuntimeCacheError,
+        provider_image_boundary_detected,
+        require_provider_image_boundary,
+    )
+
     configured_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
-    if configured_path is None:
+    if provider_image_boundary_detected():
+        try:
+            require_provider_image_boundary()
+        except ProviderRuntimeCacheError:
+            return
+    elif configured_path is None:
+        return
+    if configured_path is None:  # narrowed after strict image-boundary validation
         return
     validate_release_environment(os.environ)
     configuration = load_runtime_configuration(configured_path)
@@ -319,7 +338,9 @@ def _public_demo_enabled() -> bool:
 
 
 def _provider_deployment_enabled() -> bool:
-    return bool(
+    from baseball_rag.provider_runtime_cache import provider_image_boundary_detected
+
+    return provider_image_boundary_detected() or bool(
         _public_runtime_configuration is not None
         and _public_runtime_configuration.provider_deployment
     )

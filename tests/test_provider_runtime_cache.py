@@ -51,6 +51,8 @@ def _prepare_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Pat
 
     cache_root = tmp_path / "provider-runtime-cache"
     monkeypatch.setattr(cache, "_CACHE_ROOT", cache_root)
+    monkeypatch.setattr(cache, "_IMAGE_BUNDLE_ROOT", BUNDLE)
+    monkeypatch.setattr(cache, "_IMAGE_RUNTIME_CONFIG", PROVIDER_CONFIG)
     monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
     monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
     reference = cache.build_provider_runtime_cache(
@@ -296,7 +298,7 @@ def test_builder_is_idempotent_and_concurrent_callers_observe_one_object(
 
     cache_root, reference = _prepare_cache(monkeypatch, tmp_path)
     monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
-    runtime = published_data_runtime()
+    runtime = _runtime_for(str(BUNDLE / "data"))
     kwargs = {
         "source_commit": _source_commit(),
         "release_bundle_digest": _bundle_digest(),
@@ -377,6 +379,114 @@ def test_failed_build_removes_partial_tree_and_publishes_nothing(
     assert cache.CACHE_REFERENCE_ENV not in os.environ
     assert not cache_root.exists()
     assert not list(tmp_path.glob(".failed-cache.building-*"))
+
+
+@pytest.mark.parametrize("configured", [None, "", "/tmp/foreign-runtime.json"])
+def test_fixed_image_boundary_rejects_missing_empty_and_foreign_runtime_config_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    configured: str | None,
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+    import baseball_rag.query.runtime as query_runtime
+
+    monkeypatch.setattr(cache, "_CACHE_ROOT", tmp_path / "absent-provider-cache")
+    monkeypatch.setattr(cache, "_IMAGE_BUNDLE_ROOT", BUNDLE)
+    monkeypatch.setattr(cache, "_IMAGE_RUNTIME_CONFIG", PROVIDER_CONFIG)
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
+    if configured is None:
+        monkeypatch.delenv("GROUNDBALL_RUNTIME_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", configured)
+    monkeypatch.setattr(
+        query_runtime,
+        "_runtime_for",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("fixed provider image must not reconstruct the full runtime")
+        ),
+    )
+    _published_provider_runtime.cache_clear()
+
+    assert cache.provider_image_boundary_detected() is True
+    with pytest.raises(cache.ProviderRuntimeCacheError):
+        cache.require_provider_image_boundary()
+    with pytest.raises(cache.ProviderRuntimeCacheError):
+        published_data_runtime()
+    assert _execute(ExecutionRequest("query", "40-40", None)) == {"kind": "failed"}
+    assert _execute(ExecutionRequest("unsupported", "anything", None)) == {"kind": "failed"}
+
+
+def test_corrupt_fixed_image_cache_is_provider_mode_and_never_reconstructed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+    import baseball_rag.query.runtime as query_runtime
+
+    corrupt = tmp_path / "provider-runtime-cache"
+    corrupt.mkdir()
+    (corrupt / "pointer.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(cache, "_CACHE_ROOT", corrupt)
+    monkeypatch.setattr(cache, "_IMAGE_BUNDLE_ROOT", BUNDLE)
+    monkeypatch.setattr(cache, "_IMAGE_RUNTIME_CONFIG", PROVIDER_CONFIG)
+    monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(BUNDLE))
+    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(PROVIDER_CONFIG))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", _source_commit())
+    monkeypatch.setattr(
+        query_runtime,
+        "_runtime_for",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("corrupt provider cache must not reconstruct the full runtime")
+        ),
+    )
+    _published_provider_runtime.cache_clear()
+
+    assert cache.provider_image_boundary_detected() is True
+    with pytest.raises(cache.ProviderRuntimeCacheError):
+        cache.require_provider_image_boundary()
+    with pytest.raises(cache.ProviderRuntimeCacheError):
+        published_data_runtime()
+
+
+@pytest.mark.parametrize("kind", ["cache-root", "pointer", "release-root", "runtime-config"])
+def test_fixed_image_boundary_rejects_symlinks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+
+    cache_root, _ = _prepare_cache(monkeypatch, tmp_path)
+    image_bundle = BUNDLE
+    image_config = PROVIDER_CONFIG
+    if kind == "cache-root":
+        real_root = tmp_path / "real-cache"
+        cache_root.rename(real_root)
+        cache_root.symlink_to(real_root, target_is_directory=True)
+    elif kind == "pointer":
+        pointer = cache_root / "pointer.json"
+        os.chmod(cache_root, 0o755)
+        pointer.unlink()
+        pointer.symlink_to(PROVIDER_CONFIG)
+        os.chmod(cache_root, 0o555)
+    elif kind == "release-root":
+        image_bundle = tmp_path / "release-bundle-link"
+        image_bundle.symlink_to(BUNDLE, target_is_directory=True)
+    else:
+        image_config = tmp_path / "runtime-link.json"
+        image_config.symlink_to(PROVIDER_CONFIG)
+    monkeypatch.setattr(cache, "_CACHE_ROOT", cache_root)
+    monkeypatch.setattr(cache, "_IMAGE_BUNDLE_ROOT", image_bundle)
+    monkeypatch.setattr(cache, "_IMAGE_RUNTIME_CONFIG", image_config)
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(image_bundle))
+    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(image_config))
+
+    assert cache.provider_image_boundary_detected() is True
+    with pytest.raises(cache.ProviderRuntimeCacheError):
+        cache.require_provider_image_boundary()
 
 
 def test_provider_runtime_rejects_arbitrary_bundle_and_configuration_paths(

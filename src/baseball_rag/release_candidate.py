@@ -24,7 +24,7 @@ GATE_REPORT_SCHEMA = "ground-ball-release-gate-report-v1"
 ATTESTATION_SCHEMA = "ground-ball-deployment-attestation-v1"
 CANDIDATE_SCOPES = frozenset({"local_ci", "protected_preview", "production"})
 MAX_CANDIDATE_IMAGE_SIZE_BYTES = 1_073_741_824
-_PROVIDER_CACHE_SMOKE_SCHEMA = "ground-ball-provider-runtime-cache-smoke-v2"
+_PROVIDER_CACHE_SMOKE_SCHEMA = "ground-ball-provider-runtime-cache-smoke-v3"
 _COVERAGE_REPORT_SCHEMA = "query-coverage-report-v1"
 PROVIDER_OBSERVATION_IDS = (
     "cold_wakes",

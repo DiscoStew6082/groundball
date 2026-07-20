@@ -86,6 +86,12 @@ def test_assembled_provider_mode_builds_fixed_cache_then_runs_exact_40_40(
     _runtime_for.cache_clear()
     runtime = published_data_runtime()
     monkeypatch.setattr(cache, "_CACHE_ROOT", tmp_path / "provider-runtime-cache")
+    monkeypatch.setattr(cache, "_IMAGE_BUNDLE_ROOT", bundle)
+    monkeypatch.setattr(
+        cache,
+        "_IMAGE_RUNTIME_CONFIG",
+        ROOT / "release/config/protected-preview-runtime.json",
+    )
     monkeypatch.setattr(cache, "_REQUIRED_OWNER_UID", os.geteuid())
     monkeypatch.setattr(cache, "_effective_uid", lambda: 0)
     configuration = load_runtime_configuration(

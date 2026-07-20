@@ -72,6 +72,36 @@ def clear_provider_runtime_cache_reference() -> None:
     os.environ.pop(CACHE_REFERENCE_ENV, None)
 
 
+def provider_image_boundary_detected() -> bool:
+    """Classify any fixed image path or declaration as provider mode, even if corrupt."""
+    if os.environ.get("GROUNDBALL_RELEASE_BUNDLE") == str(_IMAGE_BUNDLE_ROOT):
+        return True
+    if os.environ.get("GROUNDBALL_RUNTIME_CONFIG") == str(_IMAGE_RUNTIME_CONFIG):
+        return True
+    return any(_path_entry_exists(path) for path in _fixed_image_boundary_paths())
+
+
+def require_provider_image_boundary() -> None:
+    """Require the exact nonsymlink image paths and a canonical prepared-cache pointer."""
+    if not provider_image_boundary_detected():
+        raise ProviderRuntimeCacheError("Provider image boundary is absent.")
+    if os.environ.get("GROUNDBALL_RELEASE_BUNDLE") != str(_IMAGE_BUNDLE_ROOT) or os.environ.get(
+        "GROUNDBALL_RUNTIME_CONFIG"
+    ) != str(_IMAGE_RUNTIME_CONFIG):
+        raise ProviderRuntimeCacheError("Provider image runtime paths are invalid.")
+    _require_nonsymlink_directory(_IMAGE_BUNDLE_ROOT, "Release Bundle")
+    _require_nonsymlink_file(_IMAGE_RUNTIME_CONFIG, "runtime configuration")
+    _require_parent_boundary(_CACHE_ROOT.parent)
+    _require_directory(_CACHE_ROOT, 0o555)
+    pointer_bytes, _ = _read_verified_file(_CACHE_ROOT / _POINTER_NAME, 0o444, _MAX_POINTER_BYTES)
+    pointer = _decode_object(pointer_bytes, "pointer")
+    _validate_pointer(pointer, pointer_bytes)
+    reference = pointer["cache_metadata_sha256"]
+    if set(_entry_names(_CACHE_ROOT)) != {_POINTER_NAME, reference}:
+        raise ProviderRuntimeCacheError("Provider runtime cache root inventory is invalid.")
+    _require_directory(_CACHE_ROOT / reference, 0o555)
+
+
 def build_provider_runtime_cache(
     runtime: RuntimeForCache,
     *,
@@ -213,12 +243,17 @@ def inspect_provider_runtime_cache(
 def require_provider_runtime_cache_for_worker() -> None:
     """Eagerly load the exact provider runtime before interpreting worker input."""
     runtime_config_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
-    if runtime_config_path is None:
+    if provider_image_boundary_detected():
+        require_provider_image_boundary()
+        runtime_config_path = str(_IMAGE_RUNTIME_CONFIG)
+    elif runtime_config_path is None:
         return
     from baseball_rag.public_release_config import load_runtime_configuration
 
     configuration = load_runtime_configuration(runtime_config_path)
     if not configuration.provider_deployment:
+        if provider_image_boundary_detected():
+            raise ProviderRuntimeCacheError("Provider image runtime configuration is invalid.")
         return
     from baseball_rag.query.runtime import published_data_runtime
 
@@ -229,11 +264,7 @@ def build_image_provider_runtime_cache() -> dict[str, object]:
     """Fully verify the fixed image Bundle/runtime and build the protected cache as root."""
     from baseball_rag.public_release_config import load_runtime_configuration
     from baseball_rag.query.coverage import load_passing_coverage_report
-    from baseball_rag.query.runtime import (
-        _published_provider_runtime,
-        _runtime_for,
-        published_data_runtime,
-    )
+    from baseball_rag.query.runtime import _published_provider_runtime, _runtime_for
     from baseball_rag.release_bundle import check_release_bundle
 
     bundle_root = Path(os.environ.get("GROUNDBALL_RELEASE_BUNDLE", str(_IMAGE_BUNDLE_ROOT)))
@@ -254,7 +285,7 @@ def build_image_provider_runtime_cache() -> dict[str, object]:
 
     started = time.monotonic()
     identity = check_release_bundle(bundle_root, expected_source_commit=source_commit)
-    previous_config = os.environ.pop("GROUNDBALL_RUNTIME_CONFIG", None)
+    previous_config = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
     previous_source = os.environ.get("GROUNDBALL_SOURCE_COMMIT")
     os.environ["GROUNDBALL_RELEASE_BUNDLE"] = str(bundle_root)
     os.environ["GROUNDBALL_SOURCE_COMMIT"] = source_commit
@@ -262,8 +293,7 @@ def build_image_provider_runtime_cache() -> dict[str, object]:
     _published_provider_runtime.cache_clear()
     _runtime_for.cache_clear()
     try:
-        runtime = published_data_runtime()
-        coverage = load_passing_coverage_report()
+        runtime = _runtime_for(str(bundle_root / "data"))
         preparation_seconds = time.monotonic() - started
         reference = build_provider_runtime_cache(
             runtime,
@@ -272,8 +302,13 @@ def build_image_provider_runtime_cache() -> dict[str, object]:
             runtime_configuration_digest=configuration.digest,
             image_build_preparation_seconds=preparation_seconds,
         )
+        os.environ["GROUNDBALL_RUNTIME_CONFIG"] = str(config_path)
+        _published_provider_runtime.cache_clear()
+        coverage = load_passing_coverage_report()
     finally:
-        if previous_config is not None:
+        if previous_config is None:
+            os.environ.pop("GROUNDBALL_RUNTIME_CONFIG", None)
+        else:
             os.environ["GROUNDBALL_RUNTIME_CONFIG"] = previous_config
         if previous_source is None:
             os.environ.pop("GROUNDBALL_SOURCE_COMMIT", None)
@@ -619,6 +654,36 @@ def _remove_build_tree(path: Path) -> None:
     except OSError:
         pass
     shutil.rmtree(path, ignore_errors=True)
+
+
+def _fixed_image_boundary_paths() -> tuple[Path, ...]:
+    return (_CACHE_ROOT, _IMAGE_BUNDLE_ROOT, _IMAGE_RUNTIME_CONFIG)
+
+
+def _path_entry_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except OSError:
+        return False
+    return True
+
+
+def _require_nonsymlink_directory(path: Path, label: str) -> None:
+    try:
+        details = path.lstat()
+    except OSError as exc:
+        raise ProviderRuntimeCacheError(f"Provider image {label} is invalid.") from exc
+    if not stat.S_ISDIR(details.st_mode):
+        raise ProviderRuntimeCacheError(f"Provider image {label} is invalid.")
+
+
+def _require_nonsymlink_file(path: Path, label: str) -> None:
+    try:
+        details = path.lstat()
+    except OSError as exc:
+        raise ProviderRuntimeCacheError(f"Provider image {label} is invalid.") from exc
+    if not stat.S_ISREG(details.st_mode):
+        raise ProviderRuntimeCacheError(f"Provider image {label} is invalid.")
 
 
 def _require_parent_boundary(path: Path) -> None:

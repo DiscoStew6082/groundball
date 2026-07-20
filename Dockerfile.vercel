@@ -19,7 +19,8 @@ ENV PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     GROUNDBALL_PUBLIC_DEMO=1 \
-    GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle
+    GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle \
+    GROUNDBALL_RUNTIME_CONFIG=/app/release-config/protected-preview-runtime.json
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

@@ -46,14 +46,25 @@ class PublishedDataRuntime:
 
 
 def published_data_runtime() -> PublishedDataRuntime:
+    from baseball_rag.provider_runtime_cache import (
+        provider_image_boundary_detected,
+        require_provider_image_boundary,
+    )
+
     bundle_root = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+    runtime_config_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
+    image_boundary = provider_image_boundary_detected()
+    if image_boundary:
+        require_provider_image_boundary()
     cached = _published_provider_runtime(
         bundle_root,
-        os.environ.get("GROUNDBALL_RUNTIME_CONFIG"),
+        runtime_config_path,
         os.environ.get("GROUNDBALL_SOURCE_COMMIT"),
     )
     if cached is not None:
         return cached
+    if image_boundary:
+        raise PublishedDataUnavailableError("Provider runtime cache is unavailable.")
     if bundle_root:
         check_release_bundle(bundle_root)
         configured = (Path(bundle_root) / "data").resolve()

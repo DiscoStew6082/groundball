@@ -321,7 +321,7 @@ def derive_provider_gate_report(
         if isinstance(item, dict)
         and item.get("schema_identity")
         in {
-            "ground-ball-provider-runtime-cache-smoke-v2",
+            "ground-ball-provider-runtime-cache-smoke-v3",
             "query-coverage-report-v1",
         }
         and isinstance(item.get("logical_id"), str)
