@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import (
@@ -74,7 +74,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Groundball API", lifespan=_lifespan)
+router = APIRouter()
 _CORS_ORIGINS_ENV_VAR = "GROUNDBALL_CORS_ORIGINS"
 _ORIGIN_PROXY_TOKEN_ENV_VAR = "GROUNDBALL_ORIGIN_PROXY_TOKEN"
 _ORIGIN_PROXY_TOKEN_HEADER = "x-groundball-proxy-token"
@@ -230,7 +230,14 @@ def _public_demo_enabled() -> bool:
     }
 
 
-def _require_consistent_release_configuration() -> None:
+def _request_is_public(request: Request) -> bool:
+    override = getattr(request.app.state, "public_mode_override", None)
+    return _public_demo_enabled() if override is None else bool(override)
+
+
+def _require_consistent_release_configuration(request: Request | None = None) -> None:
+    if request is not None and getattr(request.app.state, "public_mode_override", None) is not None:
+        return
     public_demo = _public_demo_enabled()
     bundle_configured = bool(os.environ.get("GROUNDBALL_RELEASE_BUNDLE"))
     if public_demo != bundle_configured:
@@ -290,7 +297,18 @@ def _origin_proxy_token_is_valid(request: Request, configured_token: str) -> boo
     return hmac.compare_digest(supplied_token, configured_token)
 
 
-@app.middleware("http")
+def _ensure_public_execution_deadline(request: Request) -> float:
+    fallback_deadline = time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+    established_deadline = getattr(request.state, "public_execution_deadline", None)
+    deadline = (
+        min(established_deadline, fallback_deadline)
+        if isinstance(established_deadline, (int, float))
+        else fallback_deadline
+    )
+    request.state.public_execution_deadline = deadline
+    return deadline
+
+
 async def _origin_proxy_token_middleware(request: Request, call_next):
     configured_token = os.environ.get(_ORIGIN_PROXY_TOKEN_ENV_VAR)
     if not configured_token or request.url.path == _PUBLIC_HEALTH_PATH:
@@ -302,7 +320,6 @@ async def _origin_proxy_token_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-@app.middleware("http")
 async def _query_cors_middleware(request: Request, call_next):
     origin = request.headers.get("origin")
     is_preflight = (
@@ -323,14 +340,12 @@ async def _query_cors_middleware(request: Request, call_next):
         return PlainTextResponse("OK", headers=_preflight_headers(origin or ""))
 
     is_public_query_request = (
-        _public_demo_enabled()
+        _request_is_public(request)
         and request.url.path in _CORS_QUERY_PATHS
         and request.method == _CORS_ALLOWED_METHOD
     )
     if is_public_query_request:
-        request.state.public_execution_deadline = (
-            time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
-        )
+        _ensure_public_execution_deadline(request)
     if is_public_query_request and len(await request.body()) > _PUBLIC_QUERY_REQUEST_BYTES:
         refusal = JSONResponse(
             {
@@ -367,21 +382,21 @@ class RetrosheetQueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=QUESTION_CHARACTER_LIMIT)
 
 
-@app.get("/health")
+@router.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/api/capabilities")
-def capabilities():
+@router.get("/api/capabilities")
+def capabilities(request: Request):
     """Return the server-enforced feature set for the unified web app."""
     from baseball_rag.retrosheet_event_capabilities import (
         published_retrosheet_event_capabilities,
         retrosheet_event_capabilities,
     )
 
-    _require_consistent_release_configuration()
-    public_demo = _public_demo_enabled()
+    _require_consistent_release_configuration(request)
+    public_demo = _request_is_public(request)
     retrosheet_capabilities = (
         published_retrosheet_event_capabilities()
         if public_demo
@@ -412,10 +427,10 @@ def capabilities():
     }
 
 
-@app.post("/api/query-runs")
+@router.post("/api/query-runs")
 def query_run(req: QueryInputRequest, request: Request):
     """Plan and execute one natural-language or structured Query Recipe input."""
-    _require_consistent_release_configuration()
+    _require_consistent_release_configuration(request)
     if (req.question is None) == (req.recipe is None):
         raise HTTPException(
             status_code=422,
@@ -427,7 +442,7 @@ def query_run(req: QueryInputRequest, request: Request):
             detail="Previous recipe context is accepted only with a natural-language question.",
         )
 
-    if _public_demo_enabled():
+    if _request_is_public(request):
         return _execute_public_request(
             request,
             ExecutionRequest(
@@ -452,7 +467,12 @@ def query_run(req: QueryInputRequest, request: Request):
 
 def _execute_public_request(request: Request, execution: ExecutionRequest) -> Response:
     try:
-        coordinator, digest_key = _shared_public_admission_components()
+        configured = getattr(request.app.state, "public_components", None)
+        if configured is None:
+            coordinator, digest_key = _shared_public_admission_components()
+            execution_runner = _public_execution_runner
+        else:
+            coordinator, digest_key, execution_runner = configured
     except RuntimeError:
         return JSONResponse(
             {
@@ -462,11 +482,7 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
             status_code=503,
         )
 
-    deadline = getattr(
-        request.state,
-        "public_execution_deadline",
-        time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS,
-    )
+    deadline = _ensure_public_execution_deadline(request)
     visitor_token = request.cookies.get(_PUBLIC_VISITOR_COOKIE)
     new_visitor = visitor_token is None
     if visitor_token is None:
@@ -483,7 +499,7 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
         remaining = deadline - time.monotonic()
         try:
             execution_outcome = (
-                _public_execution_runner.run(execution, timeout_seconds=remaining)
+                execution_runner.run(execution, timeout_seconds=remaining)
                 if remaining > 0
                 else ExecutionOutcome("timed_out")
             )
@@ -575,15 +591,16 @@ def _admission_refusal_response(outcome: AdmissionOutcome) -> JSONResponse:
     )
 
 
-@app.get("/api/query-catalog")
+@router.get("/api/query-catalog")
 def query_catalog(
+    request: Request,
     source: str | None = None,
     search: str | None = None,
     offset: int = 0,
     limit: int | None = None,
 ):
     """Return rendering-neutral source, raw-field, and promoted-value discovery."""
-    _require_consistent_release_configuration()
+    _require_consistent_release_configuration(request)
     from baseball_rag.query.adapters import catalog_payload
 
     try:
@@ -592,10 +609,10 @@ def query_catalog(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.get("/api/query-coverage")
-def query_coverage():
+@router.get("/api/query-coverage")
+def query_coverage(request: Request):
     """Return the canonical machine-readable Coverage Report."""
-    _require_consistent_release_configuration()
+    _require_consistent_release_configuration(request)
     from baseball_rag.query.coverage import (
         CoverageProofUnavailableError,
         load_passing_coverage_report,
@@ -607,10 +624,10 @@ def query_coverage():
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@app.get("/coverage-report", response_class=HTMLResponse)
-def coverage_report():
+@router.get("/coverage-report", response_class=HTMLResponse)
+def coverage_report(request: Request):
     """Render the human report from the canonical machine read model."""
-    _require_consistent_release_configuration()
+    _require_consistent_release_configuration(request)
     from baseball_rag.query.coverage import (
         CoverageProofUnavailableError,
         load_passing_coverage_report,
@@ -632,11 +649,11 @@ def coverage_report():
     )
 
 
-@app.post("/api/retrosheet/queries")
+@router.post("/api/retrosheet/queries")
 def retrosheet_query(req: RetrosheetQueryRequest, request: Request):
     """Execute only the separately governed deterministic Retrosheet capabilities."""
-    _require_consistent_release_configuration()
-    if _public_demo_enabled():
+    _require_consistent_release_configuration(request)
+    if _request_is_public(request):
         return _execute_public_request(
             request,
             ExecutionRequest(operation="retrosheet", question=req.question, recipe=None),
@@ -650,14 +667,18 @@ def retrosheet_query(req: RetrosheetQueryRequest, request: Request):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.get("/api/release-readiness")
-def release_readiness():
+@router.get("/api/release-readiness")
+def release_readiness(request: Request):
     """Return the checked public bundle, proof, and in-memory runtime identities."""
-    _require_consistent_release_configuration()
-    if not _public_demo_enabled():
+    _require_consistent_release_configuration(request)
+    if not _request_is_public(request):
         raise HTTPException(status_code=404, detail="Not found.")
     try:
-        _require_shared_public_admission()
+        configured = getattr(request.app.state, "public_components", None)
+        if configured is None:
+            _require_shared_public_admission()
+        elif configured[0].readiness().kind != "ready":
+            raise RuntimeError("Public admission is unavailable.")
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
@@ -684,7 +705,7 @@ def _web_dist_path() -> Path:
     return _PACKAGE_WEB_DIST
 
 
-@app.get("/{full_path:path}")
+@router.get("/{full_path:path}")
 def web_shell(full_path: str):
     """Serve built Svelte assets with an index fallback for browser routes."""
     if full_path == "api" or full_path.startswith("api/"):
@@ -706,3 +727,32 @@ def web_shell(full_path: str):
     if requested_file.is_relative_to(resolved_dist) and requested_file.is_file():
         return FileResponse(requested_file)
     return FileResponse(index_path)
+
+
+def create_server_app(
+    *,
+    public_mode: bool | None = None,
+    public_components: tuple[CasCoordinator, bytes, Any] | None = None,
+    public_gate: Any = None,
+    lifespan: Any = _lifespan,
+) -> FastAPI:
+    """Install the existing server routes with app-scoped public composition."""
+    created = FastAPI(title="Groundball API", lifespan=lifespan)
+    created.state.public_mode_override = public_mode
+    created.state.public_components = public_components
+    created.middleware("http")(_origin_proxy_token_middleware)
+    created.middleware("http")(_query_cors_middleware)
+    if public_gate is not None:
+
+        async def gated(request: Request, call_next):
+            if request.url.path in _CORS_QUERY_PATHS and request.method == _CORS_ALLOWED_METHOD:
+                _ensure_public_execution_deadline(request)
+            return await public_gate(request, call_next)
+
+        created.middleware("http")(gated)
+    created.include_router(router)
+    return created
+
+
+# Preserve the historical direct-import ASGI application and environment startup.
+app = create_server_app()

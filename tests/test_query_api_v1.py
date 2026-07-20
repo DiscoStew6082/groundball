@@ -84,7 +84,9 @@ def configure_public_proof(
     monkeypatch.setattr(api_server, "_public_admission_is_shared", True)
     monkeypatch.setattr(api_server, "_public_execution_runner", configured_runner)
     monkeypatch.setattr(api_server, "_public_demo_enabled", lambda: True)
-    monkeypatch.setattr(api_server, "_require_consistent_release_configuration", lambda: None)
+    monkeypatch.setattr(
+        api_server, "_require_consistent_release_configuration", lambda *_args: None
+    )
     return store, configured_runner
 
 
