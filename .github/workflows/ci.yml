@@ -61,6 +61,8 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run ruff check src/ tests/
+      - name: Check public tree neutrality
+        run: uv run python scripts/check_provider_neutrality.py --root .
 
   typecheck:
     runs-on: ubuntu-latest
