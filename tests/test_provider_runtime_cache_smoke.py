@@ -112,6 +112,124 @@ def test_smoke_builder_preserves_actual_worker_payload_without_expected_substitu
 Mutation = Callable[[dict[str, object]], None]
 
 
+_EXACT_JSON_TYPE_MUTATIONS: tuple[tuple[str, Mutation], ...] = (
+    (
+        "recipe-output-float-for-int",
+        lambda value: value["recipe"]["output"].__setitem__("offset", 0.0),
+    ),
+    (
+        "recipe-predicate-bool-for-int",
+        lambda value: value["recipe"]["predicate"]["predicates"][0].__setitem__("literal", True),
+    ),
+    ("plan-output-bool-for-int", lambda value: value["plan"]["output"].__setitem__("size", True)),
+    (
+        "plan-predicate-float-for-int",
+        lambda value: value["plan"]["predicate"]["predicates"][1].__setitem__("literal", 40.0),
+    ),
+    ("row-float-for-int", lambda value: value["rows"][0].__setitem__("season", 1988.0)),
+    ("row-bool-for-int", lambda value: value["rows"][0].__setitem__("batting.SB", True)),
+    ("returned-count-float-for-int", lambda value: value.__setitem__("returned_row_count", 6.0)),
+    ("matched-count-bool-for-int", lambda value: value.__setitem__("total_matched_count", True)),
+    ("pagination-bool-for-int", lambda value: value["pagination"].__setitem__("offset", False)),
+    ("pagination-int-for-bool", lambda value: value["pagination"].__setitem__("has_more", 0)),
+    (
+        "bound-value-float-for-int",
+        lambda value: value["evidence"].__setitem__("bound_values", [40.0, 40]),
+    ),
+    (
+        "evidence-row-count-float-for-int",
+        lambda value: value["evidence"].__setitem__("row_count", 6.0),
+    ),
+    (
+        "evidence-matched-count-bool-for-int",
+        lambda value: value["evidence"].__setitem__("matched_row_count", True),
+    ),
+    (
+        "source-expected-rows-float-for-int",
+        lambda value: value["evidence"]["sources"][0].__setitem__("expected_rows", 128598.0),
+    ),
+)
+
+
+@pytest.mark.parametrize("representation", ["mapping", "canonical-bytes"])
+@pytest.mark.parametrize(
+    ("_name", "mutation"),
+    _EXACT_JSON_TYPE_MUTATIONS,
+    ids=[item[0] for item in _EXACT_JSON_TYPE_MUTATIONS],
+)
+def test_exact_json_type_mutations_fail_at_direct_validator_seams(
+    representation: str, _name: str, mutation: Mutation
+) -> None:
+    from baseball_rag.provider_runtime_cache_smoke import ProviderRuntimeCacheSmokeError
+    from baseball_rag.public_release_config import canonical_json_bytes
+
+    document = _document()
+    mutation(document["query_proof"])
+    payload: bytes | dict[str, object] = (
+        canonical_json_bytes(document) if representation == "canonical-bytes" else document
+    )
+
+    with pytest.raises(ProviderRuntimeCacheSmokeError):
+        if isinstance(payload, bytes):
+            from baseball_rag.provider_runtime_cache_smoke import (
+                validate_provider_runtime_cache_smoke,
+            )
+
+            validate_provider_runtime_cache_smoke(
+                payload,
+                expected_source_commit=SOURCE,
+                expected_release_bundle_digest=BUNDLE_DIGEST,
+                expected_runtime_configuration_digest=load_runtime_configuration(CONFIG).digest,
+                expected_coverage={
+                    "proof_id": COVERAGE["proof_id"],
+                    "proof_identity": copy.deepcopy(COVERAGE["proof_identity"]),
+                },
+            )
+        else:
+            _validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("_name", "mutation"),
+    _EXACT_JSON_TYPE_MUTATIONS,
+    ids=[item[0] for item in _EXACT_JSON_TYPE_MUTATIONS],
+)
+def test_smoke_builder_rejects_exact_json_type_mutations(_name: str, mutation: Mutation) -> None:
+    from baseball_rag.provider_runtime_cache_smoke import (
+        ProviderRuntimeCacheSmokeError,
+        build_provider_runtime_cache_smoke,
+    )
+
+    worker_payload = _worker_payload()
+    mutation(worker_payload)
+    with pytest.raises(ProviderRuntimeCacheSmokeError):
+        build_provider_runtime_cache_smoke(
+            worker_payload=worker_payload,
+            identity=_identity(),
+            timing=_timing(),
+            expected_source_commit=SOURCE,
+            expected_release_bundle_digest=BUNDLE_DIGEST,
+            expected_runtime_configuration_digest=load_runtime_configuration(CONFIG).digest,
+            expected_coverage={
+                "proof_id": COVERAGE["proof_id"],
+                "proof_identity": copy.deepcopy(COVERAGE["proof_identity"]),
+            },
+        )
+
+
+@pytest.mark.parametrize("key", list(_timing()))
+def test_timing_fields_intentionally_accept_int_or_float_but_reject_bool(key: str) -> None:
+    document = _document()
+    document["timing"][key] = 1
+    assert _validate(document) == document
+
+    document["timing"][key] = True
+    from baseball_rag.provider_runtime_cache_smoke import ProviderRuntimeCacheSmokeError
+
+    with pytest.raises(ProviderRuntimeCacheSmokeError):
+        _validate(document)
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -240,6 +358,7 @@ def test_smoke_serialization_rejects_duplicate_and_noncanonical_fields() -> None
         },
     }
 
+    assert validate_provider_runtime_cache_smoke(canonical, **arguments) == _document()
     with pytest.raises(ProviderRuntimeCacheSmokeError):
         validate_provider_runtime_cache_smoke(pretty, **arguments)
     with pytest.raises(ProviderRuntimeCacheSmokeError):

@@ -82,6 +82,9 @@ def test_candidate_image_contract_covers_fixed_config_and_fail_closed_boundaries
     assert "GROUNDBALL_RUNTIME_CONFIG=" in workflow
     assert "GROUNDBALL_RUNTIME_CONFIG=/tmp/foreign-runtime.json" in workflow
     assert "--tmpfs /app/provider-runtime-cache" in workflow
+    assert "groundball-corrupt" in workflow
+    assert 'printf "{}" > /app/provider-runtime-cache/pointer.json' in workflow
+    assert 'docker exec -i "$container_name" /usr/bin/env' in workflow
     assert '"status":"failed"' in workflow
     assert '"operation":"query","question":"40-40"' in workflow
     assert '"operation":"unsupported"' in workflow
@@ -93,10 +96,27 @@ def test_candidate_workflow_labels_retained_cache_routines_truthfully() -> None:
 
     assert '"runtime-cache-build-tools"' not in workflow
     assert '"runtime-cache-garbage-collection"' not in workflow
-    assert '"present_but_denied_against_immutable_image_cache"' in workflow
+    assert '"present_but_denied_against_immutable_image_cache"' not in workflow
+    assert '"root_only_retained_routines"' in workflow
     assert '"runtime-cache-builder-module"' in workflow
     assert '"runtime-cache-materialization-and-removal-routines"' in workflow
     assert "python -m baseball_rag.provider_runtime_cache" in workflow
+    for entry_point in (
+        "build_image_provider_runtime_cache",
+        "build_provider_runtime_cache",
+        "_materialize_cache",
+        "_copy_database",
+        "_acquire_build_lock",
+        "_remove_build_tree",
+        "_write_new_file",
+        "_sync_file",
+    ):
+        assert f'"{entry_point}"' in workflow
+    assert '"created": 0' in workflow
+    assert '"removed": 0' in workflow
+    assert '"modified": 0' in workflow
+    assert 'Path("/tmp").rglob("*.duckdb")' in workflow
+    assert "source Bundle/config path was read after UID denial" in workflow
     assert "USER 10001:10001" in (ROOT / "Dockerfile.vercel").read_text(encoding="utf-8")
 
 

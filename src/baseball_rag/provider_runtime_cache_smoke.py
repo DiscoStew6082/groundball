@@ -9,7 +9,7 @@ import math
 import os
 import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from baseball_rag.provider_runtime_cache import inspect_provider_runtime_cache
 from baseball_rag.public_execution import ExecutionRequest, SubprocessExecutionRunner
@@ -202,9 +202,9 @@ def _validate_query_proof(value: object, *, expected_coverage: Mapping[str, obje
         not isinstance(recipe, dict)
         or not isinstance(plan, dict)
         or not isinstance(rows, list)
-        or recipe != _canonical_recipe()
-        or plan != _canonical_plan()
-        or rows != _CANONICAL_ROWS
+        or not _exact_json_equal(recipe, _canonical_recipe())
+        or not _exact_json_equal(plan, _canonical_plan())
+        or not _exact_json_equal(rows, _CANONICAL_ROWS)
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke canonical query is invalid.")
     recipe_columns = tuple(recipe["selections"])
@@ -215,11 +215,19 @@ def _validate_query_proof(value: object, *, expected_coverage: Mapping[str, obje
         and row_columns == [set(_CANONICAL_COLUMNS)] * 6
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke columns are invalid.")
-    if (
-        value.get("kind") != "rows"
-        or value.get("returned_row_count") != 6
-        or value.get("total_matched_count") != 6
-        or value.get("pagination") != {"has_more": False, "offset": 0, "size": 25}
+    if not _exact_json_equal(
+        {
+            "kind": value.get("kind"),
+            "pagination": value.get("pagination"),
+            "returned_row_count": value.get("returned_row_count"),
+            "total_matched_count": value.get("total_matched_count"),
+        },
+        {
+            "kind": "rows",
+            "pagination": {"has_more": False, "offset": 0, "size": 25},
+            "returned_row_count": 6,
+            "total_matched_count": 6,
+        },
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke result envelope is invalid.")
     _validate_verification(value.get("verification"), expected_coverage=expected_coverage)
@@ -235,17 +243,15 @@ def _validate_verification(value: object, *, expected_coverage: Mapping[str, obj
         "status",
     }:
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke verification is invalid.")
-    if (
-        set(expected_coverage) != {"proof_id", "proof_identity"}
-        or not _digest(expected_coverage.get("proof_id"))
-        or value
-        != {
+    if not _valid_expected_coverage(expected_coverage) or not _exact_json_equal(
+        value,
+        {
             "coverage_report": "/coverage-report",
             "proof_id": expected_coverage["proof_id"],
             "proof_identity": expected_coverage["proof_identity"],
             "reason": "Verified for this data release.",
             "status": "verified",
-        }
+        },
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke verification is invalid.")
 
@@ -268,23 +274,28 @@ def _validate_evidence(value: object, *, expected_coverage: Mapping[str, object]
     if not isinstance(proof_identity, dict):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke coverage identity is invalid.")
     expected_fingerprints = proof_identity.get("source_fingerprints")
-    observed_sources = value.get("sources")
+    expected_evidence = {
+        "bound_values": [40, 40],
+        "calculations": [],
+        "catalog_revision": _CANONICAL_CATALOG_REVISION,
+        "data_release": _CANONICAL_DATA_RELEASE,
+        "matched_row_count": 6,
+        "parameterized_sql": sql,
+        "result_fingerprint": _CANONICAL_RESULT_FINGERPRINT,
+        "row_count": 6,
+        "sources": _CANONICAL_SOURCES,
+    }
     if (
         not isinstance(sql, str)
         or hashlib.sha256(sql.encode("utf-8")).hexdigest() != _CANONICAL_SQL_SHA256
-        or value.get("bound_values") != [40, 40]
-        or value.get("calculations") != []
-        or value.get("catalog_revision") != _CANONICAL_CATALOG_REVISION
-        or value.get("data_release") != _CANONICAL_DATA_RELEASE
-        or value.get("row_count") != 6
-        or value.get("matched_row_count") != 6
-        or value.get("result_fingerprint") != _CANONICAL_RESULT_FINGERPRINT
-        or observed_sources != _CANONICAL_SOURCES
+        or not _exact_json_equal(value, expected_evidence)
         or proof_identity.get("catalog_revision") != _CANONICAL_CATALOG_REVISION
         or proof_identity.get("data_release") != _CANONICAL_DATA_RELEASE
         or not isinstance(expected_fingerprints, dict)
-        or {source["identity"]: source["row_fingerprint"] for source in _CANONICAL_SOURCES}
-        != {identity: expected_fingerprints.get(identity) for identity in ("Batting", "People")}
+        or not _exact_json_equal(
+            {identity: expected_fingerprints.get(identity) for identity in ("Batting", "People")},
+            {source["identity"]: source["row_fingerprint"] for source in _CANONICAL_SOURCES},
+        )
     ):
         raise ProviderRuntimeCacheSmokeError("Provider cache smoke QueryEvidence is invalid.")
 
@@ -333,6 +344,59 @@ def _smoke_document(payload: bytes | Mapping[str, object]) -> dict[str, object]:
             raise ProviderRuntimeCacheSmokeError("Provider cache smoke is noncanonical.")
         return value
     return dict(payload)
+
+
+def _valid_expected_coverage(value: Mapping[str, object]) -> bool:
+    if set(value) != {"proof_id", "proof_identity"} or not _digest(value.get("proof_id")):
+        return False
+    identity = value.get("proof_identity")
+    if not isinstance(identity, dict) or set(identity) != {
+        "catalog_revision",
+        "catalog_sha256",
+        "compiler_contract",
+        "compiler_sha256",
+        "data_manifest_semantic_sha256",
+        "data_release",
+        "report_schema_version",
+        "source_fingerprints",
+    }:
+        return False
+    fingerprints = identity.get("source_fingerprints")
+    return (
+        identity.get("catalog_revision") == _CANONICAL_CATALOG_REVISION
+        and identity.get("compiler_contract") == "query-plan-v1"
+        and identity.get("data_release") == _CANONICAL_DATA_RELEASE
+        and identity.get("report_schema_version") == "query-coverage-report-v1"
+        and all(
+            _digest(identity.get(key))
+            for key in (
+                "catalog_sha256",
+                "compiler_sha256",
+                "data_manifest_semantic_sha256",
+            )
+        )
+        and isinstance(fingerprints, dict)
+        and set(fingerprints) == {"Batting", "Fielding", "People", "Pitching", "TeamReference"}
+        and all(_digest(item) for item in fingerprints.values())
+    )
+
+
+def _exact_json_equal(observed: object, expected: object) -> bool:
+    """Compare JSON values without Python's bool/int/float equality aliases."""
+    if type(observed) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        observed_object = cast(dict[object, object], observed)
+        return set(observed_object) == set(expected) and all(
+            _exact_json_equal(observed_object[key], child) for key, child in expected.items()
+        )
+    if isinstance(expected, list):
+        observed_array = cast(list[object], observed)
+        return len(observed_array) == len(expected) and all(
+            _exact_json_equal(left, right)
+            for left, right in zip(observed_array, expected, strict=True)
+        )
+    return bool(observed == expected)
 
 
 def _digest(value: object) -> bool:

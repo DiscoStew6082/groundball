@@ -160,7 +160,6 @@ jobs:
             before=$(sha256sum /app/provider-runtime-cache/pointer.json)
             test -e /app/src/baseball_rag/provider_runtime_cache.py
             ! /app/.venv/bin/python -m baseball_rag.provider_runtime_cache >/tmp/builder.out 2>&1
-            /app/.venv/bin/python -c "from pathlib import Path; from baseball_rag.provider_runtime_cache import _remove_build_tree; _remove_build_tree(Path(\"/app/provider-runtime-cache\"))"
             test "$(sha256sum /app/provider-runtime-cache/pointer.json)" = "$before"
             test "$(find /app -type f -name \*.duckdb -print)" = "/app/provider-runtime-cache/$reference/runtime.duckdb"
             test ! -e /app/src/baseball_rag/db/download.py
@@ -174,6 +173,133 @@ jobs:
             test -z "$(find /app -type f \( -name "*.zip" -o -name "coverage-report.md" \) -print -quit)"
             test -z "$(find /app/release-bundle -iname "*cache*" -print -quit)"
           '
+          docker run --rm --network none -i "$IMAGE_TAG" /app/.venv/bin/python - \
+            > candidate-artifacts/evidence/root-only-runtime-cache-routines.json <<'PY'
+          import hashlib
+          import os
+          import tempfile
+          from pathlib import Path
+
+          import baseball_rag.provider_runtime_cache as cache
+          from baseball_rag.public_release_config import canonical_json_bytes
+
+          if os.geteuid() != 10001:
+              raise SystemExit("root-guard probe must run as UID 10001")
+
+          def snapshot(root: Path) -> dict[str, tuple[str, int, int, str]]:
+              result = {}
+              for path in sorted(root.rglob("*")):
+                  details = path.lstat()
+                  relative = str(path.relative_to(root))
+                  if path.is_symlink():
+                      digest = hashlib.sha256(os.readlink(path).encode()).hexdigest()
+                      kind = "symlink"
+                  elif path.is_file():
+                      digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                      kind = "file"
+                  else:
+                      digest = ""
+                      kind = "directory"
+                  result[relative] = (kind, details.st_mode, details.st_mtime_ns, digest)
+              return result
+
+          def delta(before, after):
+              return {
+                  "created": len(after.keys() - before.keys()),
+                  "removed": len(before.keys() - after.keys()),
+                  "modified": sum(
+                      before[key] != after[key] for key in before.keys() & after.keys()
+                  ),
+              }
+
+          class UnreadableRuntime:
+              def __getattribute__(self, name):
+                  raise AssertionError(f"runtime input read through {name}")
+
+          probe_root = Path(tempfile.mkdtemp(prefix="groundball-root-guard-probe-", dir="/tmp"))
+          removable = probe_root / "removable"
+          removable.mkdir()
+          (removable / "marker").write_bytes(b"preserve")
+          sync_target = probe_root / "sync-target"
+          sync_target.write_bytes(b"unchanged")
+          runtime = UnreadableRuntime()
+          os.environ[cache.CACHE_REFERENCE_ENV] = "f" * 64
+          calls = {
+              "build_image_provider_runtime_cache": lambda: cache.build_image_provider_runtime_cache(),
+              "build_provider_runtime_cache": lambda: cache.build_provider_runtime_cache(
+                  runtime,
+                  source_commit="1" * 40,
+                  release_bundle_digest="2" * 64,
+                  runtime_configuration_digest="3" * 64,
+                  image_build_preparation_seconds=0.0,
+              ),
+              "_materialize_cache": lambda: cache._materialize_cache(
+                  probe_root / "materialized",
+                  runtime,
+                  source_commit="1" * 40,
+                  release_bundle_digest="2" * 64,
+                  runtime_configuration_digest="3" * 64,
+                  image_build_preparation_seconds=0.0,
+              ),
+              "_copy_database": lambda: cache._copy_database(
+                  runtime, probe_root / "copied.duckdb"
+              ),
+              "_acquire_build_lock": lambda: cache._acquire_build_lock(
+                  probe_root / "build.lock", probe_root / "cache-root"
+              ),
+              "_remove_build_tree": lambda: cache._remove_build_tree(removable),
+              "_write_new_file": lambda: cache._write_new_file(
+                  probe_root / "created", b"forbidden"
+              ),
+              "_sync_file": lambda: cache._sync_file(sync_target),
+          }
+          totals = {"created": 0, "removed": 0, "modified": 0}
+          denied = []
+          cache_before = snapshot(Path("/app/provider-runtime-cache"))
+          tmp_duckdb_before = {str(path) for path in Path("/tmp").rglob("*.duckdb")}
+          for name, call in calls.items():
+              before = snapshot(probe_root)
+              original_read_bytes = Path.read_bytes
+              if name == "build_image_provider_runtime_cache":
+                  Path.read_bytes = lambda _path: (_ for _ in ()).throw(
+                      AssertionError("source Bundle/config path was read after UID denial")
+                  )
+              try:
+                  call()
+              except cache.ProviderRuntimeCacheError:
+                  denied.append({"entry_point": name, "outcome": "exception"})
+              else:
+                  raise AssertionError(f"{name} did not deny UID 10001")
+              finally:
+                  Path.read_bytes = original_read_bytes
+              change = delta(before, snapshot(probe_root))
+              totals = {key: totals[key] + change[key] for key in totals}
+          if totals != {"created": 0, "removed": 0, "modified": 0}:
+              raise AssertionError(totals)
+          if snapshot(Path("/app/provider-runtime-cache")) != cache_before:
+              raise AssertionError("immutable provider cache changed")
+          if os.environ.get(cache.CACHE_REFERENCE_ENV) != "f" * 64:
+              raise AssertionError("builder changed inherited cache reference before denial")
+          tmp_duckdb_after = {str(path) for path in Path("/tmp").rglob("*.duckdb")}
+          if tmp_duckdb_after != tmp_duckdb_before:
+              raise AssertionError("builder created a DuckDB file under /tmp")
+          print(
+              canonical_json_bytes(
+                  {
+                      **totals,
+                      "denied": denied,
+                      "effective_uid": os.geteuid(),
+                      "entry_point_count": len(calls),
+                      "schema_version": "ground-ball-root-only-runtime-cache-routines-v1",
+                      "status": "pass",
+                      "tmp_duckdb_created": 0,
+                  }
+              ).decode(),
+              end="",
+          )
+          PY
+          docker run --rm --network none "$IMAGE_TAG" /bin/sh -eu -c \
+            'test -z "$(find /tmp -type f -name '\''*.duckdb'\'' -print -quit)"'
           probe_failed_container() {
             container_name="$1"
             shift
@@ -194,11 +320,18 @@ jobs:
               '{"operation":"query","question":"40-40","recipe":null,"previous_recipe":null}' \
               '{"operation":"unsupported","question":"anything","recipe":null,"previous_recipe":null}'
             do
-              ! printf '%s' "$request" | timeout 3 docker exec -i "$container_name" \
-                /app/.venv/bin/python -m baseball_rag.public_execution > /tmp/worker.out
+              if test "$container_name" = groundball-unset; then
+                ! printf '%s' "$request" | timeout 3 docker exec -i "$container_name" /usr/bin/env \
+                  -u GROUNDBALL_RUNTIME_CONFIG /app/.venv/bin/python \
+                  -m baseball_rag.public_execution > /tmp/worker.out
+              else
+                ! printf '%s' "$request" | timeout 3 docker exec -i "$container_name" \
+                  /app/.venv/bin/python -m baseball_rag.public_execution > /tmp/worker.out
+              fi
               test "$(cat /tmp/worker.out)" = '{"kind":"failed"}'
             done
-            if test "$container_name" = groundball-hidden; then
+            if test "$container_name" = groundball-hidden \
+              || test "$container_name" = groundball-corrupt; then
               test -z "$(docker exec "$container_name" find /app/provider-runtime-cache -type f -name runtime.duckdb -print)"
             fi
             docker rm --force "$container_name" >/dev/null
@@ -212,19 +345,34 @@ jobs:
             --server-name 0.0.0.0 --server-port 80
           probe_failed_container groundball-hidden \
             --tmpfs /app/provider-runtime-cache:rw,uid=10001,gid=10001,mode=755 "$IMAGE_TAG"
+          probe_failed_container groundball-corrupt \
+            --tmpfs /app/provider-runtime-cache:rw,uid=10001,gid=10001,mode=755 "$IMAGE_TAG" \
+            /bin/sh -c 'printf "{}" > /app/provider-runtime-cache/pointer.json; exec \
+              /app/.venv/bin/python -m baseball_rag.web_app \
+              --server-name 0.0.0.0 --server-port 80'
           uv run python - <<'PY'
+          import json
           from pathlib import Path
           from baseball_rag.public_release_config import canonical_json_bytes
+          root_only = json.loads(
+              Path("candidate-artifacts/evidence/root-only-runtime-cache-routines.json").read_bytes()
+          )
           value = {
               "absent": [
                   "acquisition-tools", "catalog-development-files", "llm", "mac-or-tunnel-fallback",
                   "raw-retrosheet-archives",
               ],
               "network_mode": "none",
-              "present_but_denied_against_immutable_image_cache": [
-                  "runtime-cache-builder-module",
-                  "runtime-cache-materialization-and-removal-routines",
-              ],
+              "root_only_retained_routines": {
+                  "created": 0,
+                  "evidence": root_only,
+                  "modified": 0,
+                  "removed": 0,
+                  "surfaces": [
+                      "runtime-cache-builder-module",
+                      "runtime-cache-materialization-and-removal-routines",
+                  ],
+              },
               "schema_version": "ground-ball-prohibited-surface-proof-v1",
               "status": "pass",
           }

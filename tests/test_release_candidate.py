@@ -187,14 +187,48 @@ def test_candidate_builder_accepts_verified_pretty_coverage_report_evidence(
     "mutation",
     [
         lambda value: value["query_proof"]["rows"][0].__setitem__("batting.HR", 41),
+        lambda value: value["query_proof"]["rows"][0].__setitem__("season", 1988.0),
+        lambda value: value["query_proof"]["rows"][0].__setitem__("batting.SB", True),
+        lambda value: value["query_proof"]["recipe"]["output"].__setitem__("offset", 0.0),
+        lambda value: value["query_proof"]["plan"]["predicate"]["predicates"][0].__setitem__(
+            "literal", True
+        ),
         lambda value: value["query_proof"]["plan"]["selections"].reverse(),
+        lambda value: value["query_proof"].__setitem__("returned_row_count", 6.0),
+        lambda value: value["query_proof"].__setitem__("total_matched_count", True),
+        lambda value: value["query_proof"]["pagination"].__setitem__("offset", False),
+        lambda value: value["query_proof"]["pagination"].__setitem__("has_more", 0),
         lambda value: value["query_proof"]["verification"].__setitem__("status", "unavailable"),
         lambda value: value["query_proof"]["evidence"].__setitem__("result_fingerprint", "f" * 64),
+        lambda value: value["query_proof"]["evidence"].__setitem__("bound_values", [40.0, 40]),
+        lambda value: value["query_proof"]["evidence"].__setitem__("row_count", 6.0),
+        lambda value: value["query_proof"]["evidence"].__setitem__("matched_row_count", True),
+        lambda value: value["query_proof"]["evidence"]["sources"][0].__setitem__(
+            "expected_rows", 128598.0
+        ),
         lambda value: value["query_proof"].__setitem__("unknown", True),
     ],
-    ids=["row", "plan", "verification", "evidence", "unknown-field"],
+    ids=[
+        "row-value",
+        "row-float-for-int",
+        "row-bool-for-int",
+        "recipe-nested-float-for-int",
+        "plan-nested-bool-for-int",
+        "plan",
+        "envelope-float-for-int",
+        "envelope-bool-for-int",
+        "pagination-bool-for-int",
+        "pagination-int-for-bool",
+        "verification",
+        "evidence",
+        "bound-value-float-for-int",
+        "evidence-count-float-for-int",
+        "evidence-count-bool-for-int",
+        "source-expected-rows-float-for-int",
+        "unknown-field",
+    ],
 )
-def test_candidate_builder_semantically_rejects_arbitrary_runtime_cache_smoke(
+def test_candidate_builder_semantic_gate_rejects_arbitrary_runtime_cache_smoke(
     tmp_path: Path,
     mutation,
 ) -> None:
@@ -203,6 +237,31 @@ def test_candidate_builder_semantically_rejects_arbitrary_runtime_cache_smoke(
     document = _smoke_document()
     mutation(document)
     smoke.path.write_bytes(canonical_json_bytes(document))
+
+    with pytest.raises(CandidateError, match="runtime-cache smoke"):
+        build_candidate_identity(
+            scope="local_ci",
+            source_commit=SOURCE,
+            artifact_commit=ARTIFACT,
+            artifact_parent_commit=SOURCE,
+            artifact_changed_paths=("release/bundle/release-manifest.json",),
+            bundle_digest=BUNDLE,
+            image_digest=IMAGE,
+            image_size_bytes=123,
+            image_size_measurement_kind="docker-image-inspect-size-bytes",
+            runtime_configuration_digest=RUNTIME,
+            admission_policy_digest=POLICY,
+            evidence_inputs=evidence,
+        )
+
+
+def test_candidate_semantic_gate_rejects_duplicate_runtime_cache_smoke_fields(
+    tmp_path: Path,
+) -> None:
+    evidence = _evidence(tmp_path)
+    smoke = next(item for item in evidence if item.logical_id == "provider-runtime-cache-smoke")
+    canonical = canonical_json_bytes(_smoke_document())
+    smoke.path.write_bytes(canonical.replace(b'{"identity":', b'{"identity":{},"identity":', 1))
 
     with pytest.raises(CandidateError, match="runtime-cache smoke"):
         build_candidate_identity(

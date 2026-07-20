@@ -40,6 +40,12 @@ class ProviderRuntimeCacheError(RuntimeError):
     """The protected-provider runtime cache is absent, foreign, or mutable."""
 
 
+def _require_root_build_privilege() -> None:
+    """Deny every retained builder mutation unless the effective UID is literal root."""
+    if _effective_uid() != 0:
+        raise ProviderRuntimeCacheError("Provider runtime cache construction requires root.")
+
+
 class RuntimeForCache(Protocol):
     @property
     def connection(self) -> DuckDBPyConnection: ...
@@ -111,9 +117,8 @@ def build_provider_runtime_cache(
     image_build_preparation_seconds: float,
 ) -> str:
     """Build one root-owned fixed image cache, or validate an identical prior build."""
+    _require_root_build_privilege()
     clear_provider_runtime_cache_reference()
-    if _effective_uid() != 0:
-        raise ProviderRuntimeCacheError("Provider runtime cache build requires root.")
     _require_commit(source_commit)
     _require_digest(release_bundle_digest)
     _require_digest(runtime_configuration_digest)
@@ -262,6 +267,7 @@ def require_provider_runtime_cache_for_worker() -> None:
 
 def build_image_provider_runtime_cache() -> dict[str, object]:
     """Fully verify the fixed image Bundle/runtime and build the protected cache as root."""
+    _require_root_build_privilege()
     from baseball_rag.public_release_config import load_runtime_configuration
     from baseball_rag.query.coverage import load_passing_coverage_report
     from baseball_rag.query.runtime import _published_provider_runtime, _runtime_for
@@ -335,6 +341,7 @@ def _materialize_cache(
     runtime_configuration_digest: str,
     image_build_preparation_seconds: float,
 ) -> str:
+    _require_root_build_privilege()
     database_path = root / _DATABASE_NAME
     _copy_database(runtime.connection, database_path)
     _sync_file(database_path)
@@ -613,6 +620,7 @@ def _relations(connection: DuckDBPyConnection) -> tuple[str, ...]:
 
 
 def _copy_database(connection: DuckDBPyConnection, destination: Path) -> None:
+    _require_root_build_privilege()
     quoted = str(destination).replace("'", "''")
     try:
         connection.execute(f"ATTACH '{quoted}' AS provider_runtime_cache")
@@ -627,6 +635,7 @@ def _copy_database(connection: DuckDBPyConnection, destination: Path) -> None:
 
 
 def _acquire_build_lock(lock: Path, root: Path) -> bool:
+    _require_root_build_privilege()
     deadline = time.monotonic() + _LOCK_WAIT_SECONDS
     while True:
         try:
@@ -643,6 +652,7 @@ def _acquire_build_lock(lock: Path, root: Path) -> bool:
 
 
 def _remove_build_tree(path: Path) -> None:
+    _require_root_build_privilege()
     try:
         for member in path.rglob("*"):
             if not member.is_symlink():
@@ -820,6 +830,7 @@ def _decode_object(content: bytes, label: str) -> dict[str, Any]:
 
 
 def _write_new_file(path: Path, content: bytes) -> None:
+    _require_root_build_privilege()
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "wb", closefd=True) as stream:
@@ -835,6 +846,7 @@ def _write_new_file(path: Path, content: bytes) -> None:
 
 
 def _sync_file(path: Path) -> None:
+    _require_root_build_privilege()
     descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -78,6 +79,125 @@ def _seal(cache_root: Path, reference: str) -> None:
     os.chmod(cache_root / reference, 0o555)
     os.chmod(cache_root, 0o555)
     _published_provider_runtime.cache_clear()
+
+
+def _tree_snapshot(root: Path) -> dict[str, tuple[str, bytes]]:
+    snapshot: dict[str, tuple[str, bytes]] = {}
+    for path in sorted(root.rglob("*")):
+        relative = str(path.relative_to(root))
+        if path.is_dir():
+            snapshot[relative] = ("directory", b"")
+        elif path.is_symlink():
+            snapshot[relative] = ("symlink", os.readlink(path).encode())
+        else:
+            snapshot[relative] = ("file", path.read_bytes())
+    return snapshot
+
+
+class _UnreadableRuntime:
+    def __getattribute__(self, name: str) -> object:
+        raise AssertionError(f"runtime input was read through {name}")
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    [
+        "build_image_provider_runtime_cache",
+        "build_provider_runtime_cache",
+        "_materialize_cache",
+        "_copy_database",
+        "_acquire_build_lock",
+        "_remove_build_tree",
+        "_write_new_file",
+        "_sync_file",
+    ],
+)
+def test_every_retained_builder_mutation_entry_point_denies_uid_10001_before_side_effects(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, entry_point: str
+) -> None:
+    import baseball_rag.provider_runtime_cache as cache
+
+    sandbox = tmp_path / "builder-probe"
+    sandbox.mkdir()
+    removable = sandbox / "removable"
+    removable.mkdir()
+    (removable / "marker").write_bytes(b"preserve")
+    sync_target = sandbox / "sync-target"
+    sync_target.write_bytes(b"unchanged")
+    before = _tree_snapshot(sandbox)
+    monkeypatch.setattr(cache, "_effective_uid", lambda: 10001)
+    monkeypatch.setenv(cache.CACHE_REFERENCE_ENV, "f" * 64)
+
+    runtime = _UnreadableRuntime()
+    calls = {
+        "build_image_provider_runtime_cache": lambda: cache.build_image_provider_runtime_cache(),
+        "build_provider_runtime_cache": lambda: cache.build_provider_runtime_cache(
+            runtime,
+            source_commit="1" * 40,
+            release_bundle_digest="2" * 64,
+            runtime_configuration_digest="3" * 64,
+            image_build_preparation_seconds=0.0,
+        ),
+        "_materialize_cache": lambda: cache._materialize_cache(
+            sandbox / "materialized",
+            runtime,
+            source_commit="1" * 40,
+            release_bundle_digest="2" * 64,
+            runtime_configuration_digest="3" * 64,
+            image_build_preparation_seconds=0.0,
+        ),
+        "_copy_database": lambda: cache._copy_database(runtime, sandbox / "copied.duckdb"),
+        "_acquire_build_lock": lambda: cache._acquire_build_lock(
+            sandbox / "build.lock", sandbox / "cache-root"
+        ),
+        "_remove_build_tree": lambda: cache._remove_build_tree(removable),
+        "_write_new_file": lambda: cache._write_new_file(sandbox / "created", b"forbidden"),
+        "_sync_file": lambda: cache._sync_file(sync_target),
+    }
+
+    original_read_bytes = Path.read_bytes
+    if entry_point == "build_image_provider_runtime_cache":
+        monkeypatch.setattr(
+            Path,
+            "read_bytes",
+            lambda _path: (_ for _ in ()).throw(AssertionError("source path was read")),
+        )
+    try:
+        with pytest.raises(cache.ProviderRuntimeCacheError, match="requires root"):
+            calls[entry_point]()
+    finally:
+        monkeypatch.setattr(Path, "read_bytes", original_read_bytes)
+
+    assert _tree_snapshot(sandbox) == before
+    assert os.environ[cache.CACHE_REFERENCE_ENV] == "f" * 64
+    assert not list(tmp_path.rglob("*.duckdb"))
+
+
+def test_root_guard_is_first_statement_of_every_retained_mutation_entry_point() -> None:
+    source_path = ROOT / "src/baseball_rag/provider_runtime_cache.py"
+    module = ast.parse(source_path.read_text(encoding="utf-8"))
+    functions = {node.name: node for node in module.body if isinstance(node, ast.FunctionDef)}
+    guarded = {
+        "build_image_provider_runtime_cache",
+        "build_provider_runtime_cache",
+        "_materialize_cache",
+        "_copy_database",
+        "_acquire_build_lock",
+        "_remove_build_tree",
+        "_write_new_file",
+        "_sync_file",
+    }
+
+    for name in guarded:
+        body = functions[name].body
+        first = body[1] if ast.get_docstring(functions[name], clean=False) is not None else body[0]
+        assert isinstance(first, ast.Expr), name
+        assert isinstance(first.value, ast.Call), name
+        assert isinstance(first.value.func, ast.Name), name
+        assert first.value.func.id == "_require_root_build_privilege", name
+
+    guard = functions["_require_root_build_privilege"]
+    assert "_effective_uid() != 0" in ast.unparse(guard)
 
 
 def test_builder_publishes_exact_pointer_and_one_root_owned_read_only_object(
