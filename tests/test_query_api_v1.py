@@ -32,6 +32,7 @@ class RecordingRunner:
     def __init__(self, outcome: ExecutionOutcome) -> None:
         self.outcome = outcome
         self.requests: list[ExecutionRequest] = []
+        self.timeouts: list[float] = []
 
     def run(
         self,
@@ -41,6 +42,7 @@ class RecordingRunner:
     ) -> ExecutionOutcome:
         assert 0 < timeout_seconds <= 10
         self.requests.append(request)
+        self.timeouts.append(timeout_seconds)
         return self.outcome
 
 
@@ -524,6 +526,130 @@ def test_public_retrosheet_route_uses_the_same_admission_and_execution_seam(
     state, _ = store.read()
     assert state.running == ()
     assert state.monthly_budget.charged_starts == 1
+
+
+def test_public_query_run_success_exposes_safe_phase_timing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_public_proof(monkeypatch)
+    ticks = iter((50.0, 50.1, 50.2, 50.3, 52.8, 52.9, 53.1, 53.2))
+    monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert response.json() == {"kind": "rows", "rows": []}
+    assert response.headers["server-timing"] == (
+        "admission;dur=100.000, execution;dur=2500.000, release;dur=200.000, total;dur=3100.000"
+    )
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
+
+
+def test_execution_timing_start_failure_preserves_response_deadline_and_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, runner = configure_public_proof(monkeypatch)
+    diagnostic_ticks = iter(
+        (80.0, 80.1, 80.2, RuntimeError("clock failed"), 80.4, 80.5, 80.6, 80.7)
+    )
+    deadline_ticks = iter((100.0, 100.25))
+
+    def diagnostic_monotonic() -> float:
+        tick = next(diagnostic_ticks)
+        if isinstance(tick, Exception):
+            raise tick
+        return tick
+
+    monkeypatch.setattr(api_server, "_monotonic", diagnostic_monotonic, raising=False)
+    monkeypatch.setattr(
+        api_server, "_deadline_monotonic", lambda: next(deadline_ticks), raising=False
+    )
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert response.json() == {"kind": "rows", "rows": []}
+    assert response.headers["server-timing"] == (
+        "admission;dur=100.000, release;dur=100.000, total;dur=600.000"
+    )
+    assert "execution" not in response.headers["server-timing"]
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
+    assert runner.timeouts == [9.75]
+    state, _version = store.read()
+    assert state.running == ()
+
+
+def test_timing_failure_does_not_change_response_or_skip_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _runner = configure_public_proof(monkeypatch)
+    ticks = iter((80.0, 80.1, 80.2, 80.3, 80.4, RuntimeError("clock failed"), 80.6, 80.7))
+
+    def monotonic() -> float:
+        tick = next(ticks)
+        if isinstance(tick, Exception):
+            raise tick
+        return tick
+
+    monkeypatch.setattr(api_server, "_monotonic", monotonic, raising=False)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert response.json() == {"kind": "rows", "rows": []}
+    assert "release" not in response.headers["server-timing"]
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
+    state, _version = store.read()
+    assert state.running == ()
+
+
+def test_public_timing_omits_nonfinite_and_negative_phase_durations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _runner = configure_public_proof(monkeypatch)
+    ticks = iter((90.0, 90.1, 90.0, 90.2, float("inf"), float("nan"), 90.4, 90.5))
+    monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert response.headers["server-timing"] == "total;dur=400.000"
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
+    state, _version = store.read()
+    assert state.running == ()
+
+
+def test_public_timing_headers_are_omitted_without_any_valid_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _runner = configure_public_proof(monkeypatch)
+    ticks = iter((100.0, 101.0, 100.0, 102.0, 101.0, 104.0, 103.0, 100.0))
+    monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 200
+    assert "server-timing" not in response.headers
+    assert "x-groundball-timing" not in response.headers
+    state, _version = store.read()
+    assert state.running == ()
+
+
+def test_public_admission_refusal_exposes_only_measured_phase_timing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_public_proof(monkeypatch, budget=100)
+    ticks = iter((70.0, 70.1, 70.6, 70.7))
+    monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
+
+    response = TestClient(app).post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 503
+    assert response.json()["reason"] == "monthly_start_budget_exhausted"
+    assert response.headers["server-timing"] == ("admission;dur=500.000, total;dur=600.000")
+    assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
+    assert "execution" not in response.headers["server-timing"]
+    assert "release" not in response.headers["server-timing"]
 
 
 def test_public_busy_and_rate_refusals_expose_exact_retry_times(

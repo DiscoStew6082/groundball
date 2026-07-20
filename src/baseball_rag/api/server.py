@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import html
+import math
 import os
 import secrets
 import time
@@ -109,6 +110,8 @@ _visitor_digest_key: bytes | None = None
 _public_admission_is_shared = False
 _public_runtime_configuration: RuntimeConfiguration | None = None
 _public_execution_runner = SubprocessExecutionRunner()
+_monotonic = time.monotonic
+_deadline_monotonic = time.monotonic
 
 
 def configure_public_admission(
@@ -298,7 +301,7 @@ def _origin_proxy_token_is_valid(request: Request, configured_token: str) -> boo
 
 
 def _ensure_public_execution_deadline(request: Request) -> float:
-    fallback_deadline = time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+    fallback_deadline = _monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
     established_deadline = getattr(request.state, "public_execution_deadline", None)
     deadline = (
         min(established_deadline, fallback_deadline)
@@ -306,6 +309,14 @@ def _ensure_public_execution_deadline(request: Request) -> float:
         else fallback_deadline
     )
     request.state.public_execution_deadline = deadline
+
+    safe_fallback_deadline = _deadline_monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+    established_fallback = getattr(request.state, "public_execution_fallback_deadline", None)
+    request.state.public_execution_fallback_deadline = (
+        min(established_fallback, safe_fallback_deadline)
+        if isinstance(established_fallback, (int, float))
+        else safe_fallback_deadline
+    )
     return deadline
 
 
@@ -466,6 +477,8 @@ def query_run(req: QueryInputRequest, request: Request):
 
 
 def _execute_public_request(request: Request, execution: ExecutionRequest) -> Response:
+    request_started = _monotonic()
+    phases: list[tuple[str, float, float]] = []
     try:
         configured = getattr(request.app.state, "public_components", None)
         if configured is None:
@@ -474,15 +487,23 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
         else:
             coordinator, digest_key, execution_runner = configured
     except RuntimeError:
-        return JSONResponse(
+        _record_timing_phase(phases, "admission", request_started)
+        unavailable_response = JSONResponse(
             {
                 "error": "provider_unavailable",
                 "detail": "Ground Ball's public admission service is unavailable.",
             },
             status_code=503,
         )
+        _set_server_timing(unavailable_response, phases, request_started)
+        return unavailable_response
 
-    deadline = _ensure_public_execution_deadline(request)
+    deadline = getattr(request.state, "public_execution_deadline", None)
+    if deadline is None:
+        deadline = request_started + _PUBLIC_EXECUTION_DEADLINE_SECONDS
+    fallback_deadline = getattr(request.state, "public_execution_fallback_deadline", None)
+    if fallback_deadline is None:
+        fallback_deadline = _deadline_monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
     visitor_token = request.cookies.get(_PUBLIC_VISITOR_COOKIE)
     new_visitor = visitor_token is None
     if visitor_token is None:
@@ -492,23 +513,81 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
     admission = coordinator.admit(
         AdmissionAttempt(visitor=visitor, run_id=run_id, now=datetime.now(UTC))
     )
+    _record_timing_phase(phases, "admission", request_started)
     response: Response
     if admission.kind != "admitted":
         response = _admission_refusal_response(admission)
     else:
-        remaining = deadline - time.monotonic()
+        execution_started: float | None = None
         try:
-            execution_outcome = (
-                execution_runner.run(execution, timeout_seconds=remaining)
-                if remaining > 0
-                else ExecutionOutcome("timed_out")
-            )
+            execution_started = _safe_timing_now()
+            if execution_started is None:
+                remaining = fallback_deadline - _deadline_monotonic()
+            else:
+                remaining = deadline - execution_started
+            try:
+                execution_outcome = (
+                    execution_runner.run(execution, timeout_seconds=remaining)
+                    if remaining > 0
+                    else ExecutionOutcome("timed_out")
+                )
+            finally:
+                _record_timing_phase(phases, "execution", execution_started)
             response = _execution_outcome_response(execution_outcome)
         finally:
-            coordinator.release(run_id)
+            release_started = _safe_timing_now()
+            try:
+                coordinator.release(run_id)
+            finally:
+                _record_timing_phase(phases, "release", release_started)
     if new_visitor:
         _set_visitor_cookie(response, visitor_token)
+    _set_server_timing(response, phases, request_started)
     return response
+
+
+def _safe_timing_now() -> float | None:
+    try:
+        value = _monotonic()
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    except Exception:
+        return None
+
+
+def _record_timing_phase(
+    phases: list[tuple[str, float, float]],
+    name: str,
+    started: float | None,
+) -> None:
+    finished = _safe_timing_now()
+    if started is not None and finished is not None:
+        phases.append((name, started, finished))
+
+
+def _set_server_timing(
+    response: Response,
+    phases: list[tuple[str, float, float]],
+    request_started: float,
+) -> None:
+    try:
+        measured = [*phases]
+        total_finished = _safe_timing_now()
+        if total_finished is not None:
+            measured.append(("total", request_started, total_finished))
+        metrics = []
+        for name, started, finished in measured:
+            duration_ms = (finished - started) * 1000
+            if math.isfinite(duration_ms) and duration_ms >= 0:
+                metrics.append(f"{name};dur={duration_ms:.3f}")
+        if metrics:
+            metric_value = ", ".join(metrics)
+            response.headers["Server-Timing"] = metric_value
+            response.headers["X-Groundball-Timing"] = metric_value
+    except Exception:
+        return
 
 
 def _execution_outcome_response(outcome: ExecutionOutcome) -> Response:
