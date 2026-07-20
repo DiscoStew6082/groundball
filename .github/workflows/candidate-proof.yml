@@ -3,20 +3,8 @@ name: Candidate Container Proof
 on:
   workflow_dispatch:
   pull_request:
-    branches:
-      - main
     paths:
-      - '.github/workflows/candidate-proof.yml'
-      - '.github/workflows/ci.yml'
-      - 'Dockerfile.vercel'
-      - 'release/bundle/**'
-      - 'release/config/**'
-      - 'src/baseball_rag/**'
-      - 'tests/test_ci_workflows.py'
-      - 'tests/test_public_release_config.py'
-      - 'tests/test_release_candidate.py'
-      - 'uv.lock'
-      - 'pyproject.toml'
+      - 'release/bundle/release-manifest.json'
 
 concurrency:
   group: candidate-proof-${{ github.event.pull_request.head.sha || github.sha }}

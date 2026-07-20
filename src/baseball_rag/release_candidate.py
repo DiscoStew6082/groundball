@@ -22,6 +22,7 @@ CANDIDATE_SCHEMA = "ground-ball-release-candidate-v1"
 GATE_REPORT_SCHEMA = "ground-ball-release-gate-report-v1"
 ATTESTATION_SCHEMA = "ground-ball-deployment-attestation-v1"
 CANDIDATE_SCOPES = frozenset({"local_ci", "protected_preview", "production"})
+MAX_CANDIDATE_IMAGE_SIZE_BYTES = 1_073_741_824
 PROVIDER_OBSERVATION_IDS = (
     "cold_wakes",
     "network_security_public_routes",
@@ -113,6 +114,7 @@ def build_candidate_identity(
     source_commit: str,
     artifact_commit: str,
     artifact_parent_commit: str,
+    artifact_changed_paths: Sequence[str],
     bundle_digest: str,
     image_digest: str,
     image_size_bytes: int,
@@ -126,7 +128,7 @@ def build_candidate_identity(
         source_commit=source_commit,
         artifact_commit=artifact_commit,
         artifact_parent_commit=artifact_parent_commit,
-        changed_paths=["release/bundle/release-manifest.json"],
+        changed_paths=artifact_changed_paths,
     )
     evidence = [_evidence_entry(item) for item in evidence_inputs]
     evidence.sort(key=lambda item: str(item["logical_id"]))
@@ -207,7 +209,7 @@ def validate_candidate_identity(
     if not isinstance(image_digest, str) or _IMAGE_DIGEST.fullmatch(image_digest) is None:
         raise CandidateError("Candidate image digest is invalid.")
     size = document.get("image_size_bytes")
-    if type(size) is not int or size < 0:
+    if type(size) is not int or size < 0 or size > MAX_CANDIDATE_IMAGE_SIZE_BYTES:
         raise CandidateError("Candidate image size is invalid.")
     measurement = document.get("image_size_measurement_kind")
     expected_measurement = (
@@ -266,7 +268,7 @@ def build_gate_report(
     gates: list[dict[str, object]] = []
     for gate_id in REQUIRED_GATE_IDS:
         result = results[gate_id]
-        if set(result) != {"status", "evidence"}:
+        if not isinstance(result, Mapping) or set(result) != {"status", "evidence"}:
             raise CandidateError(f"Gate result shape is invalid for {gate_id}.")
         status = result.get("status")
         references = result.get("evidence")
@@ -472,12 +474,13 @@ def _validate_provider_attestation(
         }
         or provider.get("image_digest") != candidate["image_digest"]
         or type(provider.get("image_size_bytes")) is not int
-        or provider["image_size_bytes"] < 0
+        or provider.get("image_size_bytes") != candidate["image_size_bytes"]
         or not isinstance(provider_name, str)
         or _CANONICAL_ID.fullmatch(provider_name) is None
         or not isinstance(deployment_id, str)
         or _CANONICAL_ID.fullmatch(deployment_id) is None
         or measurement_kind != "provider-oci-manifest-size-bytes"
+        or measurement_kind != candidate["image_size_measurement_kind"]
         or not isinstance(evidence, list)
         or not evidence
         or not isinstance(observations, dict)
@@ -688,12 +691,6 @@ def main(argv: list[str] | None = None) -> int:
                 changed_paths = args.artifact_changed_paths.read_text(encoding="utf-8").splitlines()
             except (OSError, UnicodeError) as exc:
                 raise CandidateError("Artifact changed-path inventory is unreadable.") from exc
-            validate_artifact_topology(
-                source_commit=args.source_commit,
-                artifact_commit=args.artifact_commit,
-                artifact_parent_commit=args.artifact_parent_commit,
-                changed_paths=changed_paths,
-            )
             bundle = check_release_bundle(
                 args.bundle_root, expected_source_commit=args.source_commit
             )
@@ -707,6 +704,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_commit=args.source_commit,
                 artifact_commit=args.artifact_commit,
                 artifact_parent_commit=args.artifact_parent_commit,
+                artifact_changed_paths=changed_paths,
                 bundle_digest=bundle.digest,
                 image_digest=args.image_digest,
                 image_size_bytes=args.image_size_bytes,

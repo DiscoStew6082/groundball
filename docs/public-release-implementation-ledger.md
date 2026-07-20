@@ -190,7 +190,7 @@ Every result must belong to the same candidate. Evidence does not transfer acros
 - Shell and capabilities ready within five seconds.
 - First cold supported Query Run completes within ten seconds.
 - Every run in a fixed, predeclared twenty-run warm manifest completes within three seconds.
-- Image is at most 1 GB and peak runtime memory is at most 1.5 GB.
+- Image is at most 1,073,741,824 bytes (exactly 1 GiB) and peak runtime memory is at most 1.5 GB.
 - Record image digest and size, peak memory, build duration, cold and warm timings, and provider observations.
 
 ### Bundle and readiness
@@ -382,10 +382,10 @@ Wave 6 is implemented on `implementation/public-deterministic-groundball-candida
 
 - `public_release_config.py` owns the rendering-neutral read model derived from the actual enforced limits, cookie flags, state schema, digest-key minimum, deadline, lease, and bounded CAS constants. `release/config/public-admission-policy.json` is canonical generated JSON and its `--check` command fails on drift.
 - `release/config/local-ci-runtime.json` is strict non-secret configuration. It says `local_ci`, `provider_deployment: false`, `network_policy: none`, and `local_ci_ephemeral`; unknown fields, unknown release environment keys, secret values, or a provider claim fail closed.
-- `release_candidate.py` emits and validates canonical candidate identity, the fixed Release Gate inventory, and Deployment Attestation records. It rejects duplicate keys or evidence IDs, unknown fields, booleans used as integers, malformed or truncated identities, secret/path content, topology and binding mismatches, and foreign evidence. Candidate ID hashing excludes only its own field.
+- `release_candidate.py` emits and validates canonical candidate identity, the fixed Release Gate inventory, and Deployment Attestation records. It rejects duplicate keys or evidence IDs, unknown fields, booleans used as integers, malformed or truncated identities, secret/path content, topology and binding mismatches, and foreign evidence. Candidate ID hashing excludes only its own field. Its authoritative `MAX_CANDIDATE_IMAGE_SIZE_BYTES` ceiling is 1,073,741,824 bytes for every scope; provider image size and measurement kind must exactly equal the protected candidate fields.
 - Every gate is exactly `pass`, `fail`, or `blocked`; a pass requires candidate evidence, and eligibility requires all fixed gates to pass for that candidate. Local CI passes only topology/identity, bundle/Coverage Report, deterministic public-envelope parity, offline/prohibited-surface, preliminary local image-size, and runtime/admission-config gates. Protected/provider gates remain blocked, so the report is intentionally ineligible.
 - A Wave 6 local Deployment Attestation template explicitly says no provider deployment exists and cannot be promotion-eligible. No Vercel attestation is fabricated. Protected/production validation later requires exact provider deployment/image identity, unchanged bundle/config/gate bindings, observations, all-pass gates, and external evidence.
-- `.github/workflows/candidate-proof.yml` replaces the dormant retired-branch job. It checks out the exact PR head with full history, derives source/artifact topology from the Release Manifest and Git commits, requires an artifact-only bundle commit, builds the exact-source Dockerfile, records local Docker ID/size, enforces 1 GB, boots with `--network none`, exercises the Wave 5 natural/structured/follow-up/paging/export/Retrosheet corpus, checks prohibited files and persistent authority, then uploads candidate, gate, template, evidence, and summary artifacts even on safe failures.
+- `.github/workflows/candidate-proof.yml` replaces the dormant retired-branch job. Automatic PR proof is branch-independent and triggered only by a changed canonical `release/bundle/release-manifest.json`; ordinary source/dependency/configuration/workflow/test PRs stay in ordinary CI, while `workflow_dispatch` remains available. Candidate proof checks out the exact selected head with full history, derives source/artifact topology from the Release Manifest and Git commits, requires an artifact-only bundle commit, builds the exact-source Dockerfile, records local Docker ID/size, enforces exactly 1 GiB, boots with `--network none`, exercises the Wave 5 natural/structured/follow-up/paging/export/Retrosheet corpus, checks prohibited files and persistent authority, then uploads candidate, gate, template, evidence, and summary artifacts even on safe failures.
 
 Exact artifact meanings, freeze steps, and pasteable assembly/validation commands are in `docs/release-candidates.md`. Local Docker ID/size are explicitly not future provider OCI digest/size. No Blob, credential, preview, deployment, provider accounting, protected Browser, performance, restart, scale-to-zero, memory, website, domain, Cloudflare, Mac, or tunnel state is contacted or changed in Wave 6.
 
@@ -403,6 +403,17 @@ Vertical tests first failed for the missing actual-policy/config module, candida
 - Docker Engine `29.4.3` was reachable, but the exact local build could not acquire uncached `python:3.12-slim` and `node:22-alpine` base images because the host Docker credential helper terminated. No credential configuration was inspected or changed. Therefore no local image ID/size or container result is claimed; the fresh exact-head GitHub candidate-container job is mandatory before PR readiness.
 
 Pi exposed no subagent/review-agent facility. Direct self-review covered canonical/duplicate-key behavior, integer-versus-boolean checks, secret/path exclusion, source/artifact and candidate/report/attestation bindings, fixed gate and provider-observation inventories, scope-specific local-versus-provider image measurements, generated-policy drift, provider fail-closed startup, explicit local-CI isolation, exact-head workflow checkout, artifact-only topology, safe failure uploads, prohibited-surface checks, and the absence of any provider/account/Mac/tunnel mutation or green substitution for blocked evidence.
+
+### Wave 6 review corrections (2026-07-20)
+
+Focused red/green corrections make the automatic candidate trigger manifest-only, enforce the 1 GiB domain ceiling for local and provider scopes, bind provider size evidence exactly to candidate identity, and require the public builder to validate the caller's real changed-path inventory. A malformed non-object gate result now exits through `CandidateError`/argparse without a traceback. No provider or protected state was contacted or changed.
+
+- Focused candidate/workflow contract proof: `52 passed`.
+- Fast Python suite: `496 passed, 1 deselected`; one upstream Starlette/httpx deprecation warning.
+- Marked offline Release Proof: `1 passed, 496 deselected`; the same upstream warning.
+- Deterministic eval/parity matrix: `26/26` passing. Catalog compatibility, raw inventory, Coverage Report generation, and Coverage Report validation checks passed with no generated diff.
+- Ruff lint and full format check passed; mypy passed for `65` source files; configured pre-commit passed all hooks.
+- Browser DOM suite: `25/25` passing. Web production build passed with `113` transformed modules.
 
 ## Abort and rollback rules
 

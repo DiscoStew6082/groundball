@@ -7,6 +7,7 @@ import pytest
 
 from baseball_rag.public_release_config import canonical_json_bytes
 from baseball_rag.release_candidate import (
+    MAX_CANDIDATE_IMAGE_SIZE_BYTES,
     PROVIDER_OBSERVATION_IDS,
     REQUIRED_GATE_IDS,
     CandidateError,
@@ -20,6 +21,9 @@ from baseball_rag.release_candidate import (
     validate_candidate_identity,
     validate_deployment_attestation,
     validate_gate_report,
+)
+from baseball_rag.release_candidate import (
+    main as release_candidate_main,
 )
 
 SOURCE = "1" * 40
@@ -50,15 +54,23 @@ def _evidence(tmp_path: Path) -> tuple[EvidenceInput, ...]:
     return tuple(inputs)
 
 
-def _candidate(tmp_path: Path, *, scope: str = "local_ci") -> dict[str, object]:
+def _candidate(
+    tmp_path: Path,
+    *,
+    scope: str = "local_ci",
+    image_size_bytes: int = 123_456,
+    artifact_parent_commit: str = SOURCE,
+    artifact_changed_paths: tuple[str, ...] = ("release/bundle/release-manifest.json",),
+) -> dict[str, object]:
     return build_candidate_identity(
         scope=scope,
         source_commit=SOURCE,
         artifact_commit=ARTIFACT,
-        artifact_parent_commit=SOURCE,
+        artifact_parent_commit=artifact_parent_commit,
+        artifact_changed_paths=artifact_changed_paths,
         bundle_digest=BUNDLE,
         image_digest=IMAGE,
-        image_size_bytes=123_456,
+        image_size_bytes=image_size_bytes,
         image_size_measurement_kind=(
             "docker-image-inspect-size-bytes"
             if scope == "local_ci"
@@ -127,6 +139,40 @@ def test_candidate_rejects_malformed_identity_fields(
         validate_candidate_identity(canonical_json_bytes(candidate))
 
 
+@pytest.mark.parametrize("scope", ["local_ci", "protected_preview", "production"])
+@pytest.mark.parametrize("image_size_bytes", [0, 1_073_741_824])
+def test_candidate_accepts_image_sizes_through_exact_one_gibibyte(
+    tmp_path: Path, scope: str, image_size_bytes: int
+) -> None:
+    candidate = _candidate(tmp_path, scope=scope, image_size_bytes=image_size_bytes)
+
+    assert candidate["image_size_bytes"] == image_size_bytes
+    assert validate_candidate_identity(canonical_json_bytes(candidate)) == candidate
+    assert MAX_CANDIDATE_IMAGE_SIZE_BYTES == 1_073_741_824
+
+
+@pytest.mark.parametrize("scope", ["local_ci", "protected_preview", "production"])
+@pytest.mark.parametrize("image_size_bytes", [1_073_741_825, -1, True])
+def test_candidate_builder_rejects_image_sizes_outside_the_authoritative_limit(
+    tmp_path: Path, scope: str, image_size_bytes: int
+) -> None:
+    with pytest.raises(CandidateError, match="image size"):
+        _candidate(tmp_path, scope=scope, image_size_bytes=image_size_bytes)
+
+
+@pytest.mark.parametrize("image_size_bytes", [1_073_741_825, -1, True])
+def test_candidate_validator_rejects_image_sizes_outside_the_authoritative_limit(
+    tmp_path: Path, image_size_bytes: object
+) -> None:
+    candidate = _candidate(tmp_path)
+    candidate["image_size_bytes"] = image_size_bytes
+    body = {key: value for key, value in candidate.items() if key != "candidate_id"}
+    candidate["candidate_id"] = "gbc_" + hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+
+    with pytest.raises(CandidateError, match="image size"):
+        validate_candidate_identity(canonical_json_bytes(candidate))
+
+
 def test_candidate_rejects_duplicate_json_keys_unknown_fields_and_secret_content(
     tmp_path: Path,
 ) -> None:
@@ -176,6 +222,41 @@ def test_artifact_topology_requires_exact_parent_and_bundle_only_changes() -> No
         )
 
 
+@pytest.mark.parametrize(
+    ("artifact_parent_commit", "artifact_changed_paths"),
+    [
+        (
+            SOURCE,
+            (
+                "release/bundle/release-manifest.json",
+                "src/baseball_rag/release_candidate.py",
+            ),
+        ),
+        (SOURCE, ("release/bundle/data/manifest.json",)),
+        (
+            SOURCE,
+            (
+                "release/bundle/release-manifest.json",
+                "release/bundle/release-manifest.json",
+            ),
+        ),
+        (SOURCE, ()),
+        ("9" * 40, ("release/bundle/release-manifest.json",)),
+    ],
+)
+def test_candidate_builder_validates_the_exact_artifact_inventory(
+    tmp_path: Path,
+    artifact_parent_commit: str,
+    artifact_changed_paths: tuple[str, ...],
+) -> None:
+    with pytest.raises(CandidateError):
+        _candidate(
+            tmp_path,
+            artifact_parent_commit=artifact_parent_commit,
+            artifact_changed_paths=artifact_changed_paths,
+        )
+
+
 def test_candidate_rejects_duplicate_logical_evidence_and_topology_mismatch(tmp_path: Path) -> None:
     duplicate = (*_evidence(tmp_path), _evidence(tmp_path)[0])
     with pytest.raises(CandidateError):
@@ -184,6 +265,7 @@ def test_candidate_rejects_duplicate_logical_evidence_and_topology_mismatch(tmp_
             source_commit=SOURCE,
             artifact_commit=ARTIFACT,
             artifact_parent_commit=SOURCE,
+            artifact_changed_paths=("release/bundle/release-manifest.json",),
             bundle_digest=BUNDLE,
             image_digest=IMAGE,
             image_size_bytes=1,
@@ -249,6 +331,37 @@ def test_gate_inventory_must_be_exact(tmp_path: Path, mutation: str) -> None:
         results["historical-proof"] = {"status": "pass", "evidence": ["container-proof"]}
     with pytest.raises(CandidateError):
         build_gate_report(_candidate(tmp_path), results)
+
+
+def test_non_object_gate_result_fails_as_a_clean_cli_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    candidate_path = tmp_path / "candidate.json"
+    results_path = tmp_path / "results.json"
+    output_path = tmp_path / "report.json"
+    candidate_path.write_bytes(canonical_json_bytes(_candidate(tmp_path)))
+    results: dict[str, object] = _all_pass_results()
+    results[REQUIRED_GATE_IDS[0]] = None
+    results_path.write_bytes(canonical_json_bytes({"gates": results}))
+
+    with pytest.raises(SystemExit) as raised:
+        release_candidate_main(
+            [
+                "gates",
+                "--candidate",
+                str(candidate_path),
+                "--results",
+                str(results_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+
+    assert raised.value.code == 2
+    captured = capsys.readouterr()
+    assert "Gate result shape is invalid" in captured.err
+    assert "Traceback" not in captured.err
+    assert not output_path.exists()
 
 
 def test_gate_report_rejects_duplicate_gates_missing_pass_evidence_and_foreign_candidate(
@@ -323,6 +436,14 @@ def test_provider_attestation_requires_every_external_observation(tmp_path: Path
         validate_deployment_attestation(canonical_json_bytes(attestation), candidate, report)
         == attestation
     )
+
+    for field, value in (
+        ("image_size_bytes", int(candidate["image_size_bytes"]) + 1),
+        ("image_size_measurement_kind", "docker-image-inspect-size-bytes"),
+    ):
+        mismatched = {**attestation, "provider": {**attestation["provider"], field: value}}
+        with pytest.raises(CandidateError):
+            validate_deployment_attestation(canonical_json_bytes(mismatched), candidate, report)
 
     del attestation["observations"][PROVIDER_OBSERVATION_IDS[0]]
     with pytest.raises(CandidateError):

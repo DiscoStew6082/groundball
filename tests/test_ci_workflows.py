@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from baseball_rag.release_candidate import MAX_CANDIDATE_IMAGE_SIZE_BYTES
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,7 +31,13 @@ def test_candidate_container_proof_is_branch_independent_and_exact_head() -> Non
 
     assert "implementation/public-deterministic-groundball'" not in ordinary
     assert "release-container:" not in ordinary
-    assert "pull_request:" in workflow
+    automatic_trigger = workflow.split("on:\n", 1)[1].split("\nconcurrency:", 1)[0]
+    assert automatic_trigger == (
+        "  workflow_dispatch:\n"
+        "  pull_request:\n"
+        "    paths:\n"
+        "      - 'release/bundle/release-manifest.json'\n"
+    )
     assert "fetch-depth: 0" in workflow
     assert "github.event.pull_request.head.sha" in workflow
     assert "permissions:\n  contents: read" in workflow
@@ -37,7 +45,9 @@ def test_candidate_container_proof_is_branch_independent_and_exact_head() -> Non
     assert "release/bundle/release-manifest.json" in workflow
     assert "--network none" in workflow
     assert "docker image inspect" in workflow
-    assert "1073741824" in workflow
+    assert MAX_CANDIDATE_IMAGE_SIZE_BYTES == 1_073_741_824
+    assert f'test "$image_size" -le {MAX_CANDIDATE_IMAGE_SIZE_BYTES}' in workflow
+    assert f'"ceiling_bytes": {MAX_CANDIDATE_IMAGE_SIZE_BYTES}' in workflow
     assert "baseball_rag.release_candidate assemble" in workflow
     assert "--gate-report-output candidate-artifacts/gate-report.json" in workflow
     assert (

@@ -5,7 +5,7 @@ Ground Ball release candidates are identified by artifacts, never by a branch la
 ## Artifact meanings
 
 - **Release Manifest digest**: SHA-256 of the canonical provider-neutral `release/bundle/release-manifest.json`. The manifest never contains an image digest.
-- **Candidate identity**: binds one scope, 40-hex source commit, distinct 40-hex bundle artifact commit, manifest digest, image digest and measured size, runtime and Public Admission Policy digests, and path-free evidence identities. Its `candidate_id` hashes the canonical document without the `candidate_id` field.
+- **Candidate identity**: binds one scope, 40-hex source commit, distinct 40-hex bundle artifact commit, manifest digest, image digest and measured size, runtime and Public Admission Policy digests, and path-free evidence identities. `MAX_CANDIDATE_IMAGE_SIZE_BYTES` authoritatively limits every scope to 1,073,741,824 bytes (exactly 1 GiB). Its `candidate_id` hashes the canonical document without the `candidate_id` field.
 - **Gate report**: contains the fixed Release Gate inventory. Status is exactly `pass`, `fail`, or `blocked`; a pass must reference candidate evidence. Eligibility requires every gate to pass for the same candidate.
 - **Deployment Attestation**: remains outside the Release Bundle. Wave 6 emits only a local template stating that no provider deployment exists. A protected or production attestation requires exact provider identity, OCI digest/size, config and gate bindings, observations, and external evidence.
 - **Local Docker image identity**: `docker image inspect .Id` is a local content-addressed image ID. `docker image inspect .Size` is a local preliminary byte measurement. Neither is a provider OCI digest/size.
@@ -22,7 +22,7 @@ The candidate uses the existing non-circular two-commit model:
 4. Commit only `release/bundle/**`; this artifact commit must have the source commit as its direct parent.
 5. Keep the PR head at the artifact commit. Any source correction requires a new source commit and another bundle assembly.
 
-The candidate workflow checks full history, the manifest source, the artifact parent, and every changed path. It does not trust a branch name.
+The candidate workflow checks full history, the manifest source, the artifact parent, and every changed path. It does not trust a branch name. Automatic PR proof is triggered only when the canonical `release/bundle/release-manifest.json` changes, so ordinary source, dependency, configuration, workflow, and test PRs remain the responsibility of ordinary CI. `workflow_dispatch` remains available for an operator-selected candidate ref.
 
 ## Reproducible local assembly
 
@@ -83,7 +83,7 @@ uv run python -m baseball_rag.release_candidate validate attestation \
 
 `evidence-spec.json` is a canonical local input whose entries contain `logical_id`, `path`, `media_type`, and `schema_identity`. Machine-local paths are consumed only to hash files and never appear in candidate output. `gate-results.json` must contain exactly every ID exported as `REQUIRED_GATE_IDS`; prepare both canonical inputs before the aggregate command.
 
-The authoritative CI implementation is `.github/workflows/candidate-proof.yml`. It supplies those inputs, boots the image with `--network none`, runs the Wave 5 packaged probe, checks prohibited surfaces, enforces the preliminary 1 GB local ceiling, and uploads all three records even though protected/provider gates remain blocked.
+The authoritative CI implementation is `.github/workflows/candidate-proof.yml`. It supplies those inputs, boots the image with `--network none`, runs the Wave 5 packaged probe, checks prohibited surfaces, enforces the same 1,073,741,824-byte (exactly 1 GiB) domain ceiling, and uploads all three records even though protected/provider gates remain blocked.
 
 ## Proof boundary
 
