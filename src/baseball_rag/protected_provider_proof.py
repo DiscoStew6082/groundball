@@ -9,7 +9,7 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 from urllib.parse import urlsplit
 
 from baseball_rag.public_release_config import canonical_json_bytes
@@ -36,7 +36,7 @@ EVIDENCE_SCHEMAS = {
 }
 WARM_MANIFEST_PATH = Path("release/proof/warm-workloads-v1.json")
 BROWSER_MANIFEST_PATH = Path("release/proof/browser-scenarios-v1.json")
-MAX_PROVIDER_PEAK_MEMORY_BYTES = 1_500_000_000
+_SUPPORTED_PROVIDER_MEMORY_PLANS = {"enterprise", "pro"}
 _REQUIRED_IDENTITY_FIELDS = {
     "admission_policy_digest",
     "artifact_commit",
@@ -194,6 +194,12 @@ def validate_provider_evidence(
     if not isinstance(observation, dict):
         raise ProviderProofError("Provider observation must be an object.")
     _validate_observation(str(schema), observation, identity)
+    if schema == EVIDENCE_SCHEMAS["peak_memory"]:
+        metric_available = observation["observability_plus_available"] is True
+        if (metric_available and document["status"] == "blocked") or (
+            not metric_available and document["status"] != "blocked"
+        ):
+            raise ProviderProofError("Provider memory evidence status is contradictory.")
     _reject_unsafe_content(document)
     return document
 
@@ -549,12 +555,24 @@ def _validate_memory(value: dict[str, object], _identity: dict[str, object]) -> 
         value.get("measurement_kind") != "vercel.function_invocation.peak_memory_mb"
         or value.get("deployment_filterable") is not True
         or value.get("observability_plus_required") is not True
-        or value.get("observability_plus_available") is not False
-        or value.get("peak_memory_mb") is not None
-        or value.get("plan") != "hobby"
-        or value.get("provisioned_limit_mb") != 2048
-        or value.get("reason") != "provider_metric_unavailable_on_hobby"
     ):
+        raise ProviderProofError("Provider memory observation is invalid.")
+    unavailable_on_hobby = (
+        value.get("observability_plus_available") is False
+        and value.get("peak_memory_mb") is None
+        and value.get("plan") == "hobby"
+        and value.get("provisioned_limit_mb") == 2048
+        and value.get("reason") == "provider_metric_unavailable_on_hobby"
+    )
+    peak_memory_mb = value.get("peak_memory_mb")
+    provider_reported = (
+        value.get("observability_plus_available") is True
+        and _finite_nonnegative_number(peak_memory_mb)
+        and value.get("plan") in _SUPPORTED_PROVIDER_MEMORY_PLANS
+        and _integer(value.get("provisioned_limit_mb"), minimum=1)
+        and value.get("reason") is None
+    )
+    if not (unavailable_on_hobby or provider_reported):
         raise ProviderProofError("Provider memory observation is invalid.")
 
 
@@ -736,8 +754,12 @@ def _observation_passes(kind: str, observation: object, candidate: Mapping[str, 
             for item in observation["results"]
         )  # type: ignore[union-attr]
     if kind == "peak_memory":
-        # Hobby cannot query the provider metric; a provisioned limit is never peak use.
-        return False
+        peak_memory_mb = observation["peak_memory_mb"]
+        assert _finite_nonnegative_number(peak_memory_mb)
+        numeric_peak = cast(int | float, peak_memory_mb)
+        return observation["observability_plus_available"] is True and numeric_peak <= int(
+            observation["provisioned_limit_mb"]
+        )
     if kind == "lifecycle":
         return all(
             observation[key] is True
@@ -877,6 +899,12 @@ def _exact(value: Mapping[str, object], fields: set[str]) -> None:
 
 def _integer(value: object, *, minimum: int) -> bool:
     return type(value) is int and value >= minimum
+
+
+def _finite_nonnegative_number(value: object) -> bool:
+    if type(value) is int:
+        return value >= 0
+    return type(value) is float and math.isfinite(value) and value >= 0
 
 
 def _nullable_integer(value: object) -> bool:

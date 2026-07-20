@@ -24,6 +24,7 @@ from baseball_rag.release_candidate import (
     EvidenceInput,
     build_candidate_identity,
     build_provider_attestation,
+    validate_deployment_attestation,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -242,6 +243,47 @@ def _all_documents() -> list[dict[str, object]]:
     return [_document(schema) for schema in EVIDENCE_SCHEMAS.values()]
 
 
+def _measured_memory_document(*, peak_memory_mb: int | float = 1400) -> dict[str, object]:
+    document = _document(EVIDENCE_SCHEMAS["peak_memory"])
+    document["status"] = "pass"
+    document["observation"] = {
+        "deployment_filterable": True,
+        "measurement_kind": "vercel.function_invocation.peak_memory_mb",
+        "observability_plus_available": True,
+        "observability_plus_required": True,
+        "peak_memory_mb": peak_memory_mb,
+        "plan": "pro",
+        "provisioned_limit_mb": 2048,
+        "reason": None,
+    }
+    return document
+
+
+def _replace_memory(
+    documents: list[dict[str, object]], memory: dict[str, object]
+) -> list[dict[str, object]]:
+    documents[list(EVIDENCE_SCHEMAS).index("peak_memory")] = memory
+    return documents
+
+
+def _observation_map() -> dict[str, str]:
+    return {
+        observation_id: f"provider-evidence-{list(EVIDENCE_SCHEMAS).index(kind):02d}"
+        for observation_id, kind in {
+            "cold_wakes": "cold_wakes",
+            "deployment_metadata_configuration": "deployment_metadata",
+            "network_security_public_routes": "network_security",
+            "peak_memory": "peak_memory",
+            "protected_blob_coordination": "blob_admission",
+            "protected_browser_desktop_mobile": "browser",
+            "provider_image_measurement": "provider_image",
+            "provider_operation_accounting": "provider_accounting",
+            "restart_replacement_scale_to_zero": "lifecycle",
+            "warm_manifest": "warm_results",
+        }.items()
+    }
+
+
 def test_fixed_manifests_are_canonical_complete_and_immutable_in_shape() -> None:
     warm = load_warm_manifest(ROOT / "release/proof/warm-workloads-v1.json")
     browser = load_browser_manifest(ROOT / "release/proof/browser-scenarios-v1.json")
@@ -290,6 +332,97 @@ def test_provider_evidence_rejects_duplicate_keys_unknown_fields_secrets_paths_a
             validate_provider_evidence(canonical_json_bytes(changed))
 
 
+@pytest.mark.parametrize("plan", ["pro", "enterprise"])
+def test_measured_provider_memory_within_limit_passes_gate(tmp_path: Path, plan: str) -> None:
+    memory = _measured_memory_document()
+    memory["observation"]["plan"] = plan  # type: ignore[index]
+    documents = _replace_memory(_all_documents(), memory)
+    candidate = _candidate(tmp_path, documents)
+    evidence = {
+        f"provider-evidence-{index:02d}": canonical_json_bytes(document)
+        for index, document in enumerate(documents)
+    }
+
+    report = derive_provider_gate_report(candidate, evidence)
+
+    assert report["eligible"] is True
+    assert all(gate["status"] == "pass" for gate in report["gates"])
+    attestation = build_provider_attestation(
+        candidate,
+        report,
+        provider_name="vercel",
+        deployment_id=DEPLOYMENT,
+        image_digest=IMAGE,
+        image_size_bytes=900_000_000,
+        image_size_measurement_kind="provider-oci-manifest-size-bytes",
+        observation_to_evidence=_observation_map(),
+    )
+    assert (
+        validate_deployment_attestation(canonical_json_bytes(attestation), candidate, report)
+        == attestation
+    )
+
+
+@pytest.mark.parametrize("peak_memory_mb", [2048.5, 10**400])
+def test_measured_provider_memory_over_declared_limit_fails_gate(
+    tmp_path: Path, peak_memory_mb: int | float
+) -> None:
+    documents = _replace_memory(
+        _all_documents(), _measured_memory_document(peak_memory_mb=peak_memory_mb)
+    )
+    candidate = _candidate(tmp_path, documents)
+    evidence = {
+        f"provider-evidence-{index:02d}": canonical_json_bytes(document)
+        for index, document in enumerate(documents)
+    }
+
+    report = derive_provider_gate_report(candidate, evidence)
+
+    assert (
+        next(gate for gate in report["gates"] if gate["gate_id"] == "provider_peak_memory")[
+            "status"
+        ]
+        == "fail"
+    )
+    assert report["eligible"] is False
+
+
+@pytest.mark.parametrize("hobby_status", ["pass", "fail"])
+def test_peak_memory_variants_require_consistent_envelope_status(hobby_status: str) -> None:
+    hobby = _document(EVIDENCE_SCHEMAS["peak_memory"])
+    hobby["status"] = hobby_status
+    measured = _measured_memory_document()
+    measured["status"] = "blocked"
+
+    for document in (hobby, measured):
+        with pytest.raises(ProviderProofError):
+            validate_provider_evidence(canonical_json_bytes(document))
+
+    measured["status"] = "fail"
+    assert validate_provider_evidence(canonical_json_bytes(measured)) == measured
+
+
+def test_peak_memory_rejects_mixed_unknown_boolean_nonfinite_and_unsupported_values() -> None:
+    mutations = (
+        lambda value: value["observation"].update({"observability_plus_available": False}),
+        lambda value: value["observation"].update({"reason": "metric-unavailable"}),
+        lambda value: value["observation"].update({"peak_memory_mb": True}),
+        lambda value: value["observation"].update({"peak_memory_mb": float("nan")}),
+        lambda value: value["observation"].update({"peak_memory_mb": float("inf")}),
+        lambda value: value["observation"].update({"provisioned_limit_mb": True}),
+        lambda value: value["observation"].update({"provisioned_limit_mb": 0}),
+        lambda value: value["observation"].update({"provisioned_limit_mb": 2048.0}),
+        lambda value: value["observation"].update({"plan": "team"}),
+        lambda value: value["observation"].update({"plan": "Pro"}),
+        lambda value: value["observation"].update({"extra": None}),
+    )
+    for mutation in mutations:
+        changed = _measured_memory_document()
+        mutation(changed)
+        with pytest.raises((ProviderProofError, ValueError)):
+            validate_provider_evidence(canonical_json_bytes(changed))
+
+
 def test_hobby_aggregator_accepts_all_free_evidence_but_blocks_memory_and_attestation(
     tmp_path: Path,
 ) -> None:
@@ -311,21 +444,7 @@ def test_hobby_aggregator_accepts_all_free_evidence_but_blocks_memory_and_attest
     memory = documents[list(EVIDENCE_SCHEMAS).index("peak_memory")]
     assert memory["observation"]["reason"] == "provider_metric_unavailable_on_hobby"  # type: ignore[index]
 
-    logical_ids = {
-        kind: f"provider-evidence-{list(EVIDENCE_SCHEMAS).index(evidence_kind):02d}"
-        for kind, evidence_kind in {
-            "cold_wakes": "cold_wakes",
-            "deployment_metadata_configuration": "deployment_metadata",
-            "network_security_public_routes": "network_security",
-            "peak_memory": "peak_memory",
-            "protected_blob_coordination": "blob_admission",
-            "protected_browser_desktop_mobile": "browser",
-            "provider_image_measurement": "provider_image",
-            "provider_operation_accounting": "provider_accounting",
-            "restart_replacement_scale_to_zero": "lifecycle",
-            "warm_manifest": "warm_results",
-        }.items()
-    }
+    logical_ids = _observation_map()
     assert set(logical_ids) == set(PROVIDER_OBSERVATION_IDS)
     with pytest.raises(CandidateError, match="all-pass"):
         build_provider_attestation(
@@ -372,18 +491,20 @@ def test_aggregator_blocks_missing_observation_and_fails_foreign_or_over_limit_e
     )
     assert failed["eligible"] is False
 
-    substituted = _all_documents()
-    substituted[memory_index]["observation"]["peak_memory_mb"] = 1400  # type: ignore[index]
-    substituted_candidate = _candidate(tmp_path / "substituted", substituted)
-    substituted_evidence = {
+    contradictory = _all_documents()
+    contradictory[memory_index]["observation"]["peak_memory_mb"] = 1400  # type: ignore[index]
+    contradictory_candidate = _candidate(tmp_path / "contradictory", contradictory)
+    contradictory_evidence = {
         f"provider-evidence-{index:02d}": canonical_json_bytes(document)
-        for index, document in enumerate(substituted)
+        for index, document in enumerate(contradictory)
     }
-    substituted_report = derive_provider_gate_report(substituted_candidate, substituted_evidence)
+    contradictory_report = derive_provider_gate_report(
+        contradictory_candidate, contradictory_evidence
+    )
     assert (
         next(
             gate
-            for gate in substituted_report["gates"]
+            for gate in contradictory_report["gates"]
             if gate["gate_id"] == "provider_peak_memory"
         )["status"]
         == "fail"

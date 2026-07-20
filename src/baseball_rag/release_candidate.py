@@ -459,7 +459,32 @@ def build_provider_attestation(
         for observation, logical_id in observation_to_evidence.items()
     ):
         raise CandidateError("Provider attestation observation evidence schema is invalid.")
-    raise CandidateError("Provider attestation is blocked: provider_metric_unavailable_on_hobby.")
+    attestation = {
+        "admission_policy_digest": checked_candidate["admission_policy_digest"],
+        "bundle_digest": checked_candidate["bundle_digest"],
+        "candidate_id": checked_candidate["candidate_id"],
+        "candidate_identity_digest": candidate_identity_digest(checked_candidate),
+        "deployment_exists": True,
+        "evidence": evidence,
+        "gate_report_digest": gate_report_digest(checked_report),
+        "image_digest": checked_candidate["image_digest"],
+        "observations": dict(sorted(observation_to_evidence.items())),
+        "promotion_eligible": True,
+        "provider": {
+            "deployment_id": deployment_id,
+            "image_digest": image_digest,
+            "image_size_bytes": image_size_bytes,
+            "image_size_measurement_kind": image_size_measurement_kind,
+            "name": provider_name,
+        },
+        "runtime_configuration_digest": checked_candidate["runtime_configuration_digest"],
+        "schema_version": ATTESTATION_SCHEMA,
+        "scope": checked_candidate["scope"],
+        "statement": "Exact protected provider observations are attached.",
+        "status": "attested",
+    }
+    validate_deployment_attestation(attestation, checked_candidate, checked_report)
+    return attestation
 
 
 def validate_deployment_attestation(
@@ -516,9 +541,7 @@ def validate_deployment_attestation(
         if any(document.get(key) != value for key, value in expected_local.items()):
             raise CandidateError("Local Deployment Attestation template is invalid.")
     elif document.get("status") == "attested":
-        raise CandidateError(
-            "Provider attestation is blocked: provider_metric_unavailable_on_hobby."
-        )
+        _validate_provider_attestation(document, checked_candidate, checked_report)
     else:
         raise CandidateError("Deployment Attestation status is invalid.")
     _reject_secret_or_path_content(document)
