@@ -164,7 +164,20 @@ class _RealConflictTransport:
             )
             if competing.status_code not in {200, 201}:
                 raise BlobProviderError
-            competing_etag = _validated_etag(competing.headers)
+            reread = self._delegate.request(
+                method="GET",
+                url=f"{self._config.state_url}?cache=0",
+                headers={
+                    "accept": "application/json",
+                    "authorization": headers["authorization"],
+                },
+                data=None,
+                timeout=5.0,
+                max_response_bytes=MAX_STATE_BYTES,
+            )
+            if reread.status_code != 200 or reread.body != competing_body:
+                raise BlobProviderError
+            competing_etag = _validated_etag(reread.headers)
             if competing_etag == etag:
                 raise BlobProviderError
             original = self._delegate.request(**kwargs)  # type: ignore[arg-type]

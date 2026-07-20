@@ -63,19 +63,32 @@ class ContentAddressedEtagTransport:
         body: bytes,
         *,
         competing_status: int | None = None,
+        competing_success_status: int = 200,
         missing_get_etag: bool = False,
-        missing_put_etag: bool = False,
+        reread_status: int = 200,
+        missing_reread_etag: bool = False,
+        reread_etag: str | None = None,
+        reread_body: bytes | None = None,
+        fail_reread: bool = False,
         preserve_changed_body_etag: bool = False,
         accept_stale_original: bool = False,
+        expose_put_etag: bool = False,
     ) -> None:
         self.config = config
         self.body = body
         self.etag = self._etag(body)
         self.competing_status = competing_status
+        self.competing_success_status = competing_success_status
         self.missing_get_etag = missing_get_etag
-        self.missing_put_etag = missing_put_etag
+        self.reread_status = reread_status
+        self.missing_reread_etag = missing_reread_etag
+        self.reread_etag = reread_etag
+        self.reread_body = reread_body
+        self.fail_reread = fail_reread
         self.preserve_changed_body_etag = preserve_changed_body_etag
         self.accept_stale_original = accept_stale_original
+        self.expose_put_etag = expose_put_etag
+        self.get_attempts: list[dict[str, object]] = []
         self.put_attempts: list[bytes] = []
         self.put_bodies: list[bytes] = []
 
@@ -88,13 +101,22 @@ class ContentAddressedEtagTransport:
         headers = kwargs["headers"]
         assert isinstance(headers, dict)
         if method == "GET":
+            self.get_attempts.append(dict(kwargs))
+            reread = len(self.get_attempts) > 1
+            if reread and self.fail_reread:
+                raise OSError("synthetic private read failure")
             response_headers = {
                 "content-type": "application/json",
                 "date": "Sun, 19 Jul 2026 12:00:00 GMT",
             }
-            if not self.missing_get_etag:
-                response_headers["etag"] = self.etag
-            return HttpResponse(200, response_headers, self.body)
+            missing_etag = self.missing_reread_etag if reread else self.missing_get_etag
+            if not missing_etag:
+                response_headers["etag"] = (
+                    self.reread_etag if reread and self.reread_etag is not None else self.etag
+                )
+            status = self.reread_status if reread else 200
+            body = self.reread_body if reread and self.reread_body is not None else self.body
+            return HttpResponse(status, response_headers, body)
         assert method == "PUT"
         assert kwargs["url"] == blob_upload_url(self.config.object_key)
         body = kwargs["data"]
@@ -109,10 +131,10 @@ class ContentAddressedEtagTransport:
         self.body = body
         if not self.preserve_changed_body_etag:
             self.etag = self._etag(body)
-        response_headers = {} if self.missing_put_etag else {"etag": self.etag}
+        response_headers = {"etag": self.etag} if self.expose_put_etag else {}
         assert self.etag == previous_etag or self.etag == self._etag(body)
         return HttpResponse(
-            200,
+            self.competing_success_status,
             response_headers,
             json.dumps(
                 {"pathname": self.config.object_key, "url": self.config.state_url},
@@ -130,10 +152,17 @@ class NoNetworkTransport:
         raise AssertionError(f"offline test attempted provider contact: {sorted(kwargs)}")
 
 
-def test_real_conflict_transport_changes_content_addressed_etag_before_original_put() -> None:
+@pytest.mark.parametrize("competing_status", [200, 201])
+def test_real_conflict_transport_changes_content_addressed_etag_before_original_put(
+    competing_status: int,
+) -> None:
     config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
     current = encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0)))
-    backend = ContentAddressedEtagTransport(config, current)
+    backend = ContentAddressedEtagTransport(
+        config,
+        current,
+        competing_success_status=competing_status,
+    )
     transport = _RealConflictTransport(backend, config)
     original_etag = backend.etag
 
@@ -149,6 +178,19 @@ def test_real_conflict_transport_changes_content_addressed_etag_before_original_
     assert response.status_code == 412
     assert backend.etag != original_etag
     assert backend.put_bodies[0] != current
+    assert len(backend.get_attempts) == 2
+    reread = backend.get_attempts[1]
+    assert reread == {
+        "method": "GET",
+        "url": f"{config.state_url}?cache=0",
+        "headers": {
+            "accept": "application/json",
+            "authorization": "Bearer proof",
+        },
+        "data": None,
+        "timeout": 5.0,
+        "max_response_bytes": protected_blob_probe.MAX_STATE_BYTES,
+    }
 
 
 def test_real_contention_replaces_expired_markers_until_coordinator_exhausts_retries() -> None:
@@ -185,8 +227,12 @@ def test_real_contention_replaces_expired_markers_until_coordinator_exhausts_ret
         "provider_unavailable",
         "coordination_contention",
     )
-    assert store.operation_counts().conditional_conflicts == MAXIMUM_CAS_ATTEMPTS
+    counts = store.operation_counts()
+    assert counts.attempted_conditional_writes == MAXIMUM_CAS_ATTEMPTS
+    assert counts.conditional_conflicts == MAXIMUM_CAS_ATTEMPTS
+    assert counts.failed_conditional_writes == 0
     assert len(backend.put_bodies) == MAXIMUM_CAS_ATTEMPTS
+    assert len(backend.get_attempts) == MAXIMUM_CAS_ATTEMPTS * 3
     observed_marker_ids = []
     for body in backend.put_bodies:
         state = decode_admission_state(body)
@@ -335,14 +381,27 @@ def test_real_conflict_transport_rejects_unchanged_competing_body() -> None:
     assert backend.put_attempts == []
 
 
-@pytest.mark.parametrize("missing_at", ["read", "competing-write"])
-def test_real_conflict_transport_rejects_missing_etag(missing_at: str) -> None:
+@pytest.mark.parametrize("missing_at", ["initial-read", "reread"])
+def test_real_conflict_transport_rejects_missing_read_etag(missing_at: str) -> None:
     config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
     backend = ContentAddressedEtagTransport(
         config,
         encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
-        missing_get_etag=missing_at == "read",
-        missing_put_etag=missing_at == "competing-write",
+        missing_get_etag=missing_at == "initial-read",
+        missing_reread_etag=missing_at == "reread",
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+@pytest.mark.parametrize("etag", ["", " changed", "changed ", "bad\x7fvalue", "x" * 1025])
+def test_real_conflict_transport_rejects_malformed_reread_etag(etag: str) -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        reread_etag=etag,
     )
 
     with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
@@ -359,6 +418,44 @@ def test_real_conflict_transport_rejects_unchanged_competing_etag() -> None:
 
     with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
         _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_reread_non_200() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        reread_status=503,
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_rejects_reread_body_mismatch() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        reread_body=b'{"different":"state"}',
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed"):
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+
+
+def test_real_conflict_transport_sanitizes_reread_transport_failure() -> None:
+    config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
+    backend = ContentAddressedEtagTransport(
+        config,
+        encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))),
+        fail_reread=True,
+    )
+
+    with pytest.raises(BlobProviderError, match="Blob coordination request failed") as raised:
+        _conditional_request(_RealConflictTransport(backend, config), config, backend.etag)
+    assert raised.value.__cause__ is None
+    assert "synthetic" not in str(raised.value)
 
 
 def test_real_conflict_transport_rejects_competing_non_2xx() -> None:
