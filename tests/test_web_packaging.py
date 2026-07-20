@@ -90,20 +90,24 @@ def test_web_package_exposes_explicit_fallback_sync_and_check_commands() -> None
     assert package["scripts"]["package:check"] == "node scripts/package-dist.mjs check"
 
 
-def test_obsolete_web_configuration_and_sources_stay_absent() -> None:
+def test_web_configuration_keeps_warning_free_defaults_and_removes_obsolete_sources() -> None:
     vite_config = (ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
     vitest_config = (ROOT / "web" / "vitest.config.js").read_text(encoding="utf-8")
+    svelte_config = (ROOT / "web" / "svelte.config.js").read_text(encoding="utf-8")
 
     assert "plugins: [svelte()]" in vite_config
     assert "\n  resolve:" not in vite_config
     assert "conditions:" not in vite_config
-    for configuration in (vite_config, vitest_config):
+    for configuration in (vite_config, vitest_config, svelte_config):
         assert "configFile" not in configuration
         assert "alias:" not in configuration
         assert "node_modules/svelte" not in configuration
         assert "svelte/src/" not in configuration
     assert "conditions: ['browser']" in vitest_config
-    assert not (ROOT / "web" / "svelte.config.js").exists()
+    assert svelte_config == (
+        "// This explicit defaults contract prevents vite-plugin-svelte's missing-config warning.\n"
+        "export default {};\n"
+    )
     assert not (ROOT / "web" / "src" / "lib" / "downloads.js").exists()
     assert not (ROOT / "web" / "src" / "prototypes" / "query-recipe").exists()
 

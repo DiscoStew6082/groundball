@@ -98,6 +98,13 @@ def test_pre_commit_is_only_in_the_default_dev_dependency_group() -> None:
     assert list(map(_requirement_name, default_dev)).count("pre-commit") == 1  # type: ignore[arg-type]
 
 
+def test_pre_commit_is_scoped_to_the_nested_monorepo_project() -> None:
+    pre_commit = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+
+    assert pre_commit.startswith("files: ^src/mlb_api_mcp/\n\nrepos:\n")
+    assert pre_commit.count("files:") == 1
+
+
 def test_pre_commit_hook_revisions_are_current_and_match_the_lock() -> None:
     with (ROOT / "uv.lock").open("rb") as file:
         locked = {
