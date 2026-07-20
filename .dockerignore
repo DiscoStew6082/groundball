@@ -3,6 +3,10 @@ __pycache__/
 .git/
 .venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+release-artifacts/
 htmlcov/
 .coverage
 .github/

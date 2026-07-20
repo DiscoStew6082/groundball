@@ -2,7 +2,6 @@
 
 [![CI Status](https://github.com/guillochon/mlb-api-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/guillochon/mlb-api-mcp/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/guillochon/mlb-api-mcp)
-[![smithery badge](https://smithery.ai/badge/@guillochon/mlb-api-mcp)](https://smithery.ai/server/@guillochon/mlb-api-mcp)
 ![Coverage](https://img.shields.io/badge/coverage-86.27%25-brightgreen)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that provides comprehensive access to MLB statistics and baseball data through a FastMCP-based interface.
@@ -73,14 +72,6 @@ The following HTTP endpoints are available:
 - Full response schema descriptions for better AI integration
 
 ## Installation
-
-### Installing via Smithery
-
-To install MLB API Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@guillochon/mlb-api-mcp):
-
-```bash
-npx -y @smithery/cli install @guillochon/mlb-api-mcp --client claude
-```
 
 ### Option 1: Local Installation
 

@@ -28,16 +28,12 @@ VISITOR_COOKIE_SECURE = True
 VISITOR_COOKIE_HTTP_ONLY = True
 VISITOR_COOKIE_SAME_SITE: Literal["lax"] = "lax"
 MINIMUM_VISITOR_DIGEST_KEY_BYTES = 32
-_ALLOWED_RELEASE_ENVIRONMENT_KEYS = frozenset(
+_OWNED_RELEASE_ENVIRONMENT_KEYS = frozenset(
     {
-        "GROUNDBALL_CORS_ORIGINS",
-        "GROUNDBALL_DATA_DIR",
         "GROUNDBALL_PUBLIC_DEMO",
         "GROUNDBALL_RELEASE_BUNDLE",
         "GROUNDBALL_RUNTIME_CONFIG",
         "GROUNDBALL_SOURCE_COMMIT",
-        "GROUNDBALL_WEB_APP_TTL_SECONDS",
-        "GROUNDBALL_WEB_DIST",
     }
 )
 
@@ -74,14 +70,11 @@ class RuntimeConfiguration:
 
 
 def validate_release_environment(environment: Mapping[str, str]) -> None:
-    """Reject unknown Ground Ball keys before a configured release starts."""
-    unknown = sorted(
-        key
-        for key in environment
-        if key.startswith("GROUNDBALL_") and key not in _ALLOWED_RELEASE_ENVIRONMENT_KEYS
-    )
-    if unknown:
-        raise PublicReleaseConfigError("Release environment contains unknown configuration keys.")
+    """Validate only release-owned process inputs; other subsystems own their keys."""
+    for key in _OWNED_RELEASE_ENVIRONMENT_KEYS:
+        value = environment.get(key)
+        if value is not None and not isinstance(value, str):
+            raise PublicReleaseConfigError("Release environment configuration is invalid.")
 
 
 def admission_policy_document() -> dict[str, object]:

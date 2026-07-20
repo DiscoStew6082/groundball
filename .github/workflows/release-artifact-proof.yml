@@ -8,6 +8,7 @@ on:
       - 'Dockerfile'
       - 'release/bundle/release-manifest.json'
       - 'release/config/**'
+      - 'release/proof/**'
       - 'scripts/check_provider_neutrality.py'
       - 'src/baseball_rag/release_artifact.py'
       - 'src/baseball_rag/release_bundle.py'
@@ -155,6 +156,8 @@ jobs:
           test "$ready" = 1
           docker exec "$container_name" /app/.venv/bin/python -m baseball_rag.release_container_probe \
             > release-artifacts/evidence/release-container-proof.json
+          cmp release/proof/release-container-proof.json \
+            release-artifacts/evidence/release-container-proof.json
           docker exec "$container_name" /bin/sh -c \
             'test ! -e /app/src/baseball_rag/db/download.py && test ! -e /app/src/baseball_rag/generation/llm.py && test ! -e /app/src/baseball_rag/query/catalog && test ! -e /app/src/baseball_rag/query/coverage && test -z "$(find /app -type f \( -name "*.duckdb" -o -name "*.zip" -o -name "coverage-report.md" \) -print -quit)"'
 
@@ -174,7 +177,7 @@ jobs:
               validate_release_artifact,
           )
           coverage = Path("release/bundle/src/baseball_rag/query/coverage/coverage-report.json")
-          container_proof = Path("release-artifacts/evidence/release-container-proof.json")
+          container_proof = Path("release/proof/release-container-proof.json")
           artifact = build_release_artifact(
               source_commit=os.environ["SOURCE_COMMIT"],
               artifact_commit=os.environ["ARTIFACT_COMMIT"],

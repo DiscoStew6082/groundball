@@ -78,9 +78,16 @@ def bindings(
     return PublicAppBindings(
         store=coordination or ready_coordination(),
         digest_key=b"stable-public-visitor-digest-key",
-        initializer=initializer or (lambda _coordinator: None),
+        initializer=initializer or (lambda: None),
         execution_runner=runner or RecordingRunner(),
     )
+
+
+@pytest.fixture(autouse=True)
+def reset_process_initialization() -> None:
+    public_app_module._reset_initialization_for_tests()
+    yield
+    public_app_module._reset_initialization_for_tests()
 
 
 def test_public_server_has_no_hosting_adapter_or_concrete_environment_composition() -> None:
@@ -96,7 +103,10 @@ def test_public_server_has_no_hosting_adapter_or_concrete_environment_compositio
     )
 
 
-def test_local_factory_preserves_health_capabilities_and_direct_server_app() -> None:
+def test_local_factory_preserves_health_capabilities_and_direct_server_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
     factory_client = TestClient(create_app())
     direct_client = TestClient(api_server.app)
 
@@ -108,7 +118,10 @@ def test_local_factory_preserves_health_capabilities_and_direct_server_app() -> 
     assert direct_client.get("/api/capabilities").json()["mode"] == "local"
 
 
-def test_local_factory_preserves_both_deterministic_post_routes() -> None:
+def test_local_factory_preserves_both_deterministic_post_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
     client = TestClient(create_app())
 
     query = client.post("/api/query-runs", json={})
@@ -145,6 +158,17 @@ def test_explicit_public_mode_without_bindings_is_sanitized_and_fail_closed(
     assert response.json() == UNAVAILABLE
 
 
+def test_generic_public_configuration_without_bindings_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
+
+    response = TestClient(create_app()).get("/api/capabilities")
+
+    assert response.status_code == 503
+    assert response.json() == UNAVAILABLE
+
+
 def test_unbound_public_gate_precedes_request_parsing_and_size_policy() -> None:
     response = TestClient(create_app(public=True)).post(
         "/api/query-runs",
@@ -164,7 +188,7 @@ def test_bindings_initialize_once_and_drive_both_public_post_routes() -> None:
         bindings=bindings(
             coordination=coordination,
             runner=runner,
-            initializer=lambda coordinator: initialized_with.append(coordinator),
+            initializer=lambda: initialized_with.append("runtime"),
         )
     )
 
@@ -195,7 +219,7 @@ def test_health_never_waits_while_non_health_wait_is_bounded(
     gated_wait_started = threading.Event()
     original_wait_until_ready = public_app_module._InitializationGate.wait_until_ready
 
-    def initialize(_coordinator) -> None:
+    def initialize() -> None:
         initializer_started.set()
         release_initializer.wait()
 
@@ -231,7 +255,7 @@ def test_health_never_waits_while_non_health_wait_is_bounded(
 def test_initializer_exception_is_sanitized_and_never_retried() -> None:
     calls = 0
 
-    def fail(_coordinator) -> None:
+    def fail() -> None:
         nonlocal calls
         calls += 1
         raise RuntimeError("sensitive initialization detail")
@@ -246,15 +270,35 @@ def test_initializer_exception_is_sanitized_and_never_retried() -> None:
     assert "sensitive" not in first.text + second.text
 
 
-def test_created_apps_keep_initialization_state_isolated() -> None:
-    failed = create_app(
-        bindings=bindings(initializer=lambda _coordinator: (_ for _ in ()).throw(OSError()))
-    )
-    ready = create_app(bindings=bindings())
+def test_initialization_is_process_wide_and_conflicting_bindings_fail_closed() -> None:
+    calls: list[str] = []
+    shared = bindings(initializer=lambda: calls.append("initialized"))
+    first = create_app(bindings=shared)
+    same = create_app(bindings=shared)
+    conflicting = create_app(bindings=bindings(initializer=lambda: calls.append("conflict")))
 
-    with TestClient(failed) as failed_client, TestClient(ready) as ready_client:
-        assert failed_client.get("/api/capabilities").status_code == 503
-        assert ready_client.get("/api/capabilities").status_code == 200
+    with (
+        TestClient(first) as first_client,
+        TestClient(same) as same_client,
+        TestClient(conflicting) as conflicting_client,
+    ):
+        assert first_client.get("/api/capabilities").status_code == 200
+        assert same_client.get("/api/capabilities").status_code == 200
+        assert conflicting_client.get("/api/capabilities").status_code == 503
+
+    assert calls == ["initialized"]
+
+
+def test_initializer_does_not_touch_cas_readiness() -> None:
+    class RequestOnlyStore(SharedMemoryStore):
+        def read(self) -> CasSnapshot:
+            raise RuntimeError("request credential required")
+
+    app = create_app(bindings=bindings(coordination=RequestOnlyStore()))
+
+    with TestClient(app) as client:
+        assert client.get("/api/capabilities").status_code == 200
+        assert client.post("/api/query-runs", json={"question": "40-40"}).status_code == 503
 
 
 def test_execution_outcome_formatting_failure_still_releases_lease(
@@ -301,13 +345,13 @@ def test_public_execution_uses_fallback_or_existing_monotonic_deadline(
         PublicAppBindings(
             store=cast(CasStore, InMemoryCasStore()),
             digest_key=b"x" * 32,
-            initializer=lambda _coordinator: None,
+            initializer=lambda: None,
             execution_runner=RecordingRunner(),
         ),
         PublicAppBindings(
             store=ready_coordination(),
             digest_key=b"short",
-            initializer=lambda _coordinator: None,
+            initializer=lambda: None,
             execution_runner=RecordingRunner(),
         ),
     ],

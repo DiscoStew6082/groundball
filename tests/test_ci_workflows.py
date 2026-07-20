@@ -42,6 +42,8 @@ def test_release_artifact_workflow_proves_exact_portable_artifacts() -> None:
         "docker build",
         "--network none",
         "python -m baseball_rag.release_container_probe",
+        "cmp release/proof/release-container-proof.json",
+        'container_proof = Path("release/proof/release-container-proof.json")',
         "build_release_artifact",
         "python scripts/check_provider_neutrality.py --root .",
         "--artifact dist",

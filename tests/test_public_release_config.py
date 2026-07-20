@@ -74,19 +74,14 @@ def test_release_environment_accepts_only_portable_application_keys() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    "unknown_key",
-    [
-        "GROUNDBALL_COORDINATION_MODE",
-        "GROUNDBALL_REMOTE_RUNTIME",
-    ],
-)
-def test_release_environment_rejects_nonportable_keys(unknown_key: str) -> None:
-    with pytest.raises(
-        PublicReleaseConfigError,
-        match="Release environment contains unknown configuration keys",
-    ):
-        validate_release_environment({unknown_key: "configured"})
+def test_release_environment_ignores_unowned_process_configuration() -> None:
+    validate_release_environment(
+        {
+            "GROUNDBALL_ARCHITECTURE_ENABLED": "0",
+            "GROUNDBALL_DEVELOPER_TOOLS_ENABLED": "0",
+            "PORT": "80",
+        }
+    )
 
 
 def test_local_ci_runtime_configuration_contains_only_portable_fields() -> None:

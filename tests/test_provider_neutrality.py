@@ -13,7 +13,7 @@ if _SPEC is None or _SPEC.loader is None:
 _MODULE = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = _MODULE
 _SPEC.loader.exec_module(_MODULE)
-MAX_TEXT_BYTES = _MODULE.MAX_TEXT_BYTES
+CHUNK_BYTES = _MODULE.CHUNK_BYTES
 Finding = _MODULE.Finding
 main = _MODULE.main
 scan = _MODULE.scan
@@ -95,7 +95,7 @@ def test_public_and_loopback_urls_are_allowed_but_unknown_url_is_not(
     assert all(item.excerpt == "<redacted>" for item in findings)
 
 
-def test_source_and_artifacts_are_ordered_and_skip_non_text_links(tmp_path):
+def test_source_and_artifacts_are_ordered_and_fail_closed_on_unscanned_content(tmp_path):
     (tmp_path / "b.txt").write_text("API_" + "KEY=x\n", encoding="utf-8")
     build = tmp_path / "build"
     build.mkdir()
@@ -109,6 +109,9 @@ def test_source_and_artifacts_are_ordered_and_skip_non_text_links(tmp_path):
     assert [(item.path, item.rule_id) for item in findings] == [
         ("b.txt", "sensitive-assignment"),
         ("build/a.txt", "resource-identifier-assignment"),
+        ("build/binary.dat", "unscanned-content"),
+        ("build/invalid.txt", "unscanned-content"),
+        ("build/link.txt", "unscanned-content"),
     ]
 
 
@@ -199,16 +202,35 @@ def test_cli_exit_codes_and_canonical_report(tmp_path):
     assert exc.value.code == 2
 
 
-def test_size_and_artifact_count_bounds(tmp_path):
-    (tmp_path / "large.txt").write_bytes(b"x" * (MAX_TEXT_BYTES + 1))
-    assert scan(tmp_path) == ()
+def test_large_text_is_stream_scanned_across_chunk_boundaries(tmp_path):
+    prefix = b"x" * (CHUNK_BYTES - 4)
+    (tmp_path / "large.txt").write_bytes(
+        prefix + b"https://" + b"concrete-host.invalid/container\n" + b"x" * CHUNK_BYTES
+    )
 
+    assert [(item.path, item.rule_id) for item in scan(tmp_path)] == [
+        ("large.txt", "nonpublic-url")
+    ]
+
+
+def test_generic_hosted_container_manifest_is_rejected_without_provider_policy(tmp_path):
+    (tmp_path / "deployment.json").write_text(
+        '{"container":{"health":"https://' + "concrete-host.invalid/health" + '"}}\n',
+        encoding="utf-8",
+    )
+
+    assert scan(tmp_path) == (Finding("deployment.json", 1, "nonpublic-url", "<redacted>"),)
+
+
+def test_artifact_count_and_path_bounds(tmp_path):
+    large = tmp_path / "large.txt"
+    large.write_text("clean\n", encoding="utf-8")
     with pytest.raises(ValueError, match="at most 16"):
         scan(tmp_path, artifacts=tuple(tmp_path / f"a-{index}" for index in range(17)))
     missing = tmp_path / "missing"
     with pytest.raises(ValueError, match="invalid artifact"):
         scan(tmp_path, artifacts=(missing,))
-    missing.symlink_to(tmp_path / "large.txt")
+    missing.symlink_to(large)
     with pytest.raises(ValueError, match="invalid artifact"):
         scan(tmp_path, artifacts=(missing,))
 

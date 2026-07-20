@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -35,7 +36,7 @@ class PublicAppBindings:
 
     store: CasStore
     digest_key: bytes
-    initializer: Callable[[CasCoordinator], None]
+    initializer: Callable[[], None]
     execution_runner: PublicExecutionRunner
 
 
@@ -43,12 +44,9 @@ InitializationState = Literal["initializing", "ready", "failed"]
 
 
 class _InitializationGate:
-    def __init__(
-        self,
-        coordinator: CasCoordinator,
-        initializer: Callable[[CasCoordinator], None],
-    ) -> None:
-        self._coordinator = coordinator
+    """One process-wide immutable release-runtime initialization."""
+
+    def __init__(self, initializer: Callable[[], None]) -> None:
         self._initializer = initializer
         self._state: InitializationState = "initializing"
         self._started = False
@@ -66,9 +64,8 @@ class _InitializationGate:
     def _initialize(self) -> None:
         state: InitializationState = "failed"
         try:
-            self._initializer(self._coordinator)
-            if self._coordinator.readiness().kind == "ready":
-                state = "ready"
+            self._initializer()
+            state = "ready"
         except Exception:  # noqa: BLE001 - initialization details stay private
             pass
         with self._lock:
@@ -96,6 +93,30 @@ class _ClosedGate:
         return JSONResponse(_UNAVAILABLE_BODY, status_code=503)
 
 
+_process_lock = threading.Lock()
+_process_bindings: PublicAppBindings | None = None
+_process_gate: _InitializationGate | None = None
+
+
+def _process_initialization(bindings: PublicAppBindings) -> _InitializationGate | None:
+    global _process_bindings, _process_gate
+    with _process_lock:
+        if _process_bindings is None:
+            _process_bindings = bindings
+            _process_gate = _InitializationGate(bindings.initializer)
+        elif _process_bindings is not bindings:
+            return None
+        return _process_gate
+
+
+def _reset_initialization_for_tests() -> None:
+    """Reset process state for deterministic test isolation only."""
+    global _process_bindings, _process_gate
+    with _process_lock:
+        _process_bindings = None
+        _process_gate = None
+
+
 def _validated_components(
     bindings: PublicAppBindings,
 ) -> tuple[CasCoordinator, bytes, PublicExecutionRunner]:
@@ -120,8 +141,14 @@ def create_app(
     bindings: PublicAppBindings | None = None,
     public: bool | None = None,
 ) -> FastAPI:
-    """Create one isolated local app or fail-closed public app lifecycle."""
-    public_mode = bindings is not None if public is None else public
+    """Create one local app or a process-shared fail-closed public app."""
+    configured_public = os.environ.get("GROUNDBALL_PUBLIC_DEMO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    public_mode = (bindings is not None or configured_public) if public is None else public
     if bindings is not None and not public_mode:
         raise ValueError("Public bindings require public mode.")
 
@@ -138,7 +165,14 @@ def create_app(
         )
 
     coordinator, digest_key, execution_runner = _validated_components(bindings)
-    gate = _InitializationGate(coordinator, bindings.initializer)
+    gate = _process_initialization(bindings)
+    if gate is None:
+        closed_gate = _ClosedGate()
+        return create_server_app(
+            public_mode=True,
+            public_gate=closed_gate.middleware,
+            lifespan=None,
+        )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):

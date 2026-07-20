@@ -10,6 +10,8 @@ from typing import Any
 from baseball_rag.public_release_config import canonical_json_bytes
 
 BASE_URL = "http://127.0.0.1"
+PROOF_SCHEMA_VERSION = "ground-ball-release-container-proof-v2"
+PUBLIC_INTERFACE_REVISION = "ground-ball-public-interface-v1"
 
 
 def _get(path: str) -> tuple[int, dict[str, Any]]:
@@ -140,14 +142,65 @@ def run_probe() -> dict[str, object]:
         assert status == 422 and "not a published Retrosheet capability" in result["detail"]
         checks.append(f"retrosheet-rejects-{identity}")
 
-    return {
+    proof = {
         "checks": checks,
-        "release_bundle_digest": readiness["release_bundle_digest"],
-        "runtime_configuration_digest": readiness["runtime_configuration"]["digest"],
-        "schema_version": "ground-ball-release-container-proof-v1",
-        "source_commit": readiness["source_commit"],
+        "interface": {
+            "public_interface_revision": PUBLIC_INTERFACE_REVISION,
+            "query_endpoint": "/api/query-runs",
+            "retrosheet_endpoint": "/api/retrosheet/queries",
+        },
+        "runtime_configuration": {
+            "network_policy": "none",
+            "public_mode": True,
+            "release_bundle": "ground-ball-release-bundle",
+            "scope": readiness["runtime_configuration"]["scope"],
+        },
+        "schema_version": PROOF_SCHEMA_VERSION,
         "status": "pass",
     }
+    return validate_release_container_proof(canonical_json_bytes(proof))
+
+
+def validate_release_container_proof(payload: bytes) -> dict[str, object]:
+    """Validate canonical, identity-free container contract proof bytes."""
+    try:
+        document = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Release container proof is malformed.") from exc
+    expected_keys = {
+        "checks",
+        "interface",
+        "runtime_configuration",
+        "schema_version",
+        "status",
+    }
+    interface = document.get("interface") if isinstance(document, dict) else None
+    runtime = document.get("runtime_configuration") if isinstance(document, dict) else None
+    if (
+        not isinstance(document, dict)
+        or set(document) != expected_keys
+        or payload != canonical_json_bytes(document)
+        or document.get("schema_version") != PROOF_SCHEMA_VERSION
+        or document.get("status") != "pass"
+        or not isinstance(document.get("checks"), list)
+        or not document["checks"]
+        or any(not isinstance(item, str) or not item for item in document["checks"])
+        or interface
+        != {
+            "public_interface_revision": PUBLIC_INTERFACE_REVISION,
+            "query_endpoint": "/api/query-runs",
+            "retrosheet_endpoint": "/api/retrosheet/queries",
+        }
+        or runtime
+        != {
+            "network_policy": "none",
+            "public_mode": True,
+            "release_bundle": "ground-ball-release-bundle",
+            "scope": "local_ci",
+        }
+    ):
+        raise ValueError("Release container proof is invalid.")
+    return document
 
 
 def main() -> int:
