@@ -138,7 +138,7 @@ def test_fifth_live_run_is_deployment_busy_without_a_fifth_charge() -> None:
 
     assert fifth.state == state
     assert fifth.outcome.kind == "busy"
-    assert fifth.outcome.reason == "deployment_capacity_occupied"
+    assert fifth.outcome.reason == "system_capacity_occupied"
     assert fifth.outcome.retry_at == min(lease.expires_at for lease in state.running)
     assert fifth.state.monthly_budget.charged_starts == 4
 
@@ -163,12 +163,12 @@ def test_fourth_start_in_a_rolling_minute_is_rate_limited_without_a_charge() -> 
 
 
 def test_cas_coordinator_allows_only_one_competing_start_for_a_visitor() -> None:
-    store = InMemoryCasStore(
+    coordination = InMemoryCasStore(
         AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
     )
     coordinators = (
-        CasCoordinator(store, clock=lambda: NOW),
-        CasCoordinator(store, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
     )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -182,7 +182,7 @@ def test_cas_coordinator_allows_only_one_competing_start_for_a_visitor() -> None
         )
 
     assert sorted(outcome.kind for outcome in outcomes) == ["admitted", "busy"]
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert len(state.running) == 1
     assert state.monthly_budget.charged_starts == 1
 
@@ -222,21 +222,21 @@ def test_release_and_cookie_rotation_cannot_refund_deployment_budget() -> None:
 
 
 def test_budget_initialization_is_create_if_absent_and_never_overwrites() -> None:
-    store = InMemoryCasStore()
-    coordinator = CasCoordinator(store, clock=lambda: NOW)
+    coordination = InMemoryCasStore()
+    coordinator = CasCoordinator(coordination, clock=lambda: NOW)
 
     assert coordinator.initialize_current_budget() is True
     assert coordinator.initialize_current_budget() is False
 
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.monthly_budget == MonthlyBudget(period="2026-07", charged_starts=0)
 
 
 def test_competing_first_period_initialization_is_create_if_absent() -> None:
-    store = InMemoryCasStore()
+    coordination = InMemoryCasStore()
     coordinators = (
-        CasCoordinator(store, clock=lambda: NOW),
-        CasCoordinator(store, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
     )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -245,7 +245,7 @@ def test_competing_first_period_initialization_is_create_if_absent() -> None:
         )
 
     assert sorted(initialized) == [False, True]
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.monthly_budget == MonthlyBudget(period="2026-07", charged_starts=0)
 
 
@@ -282,12 +282,12 @@ def test_invalid_budget_states_pause_without_mutating_state(
 
 
 def test_atomic_hundredth_and_hundred_first_competing_starts() -> None:
-    store = InMemoryCasStore(
+    coordination = InMemoryCasStore(
         AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=99))
     )
     coordinators = (
-        CasCoordinator(store, clock=lambda: NOW),
-        CasCoordinator(store, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
     )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -305,7 +305,7 @@ def test_atomic_hundredth_and_hundred_first_competing_starts() -> None:
         )
 
     assert sorted(outcome.kind for outcome in outcomes) == ["admitted", "allowance_paused"]
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.monthly_budget == MonthlyBudget(period="2026-07", charged_starts=100)
     assert len(state.running) == 1
 
@@ -366,22 +366,22 @@ class _UnavailableStore:
         raise AssertionError("compare-and-swap should not follow a failed read")
 
 
-def test_store_failure_and_bounded_contention_fail_closed() -> None:
+def test_coordination_failure_and_bounded_contention_fail_closed() -> None:
     unavailable = CasCoordinator(cast(CasStore, _UnavailableStore()), clock=lambda: NOW)
-    contention_store = InMemoryCasStore(
+    contention_coordination = InMemoryCasStore(
         AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
     )
-    contention_store.compare_and_swap = lambda _version, _state: False  # type: ignore[method-assign]
-    contended = CasCoordinator(contention_store, max_attempts=2, clock=lambda: NOW)
+    contention_coordination.compare_and_swap = lambda _version, _state: False  # type: ignore[method-assign]
+    contended = CasCoordinator(contention_coordination, max_attempts=2, clock=lambda: NOW)
     attempt = AdmissionAttempt(visitor="visitor-a", run_id="run-a", now=NOW)
 
-    assert unavailable.admit(attempt).reason == "coordination_store_unavailable"
+    assert unavailable.admit(attempt).reason == "coordination_unavailable"
     assert contended.admit(attempt).reason == "coordination_contention"
-    state, _ = contention_store.read()
+    state, _ = contention_coordination.read()
     assert state.monthly_budget.charged_starts == 0
 
 
-def test_current_budget_readiness_distinguishes_invalid_state_from_store_failure() -> None:
+def test_current_budget_readiness_distinguishes_invalid_state_from_coordination_failure() -> None:
     ready = CasCoordinator(
         InMemoryCasStore(
             AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=100))
@@ -393,7 +393,7 @@ def test_current_budget_readiness_distinguishes_invalid_state_from_store_failure
 
     assert ready.readiness().kind == "ready"
     assert invalid.readiness().kind == "allowance_paused"
-    assert unavailable.readiness().kind == "provider_unavailable"
+    assert unavailable.readiness().kind == "service_unavailable"
 
 
 def test_visitor_digest_is_stable_keyed_and_never_contains_cookie_material() -> None:

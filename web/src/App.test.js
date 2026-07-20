@@ -260,7 +260,7 @@ describe('Ground Ball answer-first application', () => {
     ['timed out', { error: 'timed_out', detail: 'The Query Run timed out. Narrow the question.' }, 503, 'Narrow the question.'],
     ['export too large', { error: 'export_too_large', detail: 'The complete export is too large.', guidance: 'Add filters to narrow the result, then export again.' }, 422, 'Add filters to narrow the result, then export again.'],
     ['allowance paused', { error: 'allowance_paused', detail: 'The public allowance is paused.', retry_at: '2026-08-01T00:00:00+00:00' }, 503, 'Retry at 2026-08-01T00:00:00+00:00.'],
-    ['provider unavailable', { error: 'provider_unavailable', detail: 'The public provider is unavailable.' }, 503, 'The public provider is unavailable.'],
+    ['service unavailable', { error: 'service_unavailable', detail: 'The public service is unavailable.' }, 503, 'The public service is unavailable.'],
   ])('preserves a completed table across structured %s refusal', async (_label, refusal, status, actionableText) => {
     let calls = 0;
     const fetchMock = await mountApp(() => {

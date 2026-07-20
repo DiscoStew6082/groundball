@@ -274,7 +274,7 @@
     if (kind === 'timed_out') return 'Query timed out';
     if (kind === 'export_too_large') return 'Complete export refused';
     if (kind === 'allowance_paused') return 'Public allowance paused';
-    if (kind === 'provider_unavailable' || kind === 'unavailable') return 'Query unavailable';
+    if (kind === 'service_unavailable' || kind === 'unavailable') return 'Query unavailable';
     if (kind === 'malformed') return 'Malformed response';
     if (kind === 'failed') return 'Query failed';
     return 'Query result';

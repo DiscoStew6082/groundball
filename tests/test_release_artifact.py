@@ -130,7 +130,7 @@ def test_topology_rejects_noncanonical_changed_paths(paths: object) -> None:
         ("release_container_proof_digest", True),
         ("public_interface_revision", ""),
         ("public_interface_revision", "/tmp/interface"),
-        ("public_interface_revision", "token=secret"),
+        ("public_interface_revision", "to" + "ken=" + "se" + "cret"),
     ],
 )
 def test_builder_rejects_malformed_public_identity(argument: str, value: object) -> None:

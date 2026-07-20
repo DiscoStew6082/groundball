@@ -213,7 +213,7 @@ def test_size_and_artifact_count_bounds(tmp_path):
         scan(tmp_path, artifacts=(missing,))
 
 
-def test_scanner_and_tests_scan_clean_without_exclusions(tmp_path):
+def test_scanner_tests_and_current_tree_scan_clean_without_exclusions(tmp_path):
     for relative in (
         Path("scripts/check_provider_neutrality.py"),
         Path("tests/test_provider_neutrality.py"),
@@ -223,3 +223,4 @@ def test_scanner_and_tests_scan_clean_without_exclusions(tmp_path):
         target.write_bytes(relative.read_bytes())
 
     assert scan(tmp_path) == ()
+    assert scan(Path.cwd()) == ()

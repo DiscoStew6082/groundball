@@ -47,7 +47,7 @@ class RecordingRunner:
 
 
 class SharedMemoryStore:
-    """Shared-store contract double; not production authority."""
+    """Shared-coordination contract double; not production authority."""
 
     def __init__(self, state: AdmissionState) -> None:
         self.inner = InMemoryCasStore(state)
@@ -70,7 +70,7 @@ def configure_public_proof(
     state: AdmissionState | None = None,
     runner: RecordingRunner | None = None,
 ) -> tuple[InMemoryCasStore, RecordingRunner]:
-    store = InMemoryCasStore(
+    coordination = InMemoryCasStore(
         state
         or AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=budget))
     )
@@ -80,7 +80,7 @@ def configure_public_proof(
     monkeypatch.setattr(
         api_server,
         "_public_admission",
-        CasCoordinator(store, clock=lambda: NOW),
+        CasCoordinator(coordination, clock=lambda: NOW),
     )
     monkeypatch.setattr(api_server, "_visitor_digest_key", b"test-visitor-digest-key" * 2)
     monkeypatch.setattr(api_server, "_public_admission_is_shared", True)
@@ -89,7 +89,7 @@ def configure_public_proof(
     monkeypatch.setattr(
         api_server, "_require_consistent_release_configuration", lambda *_args: None
     )
-    return store, configured_runner
+    return coordination, configured_runner
 
 
 def test_query_run_endpoint_accepts_natural_language_and_structured_recipe():
@@ -312,9 +312,9 @@ def test_public_query_run_is_admitted_once_and_releases_only_its_lease(
             payload={"kind": "rows", "rows": [{"batting.RBI": 153}]},
         )
     )
-    store, _ = configure_public_proof(monkeypatch, runner=runner)
+    coordination, _ = configure_public_proof(monkeypatch, runner=runner)
 
-    response = TestClient(app, base_url="https://testserver").post(
+    response = TestClient(app, base_url="https://localhost").post(
         "/api/query-runs",
         json={"question": "who had the most RBIs in 1962"},
     )
@@ -332,12 +332,12 @@ def test_public_query_run_is_admitted_once_and_releases_only_its_lease(
     assert "HttpOnly" in cookie
     assert "Secure" in cookie
     assert "SameSite=lax" in cookie
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.running == ()
     assert state.monthly_budget.charged_starts == 1
-    token = response.cookies["groundball_visitor"]
+    cookie_value = response.cookies["groundball_visitor"]
     assert [item[0] for item in state.starts_by_visitor] == [
-        visitor_digest(token, digest_key=b"test-visitor-digest-key" * 2)
+        visitor_digest(cookie_value, digest_key=b"test-visitor-digest-key" * 2)
     ]
 
 
@@ -441,9 +441,9 @@ def test_public_export_refusal_is_structured_422_compact_json(
 def test_public_allowance_pause_never_enters_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, runner = configure_public_proof(monkeypatch, budget=100)
+    coordination, runner = configure_public_proof(monkeypatch, budget=100)
 
-    response = TestClient(app, base_url="https://testserver").post(
+    response = TestClient(app, base_url="https://localhost").post(
         "/api/query-runs",
         json={"question": "who had the most RBIs in 1962"},
     )
@@ -461,7 +461,7 @@ def test_public_allowance_pause_never_enters_execution(
     assert response.headers["retry-after"] == "1080000"
     assert "groundball_visitor=" in response.headers["set-cookie"]
     assert runner.requests == []
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.monthly_budget.charged_starts == 100
 
 
@@ -472,7 +472,7 @@ def test_public_request_body_boundary_and_early_cors_refusal(
     exact = b'{"question":"x"}' + b" " * (16_384 - len(b'{"question":"x"}'))
     headers = {
         "content-type": "application/json",
-        "origin": "https://discostew.dev",
+        "origin": "http://localhost:4321",
     }
 
     accepted = TestClient(app).post("/api/query-runs", content=exact, headers=headers)
@@ -494,7 +494,7 @@ def test_public_request_body_boundary_and_early_cors_refusal(
         "error": "request_too_large",
         "detail": "Public Query Run requests may not exceed 16384 bytes.",
     }
-    assert refused.headers["access-control-allow-origin"] == "https://discostew.dev"
+    assert refused.headers["access-control-allow-origin"] == "http://localhost:4321"
     assert refused.headers["access-control-allow-credentials"] == "true"
 
 
@@ -514,16 +514,16 @@ def test_natural_language_question_has_an_exact_500_character_limit(
 def test_public_retrosheet_route_uses_the_same_admission_and_execution_seam(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, runner = configure_public_proof(monkeypatch)
+    coordination, runner = configure_public_proof(monkeypatch)
 
-    response = TestClient(app, base_url="https://testserver").post(
+    response = TestClient(app, base_url="https://localhost").post(
         "/api/retrosheet/queries",
         json={"question": "how many times did Nolan Ryan strike out the side"},
     )
 
     assert response.status_code == 200
     assert runner.requests[0].operation == "retrosheet"
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.running == ()
     assert state.monthly_budget.charged_starts == 1
 
@@ -548,7 +548,7 @@ def test_public_query_run_success_exposes_safe_phase_timing(
 def test_execution_timing_start_failure_preserves_response_deadline_and_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, runner = configure_public_proof(monkeypatch)
+    coordination, runner = configure_public_proof(monkeypatch)
     diagnostic_ticks = iter(
         (80.0, 80.1, 80.2, RuntimeError("clock failed"), 80.4, 80.5, 80.6, 80.7)
     )
@@ -575,14 +575,14 @@ def test_execution_timing_start_failure_preserves_response_deadline_and_release(
     assert "execution" not in response.headers["server-timing"]
     assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
     assert runner.timeouts == [9.75]
-    state, _version = store.read()
+    state, _version = coordination.read()
     assert state.running == ()
 
 
 def test_timing_failure_does_not_change_response_or_skip_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, _runner = configure_public_proof(monkeypatch)
+    coordination, _runner = configure_public_proof(monkeypatch)
     ticks = iter((80.0, 80.1, 80.2, 80.3, 80.4, RuntimeError("clock failed"), 80.6, 80.7))
 
     def monotonic() -> float:
@@ -599,14 +599,14 @@ def test_timing_failure_does_not_change_response_or_skip_release(
     assert response.json() == {"kind": "rows", "rows": []}
     assert "release" not in response.headers["server-timing"]
     assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
-    state, _version = store.read()
+    state, _version = coordination.read()
     assert state.running == ()
 
 
 def test_public_timing_omits_nonfinite_and_negative_phase_durations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, _runner = configure_public_proof(monkeypatch)
+    coordination, _runner = configure_public_proof(monkeypatch)
     ticks = iter((90.0, 90.1, 90.0, 90.2, float("inf"), float("nan"), 90.4, 90.5))
     monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
 
@@ -615,14 +615,14 @@ def test_public_timing_omits_nonfinite_and_negative_phase_durations(
     assert response.status_code == 200
     assert response.headers["server-timing"] == "total;dur=400.000"
     assert response.headers["x-groundball-timing"] == response.headers["server-timing"]
-    state, _version = store.read()
+    state, _version = coordination.read()
     assert state.running == ()
 
 
 def test_public_timing_headers_are_omitted_without_any_valid_metric(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, _runner = configure_public_proof(monkeypatch)
+    coordination, _runner = configure_public_proof(monkeypatch)
     ticks = iter((100.0, 101.0, 100.0, 102.0, 101.0, 104.0, 103.0, 100.0))
     monkeypatch.setattr(api_server, "_monotonic", lambda: next(ticks), raising=False)
 
@@ -631,7 +631,7 @@ def test_public_timing_headers_are_omitted_without_any_valid_metric(
     assert response.status_code == 200
     assert "server-timing" not in response.headers
     assert "x-groundball-timing" not in response.headers
-    state, _version = store.read()
+    state, _version = coordination.read()
     assert state.running == ()
 
 
@@ -655,9 +655,9 @@ def test_public_admission_refusal_exposes_only_measured_phase_timing(
 def test_public_busy_and_rate_refusals_expose_exact_retry_times(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    token = "existing-opaque-token"
+    cookie_value = "existing-opaque-value"
     digest_key = b"test-visitor-digest-key" * 2
-    visitor = visitor_digest(token, digest_key=digest_key)
+    visitor = visitor_digest(cookie_value, digest_key=digest_key)
     runner = RecordingRunner(ExecutionOutcome("completed", payload={"kind": "rows"}))
     busy_state = AdmissionState(
         running=(
@@ -671,8 +671,8 @@ def test_public_busy_and_rate_refusals_expose_exact_retry_times(
     )
     configure_public_proof(monkeypatch, state=busy_state, runner=runner)
 
-    public_client = TestClient(app, base_url="https://testserver")
-    public_client.cookies.set("groundball_visitor", token)
+    public_client = TestClient(app, base_url="https://localhost")
+    public_client.cookies.set("groundball_visitor", cookie_value)
     busy = public_client.post(
         "/api/query-runs",
         json={"question": "question"},
@@ -709,7 +709,7 @@ def test_public_busy_and_rate_refusals_expose_exact_retry_times(
     assert limited.headers["retry-after"] == "10"
 
 
-def test_public_malformed_budget_and_store_failure_have_distinct_outcomes(
+def test_public_malformed_budget_and_coordination_failure_have_distinct_outcomes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     malformed = AdmissionState(
@@ -741,8 +741,8 @@ def test_public_malformed_budget_and_store_failure_have_distinct_outcomes(
     unavailable = TestClient(app).post("/api/query-runs", json={"question": "question"})
 
     assert unavailable.status_code == 503
-    assert unavailable.json()["error"] == "provider_unavailable"
-    assert unavailable.json()["reason"] == "coordination_store_unavailable"
+    assert unavailable.json()["error"] == "service_unavailable"
+    assert unavailable.json()["reason"] == "coordination_unavailable"
     assert "sensitive" not in unavailable.text
 
 
@@ -750,7 +750,7 @@ def test_public_timeout_is_honest_and_never_refunds_the_charged_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = RecordingRunner(ExecutionOutcome("timed_out"))
-    store, _ = configure_public_proof(monkeypatch, runner=runner)
+    coordination, _ = configure_public_proof(monkeypatch, runner=runner)
 
     response = TestClient(app).post("/api/query-runs", json={"question": "slow question"})
 
@@ -762,7 +762,7 @@ def test_public_timeout_is_honest_and_never_refunds_the_charged_start(
             "Narrow the question before trying again."
         ),
     }
-    state, _ = store.read()
+    state, _ = coordination.read()
     assert state.running == ()
     assert state.monthly_budget.charged_starts == 1
 
@@ -773,18 +773,18 @@ def test_public_execution_failure_releases_lease_but_keeps_charge(
     runner = RecordingRunner(
         ExecutionOutcome("failed", detail="Public Query Run execution failed.")
     )
-    store, _ = configure_public_proof(monkeypatch, runner=runner)
+    coordination, _ = configure_public_proof(monkeypatch, runner=runner)
 
     response = TestClient(app).post("/api/query-runs", json={"question": "failing question"})
 
     assert response.status_code == 503
-    assert response.json()["error"] == "provider_unavailable"
-    state, _ = store.read()
+    assert response.json()["error"] == "service_unavailable"
+    state, _ = coordination.read()
     assert state.running == ()
     assert state.monthly_budget.charged_starts == 1
 
 
-def test_public_configuration_rejects_process_local_store_and_unstable_key() -> None:
+def test_public_configuration_rejects_process_local_coordination_and_unstable_key() -> None:
     state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
 
     with pytest.raises(ValueError, match="shared"):
@@ -820,11 +820,11 @@ def test_public_startup_fails_closed_for_invalid_current_budget(
     monkeypatch.setenv("GROUNDBALL_PUBLIC_DEMO", "1")
     monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", "/proof/bundle")
     monkeypatch.setattr("baseball_rag.release_runtime.release_readiness", lambda: object())
-    store = SharedMemoryStore(
+    coordination = SharedMemoryStore(
         AdmissionState(monthly_budget=MonthlyBudget(period="2026-08", charged_starts=0))
     )
     coordinator = api_server.configure_public_admission(
-        store=store,
+        store=coordination,
         digest_key=b"stable-key" * 4,
         clock=lambda: NOW,
     )

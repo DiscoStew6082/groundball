@@ -1,8 +1,6 @@
 # API Reference
 
-Release candidate identity, gate reports, and Deployment Attestation operations are documented in [release-candidates.md](release-candidates.md). These repository artifacts are not public API endpoints and do not imply a provider deployment.
-
-Start the single-origin FastAPI/Svelte application:
+Start the single-origin FastAPI/Svelte application locally:
 
 ```bash
 npm --prefix web run build
@@ -13,15 +11,15 @@ The default origin is `http://127.0.0.1:7861`.
 
 ## `GET /health`
 
-Returns `{ "status": "ok" }`. This is the only route exempt from the optional origin-proxy token.
+Returns `{ "status": "ok" }`.
 
 ## `GET /api/capabilities`
 
-Returns the server-enforced query, catalog, coverage, Coverage Report, Retrosheet, and browser-local history capabilities. The structured query path reports `llm_required: false` in both local and public modes.
+Returns the server-enforced query, catalog, Coverage Report, Retrosheet, and browser-local history capabilities. The structured query path reports `llm_required: false` in local and public modes.
 
 ## `POST /api/query-runs`
 
-Provide exactly one natural-language question or structured recipe. A natural-language request may also include `previous_recipe`, containing only the preceding completed Query Recipe. It is rejected with structured `recipe` input; rows and server-side conversation state are never accepted as context.
+Provide exactly one natural-language question or structured recipe. A natural-language request may include `previous_recipe`, containing only the preceding completed Query Recipe. Rows and server-side conversation state are never accepted as context.
 
 ```json
 { "question": "who had the most RBIs in 1962" }
@@ -45,50 +43,13 @@ Provide exactly one natural-language question or structured recipe. A natural-la
 }
 ```
 
-A deterministic follow-up can refine one unambiguous prior player filter:
+Responses are rendering-neutral outcomes: `rows`, `no_data`, `exported`, `needs_clarification`, `rejected`, `unavailable`, or `failed`. Factual rows are withheld when proof verification is unavailable.
 
-```json
-{
-  "question": "what about his home runs in 2022?",
-  "previous_recipe": {
-    "source": "Batting",
-    "grain": "player-season",
-    "selections": ["player.name", "season", "batting.RBI"],
-    "predicate": {
-      "kind": "all",
-      "predicates": [
-        {"kind": "compare", "value": "player.name", "operator": "equals", "literal": "Shohei Ohtani"},
-        {"kind": "compare", "value": "season", "operator": "equals", "literal": 2022}
-      ]
-    }
-  }
-}
-```
-
-The bounded follow-up grammar uses no LLM or server-side history and fails closed without exactly one prior `player.name equals <name>` predicate.
-
-The response is a rendering-neutral discriminated outcome:
-
-- `rows`: immutable result rows plus QueryEvidence and verified release status.
-- `no_data`: a valid plan matched no rows, with evidence.
-- `exported`: exact CSV or JSON snapshot plus rows and evidence.
-- `needs_clarification`: the recipe is ambiguous or incomplete.
-- `rejected`: the request is outside the catalog or contract.
-- `unavailable`: data, catalog, plan, compiler, or proof identity is unavailable or stale.
-- `failed`: an unexpected bounded execution failure occurred.
-
-Factual rows are not returned when verification is unavailable.
+Public composition applies the same request body, result envelope, admission, lease, and ten-second execution deadline to both deterministic POST routes. Missing public bindings return a sanitized unavailable response before request parsing.
 
 ## `GET /api/query-catalog`
 
-Returns published sources, raw fields, promoted values, and relationships. Optional query parameters:
-
-- `source`: exact published source identity.
-- `search`: case-insensitive field identity/name search.
-- `offset`: non-negative raw-field offset.
-- `limit`: positive page size.
-
-The payload includes `catalog_revision`, `field_total`, `field_offset`, and `field_limit`. Promoted values and relationships are returned in full; pagination applies to raw fields.
+Returns published sources, raw fields, promoted values, and relationships. Optional parameters are `source`, `search`, `offset`, and `limit`.
 
 ## `GET /api/query-coverage`
 
@@ -100,17 +61,16 @@ Returns the dark, responsive human representation derived from the canonical rep
 
 ## `POST /api/retrosheet/queries`
 
-Executes only the separately governed Retrosheet event families.
+Executes only separately governed Retrosheet event families.
 
 ```json
 { "question": "how many times did Nolan Ryan strike out the side in his career" }
 ```
 
-Unsupported Retrosheet shapes return `422`; they do not fall through to an LLM.
+Unsupported shapes return `422`; they do not fall through to an LLM.
 
-## Deployment controls
+## Public application composition
 
-- `GROUNDBALL_PUBLIC_DEMO=1`: declares public mode; the query contract is unchanged.
-- `GROUNDBALL_ORIGIN_PROXY_TOKEN`: requires `x-groundball-proxy-token` on every route except `/health`.
-- `GROUNDBALL_CORS_ORIGINS`: comma-separated allowlist for cross-origin `POST /api/query-runs`.
-- `GROUNDBALL_WEB_DIST`: override the built Svelte asset directory.
+Use `baseball_rag.public_app.create_app` with `PublicAppBindings` supplied by the outer runtime. Bindings contain a deployment-shared CAS implementation, stable digest material, an initializer, and a hard-stop execution runner. The public repository deliberately supplies no concrete hosting implementation.
+
+Portable application configuration is limited to release bundle selection, local web assets, local-CI proof configuration, CORS origins, source identity, and runtime cache timing. Default CORS origins are localhost and loopback only.

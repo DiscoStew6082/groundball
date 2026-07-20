@@ -16,7 +16,7 @@ SHARED_STATE_SCHEMA_VERSION = 1
 QUESTION_CHARACTER_LIMIT = 500
 COMPLETE_REQUEST_BODY_BYTE_LIMIT = 16_384
 VISITOR_CONCURRENCY_LIMIT = 1
-DEPLOYMENT_CONCURRENCY_LIMIT = 4
+SYSTEM_CONCURRENCY_LIMIT = 4
 VISITOR_STARTS_PER_MINUTE = 3
 VISITOR_STARTS_PER_HOUR = 12
 MONTHLY_START_LIMIT = 100
@@ -69,11 +69,6 @@ class RuntimeConfiguration:
         }
 
     @property
-    def provider_deployment(self) -> Literal[False]:
-        """Keep legacy local-mode readers fail-closed during the parser split."""
-        return False
-
-    @property
     def digest(self) -> str:
         return hashlib.sha256(canonical_json_bytes(self.as_dict())).hexdigest()
 
@@ -95,13 +90,13 @@ def admission_policy_document() -> dict[str, object]:
         "admission_charging": {"charged_before_execution": True, "refunded": False},
         "cas": {"maximum_attempts": MAXIMUM_CAS_ATTEMPTS},
         "concurrency": {
-            "deployment": DEPLOYMENT_CONCURRENCY_LIMIT,
+            "system": SYSTEM_CONCURRENCY_LIMIT,
             "visitor": VISITOR_CONCURRENCY_LIMIT,
         },
         "coordination_failures": {
-            "contention_exhausted": "provider_unavailable",
+            "contention_exhausted": "service_unavailable",
             "invalid_state": "allowance_paused",
-            "store_unavailable": "provider_unavailable",
+            "coordination_unavailable": "service_unavailable",
         },
         "execution_deadline_seconds": EXECUTION_DEADLINE_SECONDS,
         "lease_seconds": LEASE_SECONDS,

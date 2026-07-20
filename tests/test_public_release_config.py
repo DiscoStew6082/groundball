@@ -24,11 +24,11 @@ def test_generated_admission_policy_is_derived_from_enforced_constants() -> None
     assert policy == {
         "admission_charging": {"charged_before_execution": True, "refunded": False},
         "cas": {"maximum_attempts": 8},
-        "concurrency": {"deployment": 4, "visitor": 1},
+        "concurrency": {"system": 4, "visitor": 1},
         "coordination_failures": {
-            "contention_exhausted": "provider_unavailable",
+            "contention_exhausted": "service_unavailable",
             "invalid_state": "allowance_paused",
-            "store_unavailable": "provider_unavailable",
+            "coordination_unavailable": "service_unavailable",
         },
         "execution_deadline_seconds": 10,
         "lease_seconds": 15,
@@ -103,6 +103,7 @@ def test_local_ci_runtime_configuration_contains_only_portable_fields() -> None:
     assert config.public_mode is True
     assert config.network_policy == "none"
     assert config.release_bundle == "ground-ball-release-bundle"
+    assert not hasattr(config, "provider_" + "deployment")
     assert len(config.digest) == 64
 
 

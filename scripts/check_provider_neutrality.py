@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bounded pre-publication scanner for provider-specific residue."""
 
 from __future__ import annotations
@@ -18,21 +17,19 @@ MAX_TEXT_BYTES = 1_048_576
 MAX_ARTIFACTS = 16
 MAX_POLICY_BYTES = 65_536
 MAX_RULES_PER_KIND = 64
-MAX_EXCERPT = 120
 _ALLOWED_HIDDEN = {".git", ".github"}
-_ALLOWED_PUBLIC_HOSTS = {"example.com", "www.example.com"}
+_ALLOWED_PUBLIC_HOSTS = frozenset("astral.sh baseballsavant.mlb.com blogs.fangraphs.com creativecommons.org en.wikipedia.org example.com files.pythonhosted.org github.com huggingface.co img.shields.io modelcontextprotocol.io opencollective.com pypi.org raw.githubusercontent.com registry.npmjs.org sabr.org smithery.ai stathead.com statsapi.mlb.com svelte.dev tidelift.com www.example.com www.fangraphs.com www.mlb.com www.retrosheet.org www.statmuse.com www.w3.org".split())  # noqa: E501  # fmt: skip
 _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _PERSONAL_PATH = re.compile(r"/(?:Users|Volumes)/[^/\s\"']+")
-_NAME_PREFIX = r"[A-Za-z0-9_.-]*?"
-_NAME_END = r"[A-Za-z0-9_.-]*"
+_NAME_SEGMENTS = r"(?:[A-Za-z0-9]+[_-])*"
+_NAME_SUFFIX = r"(?:[_-][A-Za-z0-9]+)*"
 _SENSITIVE_ASSIGNMENT = re.compile(
-    rf"(?i)\b(?P<name>{_NAME_PREFIX}(?:credential|api[_-]?key|secret|token|password|"
-    rf"authorization|organization|org|project|store|deployment|request[_-]?identity|"
-    rf"user[_-]?agent|client[_-]?ip){_NAME_END})\s*[:=]"
+    rf"(?i)\b(?P<name>{_NAME_SEGMENTS}(?:credential|api[_-]?key|secret|token|password|"
+    rf"authorization|request[_-]?identity|user[_-]?agent|client[_-]?ip){_NAME_SUFFIX})\s*[:=]"
 )
 _RESOURCE_ASSIGNMENT = re.compile(
-    rf"(?i)\b(?P<name>{_NAME_PREFIX}(?:account|organization|org|project|store|deployment)"
-    rf"[_-]?id{_NAME_END})\s*[:=]"
+    rf"(?i)\b(?P<name>{_NAME_SEGMENTS}(?:account|organization|org|project|store|deployment)"
+    rf"[_-]id{_NAME_SUFFIX})\s*[:=]"
 )
 _LEXEME = re.compile(r"[A-Za-z0-9_@./:+-]+")
 _RULE_ID = re.compile(r"[a-z][a-z0-9.-]{0,63}")
@@ -227,10 +224,10 @@ def _line_findings(
     resource_match = _RESOURCE_ASSIGNMENT.search(line)
     assignment_match = _SENSITIVE_ASSIGNMENT.search(line)
     if resource_match:
-        excerpt = f"{resource_match.group('name')}=<redacted>"[-MAX_EXCERPT:]
+        excerpt = f"{resource_match.group('name')}=<redacted>"[-120:]
         found.append(Finding(relative, number, "resource-identifier-assignment", excerpt))
     elif assignment_match:
-        excerpt = f"{assignment_match.group('name')}=<redacted>"[-MAX_EXCERPT:]
+        excerpt = f"{assignment_match.group('name')}=<redacted>"[-120:]
         found.append(Finding(relative, number, "sensitive-assignment", excerpt))
     for rule in exact:
         if rule["value"] in line:

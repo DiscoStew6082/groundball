@@ -18,7 +18,7 @@ from baseball_rag.public_release_config import MINIMUM_VISITOR_DIGEST_KEY_BYTES
 
 INITIALIZATION_WAIT_SECONDS = 5.0
 _UNAVAILABLE_BODY = {
-    "error": "provider_unavailable",
+    "error": "service_unavailable",
     "detail": "Ground Ball public service is unavailable.",
 }
 

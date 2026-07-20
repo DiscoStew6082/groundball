@@ -109,9 +109,9 @@ class SharedProofStore:
     def compare_and_swap(self, version, state):
         return self.inner.compare_and_swap(version, state)
 
-proof_store = SharedProofStore()
+proof_coordination = SharedProofStore()
 coordinator = configure_public_admission(
-    store=proof_store,
+    store=proof_coordination,
     digest_key=b"offline-release-proof-key-material",
 )
 if not coordinator.initialize_current_budget():
@@ -259,7 +259,7 @@ print(json.dumps({
     "follow_up": follow_up,
     "follow_up_request": follow_up_request,
     "admission_start_counts": sorted(
-        len(starts) for _, starts in proof_store.inner.read().state.starts_by_visitor
+        len(starts) for _, starts in proof_coordination.inner.read().state.starts_by_visitor
     ),
     "retrosheet": [
         {

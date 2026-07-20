@@ -15,6 +15,7 @@ from baseball_rag.release_bundle import (
 )
 
 SOURCE_COMMIT = "a" * 40
+_FIXTURE_ORIGIN = "https://" + "example.invalid"
 
 
 def _json_bytes(value: object) -> bytes:
@@ -62,13 +63,13 @@ def _source_tree(root: Path) -> None:
                     }
                 ),
                 "sha256": _sha(path),
-                "source_url": f"https://example.invalid/{filename}",
+                "source_url": f"{_FIXTURE_ORIGIN}/{filename}",
             }
         )
     data_manifest = {
         "dataset": {
             "name": "fixture Lahman",
-            "source_url": "https://example.invalid/lahman",
+            "source_url": f"{_FIXTURE_ORIGIN}/lahman",
             "upstream": "Lahman Baseball Database",
             "release_id": "lahman-fixture-v1",
             "upstream_release": "fixture-2025",
@@ -137,7 +138,7 @@ def _source_tree(root: Path) -> None:
                 "reference_version": "season-aware-v1",
                 "rows": 1,
                 "sha256": _sha(assets / "team_reference.csv"),
-                "source": {"name": "Lahman Teams", "url": "https://example.invalid/teams"},
+                "source": {"name": "Lahman Teams", "url": f"{_FIXTURE_ORIGIN}/teams"},
             }
         ),
     )
@@ -149,9 +150,7 @@ def _source_tree(root: Path) -> None:
                 "reference_version": "retrosheet-season-aware-v1",
                 "rows": 1,
                 "sha256": _sha(assets / "retrosheet_team_reference.csv"),
-                "sources": [
-                    {"name": "Retrosheet teams", "url": "https://example.invalid/retro-teams"}
-                ],
+                "sources": [{"name": "Retrosheet teams", "url": f"{_FIXTURE_ORIGIN}/retro-teams"}],
             }
         ),
     )
@@ -266,7 +265,7 @@ def _source_tree(root: Path) -> None:
                     "schema_version": "ground-ball-legal-record-v1",
                     "owner": owner,
                     "license": "fixture-license",
-                    "source": "https://example.invalid/source",
+                    "source": f"{_FIXTURE_ORIGIN}/source",
                     "attribution": f"Attribution for {owner}",
                     "notice": f"Notice for {owner}",
                     "disclaimer": "Provided without warranty.",

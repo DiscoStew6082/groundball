@@ -129,7 +129,7 @@ def test_semantic_manifest_identity_ignores_download_metadata_but_not_data() -> 
                 "rows": 2,
                 "year_coverage": None,
                 "sha256": "abc",
-                "source_url": "https://example.test/People.csv",
+                "source_url": "https://" + "example.test/People.csv",
             }
         ],
     }

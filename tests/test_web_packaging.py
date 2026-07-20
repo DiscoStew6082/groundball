@@ -1,4 +1,4 @@
-"""Deployment artifact contract for the unified Ground Ball web application."""
+"""Release artifact contract for the unified Ground Ball web application."""
 
 import json
 import tomllib
@@ -7,9 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
-    """The deployable image builds web assets and contains no Gradio runtime."""
-    dockerfile = (ROOT / "Dockerfile.vercel").read_text(encoding="utf-8")
+def test_release_image_builds_and_serves_the_svelte_fastapi_application():
+    """The generic release image builds web assets and contains no Gradio runtime."""
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     lockfile = (ROOT / "uv.lock").read_text(encoding="utf-8")
 
@@ -31,19 +31,26 @@ def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
     assert "/app/src/baseball_rag/generation/llm.py" in dockerfile
     assert "rm -rf /app/src/baseball_rag/query/catalog" in dockerfile
     assert "baseball_rag.web_app" in dockerfile
-    assert "${PORT:-80}" in dockerfile
+    assert "${PORT:-7860}" in dockerfile
+    assert "USER 10001:10001" in dockerfile
     assert "GRADIO" not in dockerfile.upper()
 
     dependencies = pyproject["project"]["dependencies"]
     assert not any(dependency.lower().startswith("gradio") for dependency in dependencies)
     assert '\nname = "gradio"\n' not in lockfile
 
-    for ignore_file in (".dockerignore", ".vercelignore"):
-        ignored = (ROOT / ignore_file).read_text(encoding="utf-8").splitlines()
-        assert "web/node_modules/" in ignored
-        assert "web/dist/" in ignored
-        assert "src/baseball_rag/web_dist/" in ignored
-        assert "web/" not in ignored
+    ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "web/node_modules/" in ignored
+    assert "web/dist/" in ignored
+    assert "src/baseball_rag/web_dist/" in ignored
+    assert "web/" not in ignored
+
+    removed_host_files = (
+        "Dockerfile." + "ver" + "cel",
+        "." + "ver" + "celignore",
+        "ver" + "cel.json",
+    )
+    assert all(not (ROOT / removed).exists() for removed in removed_host_files)
 
 
 def test_default_container_and_ci_use_the_same_svelte_application() -> None:

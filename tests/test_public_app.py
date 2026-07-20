@@ -6,6 +6,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -25,7 +26,7 @@ from baseball_rag.public_app import PublicAppBindings, create_app
 from baseball_rag.public_execution import ExecutionOutcome, ExecutionRequest
 
 UNAVAILABLE = {
-    "error": "provider_unavailable",
+    "error": "service_unavailable",
     "detail": "Ground Ball public service is unavailable.",
 }
 
@@ -61,7 +62,7 @@ class RecordingRunner:
         return self.outcome
 
 
-def ready_store() -> SharedMemoryStore:
+def ready_coordination() -> SharedMemoryStore:
     period = datetime.now(UTC).strftime("%Y-%m")
     return SharedMemoryStore(
         AdmissionState(monthly_budget=MonthlyBudget(period=period, charged_starts=0))
@@ -70,15 +71,28 @@ def ready_store() -> SharedMemoryStore:
 
 def bindings(
     *,
-    store: SharedMemoryStore | None = None,
+    coordination: SharedMemoryStore | None = None,
     initializer=None,
     runner: RecordingRunner | None = None,
 ) -> PublicAppBindings:
     return PublicAppBindings(
-        store=store or ready_store(),
+        store=coordination or ready_coordination(),
         digest_key=b"stable-public-visitor-digest-key",
         initializer=initializer or (lambda _coordinator: None),
         execution_runner=runner or RecordingRunner(),
+    )
+
+
+def test_public_server_has_no_hosting_adapter_or_concrete_environment_composition() -> None:
+    source = Path(api_server.__file__).read_text(encoding="utf-8")
+
+    assert "public_admission_" + "blob" not in source
+    assert "configure_public_admission_" + "from_environment" not in source
+    assert "GROUNDBALL_" + "BLOB" not in source
+    assert "Http" + "Transport" not in source
+    assert api_server._DEFAULT_CORS_ORIGINS == (
+        "http://localhost:4321",
+        "http://127.0.0.1:4321",
     )
 
 
@@ -143,18 +157,18 @@ def test_unbound_public_gate_precedes_request_parsing_and_size_policy() -> None:
 
 
 def test_bindings_initialize_once_and_drive_both_public_post_routes() -> None:
-    store = ready_store()
+    coordination = ready_coordination()
     runner = RecordingRunner()
     initialized_with = []
     app = create_app(
         bindings=bindings(
-            store=store,
+            coordination=coordination,
             runner=runner,
             initializer=lambda coordinator: initialized_with.append(coordinator),
         )
     )
 
-    with TestClient(app, base_url="https://testserver") as client:
+    with TestClient(app, base_url="https://localhost") as client:
         query = client.post("/api/query-runs", json={"question": "40-40"})
         retrosheet = client.post(
             "/api/retrosheet/queries",
@@ -166,7 +180,7 @@ def test_bindings_initialize_once_and_drive_both_public_post_routes() -> None:
     assert len(initialized_with) == 1
     assert [request.operation for request in runner.requests] == ["query", "retrosheet"]
     assert all(0 < timeout <= 10 for timeout in runner.timeouts)
-    state = store.read().state
+    state = coordination.read().state
     assert state.running == ()
     assert state.monthly_budget == MonthlyBudget(
         period=datetime.now(UTC).strftime("%Y-%m"), charged_starts=2
@@ -220,7 +234,7 @@ def test_initializer_exception_is_sanitized_and_never_retried() -> None:
     def fail(_coordinator) -> None:
         nonlocal calls
         calls += 1
-        raise RuntimeError("sensitive provider initialization detail")
+        raise RuntimeError("sensitive initialization detail")
 
     with TestClient(create_app(bindings=bindings(initializer=fail))) as client:
         first = client.get("/api/capabilities")
@@ -246,8 +260,8 @@ def test_created_apps_keep_initialization_state_isolated() -> None:
 def test_execution_outcome_formatting_failure_still_releases_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store = ready_store()
-    app = create_app(bindings=bindings(store=store))
+    coordination = ready_coordination()
+    app = create_app(bindings=bindings(coordination=coordination))
 
     def fail_formatting(_outcome: ExecutionOutcome):
         raise TypeError("serialization failed")
@@ -256,7 +270,7 @@ def test_execution_outcome_formatting_failure_still_releases_lease(
     with TestClient(app) as client, pytest.raises(TypeError, match="serialization failed"):
         client.post("/api/query-runs", json={"question": "40-40"})
 
-    assert store.read().state.running == ()
+    assert coordination.read().state.running == ()
 
 
 @pytest.mark.parametrize("hard_stop_offset", [None, 0.25])
@@ -291,7 +305,7 @@ def test_public_execution_uses_fallback_or_existing_monotonic_deadline(
             execution_runner=RecordingRunner(),
         ),
         PublicAppBindings(
-            store=ready_store(),
+            store=ready_coordination(),
             digest_key=b"short",
             initializer=lambda _coordinator: None,
             execution_runner=RecordingRunner(),

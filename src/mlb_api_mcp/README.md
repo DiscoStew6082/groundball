@@ -230,7 +230,7 @@ uv run pre-commit install
 ```
 
 Now, the linting checks will run automatically whenever you commit code. From this nested
-project directory in the Ground Ball monorepo, the manual command is scoped to this project:
+project directory in the Ground Ball monorepo, the manual command is scoped to this nested package:
 
 ```bash
 uv run pre-commit run --all-files

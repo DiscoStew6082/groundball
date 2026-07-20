@@ -15,8 +15,8 @@ _cached_conn: duckdb.DuckDBPyConnection | None = None
 _lock = threading.Lock()
 
 # Project root: go up 4 levels — lahman.py -> db/ -> baseball_rag/ -> src/ -> repo/
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = PROJECT_ROOT / "data"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = REPOSITORY_ROOT / "data"
 RETROSHEET_TEAM_REFERENCE_PATH = (
     Path(__file__).resolve().parents[1]
     / "query"
