@@ -1,5 +1,7 @@
 # API Reference
 
+Release candidate identity, gate reports, and Deployment Attestation operations are documented in [release-candidates.md](release-candidates.md). These repository artifacts are not public API endpoints and do not imply a provider deployment.
+
 Start the single-origin FastAPI/Svelte application:
 
 ```bash

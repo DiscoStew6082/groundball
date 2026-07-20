@@ -114,12 +114,6 @@ jobs:
           release_source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
           uv run python -m baseball_rag.release_bundle check release/bundle \
             --expected-source-commit "$release_source_commit"
-      - name: Verify release branch source and artifact commit topology
-        if: github.ref == 'refs/heads/implementation/public-deterministic-groundball'
-        run: |
-          release_source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
-          test "$(git rev-parse HEAD^)" = "$release_source_commit"
-          test -z "$(git diff --name-only HEAD^ HEAD | grep -Ev '^release/bundle/' || true)"
       - name: Fast Python test suite
         run: >-
           uv run python -m pytest tests/
@@ -151,46 +145,3 @@ jobs:
           path: coverage.xml
       - uses: codecov/codecov-action@v7
         continue-on-error: true
-
-  release-container:
-    runs-on: ubuntu-latest
-    needs: [test]
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/implementation/public-deterministic-groundball'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Build the immutable public release image
-        run: |
-          release_source_commit="$(git rev-parse HEAD^)"
-          test "$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')" = "$release_source_commit"
-          test -z "$(git diff --name-only HEAD^ HEAD | grep -Ev '^release/bundle/' || true)"
-          docker build -f Dockerfile.vercel \
-            --build-arg GROUNDBALL_SOURCE_COMMIT="$release_source_commit" \
-            -t "groundball-public-release:${GITHUB_SHA}" .
-      - name: Prove network-disabled application cold boot and release behavior
-        run: |
-          container_name="groundball-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          docker run --detach --network none --name "$container_name" \
-            "groundball-public-release:${GITHUB_SHA}"
-          trap 'docker rm --force "$container_name" >/dev/null' EXIT
-          ready=0
-          for _attempt in $(seq 1 30); do
-            if docker exec "$container_name" /app/.venv/bin/python -c \
-              'import urllib.request; urllib.request.urlopen("http://127.0.0.1/health", timeout=1).read()'
-            then
-              ready=1
-              break
-            fi
-            sleep 1
-          done
-          if test "$ready" != 1; then
-            docker logs "$container_name"
-            exit 1
-          fi
-          docker exec "$container_name" /app/.venv/bin/python -c \
-            'import json, urllib.request; get = lambda path: json.load(urllib.request.urlopen("http://127.0.0.1" + path)); post = lambda path, question: json.load(urllib.request.urlopen(urllib.request.Request("http://127.0.0.1" + path, data=json.dumps({"question": question}).encode(), headers={"Content-Type": "application/json"}))); ready = get("/api/release-readiness"); capabilities = get("/api/capabilities"); answer = post("/api/query-runs", "who had the most RBIs in 1962"); retro = post("/api/retrosheet/queries", "how many times did Nolan Ryan strike out the side in his career"); assert ready["duckdb"]["database"] == ":memory:"; assert answer["rows"] == [{"player.name": "Tommy Davis", "season": 1962, "batting.RBI": 153}]; assert [item["capability_id"] for item in capabilities["retrosheet_capabilities"]] == ["pitcher_strikeout_side"]; assert retro["rows"][0]["career_strikeout_side_count"] == 324; print(ready["release_bundle_digest"])'
-          docker exec "$container_name" /bin/sh -c \
-            'test ! -e /app/src/baseball_rag/db/download.py && test ! -e /app/src/baseball_rag/db/generate_retrosheet_team_reference.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_database.py && test ! -e /app/src/baseball_rag/db/secondary_sources/retrosheet_events.py && test ! -e /app/src/baseball_rag/generation/llm.py && test ! -e /app/src/baseball_rag/query/catalog && test ! -e /app/src/baseball_rag/query/coverage && test -z "$(find /app -type f \( -name "*.duckdb" -o -name "*.zip" -o -name "coverage-report.md" \) -print -quit)" && test -z "$(find /app/release-bundle -iname "*cache*" -print -quit)"'

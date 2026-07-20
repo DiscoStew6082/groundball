@@ -12,11 +12,18 @@ from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Iterator, Protocol
 
-RUN_DEADLINE = timedelta(seconds=10)
-LEASE_SAFETY_MARGIN = timedelta(seconds=5)
-RUN_LEASE_DURATION = RUN_DEADLINE + LEASE_SAFETY_MARGIN
-MONTHLY_START_LIMIT = 100
-DEPLOYMENT_CONCURRENCY_LIMIT = 4
+from baseball_rag.public_release_config import (
+    DEPLOYMENT_CONCURRENCY_LIMIT,
+    EXECUTION_DEADLINE_SECONDS,
+    LEASE_SECONDS,
+    MAXIMUM_CAS_ATTEMPTS,
+    MONTHLY_START_LIMIT,
+    VISITOR_STARTS_PER_HOUR,
+    VISITOR_STARTS_PER_MINUTE,
+)
+
+RUN_DEADLINE = timedelta(seconds=EXECUTION_DEADLINE_SECONDS)
+RUN_LEASE_DURATION = timedelta(seconds=LEASE_SECONDS)
 _BUDGET_PERIOD_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
 
 
@@ -147,7 +154,7 @@ class CasCoordinator:
         self,
         store: CasStore,
         *,
-        max_attempts: int = 8,
+        max_attempts: int = MAXIMUM_CAS_ATTEMPTS,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
@@ -298,7 +305,7 @@ def decide_admission(
     minute_starts = tuple(
         start for start in visitor_starts if start > attempt.now - timedelta(minutes=1)
     )
-    if len(minute_starts) >= 3:
+    if len(minute_starts) >= VISITOR_STARTS_PER_MINUTE:
         return AdmissionTransition(
             state=state,
             outcome=_retry_outcome(
@@ -308,7 +315,7 @@ def decide_admission(
                 retry_at=min(minute_starts) + timedelta(minutes=1),
             ),
         )
-    if len(visitor_starts) >= 12:
+    if len(visitor_starts) >= VISITOR_STARTS_PER_HOUR:
         return AdmissionTransition(
             state=state,
             outcome=_retry_outcome(

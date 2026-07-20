@@ -31,6 +31,7 @@ from baseball_rag.public_admission_state import (
     decode_admission_state,
     encode_admission_state,
 )
+from baseball_rag.public_release_config import MINIMUM_VISITOR_DIGEST_KEY_BYTES
 
 PRODUCTION_OBJECT_KEY = "groundball/public-admission/v1/production/state.json"
 _PROOF_OBJECT_PREFIX = "groundball/public-admission/v1/proof"
@@ -283,7 +284,7 @@ def load_blob_public_admission(
             altchars=b"-_",
             validate=True,
         )
-        if len(digest_key) < 32:
+        if len(digest_key) < MINIMUM_VISITOR_DIGEST_KEY_BYTES:
             raise ValueError
     except (KeyError, ValueError, UnicodeEncodeError, binascii.Error):
         raise PublicAdmissionConfigurationError from None

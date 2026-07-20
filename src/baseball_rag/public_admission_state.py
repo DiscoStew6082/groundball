@@ -14,8 +14,9 @@ from baseball_rag.public_admission import (
     MonthlyBudget,
     RunLease,
 )
+from baseball_rag.public_release_config import SHARED_STATE_SCHEMA_VERSION
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = SHARED_STATE_SCHEMA_VERSION
 MAX_STATE_BYTES = 65_536
 MAX_RUNNING_LEASES = 4
 MAX_VISITORS = 256

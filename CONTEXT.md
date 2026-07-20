@@ -20,13 +20,14 @@ This is the canonical current architecture and domain context. Historical implem
 
 The active delivery effort is the zero-Mac deterministic public release. Its execution source is `docs/public-release-implementation-ledger.md`; the completed Wayfinder map is supporting decision evidence, not an active ticket frontier.
 
-- Current Wave 5 branch: `implementation/public-deterministic-groundball-parity`, based exactly on PR #28's Wave 4 merge `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`.
+- Current Wave 6 branch: `implementation/public-deterministic-groundball-candidate-gates`, based exactly on PR #29's Wave 5 merge `17d972d2c4a2c7f601c5908e707e7714e6fd7c35`.
 - Completed foundation: the immutable Release Bundle and offline container proof merged in PR #23 at `a4084f1`.
 - Completed Wave 2: the Public Admission Policy core merged in PR #26 at `427e189`, including shared-store and stable-key configuration seams, fail-closed readiness, hard-stop public execution, and common protection for both deterministic POST routes.
 - Completed Wave 3: the shared coordination Adapter merged in PR #27 at `30a2bc5`, with a strict schema-v1 state codec and project-owned private Vercel Blob HTTP Adapter. Its proof remains fake/scripted transport evidence only; it does not prove live provider compatibility.
 - Completed Wave 4: the public 25/50/100 result envelope, complete-or-refused exports, and separated Browser completed-run/attempt state merged in PR #28 at `91d1dfa6c3473481068fa8985a1f5b37f31ce3fc`.
-- Implemented on the Wave 5 branch: composed plans retain catalog-owned hidden player-name match aliases; the exact Ohtani cross-discipline question and equivalent structured recipe return the verified 2022/34 HR/15 W row; optional `previous_recipe` context deterministically resolves the exact Ohtani two-turn follow-up without rows, server state, or an LLM; and the 26-case checked-in eval/parity matrix proves the named Lahman and public Retrosheet positive/negative boundaries.
-- Current opportunity after Wave 5 review: merge the repository/local deterministic parity contract without claiming live Browser/provider/deployment proof, then continue only with separately scoped Wave 6 candidate identity and gate tooling.
+- Completed Wave 5: deterministic parity closure merged in PR #29 at `17d972d`, including the exact Ohtani natural/structured/follow-up contracts and 26-case Lahman/Retrosheet parity matrix.
+- Implemented on the Wave 6 branch: strict canonical candidate identity, actual-policy and runtime configuration digests, a fixed all-or-nothing gate report, provider Deployment Attestation validation plus an explicit no-deployment local template, and branch-independent exact-head candidate-container CI. Local/CI records remain ineligible while every protected/provider gate is blocked.
+- Current opportunity after Wave 6 review: merge repository/local candidate tooling without claiming provider proof, then request separate authorization before any Wave 7 Blob, preview, deployment, protected Browser, performance, persistence, memory, accounting, or attestation exercise.
 - External deployment, Blob or secret creation, production promotion, website cutover, paid services, Cloudflare activation, and Mac or tunnel operations remain outside current authorization until Stewart approves the exact action.
 
 ## Current modules
@@ -48,6 +49,9 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 - `src/baseball_rag/public_results.py`: public-only interactive page metadata, page validation, compact response encoding, and complete-export ceiling policy over the unchanged local Query Adapter.
 - `src/baseball_rag/release_bundle.py`: immutable Release Bundle identity, assembly, and verification.
 - `src/baseball_rag/release_runtime.py`: offline release startup and readiness checks.
+- `src/baseball_rag/public_release_config.py`: actual Public Admission Policy read model, generated policy check, strict non-secret runtime configuration, and release-environment allowlist.
+- `src/baseball_rag/release_candidate.py`: canonical candidate, gate-report, and Deployment Attestation assembly and validation.
+- `src/baseball_rag/candidate_container_probe.py`: packaged Wave 5 HTTP corpus used only by network-disabled candidate proof.
 
 ## Architecture ledger registry
 
@@ -62,7 +66,8 @@ The active delivery effort is the zero-Mac deterministic public release. Its exe
 - 2026-07-19, merge `427e189`: Public Admission Policy core. Public contract: every public deterministic POST route shares one fail-closed CAS admission decision and ten-second hard-stop execution seam; process-local state is never deployment authority.
 - 2026-07-19, merge `30a2bc5`: Shared coordination Adapter contract. One private schema-v1 object uses canonical provider HTTP `Date`, exact private uncached reads, current raw write protocol, and opaque ETags for bounded CAS; this is fake-transport proof only until a separately approved protected Blob exercise passes.
 - 2026-07-19, merge `91d1dfa`: Public result and Browser contract. Public-only 25/50/100 paging and complete-or-refused exports preserve the unchanged local/exhaustive Query path; Browser attempt outcomes cannot replace a completed Query Run.
-- 2026-07-19, Wave 5 branch: Deterministic parity closure. Catalog-owned hidden name-match projections survive composed fact plans; exact natural/structured Ohtani parity and recipe-only deterministic follow-up are covered across Adapter, API/child, Browser, eval, Retrosheet, Coverage Report, and immutable release-runtime seams. Repository and local DOM/API proof do not establish live provider compatibility, deployment, protected Browser behavior, or cutover.
+- 2026-07-19, merge `17d972d`: Deterministic parity closure. Catalog-owned hidden name-match projections survive composed fact plans; exact natural/structured Ohtani parity and recipe-only deterministic follow-up are covered across Adapter, API/child, Browser, eval, Retrosheet, Coverage Report, and immutable release-runtime seams. Repository and local DOM/API proof do not establish live provider compatibility, deployment, protected Browser behavior, or cutover.
+- 2026-07-20, Wave 6 branch: candidate identity and gate tooling. Candidate IDs bind exact source/artifact topology, bundle, local image, runtime, actual admission policy, and evidence identities; every fixed release gate is pass/fail/blocked, and the local Deployment Attestation template explicitly records that no deployment exists. Provider gates remain blocked.
 
 ### Frozen seams
 

@@ -28,6 +28,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src/baseball_rag/ ./src/baseball_rag/
 COPY release/bundle/ /app/release-bundle/
+COPY release/config/ /app/release-config/
 RUN /app/.venv/bin/python -m baseball_rag.release_bundle check /app/release-bundle \
         --expected-source-commit "${GROUNDBALL_SOURCE_COMMIT}" \
     && /app/.venv/bin/python -c 'from baseball_rag.release_runtime import release_readiness; release_readiness()' \
