@@ -20,10 +20,13 @@ def test_natural_language_and_structured_input_return_the_same_recipe_and_plan()
     assert natural["rows"] == [{"player.name": "Tommy Davis", "season": 1962, "batting.RBI": 153}]
     assert natural["evidence"]["parameterized_sql"]
     assert natural["evidence"]["bound_values"] == [1962]
+    report = load_coverage_report()
     assert natural["verification"] == {
         "status": "verified",
         "reason": "Verified for this data release.",
         "coverage_report": "/coverage-report",
+        "proof_id": report["proof_id"],
+        "proof_identity": report["proof_identity"],
     }
 
 

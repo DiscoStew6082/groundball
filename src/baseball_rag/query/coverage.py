@@ -121,7 +121,7 @@ def load_passing_coverage_report() -> dict[str, Any]:
     return report
 
 
-def verification_payload(evidence: QueryEvidence) -> dict[str, str | None]:
+def verification_payload(evidence: QueryEvidence) -> dict[str, object]:
     """Return the shared adapter verification state for factual outcomes."""
     try:
         report = load_passing_coverage_report()
@@ -147,6 +147,8 @@ def verification_payload(evidence: QueryEvidence) -> dict[str, str | None]:
         "status": "verified",
         "reason": "Verified for this data release.",
         "coverage_report": "/coverage-report",
+        "proof_id": report["proof_id"],
+        "proof_identity": report["proof_identity"],
     }
 
 
