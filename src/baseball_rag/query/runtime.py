@@ -42,14 +42,40 @@ class PublishedDataRuntime:
     source_fingerprints: Mapping[str, str]
 
 
+_installed_runtime_lock = RLock()
+_installed_runtime: PublishedDataRuntime | None = None
+
+
+def install_published_data_runtime(runtime: PublishedDataRuntime) -> None:
+    """Install one validated runtime for this process without replacing it."""
+    if not isinstance(runtime, PublishedDataRuntime):
+        raise TypeError("runtime must be a PublishedDataRuntime.")
+    global _installed_runtime
+    with _installed_runtime_lock:
+        if _installed_runtime is None:
+            _installed_runtime = runtime
+        elif _installed_runtime is not runtime:
+            raise PublishedDataUnavailableError(
+                "A different PublishedDataRuntime is already installed."
+            )
+
+
 def published_data_runtime() -> PublishedDataRuntime:
+    with _installed_runtime_lock:
+        installed = _installed_runtime
+    if installed is not None:
+        return installed
+
     bundle_root = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
     if bundle_root:
         check_release_bundle(bundle_root)
         configured = (Path(bundle_root) / "data").resolve()
     else:
         configured = Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
-    return _runtime_for(str(configured))
+    loaded = _runtime_for(str(configured))
+
+    with _installed_runtime_lock:
+        return _installed_runtime if _installed_runtime is not None else loaded
 
 
 @lru_cache(maxsize=None)

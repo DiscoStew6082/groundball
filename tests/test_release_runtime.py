@@ -4,17 +4,78 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+import baseball_rag.query.runtime as query_runtime
 from baseball_rag.release_bundle import assemble_release_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_COMMIT = "a" * 40
 pytestmark = pytest.mark.release_proof
+
+
+@pytest.fixture
+def no_installed_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GROUNDBALL_RELEASE_BUNDLE", raising=False)
+    monkeypatch.setenv("GROUNDBALL_DATA_DIR", str(ROOT / "release" / "bundle" / "data"))
+    monkeypatch.setattr(query_runtime, "_installed_runtime", None)
+
+
+def test_uninstalled_runtime_preserves_local_and_release_bundle_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_installed_runtime: None,
+) -> None:
+    local_data = ROOT / "release" / "bundle" / "data"
+    monkeypatch.delenv("GROUNDBALL_RELEASE_BUNDLE", raising=False)
+    monkeypatch.setenv("GROUNDBALL_DATA_DIR", str(local_data))
+    local = query_runtime.published_data_runtime()
+
+    assert query_runtime.published_data_runtime() is local
+    assert local.data_dir == local_data.resolve()
+
+    bundle = tmp_path / "bundle"
+    shutil.copytree(ROOT / "release" / "bundle", bundle)
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(bundle))
+    release = query_runtime.published_data_runtime()
+
+    assert query_runtime.published_data_runtime() is release
+    assert release is not local
+    assert release.data_dir == (bundle / "data").resolve()
+
+
+def test_fresh_subprocess_can_install_its_own_published_runtime(
+    no_installed_runtime: None,
+) -> None:
+    parent = query_runtime.published_data_runtime()
+    query_runtime.install_published_data_runtime(parent)
+    script = """
+from dataclasses import replace
+from baseball_rag.query.runtime import install_published_data_runtime, published_data_runtime
+
+child = replace(published_data_runtime(), data_release="child-process")
+install_published_data_runtime(child)
+print(published_data_runtime() is child, published_data_runtime().data_release)
+"""
+    environment = {**os.environ}
+    environment.pop("GROUNDBALL_RELEASE_BUNDLE", None)
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.stdout.strip() == "True child-process"
+    assert query_runtime.published_data_runtime() is parent
 
 
 def test_release_bundle_cold_boot_is_offline_in_memory_and_proof_exact(tmp_path: Path) -> None:
