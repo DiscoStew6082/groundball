@@ -6,6 +6,7 @@
 .uv-cache/
 web/node_modules/
 web/dist/
+src/baseball_rag/web_dist/
 .hermes/
 .github/
 .wrangler/

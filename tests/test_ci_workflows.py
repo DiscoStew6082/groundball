@@ -14,6 +14,13 @@ def test_fast_ci_does_not_regenerate_exhaustive_release_proof() -> None:
     assert "--durations=20" in workflow
 
 
+def test_web_ci_checks_the_built_assets_against_the_packaged_fallback() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    web_job = workflow.split("  web-test:\n", 1)[1].split("\n  test:\n", 1)[0]
+
+    assert web_job.index("npm run build") < web_job.index("npm run package:check")
+
+
 def test_release_proof_workflow_owns_exhaustive_regeneration() -> None:
     workflow = (ROOT / ".github/workflows/release-proof.yml").read_text(encoding="utf-8")
 
