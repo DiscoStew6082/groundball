@@ -8,23 +8,23 @@ version = "0.1.0"
 description = "MLB API MCP Server - Model Context Protocol server for MLB statistics and baseball data"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=2.10.6",
-    "fastapi>=0.115.12",
+    "fastmcp>=3.4.4",
+    "fastapi>=0.139.2",
     "python-mlb-statsapi>=0.5.26",
-    "uvicorn[standard]>=0.24.0",
+    "uvicorn[standard]>=0.51.0",
     "pybaseball>=2.2.7",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.0.292",
+    "ruff>=0.15.22",
     "pre-commit>=3.5.0",
 ]
 test = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=4.1.0",
-    "coverage>=7.3.0",
+    "coverage>=7.15.2",
 ]
 
 [tool.hatch.build.targets.wheel]
