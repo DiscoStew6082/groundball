@@ -43,26 +43,26 @@ jobs:
         coverage = float(root.attrib['line-rate']) * 100
         print(f'{coverage:.2f}')
         ")
-        
+
         # Create shields.io badge URL
         BADGE_URL="https://img.shields.io/badge/coverage-${COVERAGE}%25-brightgreen"
-        
+
         # Update README.md with new badge URL
         sed -i "s|https://img.shields.io/badge/coverage-[0-9.]*%25-brightgreen|${BADGE_URL}|g" README.md
-        
+
         # Get the current branch name
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           BRANCH_NAME="${{ github.head_ref }}"
         else
           BRANCH_NAME="${{ github.ref_name }}"
         fi
-        
+
         # Commit and push if changes were made
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add README.md
         git diff --staged --quiet || git commit -m "Update coverage badge to ${COVERAGE}%"
-        
+
         # Try to push, and if it fails, pull and try again
         if ! git push origin HEAD:${BRANCH_NAME}; then
           echo "Push failed, pulling latest changes and retrying..."
@@ -82,12 +82,12 @@ jobs:
         coverage = float(root.attrib['line-rate']) * 100
         print(f'{coverage:.2f}')
         ")
-        
+
         echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
         echo "Current coverage: **${COVERAGE}%**" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Note: Coverage badge cannot be updated automatically for external pull requests due to security restrictions." >> $GITHUB_STEP_SUMMARY
         echo "The badge will be updated when this PR is merged by a maintainer." >> $GITHUB_STEP_SUMMARY
-        
+
         # Output coverage to logs for visibility
-        echo "Coverage: ${COVERAGE}%" 
+        echo "Coverage: ${COVERAGE}%"

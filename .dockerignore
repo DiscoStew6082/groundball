@@ -11,6 +11,7 @@ tests/
 .env
 web/node_modules/
 web/dist/
+src/baseball_rag/web_dist/
 data/*
 !data/manifest.json
 !data/secondary_sources

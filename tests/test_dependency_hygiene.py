@@ -86,6 +86,37 @@ def test_pytest_treats_deprecations_and_future_warnings_as_errors() -> None:
     ]
 
 
+def test_declared_custom_pytest_markers_exactly_match_usage() -> None:
+    configuration = _project_configuration()
+    marker_entries = configuration["tool"]["pytest"]["ini_options"]["markers"]  # type: ignore[index]
+    declared = {entry.partition(":")[0].strip() for entry in marker_entries}
+    builtin_markers = {
+        "filterwarnings",
+        "parametrize",
+        "skip",
+        "skipif",
+        "tryfirst",
+        "trylast",
+        "usefixtures",
+        "xfail",
+    }
+    used: set[str] = set()
+    for path in (ROOT / "tests").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "pytest"
+                and node.value.attr == "mark"
+                and node.attr not in builtin_markers
+            ):
+                used.add(node.attr)
+
+    assert declared == used
+
+
 def test_pre_commit_tool_revisions_match_root_lock() -> None:
     with (ROOT / "uv.lock").open("rb") as file:
         locked = {

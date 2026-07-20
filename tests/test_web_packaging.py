@@ -1,5 +1,6 @@
 """Deployment artifact contract for the unified Ground Ball web application."""
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -55,6 +56,7 @@ def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
         ignored = (ROOT / ignore_file).read_text(encoding="utf-8").splitlines()
         assert "web/node_modules/" in ignored
         assert "web/dist/" in ignored
+        assert "src/baseball_rag/web_dist/" in ignored
         assert "web/" not in ignored
 
 
@@ -77,6 +79,33 @@ def test_default_container_and_ci_use_the_same_svelte_application() -> None:
     assert "npm test" in ci
     assert "npm run build" in ci
     assert "'/api': 'http://127.0.0.1:7861'" in vite_config
+
+
+def test_web_package_exposes_explicit_fallback_sync_and_check_commands() -> None:
+    package = json.loads((ROOT / "web" / "package.json").read_text(encoding="utf-8"))
+
+    assert package["engines"]["node"] == ">=22.12.0"
+    assert package["scripts"]["build"] == "vite build"
+    assert package["scripts"]["package:sync"] == "node scripts/package-dist.mjs sync"
+    assert package["scripts"]["package:check"] == "node scripts/package-dist.mjs check"
+
+
+def test_obsolete_web_configuration_and_sources_stay_absent() -> None:
+    vite_config = (ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
+    vitest_config = (ROOT / "web" / "vitest.config.js").read_text(encoding="utf-8")
+
+    assert "plugins: [svelte()]" in vite_config
+    assert "\n  resolve:" not in vite_config
+    assert "conditions:" not in vite_config
+    for configuration in (vite_config, vitest_config):
+        assert "configFile" not in configuration
+        assert "alias:" not in configuration
+        assert "node_modules/svelte" not in configuration
+        assert "svelte/src/" not in configuration
+    assert "conditions: ['browser']" in vitest_config
+    assert not (ROOT / "web" / "svelte.config.js").exists()
+    assert not (ROOT / "web" / "src" / "lib" / "downloads.js").exists()
+    assert not (ROOT / "web" / "src" / "prototypes" / "query-recipe").exists()
 
 
 def test_packaged_browser_bundle_uses_only_the_new_query_composition_root() -> None:

@@ -1,6 +1,5 @@
 import argparse
 import os
-import warnings
 from typing import Any
 
 import uvicorn
@@ -10,10 +9,6 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from generic_api import setup_generic_tools
 from mlb_api import setup_mlb_tools
-
-# Suppress websockets deprecation warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="uvicorn.protocols.websockets")
 
 # Create FastMCP server instance
 mcp = FastMCP("MLB API MCP Server")
@@ -91,29 +86,29 @@ async def docs(request):
     <body>
         <h1>MLB API MCP Server Documentation</h1>
         <p>A Model Context Protocol server that provides comprehensive access to MLB statistics and baseball data.</p>
-        
+
         <h2>Available Endpoints</h2>
-        
+
         <div class="endpoint">
             <span class="method">GET</span> <span class="path">/health</span>
             <p>Health check endpoint</p>
         </div>
-        
+
         <div class="endpoint">
             <span class="method">GET</span> <span class="path">/info</span>
             <p>Information about the MCP server</p>
         </div>
-        
+
         <div class="endpoint">
             <span class="method">GET</span> <span class="path">/tools</span>
             <p>List all available MCP tools</p>
         </div>
-        
+
         <div class="endpoint">
             <span class="method">POST</span> <span class="path">/mcp</span>
             <p>MCP protocol endpoint for MCP-compatible clients</p>
         </div>
-        
+
         <h2>Available MCP Tools ({len(tools_list)} total)</h2>
         <div class="tools">
     """
@@ -122,7 +117,7 @@ async def docs(request):
         docs_html += f'<div class="tool"><strong>{tool_name}</strong>: {description}</div>'
     docs_html += """
         </div>
-        
+
         <h2>Usage</h2>
         <p>This server implements the Model Context Protocol (MCP). Use MCP-compatible clients to interact with the tools.</p>
         <p>For direct HTTP access, you can use the endpoints listed above.</p>

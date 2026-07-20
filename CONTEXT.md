@@ -97,9 +97,10 @@ uv run python -m baseball_rag.query.generate_catalog_compatibility --check
 uv run python -m baseball_rag.query.generate_raw_inventory --check
 uv run python -m baseball_rag.query.generate_coverage_report --check
 uv run python -m baseball_rag.query.eval_matrix
-uv run pytest tests/ -m 'not llm' -q
+uv run pytest tests/ -m 'not release_proof' -q
 npm --prefix web test
 npm --prefix web run build
+npm --prefix web run package:check
 ```
 
 ## Working rules
