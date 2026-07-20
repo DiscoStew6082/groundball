@@ -463,7 +463,7 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
     assert create.max_response_bytes == 4096
 
 
-def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
+def test_weak_read_etag_is_normalized_for_exact_conditional_put() -> None:
     config = proof_config()
     state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=12))
     transport = ScriptedTransport(
@@ -472,7 +472,7 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
             headers={
                 "content-type": "application/json; charset=utf-8",
                 "date": DATE,
-                "etag": '"opaque-provider-etag-12"',
+                "etag": 'W/"opaque-provider-etag-12"',
             },
             body=encode_admission_state(state),
         ),
@@ -510,6 +510,62 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
         "x-vercel-blob-access": "private",
         "x-vercel-blob-store-id": STORE_ID,
     }
+
+
+def test_strong_read_etag_is_preserved_exactly_for_conditional_put() -> None:
+    config = proof_config()
+    state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=12))
+    transport = ScriptedTransport(
+        HttpResponse(
+            200,
+            {
+                "content-type": "application/json",
+                "date": DATE,
+                "etag": '"Case-Sensitive\\opaque"',
+            },
+            encode_admission_state(state),
+        ),
+        HttpResponse(200, {}, json_write_response(config)),
+    )
+    store = BlobCoordinationStore(config, transport=transport)
+
+    snapshot = store.read()
+
+    assert store.compare_and_swap(snapshot.version, state) is True
+    assert transport.requests[1].headers["x-if-match"] == '"Case-Sensitive\\opaque"'
+
+
+@pytest.mark.parametrize(
+    "etag",
+    [
+        'W/""',
+        'W/"contains space"',
+        'W/"contains\t-tab"',
+        'W/"unterminated',
+        "W/opaque",
+        'W/"opaque"extra',
+        'w/"opaque"',
+        '""',
+        '"contains space"',
+        '"opaque"extra',
+        "unquoted",
+    ],
+)
+def test_malformed_or_unsafe_read_etag_fails_before_conditional_write(etag: str) -> None:
+    state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=12))
+    transport = ScriptedTransport(
+        HttpResponse(
+            200,
+            {"content-type": "application/json", "date": DATE, "etag": etag},
+            encode_admission_state(state),
+        )
+    )
+    store = BlobCoordinationStore(proof_config(), transport=transport)
+
+    with pytest.raises(BlobProviderError):
+        store.read()
+
+    assert [request.method for request in transport.requests] == ["GET"]
 
 
 def test_store_resolves_oidc_again_for_each_read_and_write_with_request_precedence() -> None:
@@ -624,7 +680,7 @@ def test_ambiguous_write_failure_is_not_automatically_retried() -> None:
     transport = ScriptedTransport(
         HttpResponse(
             200,
-            {"content-type": "application/json", "date": DATE, "etag": "etag"},
+            {"content-type": "application/json", "date": DATE, "etag": '"etag"'},
             encode_admission_state(state),
         ),
         BlobProviderError(),
@@ -646,7 +702,7 @@ def test_only_precondition_failure_is_a_conflict_and_other_failures_are_sanitize
         headers={
             "content-type": "application/json",
             "date": DATE,
-            "etag": "opaque-etag",
+            "etag": '"opaque-etag"',
         },
         body=encode_admission_state(state),
     )
@@ -839,7 +895,7 @@ def test_provider_date_drives_hour_window_when_local_clock_disagrees() -> None:
 )
 def test_noncanonical_provider_date_fails_closed_without_guessing(date: str | None) -> None:
     body = encode_admission_state(AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0)))
-    headers = {"content-type": "application/json", "etag": "etag"}
+    headers = {"content-type": "application/json", "etag": '"etag"'}
     if date is not None:
         headers["date"] = date
     store = BlobCoordinationStore(
@@ -1221,7 +1277,7 @@ def test_operation_counts_include_conflicts_and_failures_by_local_operation_clas
     state = AdmissionState(monthly_budget=MonthlyBudget("2026-07", 0))
     valid_read = HttpResponse(
         200,
-        {"content-type": "application/json", "date": DATE, "etag": "etag-1"},
+        {"content-type": "application/json", "date": DATE, "etag": '"etag-1"'},
         encode_admission_state(state),
     )
     transport = ScriptedTransport(
@@ -1262,7 +1318,7 @@ def test_malformed_provider_state_is_allowance_invalid_not_provider_unavailable(
         transport=ScriptedTransport(
             HttpResponse(
                 200,
-                {"content-type": "application/json", "date": DATE, "etag": "etag"},
+                {"content-type": "application/json", "date": DATE, "etag": '"etag"'},
                 b'{"schema_version":99}',
             )
         ),

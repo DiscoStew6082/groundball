@@ -38,6 +38,7 @@ from baseball_rag.public_admission_blob import (
     OperationCounts,
     RequestsHttpTransport,
     StaticBlobCredentialProvider,
+    _opaque_etag,
     blob_upload_url,
     load_blob_public_admission,
     new_blob_request_id,
@@ -139,7 +140,7 @@ class _RealConflictTransport:
             )
             if current.status_code != 200:
                 raise BlobProviderError
-            etag = _validated_etag(current.headers)
+            etag = _opaque_etag(current.headers)
             competing_body = _competing_state_body(current.body, self._marker_id_factory())
             if competing_body == current.body:
                 raise BlobProviderError
@@ -177,7 +178,7 @@ class _RealConflictTransport:
             )
             if reread.status_code != 200 or reread.body != competing_body:
                 raise BlobProviderError
-            competing_etag = _validated_etag(reread.headers)
+            competing_etag = _opaque_etag(reread.headers)
             if competing_etag == etag:
                 raise BlobProviderError
             original = self._delegate.request(**kwargs)  # type: ignore[arg-type]
@@ -548,22 +549,6 @@ def _sum_counts(stores: list[BlobCoordinationStore]) -> dict[str, int]:
         for key, value in selected.operation_counts().as_dict().items():
             totals[key] += value
     return totals
-
-
-def _header(headers: Mapping[str, str], name: str) -> str:
-    for key, value in headers.items():
-        if key.lower() == name:
-            return value
-    raise BlobProviderError
-
-
-def _validated_etag(headers: Mapping[str, str]) -> str:
-    etag = _header(headers, "etag")
-    if not etag or len(etag) > 1024 or etag.strip() != etag:
-        raise BlobProviderError
-    if any(ord(char) < 32 or ord(char) == 127 for char in etag):
-        raise BlobProviderError
-    return etag
 
 
 def main(argv: list[str] | None = None) -> int:

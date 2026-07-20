@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import html
+import math
 import os
 import secrets
 import time
@@ -192,6 +193,7 @@ _public_admission_is_shared = False
 _public_runtime_configuration: RuntimeConfiguration | None = None
 _public_execution_runner = SubprocessExecutionRunner()
 _provider_initialization = _ProviderInitialization()
+_monotonic = time.monotonic
 
 
 def configure_public_admission(
@@ -450,9 +452,7 @@ async def _query_cors_middleware(request: Request, call_next):
         and request.method == _CORS_ALLOWED_METHOD
     )
     if is_public_query_request:
-        request.state.public_execution_deadline = (
-            time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
-        )
+        request.state.public_execution_deadline = _monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
     if is_public_query_request and len(await request.body()) > _PUBLIC_QUERY_REQUEST_BYTES:
         refusal = JSONResponse(
             {
@@ -606,22 +606,25 @@ def query_run(req: QueryInputRequest, request: Request):
 
 
 def _execute_public_request(request: Request, execution: ExecutionRequest) -> Response:
+    request_started = _monotonic()
+    phases: list[tuple[str, float, float]] = []
     try:
         coordinator, digest_key = _shared_public_admission_components()
     except RuntimeError:
-        return JSONResponse(
+        _record_timing_phase(phases, "admission", request_started)
+        unavailable_response = JSONResponse(
             {
                 "error": "provider_unavailable",
                 "detail": "Ground Ball's public admission service is unavailable.",
             },
             status_code=503,
         )
+        _set_server_timing(unavailable_response, phases, request_started)
+        return unavailable_response
 
-    deadline = getattr(
-        request.state,
-        "public_execution_deadline",
-        time.monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS,
-    )
+    deadline = getattr(request.state, "public_execution_deadline", None)
+    if deadline is None:
+        deadline = request_started + _PUBLIC_EXECUTION_DEADLINE_SECONDS
     visitor_token = request.cookies.get(_PUBLIC_VISITOR_COOKIE)
     new_visitor = visitor_token is None
     if visitor_token is None:
@@ -631,23 +634,75 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
     admission = coordinator.admit(
         AdmissionAttempt(visitor=visitor, run_id=run_id, now=datetime.now(UTC))
     )
+    _record_timing_phase(phases, "admission", request_started)
     response: Response
     if admission.kind != "admitted":
         response = _admission_refusal_response(admission)
     else:
-        remaining = deadline - time.monotonic()
+        execution_started = _monotonic()
+        remaining = deadline - execution_started
         try:
-            execution_outcome = (
-                _public_execution_runner.run(execution, timeout_seconds=remaining)
-                if remaining > 0
-                else ExecutionOutcome("timed_out")
-            )
+            try:
+                execution_outcome = (
+                    _public_execution_runner.run(execution, timeout_seconds=remaining)
+                    if remaining > 0
+                    else ExecutionOutcome("timed_out")
+                )
+            finally:
+                _record_timing_phase(phases, "execution", execution_started)
             response = _execution_outcome_response(execution_outcome)
         finally:
-            coordinator.release(run_id)
+            release_started = _safe_timing_now()
+            try:
+                coordinator.release(run_id)
+            finally:
+                _record_timing_phase(phases, "release", release_started)
     if new_visitor:
         _set_visitor_cookie(response, visitor_token)
+    _set_server_timing(response, phases, request_started)
     return response
+
+
+def _safe_timing_now() -> float | None:
+    try:
+        value = _monotonic()
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    except Exception:
+        return None
+
+
+def _record_timing_phase(
+    phases: list[tuple[str, float, float]],
+    name: str,
+    started: float | None,
+) -> None:
+    finished = _safe_timing_now()
+    if started is not None and finished is not None:
+        phases.append((name, started, finished))
+
+
+def _set_server_timing(
+    response: Response,
+    phases: list[tuple[str, float, float]],
+    request_started: float,
+) -> None:
+    try:
+        measured = [*phases]
+        total_finished = _safe_timing_now()
+        if total_finished is not None:
+            measured.append(("total", request_started, total_finished))
+        metrics = []
+        for name, started, finished in measured:
+            duration_ms = (finished - started) * 1000
+            if math.isfinite(duration_ms) and duration_ms >= 0:
+                metrics.append(f"{name};dur={duration_ms:.3f}")
+        if metrics:
+            response.headers["Server-Timing"] = ", ".join(metrics)
+    except Exception:
+        return
 
 
 def _execution_outcome_response(outcome: ExecutionOutcome) -> Response:

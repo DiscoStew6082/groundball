@@ -66,6 +66,7 @@ _IMF_MONTHS = {
     )
 }
 _MAX_WRITE_RESPONSE_BYTES = 4096
+_STRONG_ETAG_PATTERN = re.compile(r'^"[\x21\x23-\x7e]+"$')
 
 
 class PublicAdmissionConfigurationError(ValueError):
@@ -581,11 +582,12 @@ def _trusted_date(headers: Mapping[str, str]) -> datetime:
 
 def _opaque_etag(headers: Mapping[str, str]) -> str:
     etag = _header(headers, "etag")
-    if not etag or len(etag) > 1024 or etag.strip() != etag:
+    if not isinstance(etag, str) or not etag or len(etag) > 1024:
         raise BlobProviderError
-    if any(ord(char) < 32 or ord(char) == 127 for char in etag):
+    conditional_etag = etag[2:] if etag.startswith("W/") else etag
+    if _STRONG_ETAG_PATTERN.fullmatch(conditional_etag) is None:
         raise BlobProviderError
-    return etag
+    return conditional_etag
 
 
 def _validate_write_response(payload: bytes, config: BlobCoordinationConfig) -> None:

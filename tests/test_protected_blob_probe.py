@@ -73,6 +73,7 @@ class ContentAddressedEtagTransport:
         preserve_changed_body_etag: bool = False,
         accept_stale_original: bool = False,
         expose_put_etag: bool = False,
+        weak_read_etags: bool = False,
     ) -> None:
         self.config = config
         self.body = body
@@ -88,13 +89,14 @@ class ContentAddressedEtagTransport:
         self.preserve_changed_body_etag = preserve_changed_body_etag
         self.accept_stale_original = accept_stale_original
         self.expose_put_etag = expose_put_etag
+        self.weak_read_etags = weak_read_etags
         self.get_attempts: list[dict[str, object]] = []
         self.put_attempts: list[bytes] = []
         self.put_bodies: list[bytes] = []
 
     @staticmethod
     def _etag(body: bytes) -> str:
-        return hashlib.sha256(body).hexdigest()
+        return f'"{hashlib.sha256(body).hexdigest()}"'
 
     def request(self, **kwargs: object) -> HttpResponse:
         method = kwargs["method"]
@@ -111,8 +113,11 @@ class ContentAddressedEtagTransport:
             }
             missing_etag = self.missing_reread_etag if reread else self.missing_get_etag
             if not missing_etag:
-                response_headers["etag"] = (
+                response_etag = (
                     self.reread_etag if reread and self.reread_etag is not None else self.etag
+                )
+                response_headers["etag"] = (
+                    f"W/{response_etag}" if self.weak_read_etags else response_etag
                 )
             status = self.reread_status if reread else 200
             body = self.reread_body if reread and self.reread_body is not None else self.body
@@ -153,7 +158,7 @@ class NoNetworkTransport:
 
 
 @pytest.mark.parametrize("competing_status", [200, 201])
-def test_real_conflict_transport_changes_content_addressed_etag_before_original_put(
+def test_real_conflict_transport_normalizes_weak_read_etag_before_original_put(
     competing_status: int,
 ) -> None:
     config = BlobCoordinationConfig.proof(store_id="ProofStore123", proof_id="contention")
@@ -162,6 +167,7 @@ def test_real_conflict_transport_changes_content_addressed_etag_before_original_
         config,
         current,
         competing_success_status=competing_status,
+        weak_read_etags=True,
     )
     transport = _RealConflictTransport(backend, config)
     original_etag = backend.etag
