@@ -133,6 +133,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
 th, td { min-width: 100px; padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 th { color: var(--muted); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
+.mobile-heading, .mobile-pagination-label, .mobile-control-label { display: none; }
 tbody tr:last-child td { border-bottom: 0; }
 .details-link { min-width: 44px; min-height: 44px; margin-top: 9px; padding: 0; border: 0; color: #9ab8a5; background: transparent; text-align: left; }
 .clarification-card > div { display: grid; gap: 9px; margin-top: 18px; }
@@ -190,17 +191,24 @@ tbody tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 600px) {
   .desktop-shell { padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); }
-  .app-window { min-height: calc(100dvh - 12px); border-radius: 13px; }
+  .app-window { min-height: calc(100dvh - 12px); display: flex; flex-direction: column; border-radius: 13px; }
   .title-bar { min-height: 60px; padding: 6px 9px; }
   .runtime-status { display: none; }
-  .answer-workspace { min-height: calc(100dvh - 72px); padding: 22px 10px 138px; }
+  .answer-workspace { min-height: 0; flex: 1; padding: 22px 10px 12px; }
   .feed-welcome { min-height: 390px; padding: 20px 8px; }
-  .pagination-controls { align-items: stretch; flex-direction: column; }
-  .pagination-controls label { width: 100%; }
-  .pagination-controls select { width: 100%; }
-  .pagination-controls > div { width: 100%; }
-  .pagination-controls button { min-width: 0; flex: 1; }
-  .composer-dock { width: calc(100% - max(20px, env(safe-area-inset-left) + env(safe-area-inset-right))); bottom: max(11px, env(safe-area-inset-bottom)); }
+  .pagination-controls { align-items: center; flex-direction: row; gap: 8px; }
+  .pagination-controls label { width: auto; display: flex; align-items: center; flex-direction: row; gap: 5px; }
+  .pagination-controls select { width: auto; min-width: 60px; padding: 0 6px; }
+  .pagination-controls > div { width: auto; margin-left: auto; gap: 5px; }
+  .pagination-controls button { min-width: 44px; flex: 0 0 auto; padding: 0 9px; }
+  .desktop-pagination-label, .desktop-control-label, .desktop-heading { display: none; }
+  .mobile-pagination-label, .mobile-control-label, .mobile-heading { display: inline; }
+  .four-column-result { table-layout: fixed; }
+  .four-column-result th, .four-column-result td { min-width: 0; padding: 10px 5px; white-space: normal; overflow-wrap: anywhere; }
+  .four-column-result th:first-child { width: 48%; }
+  .four-column-result th:nth-child(2) { width: 20%; }
+  .four-column-result th:nth-child(3), .four-column-result th:nth-child(4) { width: 16%; }
+  .composer-dock { position: static; z-index: auto; width: auto; margin: 0 max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); transform: none; }
   .catalog-filters { grid-template-columns: 1fr; }
   .field-list article { align-items: flex-start; flex-direction: column; }
   .field-list button { width: 100%; }

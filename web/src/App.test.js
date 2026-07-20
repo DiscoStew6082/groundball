@@ -147,6 +147,48 @@ describe('Ground Ball answer-first application', () => {
     );
   });
 
+  it('keeps all four ordered 40-40 fields readable with concise mobile headers', async () => {
+    const fortyFortyRun = {
+      ...rowsRun,
+      rows: [
+        { 'player.name': 'Jose Canseco', season: 1988, 'batting.HR': 42, 'batting.SB': 40 },
+        { 'player.name': 'Barry Bonds', season: 1996, 'batting.HR': 42, 'batting.SB': 40 },
+        { 'player.name': 'Alex Rodriguez', season: 1998, 'batting.HR': 42, 'batting.SB': 46 },
+        { 'player.name': 'Alfonso Soriano', season: 2006, 'batting.HR': 46, 'batting.SB': 41 },
+        { 'player.name': 'Ronald Acuña Jr.', season: 2023, 'batting.HR': 41, 'batting.SB': 73 },
+        { 'player.name': 'Shohei Ohtani', season: 2024, 'batting.HR': 54, 'batting.SB': 59 },
+      ],
+      returned_row_count: 6,
+      total_matched_count: 6,
+    };
+    await mountApp(() => response(fortyFortyRun));
+
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Ronald Acuña Jr.'));
+
+    const results = document.querySelector('[data-testid="results"]');
+    expect([...results.querySelectorAll('.desktop-heading')].map((heading) => heading.textContent)).toEqual([
+      'player.name',
+      'season',
+      'batting.HR',
+      'batting.SB',
+    ]);
+    expect([...results.querySelectorAll('.mobile-heading')].map((heading) => heading.textContent)).toEqual([
+      'Name',
+      'Year',
+      'HR',
+      'SB',
+    ]);
+    expect([...results.querySelectorAll('tbody tr')].map((row) => [...row.cells].map((cell) => cell.textContent))).toEqual([
+      ['Jose Canseco', '1988', '42', '40'],
+      ['Barry Bonds', '1996', '42', '40'],
+      ['Alex Rodriguez', '1998', '42', '46'],
+      ['Alfonso Soriano', '2006', '46', '41'],
+      ['Ronald Acuña Jr.', '2023', '41', '73'],
+      ['Shohei Ohtani', '2024', '54', '59'],
+    ]);
+  });
+
   it('sends only the last completed recipe with a natural follow-up and replaces after success', async () => {
     let finishFollowUp;
     const followUpResponse = new Promise((resolve) => {
