@@ -66,6 +66,9 @@ class RuntimeConfiguration:
     network_policy: str
     admission_adapter: str
     release_bundle: str
+    resource_references: tuple[str, ...]
+    startup_credential_references: tuple[str, ...]
+    request_credential_headers: tuple[str, ...]
     secret_references: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
@@ -75,9 +78,12 @@ class RuntimeConfiguration:
             "provider_deployment": self.provider_deployment,
             "public_mode": self.public_mode,
             "release_bundle": self.release_bundle,
+            "request_credential_headers": list(self.request_credential_headers),
+            "resource_references": list(self.resource_references),
             "schema_version": RUNTIME_SCHEMA_VERSION,
             "scope": self.scope,
             "secret_references": list(self.secret_references),
+            "startup_credential_references": list(self.startup_credential_references),
         }
 
     @property
@@ -172,9 +178,12 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
         "provider_deployment",
         "public_mode",
         "release_bundle",
+        "request_credential_headers",
+        "resource_references",
         "schema_version",
         "scope",
         "secret_references",
+        "startup_credential_references",
     }
     if set(document) != required or document.get("schema_version") != RUNTIME_SCHEMA_VERSION:
         raise PublicReleaseConfigError("Runtime configuration shape is invalid.")
@@ -187,16 +196,29 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
     adapter = document.get("admission_adapter")
     network = document.get("network_policy")
     bundle = document.get("release_bundle")
-    references = document.get("secret_references")
+    resource_references = document.get("resource_references")
+    startup_references = document.get("startup_credential_references")
+    request_headers = document.get("request_credential_headers")
+    secret_references = document.get("secret_references")
+    reference_groups = (
+        resource_references,
+        startup_references,
+        request_headers,
+        secret_references,
+    )
     if (
         scope not in {"local_ci", "protected_preview", "production"}
         or not isinstance(adapter, str)
         or not isinstance(network, str)
         or bundle != "ground-ball-release-bundle"
-        or not isinstance(references, list)
-        or not all(isinstance(item, str) and item for item in references)
-        or references != sorted(references)
-        or len(references) != len(set(references))
+        or any(not isinstance(group, list) for group in reference_groups)
+        or any(
+            not all(isinstance(item, str) and item for item in group)
+            or group != sorted(group)
+            or len(group) != len(set(group))
+            for group in reference_groups
+            if isinstance(group, list)
+        )
     ):
         raise PublicReleaseConfigError("Runtime configuration values are invalid.")
     provider_deployment = document["provider_deployment"]
@@ -208,7 +230,7 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
             provider_deployment is not False
             or adapter != "local_ci_ephemeral"
             or network != "none"
-            or references
+            or any(group for group in reference_groups)
         ):
             raise PublicReleaseConfigError("Local CI configuration cannot claim provider proof.")
     else:
@@ -216,14 +238,16 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
             provider_deployment is not True
             or adapter != "vercel_blob"
             or network != "provider_coordination_only"
-            or set(references)
-            != {
-                "BLOB_STORE_ID",
-                "GROUNDBALL_VISITOR_DIGEST_KEY",
-                "VERCEL_OIDC_TOKEN",
-            }
+            or resource_references != ["BLOB_STORE_ID"]
+            or startup_references != ["VERCEL_OIDC_TOKEN"]
+            or request_headers != ["x-vercel-oidc-token"]
+            or secret_references != ["GROUNDBALL_VISITOR_DIGEST_KEY"]
         ):
             raise PublicReleaseConfigError("Provider runtime configuration is incomplete.")
+    assert isinstance(resource_references, list)
+    assert isinstance(startup_references, list)
+    assert isinstance(request_headers, list)
+    assert isinstance(secret_references, list)
     _reject_secret_content(document)
     return RuntimeConfiguration(
         scope=scope,
@@ -232,7 +256,10 @@ def load_runtime_configuration(path: Path | str) -> RuntimeConfiguration:
         network_policy=network,
         admission_adapter=adapter,
         release_bundle=bundle,
-        secret_references=tuple(references),
+        resource_references=tuple(resource_references),
+        startup_credential_references=tuple(startup_references),
+        request_credential_headers=tuple(request_headers),
+        secret_references=tuple(secret_references),
     )
 
 

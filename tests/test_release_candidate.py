@@ -412,32 +412,24 @@ def test_local_attestation_template_explicitly_records_no_deployment(tmp_path: P
     )
 
 
-def test_provider_attestation_builder_emits_exact_all_pass_candidate_binding(
+def test_provider_attestation_builder_cannot_emit_on_no_cost_hobby(
     tmp_path: Path,
 ) -> None:
     candidate = _candidate(tmp_path, scope="protected_preview")
     report = build_gate_report(candidate, _all_pass_results())
     observations = {identity: f"provider-{identity}" for identity in PROVIDER_OBSERVATION_IDS}
 
-    attestation = build_provider_attestation(
-        candidate,
-        report,
-        provider_name="vercel",
-        deployment_id="deployment-123",
-        image_digest=IMAGE,
-        image_size_bytes=123_456,
-        image_size_measurement_kind="provider-oci-manifest-size-bytes",
-        observation_to_evidence=observations,
-    )
-
-    assert attestation["status"] == "attested"
-    assert attestation["provider"]["deployment_id"] == "deployment-123"  # type: ignore[index]
-    assert attestation["observations"] == observations
-    assert attestation["evidence"] == sorted(observations.values())
-    assert (
-        validate_deployment_attestation(canonical_json_bytes(attestation), candidate, report)
-        == attestation
-    )
+    with pytest.raises(CandidateError, match="provider_metric_unavailable_on_hobby"):
+        build_provider_attestation(
+            candidate,
+            report,
+            provider_name="vercel",
+            deployment_id="deployment-123",
+            image_digest=IMAGE,
+            image_size_bytes=123_456,
+            image_size_measurement_kind="provider-oci-manifest-size-bytes",
+            observation_to_evidence=observations,
+        )
 
 
 @pytest.mark.parametrize(
@@ -522,21 +514,7 @@ def test_provider_attestation_requires_every_external_observation(tmp_path: Path
         "statement": "Exact protected provider observations are attached.",
         "status": "attested",
     }
-    assert (
-        validate_deployment_attestation(canonical_json_bytes(attestation), candidate, report)
-        == attestation
-    )
-
-    for field, value in (
-        ("image_size_bytes", int(candidate["image_size_bytes"]) + 1),
-        ("image_size_measurement_kind", "docker-image-inspect-size-bytes"),
-    ):
-        mismatched = {**attestation, "provider": {**attestation["provider"], field: value}}
-        with pytest.raises(CandidateError):
-            validate_deployment_attestation(canonical_json_bytes(mismatched), candidate, report)
-
-    del attestation["observations"][PROVIDER_OBSERVATION_IDS[0]]
-    with pytest.raises(CandidateError):
+    with pytest.raises(CandidateError, match="provider_metric_unavailable_on_hobby"):
         validate_deployment_attestation(canonical_json_bytes(attestation), candidate, report)
 
 

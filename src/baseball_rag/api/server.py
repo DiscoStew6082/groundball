@@ -33,7 +33,7 @@ from baseball_rag.public_admission import (
     MonthlyBudget,
     visitor_digest,
 )
-from baseball_rag.public_admission_blob import HttpTransport
+from baseball_rag.public_admission_blob import HttpTransport, request_oidc_token_context
 from baseball_rag.public_execution import (
     ExecutionOutcome,
     ExecutionRequest,
@@ -94,6 +94,7 @@ _PUBLIC_VISITOR_COOKIE = VISITOR_COOKIE_NAME
 _PUBLIC_EXECUTION_DEADLINE_SECONDS = float(EXECUTION_DEADLINE_SECONDS)
 _BLOB_CONFIGURATION_ENV_VARS = frozenset(
     {
+        "BLOB_READ_WRITE_TOKEN",
         "BLOB_STORE_ID",
         "VERCEL_OIDC_TOKEN",
         "GROUNDBALL_BLOB_NAMESPACE",
@@ -143,10 +144,21 @@ def configure_public_admission_from_environment(
     transport: HttpTransport | None = None,
 ) -> CasCoordinator:
     """Build the Blob Adapter and install it through the provider-neutral seam."""
-    from baseball_rag.public_admission_blob import load_blob_public_admission
+    from baseball_rag.public_admission_blob import (
+        PublicAdmissionConfigurationError,
+        load_blob_public_admission,
+    )
 
+    selected_environment = os.environ if environment is None else environment
+    if (
+        _public_runtime_configuration is not None
+        and _public_runtime_configuration.provider_deployment
+        and selected_environment.get("GROUNDBALL_BLOB_NAMESPACE")
+        != _public_runtime_configuration.scope
+    ):
+        raise PublicAdmissionConfigurationError
     configured = load_blob_public_admission(
-        os.environ if environment is None else environment,
+        selected_environment,
         transport=transport,
     )
     return configure_public_admission(
@@ -290,6 +302,12 @@ def _requested_headers_are_allowed(raw_headers: str) -> bool:
 def _origin_proxy_token_is_valid(request: Request, configured_token: str) -> bool:
     supplied_token = request.headers.get(_ORIGIN_PROXY_TOKEN_HEADER, "")
     return hmac.compare_digest(supplied_token, configured_token)
+
+
+@app.middleware("http")
+async def _request_oidc_middleware(request: Request, call_next):
+    with request_oidc_token_context(request.headers.get("x-vercel-oidc-token")):
+        return await call_next(request)
 
 
 @app.middleware("http")

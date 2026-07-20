@@ -532,11 +532,28 @@ def _validate_warm(value: dict[str, object], _identity: dict[str, object]) -> No
 
 
 def _validate_memory(value: dict[str, object], _identity: dict[str, object]) -> None:
-    _exact(value, {"measurement_kind", "peak_bytes", "provider_reported"})
+    _exact(
+        value,
+        {
+            "deployment_filterable",
+            "measurement_kind",
+            "observability_plus_available",
+            "observability_plus_required",
+            "peak_memory_mb",
+            "plan",
+            "provisioned_limit_mb",
+            "reason",
+        },
+    )
     if (
-        value.get("measurement_kind") != "vercel-provider-peak-runtime-memory-bytes"
-        or not _integer(value.get("peak_bytes"), minimum=0)
-        or type(value.get("provider_reported")) is not bool
+        value.get("measurement_kind") != "vercel.function_invocation.peak_memory_mb"
+        or value.get("deployment_filterable") is not True
+        or value.get("observability_plus_required") is not True
+        or value.get("observability_plus_available") is not False
+        or value.get("peak_memory_mb") is not None
+        or value.get("plan") != "hobby"
+        or value.get("provisioned_limit_mb") != 2048
+        or value.get("reason") != "provider_metric_unavailable_on_hobby"
     ):
         raise ProviderProofError("Provider memory observation is invalid.")
 
@@ -719,10 +736,8 @@ def _observation_passes(kind: str, observation: object, candidate: Mapping[str, 
             for item in observation["results"]
         )  # type: ignore[union-attr]
     if kind == "peak_memory":
-        return (
-            observation["provider_reported"] is True
-            and int(observation["peak_bytes"]) <= MAX_PROVIDER_PEAK_MEMORY_BYTES
-        )
+        # Hobby cannot query the provider metric; a provisioned limit is never peak use.
+        return False
     if kind == "lifecycle":
         return all(
             observation[key] is True

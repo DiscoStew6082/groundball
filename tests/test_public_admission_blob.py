@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import json
 import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from threading import Lock
 from typing import Any
 
@@ -24,12 +27,17 @@ from baseball_rag.public_admission import (
 from baseball_rag.public_admission_blob import (
     PRODUCTION_OBJECT_KEY,
     BlobCoordinationConfig,
-    BlobCoordinationStore,
     BlobProviderError,
     HttpResponse,
+    OidcBlobCredentialProvider,
     PublicAdmissionConfigurationError,
     RequestsHttpTransport,
+    StaticBlobCredentialProvider,
     load_blob_public_admission,
+    request_oidc_token_context,
+)
+from baseball_rag.public_admission_blob import (
+    BlobCoordinationStore as _BlobCoordinationStore,
 )
 from baseball_rag.public_admission_state import (
     MAX_STATE_BYTES,
@@ -37,11 +45,16 @@ from baseball_rag.public_admission_state import (
     decode_admission_state,
     encode_admission_state,
 )
+from baseball_rag.public_release_config import load_runtime_configuration
 
+ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
 VISITOR = "a" * 64
 STORE_ID = "ProofStore123"
 DATE = "Sun, 19 Jul 2026 12:00:00 GMT"
+STARTUP_OIDC = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJzdGFydHVwIn0.startup-signature"
+REQUEST_OIDC_A = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXF1ZXN0LWEifQ.request-signature-a"
+REQUEST_OIDC_B = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXF1ZXN0LWIifQ.request-signature-b"
 
 
 @dataclass(frozen=True)
@@ -145,9 +158,22 @@ def json_write_response(config: BlobCoordinationConfig) -> bytes:
 
 def proof_config() -> BlobCoordinationConfig:
     return BlobCoordinationConfig.proof(
-        token="synthetic-proof-token",
         store_id=f"store_{STORE_ID}",
         proof_id="wave-3",
+    )
+
+
+def BlobCoordinationStore(  # noqa: N802 - test factory mirrors the production class
+    config: BlobCoordinationConfig,
+    *,
+    credential_provider=None,
+    **kwargs: Any,
+) -> _BlobCoordinationStore:
+    return _BlobCoordinationStore(
+        config,
+        credential_provider=credential_provider
+        or StaticBlobCredentialProvider("synthetic-proof-token"),
+        **kwargs,
     )
 
 
@@ -158,6 +184,78 @@ def block_accidental_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("socket.socket.connect", blocked)
     monkeypatch.setattr("socket.create_connection", blocked)
+
+
+def test_blob_configuration_is_credential_free_and_oidc_resolution_is_request_scoped() -> None:
+    config = BlobCoordinationConfig.proof(store_id=f"store_{STORE_ID}", proof_id="wave-7")
+    provider = OidcBlobCredentialProvider(startup_token=STARTUP_OIDC)
+
+    assert "token" not in asdict(config)
+    assert STARTUP_OIDC not in repr(config)
+    assert STARTUP_OIDC not in json.dumps(asdict(config), sort_keys=True)
+    assert provider.resolve() == STARTUP_OIDC
+    with request_oidc_token_context(REQUEST_OIDC_A):
+        assert provider.resolve() == REQUEST_OIDC_A
+    assert provider.resolve() == STARTUP_OIDC
+
+
+def test_two_interleaved_request_contexts_never_swap_or_retain_oidc_credentials() -> None:
+    provider = OidcBlobCredentialProvider(startup_token=STARTUP_OIDC)
+
+    async def exercise() -> tuple[tuple[str, str], tuple[str, str]]:
+        ready = asyncio.Event()
+        release = asyncio.Event()
+
+        async def first() -> tuple[str, str]:
+            with request_oidc_token_context(REQUEST_OIDC_A):
+                before = provider.resolve()
+                ready.set()
+                await release.wait()
+                return before, provider.resolve()
+
+        async def second() -> tuple[str, str]:
+            await ready.wait()
+            with request_oidc_token_context(REQUEST_OIDC_B):
+                before = provider.resolve()
+                release.set()
+                await asyncio.sleep(0)
+                return before, provider.resolve()
+
+        first_result, second_result = await asyncio.gather(first(), second())
+        return first_result, second_result
+
+    assert asyncio.run(exercise()) == (
+        (REQUEST_OIDC_A, REQUEST_OIDC_A),
+        (REQUEST_OIDC_B, REQUEST_OIDC_B),
+    )
+    assert provider.resolve() == STARTUP_OIDC
+
+
+@pytest.mark.parametrize(
+    "token",
+    [None, "", "   ", "not-a-jwt", "a.b", "a.b.c d", "a.b." + "x" * 8191],
+)
+def test_missing_malformed_or_oversized_request_oidc_fails_closed_and_sanitized(
+    token: str | None,
+) -> None:
+    provider = OidcBlobCredentialProvider(startup_token=STARTUP_OIDC)
+
+    with request_oidc_token_context(token):
+        with pytest.raises(BlobProviderError) as raised:
+            provider.resolve()
+
+    rendered = f"{raised.value!s} {raised.value!r} {provider!r}"
+    if token:
+        assert token not in rendered
+    assert STARTUP_OIDC not in rendered
+    assert provider.resolve() == STARTUP_OIDC
+
+
+def test_static_credential_provider_is_secret_safe_and_proof_only_by_construction() -> None:
+    provider = StaticBlobCredentialProvider("synthetic-static-secret")
+
+    assert provider.resolve() == "synthetic-static-secret"
+    assert "synthetic-static-secret" not in repr(provider)
 
 
 def test_state_codec_is_deterministic_and_round_trips_schema_version_one() -> None:
@@ -306,7 +404,7 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
     store = BlobCoordinationStore(
         config,
         transport=transport,
-        request_id_factory=lambda: "0123456789abcdef0123456789abcdef",
+        request_id_factory=lambda: "ProofStore123:1721390400000:0123456789abcdef0123456789abcdef",
     )
 
     snapshot = store.read()
@@ -332,7 +430,8 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
     create = transport.requests[1]
     assert create.method == "PUT"
     assert create.url == (
-        "https://vercel.com/api/blob/groundball/public-admission/v1/proof/wave-3/state.json"
+        "https://vercel.com/api/blob/?pathname="
+        "groundball%2Fpublic-admission%2Fv1%2Fproof%2Fwave-3%2Fstate.json"
     )
     assert create.headers == {
         "authorization": "Bearer synthetic-proof-token",
@@ -340,7 +439,7 @@ def test_missing_read_and_create_if_absent_use_exact_private_blob_contract() -> 
         "x-add-random-suffix": "0",
         "x-allow-overwrite": "0",
         "x-api-blob-request-attempt": "0",
-        "x-api-blob-request-id": "0123456789abcdef0123456789abcdef",
+        "x-api-blob-request-id": ("ProofStore123:1721390400000:0123456789abcdef0123456789abcdef"),
         "x-api-version": "12",
         "x-content-type": "application/json",
         "x-vercel-blob-access": "private",
@@ -377,7 +476,7 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
     store = BlobCoordinationStore(
         config,
         transport=transport,
-        request_id_factory=lambda: "fedcba9876543210fedcba9876543210",
+        request_id_factory=lambda: "ProofStore123:1721390400001:fedcba9876543210fedcba9876543210",
     )
 
     snapshot = store.read()
@@ -391,13 +490,88 @@ def test_uncached_read_captures_opaque_etag_for_exact_conditional_put() -> None:
         "x-add-random-suffix": "0",
         "x-allow-overwrite": "1",
         "x-api-blob-request-attempt": "0",
-        "x-api-blob-request-id": "fedcba9876543210fedcba9876543210",
+        "x-api-blob-request-id": ("ProofStore123:1721390400001:fedcba9876543210fedcba9876543210"),
         "x-api-version": "12",
         "x-content-type": "application/json",
         "x-if-match": '"opaque-provider-etag-12"',
         "x-vercel-blob-access": "private",
         "x-vercel-blob-store-id": STORE_ID,
     }
+
+
+def test_store_resolves_oidc_again_for_each_read_and_write_with_request_precedence() -> None:
+    state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=1))
+    transport = ScriptedTransport(
+        HttpResponse(
+            200,
+            {"content-type": "application/json", "date": DATE, "etag": '"etag-1"'},
+            encode_admission_state(state),
+        ),
+        HttpResponse(200, {}, json_write_response(proof_config())),
+    )
+    store = _BlobCoordinationStore(
+        proof_config(),
+        credential_provider=OidcBlobCredentialProvider(startup_token=STARTUP_OIDC),
+        transport=transport,
+    )
+
+    with request_oidc_token_context(REQUEST_OIDC_A):
+        snapshot = store.read()
+    with request_oidc_token_context(REQUEST_OIDC_B):
+        assert store.compare_and_swap(snapshot.version, state) is True
+
+    assert transport.requests[0].headers["authorization"] == f"Bearer {REQUEST_OIDC_A}"
+    assert transport.requests[1].headers["authorization"] == f"Bearer {REQUEST_OIDC_B}"
+    assert REQUEST_OIDC_A not in repr(store)
+    assert REQUEST_OIDC_B not in repr(store)
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 429, 500, 503])
+def test_read_authentication_rate_and_provider_failures_are_never_missing_reads(
+    status_code: int,
+) -> None:
+    store = BlobCoordinationStore(
+        proof_config(),
+        transport=ScriptedTransport(HttpResponse(status_code, {}, b"private detail")),
+    )
+
+    with pytest.raises(BlobProviderError):
+        store.read()
+
+    counts = store.operation_counts()
+    assert counts.missing_reads == 0
+    assert counts.failed_reads == 1
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 429, 500, 503])
+@pytest.mark.parametrize("create", [True, False])
+def test_authentication_rate_and_provider_failures_are_never_create_or_cas_conflicts(
+    status_code: int,
+    create: bool,
+) -> None:
+    state = AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=1))
+    read = (
+        HttpResponse(404, {"date": DATE}, b"")
+        if create
+        else HttpResponse(
+            200,
+            {"content-type": "application/json", "date": DATE, "etag": '"etag-1"'},
+            encode_admission_state(state),
+        )
+    )
+    store = BlobCoordinationStore(
+        proof_config(),
+        transport=ScriptedTransport(read, HttpResponse(status_code, {}, b"private detail")),
+    )
+    snapshot = store.read()
+
+    with pytest.raises(BlobProviderError):
+        store.compare_and_swap(snapshot.version, state)
+
+    counts = store.operation_counts()
+    assert counts.create_conflicts == 0
+    assert counts.conditional_conflicts == 0
+    assert (counts.failed_create_if_absent if create else counts.failed_conditional_writes) == 1
 
 
 def test_default_write_request_ids_are_unique_opaque_hex_and_not_retried() -> None:
@@ -422,7 +596,9 @@ def test_default_write_request_ids_are_unique_opaque_hex_and_not_retried() -> No
     ]
     assert len(request_ids) == 2
     assert len(set(request_ids)) == 2
-    assert all(re.fullmatch(r"[0-9a-f]{32}", request_id) for request_id in request_ids)
+    assert all(
+        re.fullmatch(r"ProofStore123:\d{13}:[0-9a-f]{32}", request_id) for request_id in request_ids
+    )
     assert all(
         request.headers["x-api-blob-request-attempt"] == "0"
         for request in backend.requests
@@ -665,7 +841,7 @@ def test_vercel_oidc_configuration_uses_connected_private_blob_identity_without_
     None
 ):
     key = b"stable-synthetic-digest-key-material"
-    oidc = "synthetic-oidc-material"
+    oidc = STARTUP_OIDC
     configured = load_blob_public_admission(
         {
             "GROUNDBALL_BLOB_NAMESPACE": "proof",
@@ -677,7 +853,7 @@ def test_vercel_oidc_configuration_uses_connected_private_blob_identity_without_
         transport=ScriptedTransport(),
     )
 
-    assert configured.authentication_mode == "vercel_oidc"
+    assert configured.authentication_mode == "vercel_oidc_request_scoped"
     assert configured.store.store_id == STORE_ID
     assert oidc not in repr(configured)
     assert oidc not in repr(configured.store)
@@ -710,10 +886,7 @@ def test_stable_digest_key_configuration_decodes_at_least_32_bytes_without_rende
 
 
 def test_store_id_normalization_preserves_case_and_derives_only_private_origin() -> None:
-    config = BlobCoordinationConfig.production(
-        token="synthetic-proof-token",
-        store_id="store_AbC123",
-    )
+    config = BlobCoordinationConfig.production(store_id="store_AbC123")
 
     assert config.store_id == "AbC123"
     assert config.state_url == (
@@ -740,14 +913,12 @@ def test_store_id_normalization_preserves_case_and_derives_only_private_origin()
 )
 def test_store_id_cannot_select_an_arbitrary_or_public_origin(store_id: str) -> None:
     with pytest.raises(ValueError, match="store identifier"):
-        BlobCoordinationConfig.production(
-            token="synthetic-proof-token",
-            store_id=store_id,
-        )
+        BlobCoordinationConfig.production(store_id=store_id)
 
 
 def test_server_declares_only_the_strict_blob_configuration_environment() -> None:
     assert api_server._BLOB_CONFIGURATION_ENV_VARS == {
+        "BLOB_READ_WRITE_TOKEN",
         "BLOB_STORE_ID",
         "VERCEL_OIDC_TOKEN",
         "GROUNDBALL_BLOB_NAMESPACE",
@@ -831,6 +1002,65 @@ def test_blob_configuration_rejects_partial_mixed_or_ambiguous_auth(
     rendered = f"{raised.value!s} {raised.value!r}"
     assert "synthetic" not in rendered
     assert "ForeignStore" not in rendered
+
+
+def test_protected_preview_requires_oidc_store_namespace_digest_and_valid_startup_fallback() -> (
+    None
+):
+    key = base64.urlsafe_b64encode(b"k" * 32).decode()
+    environment = {
+        "BLOB_STORE_ID": f"store_{STORE_ID}",
+        "GROUNDBALL_BLOB_NAMESPACE": "protected_preview",
+        "GROUNDBALL_VISITOR_DIGEST_KEY": key,
+        "VERCEL_OIDC_TOKEN": STARTUP_OIDC,
+    }
+
+    configured = load_blob_public_admission(environment, transport=ScriptedTransport())
+
+    assert configured.authentication_mode == "vercel_oidc_request_scoped"
+    assert configured.store.object_key == (
+        "groundball/public-admission/v1/protected-preview/state.json"
+    )
+
+    for forbidden in (
+        {"BLOB_READ_WRITE_TOKEN": "synthetic-static"},
+        {
+            "GROUNDBALL_BLOB_STORE_ID": f"store_{STORE_ID}",
+            "GROUNDBALL_BLOB_TOKEN": "synthetic-static",
+        },
+        {"GROUNDBALL_BLOB_TOKEN": "synthetic-static"},
+        {"VERCEL_OIDC_TOKEN": "not-a-jwt"},
+    ):
+        with pytest.raises(PublicAdmissionConfigurationError) as raised:
+            load_blob_public_admission(
+                {**environment, **forbidden},
+                transport=ScriptedTransport(),
+            )
+        rendered = f"{raised.value!s} {raised.value!r}"
+        assert "synthetic" not in rendered
+        assert STARTUP_OIDC not in rendered
+
+
+def test_protected_provider_runtime_cannot_start_against_a_proof_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        api_server,
+        "_public_runtime_configuration",
+        load_runtime_configuration(ROOT / "release/config/protected-preview-runtime.json"),
+    )
+
+    with pytest.raises(PublicAdmissionConfigurationError):
+        api_server.configure_public_admission_from_environment(
+            environment={
+                "BLOB_STORE_ID": f"store_{STORE_ID}",
+                "GROUNDBALL_BLOB_NAMESPACE": "proof",
+                "GROUNDBALL_BLOB_PROOF_ID": "wave-7",
+                "GROUNDBALL_VISITOR_DIGEST_KEY": base64.urlsafe_b64encode(b"k" * 32).decode(),
+                "VERCEL_OIDC_TOKEN": STARTUP_OIDC,
+            },
+            transport=ScriptedTransport(),
+        )
 
 
 def test_static_token_mode_is_bounded_to_isolated_operator_proof() -> None:
@@ -947,7 +1177,6 @@ def test_proof_namespace_cannot_spell_the_production_object_key() -> None:
     assert config.object_key != PRODUCTION_OBJECT_KEY
     with pytest.raises(ValueError, match="proof identifier"):
         BlobCoordinationConfig.proof(
-            token="synthetic-proof-token",
             store_id=STORE_ID,
             proof_id="../production",
         )

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Mapping
-from uuid import uuid4
 
 from baseball_rag.protected_provider_proof import (
     EVIDENCE_SCHEMAS,
@@ -29,12 +28,17 @@ from baseball_rag.public_admission import (
 from baseball_rag.public_admission_blob import (
     BlobCoordinationConfig,
     BlobCoordinationStore,
+    BlobCredentialProvider,
     BlobProviderError,
     HttpResponse,
     HttpTransport,
+    OidcBlobCredentialProvider,
     OperationCounts,
     RequestsHttpTransport,
+    StaticBlobCredentialProvider,
+    blob_upload_url,
     load_blob_public_admission,
+    new_blob_request_id,
 )
 from baseball_rag.public_admission_state import encode_admission_state
 from baseball_rag.public_release_config import canonical_json_bytes
@@ -113,7 +117,7 @@ class _RealConflictTransport:
             etag = _header(current.headers, "etag")
             competing_headers = dict(headers)
             competing_headers["x-if-match"] = etag
-            competing_headers["x-api-blob-request-id"] = uuid4().hex
+            competing_headers["x-api-blob-request-id"] = new_blob_request_id(self._config.store_id)
             timeout = kwargs.get("timeout")
             max_response_bytes = kwargs.get("max_response_bytes")
             if (
@@ -323,12 +327,20 @@ def run_live_blob_probe(
         CasCoordinator(unavailable).readiness().kind == "provider_unavailable"
     )
 
-    contention_config, _token = _proof_config(environment, f"{proof_id}-contention")
-    contention_base = BlobCoordinationStore(contention_config, transport=meter)
+    contention_config, contention_credentials = _proof_config(environment, f"{proof_id}-contention")
+    contention_base = BlobCoordinationStore(
+        contention_config,
+        credential_provider=contention_credentials,
+        transport=meter,
+    )
     stores.append(contention_base)
     _seed_missing(contention_base, AdmissionState(monthly_budget=MonthlyBudget(period, 0)))
     conflict_transport = _RealConflictTransport(meter, contention_config)
-    contention = BlobCoordinationStore(contention_config, transport=conflict_transport)
+    contention = BlobCoordinationStore(
+        contention_config,
+        credential_provider=contention_credentials,
+        transport=conflict_transport,
+    )
     stores.append(contention)
     contention_outcome = CasCoordinator(contention).admit(
         AdmissionAttempt("5" * 64, "bounded-contention", now)
@@ -374,17 +386,18 @@ def _write_raw_missing(
     snapshot = store.read()
     if snapshot.exists:
         raise BlobProbeError("Unique malformed-state namespace is not empty.")
-    config, token = _proof_config(environment, proof_id)
+    config, credential_provider = _proof_config(environment, proof_id)
+    credential = credential_provider.resolve()
     response = transport.request(
         method="PUT",
-        url=f"https://vercel.com/api/blob/{config.object_key}",
+        url=blob_upload_url(config.object_key),
         headers={
-            "authorization": f"Bearer {token}",
+            "authorization": f"Bearer {credential}",
             "content-type": "application/json",
             "x-add-random-suffix": "0",
             "x-allow-overwrite": "0",
             "x-api-blob-request-attempt": "0",
-            "x-api-blob-request-id": uuid4().hex,
+            "x-api-blob-request-id": new_blob_request_id(config.store_id),
             "x-api-version": "12",
             "x-content-type": "application/json",
             "x-vercel-blob-access": "private",
@@ -400,20 +413,29 @@ def _write_raw_missing(
 
 def _proof_config(
     environment: Mapping[str, str], proof_id: str
-) -> tuple[BlobCoordinationConfig, str]:
+) -> tuple[BlobCoordinationConfig, BlobCredentialProvider]:
     static = {
         key for key in ("GROUNDBALL_BLOB_STORE_ID", "GROUNDBALL_BLOB_TOKEN") if key in environment
     }
     oidc = {key for key in ("BLOB_STORE_ID", "VERCEL_OIDC_TOKEN") if key in environment}
+    if "BLOB_READ_WRITE_TOKEN" in environment:
+        raise BlobProbeError("Blob proof authentication is missing or ambiguous.")
     if static == {"GROUNDBALL_BLOB_STORE_ID", "GROUNDBALL_BLOB_TOKEN"} and not oidc:
         store_id = environment["GROUNDBALL_BLOB_STORE_ID"]
-        token = environment["GROUNDBALL_BLOB_TOKEN"]
+        credential_provider: BlobCredentialProvider = StaticBlobCredentialProvider(
+            environment["GROUNDBALL_BLOB_TOKEN"]
+        )
     elif oidc == {"BLOB_STORE_ID", "VERCEL_OIDC_TOKEN"} and not static:
         store_id = environment["BLOB_STORE_ID"]
-        token = environment["VERCEL_OIDC_TOKEN"]
+        credential_provider = OidcBlobCredentialProvider(
+            startup_token=environment["VERCEL_OIDC_TOKEN"]
+        )
     else:
         raise BlobProbeError("Blob proof authentication is missing or ambiguous.")
-    return BlobCoordinationConfig.proof(token=token, store_id=store_id, proof_id=proof_id), token
+    return (
+        BlobCoordinationConfig.proof(store_id=store_id, proof_id=proof_id),
+        credential_provider,
+    )
 
 
 def _require_provider_time(value: datetime | None) -> datetime:

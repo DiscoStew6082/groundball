@@ -86,8 +86,8 @@ Do not commit more source work on the old `implementation/public-deterministic-g
 | 4. Public result and Browser contract | Complete on `main` in PR #28 (`91d1dfa`) | Preserve last completed run separately from attempt outcome; 25/50/100 paging; returned and total counts; complete-or-refused CSV/JSON; timeout and all refusal classes | Focused public Adapter/child/API tests, Browser DOM tests, full local fast suite, marked offline proof, static checks, generators, eval matrix, and web build; no live provider/deployment proof |
 | 5. Deterministic parity closure | Complete on `main` in PR #29 (`17d972d`) | Exact Ohtani natural/structured parity, hidden composed name-match projections, recipe-only deterministic two-turn follow-up, and all bundled/unbundled Retrosheet boundaries | 26-case named eval/parity matrix; focused compiler/Adapter/API/child/Browser/Retrosheet proof; regenerated exact Coverage Report and Release Bundle; no live provider/deployment proof |
 | 6. Candidate identity and gate tooling | Complete on `main` in PR #30 (`2a732f2`) | Bind exact source/artifact topology, bundle, local image, actual admission policy, strict runtime config, evidence set, all-or-nothing gates, and a no-deployment attestation template; replace retired branch-only container CI | Canonical machine records and branch-independent exact-head candidate-container proof; protected/provider gates blocked and candidate ineligible |
-| 7. Protected Vercel proof | Repository tooling implemented; live proof pending independent review/execution | Immutable protected manifests, strict evidence schemas, guarded HTTP/Blob probes, provider gate derivation, and provider-attestation builder. Hermes separately executes any authorized provider side effects. | Repository tests prove validators only. One exact protected candidate still needs all real provider, Browser, lifecycle, performance, resource, security, and accounting evidence; no promotion. |
-| 8. Production and website cutover | Blocked on gates and explicit approvals | Build and attest final production artifact, send Stewart its link, receive acceptance, then make one reversible launcher change and externally verify | Stewart acceptance, attestation, post-switch proof, rollback proof |
+| 7. Protected Vercel proof | Repository tooling corrected; live free-evidence collection remains separately reviewed | Request-scoped OIDC, pinned Blob v12 wire contract, immutable protected manifests, guarded HTTP/Blob probes, provider gate derivation, and an exact Hobby metric-unavailable record. Hermes may separately collect only authorized no-cost evidence. | Vercel exposes `vercel.function_invocation.peak_memory_mb` by deployment only through Observability Plus; Hobby cannot enable it. `provider_peak_memory` and `provider_deployment_attestation` therefore remain blocked, and the candidate remains ineligible. |
+| 8. Production and website cutover | Blocked by the no-cost memory-evidence gate | Do not begin while Ground Ball remains on Hobby and provider peak memory is unavailable. | No attestation or promotion can be emitted from the blocked Wave 7 report. |
 
 ## Wave 2 completion details
 
@@ -135,13 +135,13 @@ Wave 3 commits `dc4a395` and `48f3158`, plus the narrow independent-review corre
 
 ### Private HTTP and time contract
 
-The project owns a narrow `HttpTransport` protocol implemented with bounded `requests` streaming. It does not import `vercel._internal.*` and does not claim that the current public Python SDK supplies CAS. An authenticated private `GET` targets the internally derived object URL with exactly `?cache=0`, bearer Authorization, JSON Accept, a five-second timeout, and redirects disabled. It does not claim uncached semantics from request `Cache-Control` or invented Blob cache headers. Writes target `https://vercel.com/api/blob/<object-key>` and include bearer Authorization, `x-api-version: 12`, the normalized bare `x-vercel-blob-store-id`, a fresh opaque `x-api-blob-request-id`, `x-api-blob-request-attempt: 0`, private access, JSON content type, and no random suffix. Existing-object writes additionally use the exact ETag in `x-if-match` with overwrite enabled; missing-object initialization uses overwrite disabled and no ETag. Only HTTP 412 is a CAS conflict. Other auth, transport, service, size, content type, ETag, Date, and malformed-response failures raise one sanitized provider error. Writes are never automatically retried: an ambiguous outcome fails closed, and only a later coordinator attempt after a fresh read may write again.
+The project owns a narrow `HttpTransport` protocol implemented with bounded `requests` streaming. It does not import `vercel._internal.*` and does not claim that the current public Python SDK supplies CAS. An authenticated private `GET` targets the internally derived object URL with exactly `?cache=0`, bearer Authorization, JSON Accept, a five-second timeout, and redirects disabled. It does not claim uncached semantics from request `Cache-Control` or invented Blob cache headers. Writes pin the first-party `@vercel/blob` 2.4.2 v12 shape: `PUT https://vercel.com/api/blob/?pathname=<percent-encoded-pathname>`, bearer Authorization, `x-api-version: 12`, normalized bare `x-vercel-blob-store-id`, `store-id:unix-ms:random-hex` request ID, attempt `0`, private access, JSON content type, and no random suffix. Existing-object writes additionally use the exact ETag in `x-if-match` with `x-allow-overwrite: 1`; create-only writes use `x-allow-overwrite: 0` and never send `x-if-match`. HTTP 412 is a precondition conflict. HTTP 401, 403, 429, and 5xx responses are provider errors and are never create/CAS conflicts. Writes are never automatically retried: an ambiguous outcome fails closed, and only a later coordinator attempt after a fresh read may write again.
 
 Every Blob read snapshot must carry canonical IMF-fixdate provider HTTP `Date` text in GMT. That strict UTC observation drives the entire decision made from that snapshot: UTC month, both rolling windows, exact retries, and the 15-second lease. Each 412 contention retry rereads both state and time. In-memory policy proofs continue to use an injected deterministic clock. There is no shared mutable last-read clock.
 
 ### Configuration, readiness, and accounting
 
-Strict startup configuration uses `GROUNDBALL_BLOB_NAMESPACE`, `GROUNDBALL_BLOB_STORE_ID`, `GROUNDBALL_BLOB_TOKEN`, `GROUNDBALL_VISITOR_DIGEST_KEY`, and, only for proof, `GROUNDBALL_BLOB_PROOF_ID`. The store ID strips one optional `store_` prefix while preserving case, accepts only a bounded alphanumeric bare ID, and internally derives `https://<bare-store-id>.private.blob.vercel-storage.com`; configuration cannot select a public Blob hostname, alternate host, port, userinfo, path, query, or fragment. `GROUNDBALL_BLOB_TOKEN` is the explicit bearer seam and may carry a read-write or OIDC bearer token paired with that explicit store ID. Token authentication and rotation against the live provider remain protected proof; token material is never parsed or rendered. The digest key is URL-safe base64 configuration that must decode to at least 32 bytes. Secret values are excluded from repr and sanitized errors. Missing or inconsistent fields fail startup closed. Initialization remains an explicit coordinator action against a genuinely missing object; an existing object, including one with a missing budget, is never rewritten as initialization.
+Protected-preview and production startup require `GROUNDBALL_BLOB_NAMESPACE` matching the runtime scope, `BLOB_STORE_ID`, a valid startup/local `VERCEL_OIDC_TOKEN` fallback, and `GROUNDBALL_VISITOR_DIGEST_KEY`. The runtime config separately identifies the Blob resource reference, startup credential fallback, incoming `x-vercel-oidc-token` request header, and digest-key secret reference without checking in values. `BLOB_READ_WRITE_TOKEN`, `GROUNDBALL_BLOB_TOKEN`, legacy store-ID/static-token mode, partial OIDC, and mixed modes are rejected for provider runtime. Static `GROUNDBALL_BLOB_STORE_ID` plus `GROUNDBALL_BLOB_TOKEN` remains allowed only for an isolated operator `proof` namespace. The store ID strips one optional `store_` prefix while preserving case and derives only the private Blob origin. `BlobCoordinationConfig` contains no credential. Middleware validates and binds only the bounded JWT-shaped request header in a `ContextVar`, every provider operation resolves it immediately before I/O, and reset occurs in `finally`; missing/invalid request credentials fail with the existing public provider-unavailable envelope before child execution. The environment fallback is usable only outside request context for startup/local readiness. Credentials never enter repr, errors, evidence, responses, or logs.
 
 Digest-key rotation truth: changing the key may map the same cookie to a new per-Visitor identity and therefore fresh per-Visitor running/rate identity. It cannot reset live deployment-wide leases or the UTC-month budget because those remain in the same shared state object. Rotation is not a budget reset mechanism.
 
@@ -191,8 +191,9 @@ Every result must belong to the same candidate. Evidence does not transfer acros
 - Shell and capabilities ready within five seconds.
 - First cold supported Query Run completes within ten seconds.
 - Every run in a fixed, predeclared twenty-run warm manifest completes within three seconds.
-- Image is at most 1,073,741,824 bytes (exactly 1 GiB) and peak runtime memory is at most 1.5 GB.
-- Record image digest and size, peak memory, build duration, cold and warm timings, and provider observations.
+- Image is at most 1,073,741,824 bytes (exactly 1 GiB). The unchanged peak-runtime-memory gate is at most 1.5 GB and requires provider-observed peak use.
+- Vercel's `vercel.function_invocation.peak_memory_mb` metric is deployment-filterable but requires Observability Plus. Hobby cannot enable Observability Plus, so this gate is `blocked`, never passed from the 2 GB provisioned limit, process RSS, Docker memory, or an estimate.
+- Record image digest and size, build duration, cold and warm timings, all other free provider observations, and the exact `provider_metric_unavailable_on_hobby` memory record.
 
 ### Bundle and readiness
 
@@ -385,7 +386,7 @@ Wave 6 is implemented on `implementation/public-deterministic-groundball-candida
 - `release/config/local-ci-runtime.json` is strict non-secret configuration. It says `local_ci`, `provider_deployment: false`, `network_policy: none`, and `local_ci_ephemeral`; unknown fields, unknown release environment keys, secret values, or a provider claim fail closed.
 - `release_candidate.py` emits and validates canonical candidate identity, the fixed Release Gate inventory, and Deployment Attestation records. It rejects duplicate keys or evidence IDs, unknown fields, booleans used as integers, malformed or truncated identities, secret/path content, topology and binding mismatches, and foreign evidence. Candidate ID hashing excludes only its own field. Its authoritative `MAX_CANDIDATE_IMAGE_SIZE_BYTES` ceiling is 1,073,741,824 bytes for every scope; provider image size and measurement kind must exactly equal the protected candidate fields.
 - Every gate is exactly `pass`, `fail`, or `blocked`; a pass requires candidate evidence, and eligibility requires all fixed gates to pass for that candidate. Local CI passes only topology/identity, bundle/Coverage Report, deterministic public-envelope parity, offline/prohibited-surface, preliminary local image-size, and runtime/admission-config gates. Protected/provider gates remain blocked, so the report is intentionally ineligible.
-- A Wave 6 local Deployment Attestation template explicitly says no provider deployment exists and cannot be promotion-eligible. No Vercel attestation is fabricated. Protected/production validation later requires exact provider deployment/image identity, unchanged bundle/config/gate bindings, observations, all-pass gates, and external evidence.
+- A Wave 6 local Deployment Attestation template explicitly says no provider deployment exists and cannot be promotion-eligible. No Vercel attestation is fabricated. Under the current Hobby-only product constraint, protected/production attestation is blocked by unavailable provider peak-memory evidence.
 - `.github/workflows/candidate-proof.yml` replaces the dormant retired-branch job. Automatic PR proof is branch-independent and triggered only by a changed canonical `release/bundle/release-manifest.json`; ordinary source/dependency/configuration/workflow/test PRs stay in ordinary CI, while `workflow_dispatch` remains available. Candidate proof checks out the exact selected head with full history, derives source/artifact topology from the Release Manifest and Git commits, requires an artifact-only bundle commit, builds the exact-source Dockerfile, records local Docker ID/size, enforces exactly 1 GiB, boots with `--network none`, exercises the Wave 5 natural/structured/follow-up/paging/export/Retrosheet corpus, checks prohibited files and persistent authority, then uploads candidate, gate, template, evidence, and summary artifacts even on safe failures.
 
 Exact artifact meanings, freeze steps, and pasteable assembly/validation commands are in `docs/release-candidates.md`. Local Docker ID/size are explicitly not future provider OCI digest/size. No Blob, credential, preview, deployment, provider accounting, protected Browser, performance, restart, scale-to-zero, memory, website, domain, Cloudflare, Mac, or tunnel state is contacted or changed in Wave 6.
@@ -422,15 +423,17 @@ Wave 7 starts from PR #30 merge `2a732f24d7bddbd1f3bd21ac4bbdcb66b60c259f`. This
 
 The repository now owns:
 
-- `release/config/protected-preview-runtime.json`, a canonical protected-preview identity naming only `BLOB_STORE_ID`, `VERCEL_OIDC_TOKEN`, and `GROUNDBALL_VISITOR_DIGEST_KEY`. The runtime also retains the explicit `GROUNDBALL_BLOB_STORE_ID` plus `GROUNDBALL_BLOB_TOKEN` mode for bounded operator proof. Missing, partial, mixed, or ambiguous modes fail closed. OIDC use of the raw Blob API remains unproven until the live probe succeeds; checked-in fixtures cannot establish provider compatibility.
+- `release/config/protected-preview-runtime.json`, a canonical protected-preview identity that distinguishes `BLOB_STORE_ID` as a resource reference, `VERCEL_OIDC_TOKEN` as startup/local fallback, `x-vercel-oidc-token` as the request credential header, and `GROUNDBALL_VISITOR_DIGEST_KEY` as the secret environment reference. Protected runtime rejects static, partial, and mixed modes; static tokens remain proof-namespace-only.
+- Request OIDC is concurrency-safe and request-scoped. No token is stored in `BlobCoordinationConfig`; middleware validates/binds/resets the incoming header, and Blob resolves credentials immediately before every provider operation. Missing or malformed headers fail closed before query child execution instead of falling back to the startup token.
+- Raw Blob writes pin API v12 at `https://vercel.com/api/blob/?pathname=<percent-encoded-pathname>` with bare store ID, private access, source-compatible request IDs, create-only/ETag-CAS separation, and provider-error preservation. The protected malformed-state injection uses the same protocol.
 - `release/proof/warm-workloads-v1.json`, the immutable twenty-run provider workload inventory, and `release/proof/browser-scenarios-v1.json`, the exact desktop and 360/390/430 px Browser inventory.
-- `baseball_rag.protected_provider_proof`, which rejects duplicate keys, unknown fields, noncanonical JSON, non-finite or boolean-as-integer values, mutable image tags, missing/extra samples, foreign identities, secret/path fields, and warning-only outcomes. Its pure aggregator derives the fixed fifteen gates from exact candidate-bound evidence. Missing observations are blocked; malformed, foreign, over-limit, or failed observations fail.
+- `baseball_rag.protected_provider_proof`, which rejects duplicate keys, unknown fields, noncanonical JSON, non-finite or boolean-as-integer values, mutable image tags, missing/extra samples, foreign identities, secret/path fields, and warning-only outcomes. Its pure aggregator derives the fixed fifteen gates from exact candidate-bound evidence. For Hobby, the canonical memory observation is blocked with `provider_metric_unavailable_on_hobby`; all other valid free evidence can pass, but eligibility and provider attestation remain false/blocked.
 - `baseball_rag.protected_provider_probe`, a one-origin HTTPS probe guarded by `--live`. It reads the optional Vercel automation bypass only from `VERCEL_AUTOMATION_BYPASS_SECRET`, never serializes it, performs no hidden retry, sleeps for each declared cold interval, records five samples separately, and executes the fixed warm manifest exactly once.
 - `baseball_rag.protected_blob_probe`, a `--live`-guarded exercise of the real project Blob Adapter. It permits only unique `proof` namespaces, performs no reset/delete, and exercises private uncached reads, initialization, ETag CAS/conflict, trusted Date, codec and invalid state behavior, Visitor/deployment/rate/month boundaries, nonrefund/noncharge, lease expiry, unavailability, and real bounded contention. Its application `OperationCounts` and byte observations are not provider billing. Provider-reported accounting remains a separate required evidence document.
 - a random 32-character per-process runtime instance identifier under release-readiness `hosting`. It is volatile hosting metadata only: no hostname, PID, path, token, cookie, state, source excerpt, or Query meaning is exposed.
-- `build_provider_attestation(...)` plus `python -m baseball_rag.release_candidate provider-attestation`. It accepts only protected-preview/production scope, an exact all-pass report, exact candidate image values, the complete observation map, and candidate evidence IDs; it validates before writing.
+- Provider attestation emission and validation are fail-closed with `provider_metric_unavailable_on_hobby`. The local no-deployment template remains valid; no protected or production Deployment Attestation can be emitted from the Hobby proof.
 
-Offline tests and scripted transports prove these validators and guards only. They are never live provider proof. Browser pixels, provider OCI measurement, peak memory, deployment/replacement/scale-to-zero status, egress, and provider operation/accounting facts must come from the actual protected deployment and provider observations. Sleeping for 30 seconds is not itself provider scale-to-zero evidence, code scanning is not egress evidence, app counters are not billing evidence, and the runtime marker is not provider status.
+Offline tests and scripted transports prove these validators and guards only. They are never live provider proof. Browser pixels, provider OCI measurement, deployment/replacement/scale-to-zero status, egress, and provider operation/accounting facts must come from the actual protected deployment and provider observations. Vercel's deployment-filterable `vercel.function_invocation.peak_memory_mb` is provider truth, but querying it requires Observability Plus and Hobby cannot enable that product. The 2 GB Hobby provisioned limit is not observed peak use. Process RSS, local Docker memory, a limit, and estimates are forbidden substitutes. Sleeping for 30 seconds is not itself provider scale-to-zero evidence, code scanning is not egress evidence, app counters are not billing evidence, and the runtime marker is not provider status.
 
 ### Repository validation commands
 
@@ -455,13 +458,13 @@ git diff --check origin/main...HEAD
 
 ### Wave 7 repository-only TDD and verification
 
-Vertical red/green slices first failed for the Vercel build/runtime source split, missing protected runtime configuration and OIDC mode, missing evidence/manifests/aggregator module, missing attestation builder, missing guarded HTTP and Blob probes, missing runtime instance marker, and missing security/lifecycle helpers. Each focused slice passed before the next was added.
+The correction used vertical red/green slices at the credential-provider/configuration seam, exact Blob transport seam, FastAPI public-request seam, and provider evidence/attestation seam. Red tests exposed process-global credential reuse, missing request context, stale path-based writes, permissive provider modes, and a false all-pass Hobby memory path before each minimal correction turned them green.
 
 Final pre-freeze repository results:
 
-- Fast Python suite: `525 passed, 3 deselected`; one upstream Starlette/httpx deprecation warning.
-- Marked Release Proof: `3 passed, 525 deselected`; the same upstream warning.
-- Focused Wave 7 policy, Blob, provider evidence/probe, candidate/attestation, runtime, packaging, and workflow proof: `149 passed` before the final security/lifecycle additions; all later focused suites remained green.
+- Fast Python suite: `559 passed, 3 deselected`; one upstream Starlette/httpx deprecation warning.
+- Marked Release Proof: `3 passed, 559 deselected`; the same upstream warning.
+- Focused corrected credential, Blob wire/probe, public request, strict runtime config, provider evidence, and candidate/attestation proof: `199 passed`.
 - Deterministic eval/parity matrix: `26/26` passing.
 - Catalog compatibility, raw inventory, Coverage Report generation, and Coverage Report validator tests: passed; validator tests reported `10 passed`.
 - Canonical Public Admission Policy and both immutable proof manifests validated. Manifest SHA-256 values were `9f53dec198a7f59e470c22c617d538ec4776f0f88f6c84310222c70db7c5d636` for warm workloads and `f4044087d31f88f3d035330452f343d3147d317150aff74b421c52e8f8860674` for Browser scenarios.
@@ -518,43 +521,29 @@ uv run python -m baseball_rag.protected_provider_proof derive-gates \
   --candidate candidate-artifacts/provider/candidate-identity.json \
   --evidence-index candidate-artifacts/provider/evidence-index.json \
   --output candidate-artifacts/provider/gate-report.json
-uv run python -m baseball_rag.release_candidate provider-attestation \
-  --candidate candidate-artifacts/provider/candidate-identity.json \
-  --gate-report candidate-artifacts/provider/gate-report.json \
-  --provider vercel \
-  --deployment-id "$DEPLOYMENT_ID" \
-  --image-digest "$PROVIDER_IMAGE_DIGEST" \
-  --image-size-bytes "$PROVIDER_IMAGE_SIZE_BYTES" \
-  --image-size-measurement-kind provider-oci-manifest-size-bytes \
-  --observation-map candidate-artifacts/provider/observation-map.json \
-  --output candidate-artifacts/provider/deployment-attestation.json
-uv run python -m baseball_rag.release_candidate validate attestation \
-  --candidate candidate-artifacts/provider/candidate-identity.json \
-  --gate-report candidate-artifacts/provider/gate-report.json \
-  --attestation candidate-artifacts/provider/deployment-attestation.json
+# Stop here. The exact gate report must remain ineligible with
+# provider_peak_memory=blocked and provider_deployment_attestation=blocked.
+# Provider attestation emission is intentionally unavailable on Hobby.
 ```
 
-Before those live commands, independent review must separately confirm the protected deployment, exact runtime source environment, private connected Blob, unique proof namespace, protected-origin setting, provider image measurement source, Browser capture method, lifecycle observation method, egress source, and provider accounting source. The repository does not create any of them. `VERCEL_AUTOMATION_BYPASS_SECRET`, if approved and present, is consumed only from the process environment by the HTTP probe.
+Before any separately authorized live commands, independent review must confirm the protected deployment, exact runtime source environment, private connected Blob, unique proof namespace, protected-origin setting, provider image measurement source, Browser capture method, lifecycle observation method, egress source, and provider accounting source. The repository does not create any of them. `VERCEL_AUTOMATION_BYPASS_SECRET`, if approved and present, is consumed only from the process environment by the HTTP probe. Hermes should collect every available free evidence stream, add the canonical blocked peak-memory evidence (`plan: hobby`, metric `vercel.function_invocation.peak_memory_mb`, `peak_memory_mb: null`, reason `provider_metric_unavailable_on_hobby`, Observability Plus required/unavailable, deployment-filterable true, provisioned limit 2048 MB), derive the exact blocked report, and stop. Do not run provider-attestation or begin Wave 8.
 
 Cleanup is also an external, separately reviewed action. The probes never delete or reset state. After evidence retention is confirmed, Hermes may remove only the exact protected deployment, exact unique proof objects/store connection, and exact temporary environment entries it created. Cleanup must not touch production state, domains, website launchers, paid-plan settings, Cloudflare, Mac/tunnel/LLM state, or historical deployments. Rollback before promotion is simply removal/disablement of the protected preview; no production or website route changes exist in Wave 7.
 
 ## Abort and rollback rules
 
 - Any gate miss, identity mismatch, warning-only substitution, unexpected route or network destination, resource overage, or Browser failure makes the candidate ineligible.
-- Preview evidence never silently transfers to a production rebuild. Re-attest and rerun every applicable gate for the final artifact.
-- Reopen hosting only after root-cause evidence proves a required gate impossible on Vercel Hobby without weakening the product, exceeding `$0`, or violating zero-Mac.
+- Preview evidence never silently transfers to a production rebuild. The Hobby memory block prevents attestation and production work.
+- The required provider peak-memory gate is confirmed unavailable on Vercel Hobby. Do not weaken, relabel, estimate, or substitute it; record the stable blocked reason and stop before Wave 8.
 - First-launch rollback is the website launcher's prelaunch or unavailable state. Never roll back to the Mac, a tunnel, an LLM, an alternate host, or an unattested deployment.
 - The implementation map does not name the website repository, launcher path, current prelaunch target, or rollback commit. Resolve those read-only before proposing the cutover patch, then request explicit cutover approval.
 
 ## Definition of done
 
 - All repository waves are complete and recorded here with commits and focused verification.
-- One candidate has one machine-readable gate report and Deployment Attestation.
-- Every all-or-nothing local, hosted, resource, security, admission, and live Browser gate passes for that candidate.
-- Current Vercel Hobby, container, and Blob limits and the live Hobby scope are reverified before deployment.
-- The protected candidate link is accepted by Stewart.
-- Production receives its own attestation and applicable proof.
-- The website launcher is switched only after explicit approval and passes external zero-Mac verification.
+- One candidate may have one machine-readable Hobby gate report with every free evidence stream collected.
+- `provider_peak_memory` and `provider_deployment_attestation` remain blocked with `provider_metric_unavailable_on_hobby`; eligibility remains false.
+- No Deployment Attestation, Wave 8 production work, website launcher switch, paid-plan action, or gate substitution occurs under the no-cost constraint.
 - Remaining changes, running services, account state, rollback state, and residual risks are recorded.
 
 ## Coordinator handoff prompt
@@ -575,7 +564,7 @@ Read first:
 
 The completed Wayfinder map is on wayfinder/queryable-ground-ball at 6675ad1. Do not reopen its decisions unless current evidence invalidates a gate.
 
-Waves 2-5 are merged through PR #29 at `17d972d`. Wave 6 implements canonical candidate identity, actual-policy/runtime binding, all-or-nothing gates, strict provider-attestation validation, an explicit no-deployment local template, and branch-independent candidate-container CI. Review and merge only this repository/local tooling proof without claiming provider, protected Browser, deployment, performance, persistence, accounting, or promotion evidence. Do not begin Wave 7 external proof without Stewart's separate explicit authorization, and do not reopen completed query, admission, result, parity, or candidate-identity decisions.
+Waves 2-6 are merged through PR #30 at `2a732f2`. Corrected Wave 7 repository tooling uses request-scoped OIDC and exact Hobby gate truth. Collect only separately authorized no-cost evidence, derive `provider_peak_memory=blocked` with `provider_metric_unavailable_on_hobby`, keep eligibility false, emit no provider attestation, and stop before Wave 8. Do not reopen completed query, admission, result, parity, or candidate-identity decisions.
 
 Continue through authorized repository implementation and local validation without stopping after a narrow green test. Do not create Blob state or secrets, deploy, delete deployments, promote, change domains or website launchers, enable paid services, activate Cloudflare, or touch Mac/tunnel state without Stewart's explicit approval at that boundary.
 

@@ -17,6 +17,7 @@ from baseball_rag.public_admission import (
     RunLease,
     visitor_digest,
 )
+from baseball_rag.public_admission_blob import OidcBlobCredentialProvider
 from baseball_rag.public_execution import (
     ExecutionOutcome,
     ExecutionRequest,
@@ -26,6 +27,8 @@ from baseball_rag.public_results import compact_json_bytes
 
 client = TestClient(app)
 NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
+STARTUP_OIDC = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJzdGFydHVwIn0.startup-signature"
+REQUEST_OIDC = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyZXF1ZXN0In0.request-signature"
 
 
 class RecordingRunner:
@@ -432,6 +435,74 @@ def test_public_export_refusal_is_structured_422_compact_json(
     assert response.status_code == 422
     assert response.content == compact_json_bytes(refusal)
     assert response.json() == refusal
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"x-vercel-oidc-token": "not-a-jwt"},
+        {"x-vercel-oidc-token": "a.b." + "x" * 8191},
+    ],
+)
+def test_public_request_oidc_missing_malformed_or_oversized_fails_before_execution_and_resets(
+    monkeypatch: pytest.MonkeyPatch,
+    headers: dict[str, str],
+) -> None:
+    provider = OidcBlobCredentialProvider(startup_token=STARTUP_OIDC)
+    inner = InMemoryCasStore(
+        AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0))
+    )
+
+    class CredentialCheckingStore:
+        deployment_shared = True
+
+        def read(self):
+            provider.resolve()
+            return inner.read()
+
+        def compare_and_swap(self, version: int, state: AdmissionState) -> bool:
+            provider.resolve()
+            return inner.compare_and_swap(version, state)
+
+    runner = RecordingRunner(ExecutionOutcome("completed", payload={"kind": "rows", "rows": []}))
+    monkeypatch.setattr(
+        api_server,
+        "_public_admission",
+        CasCoordinator(cast(CasStore, CredentialCheckingStore()), clock=lambda: NOW),
+    )
+    monkeypatch.setattr(api_server, "_visitor_digest_key", b"test-visitor-digest-key" * 2)
+    monkeypatch.setattr(api_server, "_public_admission_is_shared", True)
+    monkeypatch.setattr(api_server, "_public_execution_runner", runner)
+    monkeypatch.setattr(api_server, "_public_demo_enabled", lambda: True)
+    monkeypatch.setattr(api_server, "_require_consistent_release_configuration", lambda: None)
+
+    refused = TestClient(app).post(
+        "/api/query-runs",
+        json={"question": "who had the most RBIs in 1962"},
+        headers=headers,
+    )
+
+    assert refused.status_code == 503
+    assert refused.json() == {
+        "error": "provider_unavailable",
+        "reason": "coordination_store_unavailable",
+        "detail": "Ground Ball's public admission service is unavailable.",
+        "retry_at": None,
+    }
+    assert runner.requests == []
+    assert provider.resolve() == STARTUP_OIDC
+    assert STARTUP_OIDC not in refused.text
+    assert all(value not in refused.text for value in headers.values())
+
+    admitted = TestClient(app).post(
+        "/api/query-runs",
+        json={"question": "who had the most RBIs in 1962"},
+        headers={"x-vercel-oidc-token": REQUEST_OIDC},
+    )
+    assert admitted.status_code == 200
+    assert len(runner.requests) == 1
+    assert provider.resolve() == STARTUP_OIDC
 
 
 def test_public_allowance_pause_never_enters_execution(

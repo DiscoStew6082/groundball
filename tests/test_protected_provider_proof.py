@@ -18,9 +18,12 @@ from baseball_rag.protected_provider_proof import (
 )
 from baseball_rag.public_release_config import canonical_json_bytes
 from baseball_rag.release_candidate import (
+    PROVIDER_OBSERVATION_IDS,
     REQUIRED_GATE_IDS,
+    CandidateError,
     EvidenceInput,
     build_candidate_identity,
+    build_provider_attestation,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,10 +143,16 @@ def _document(schema: str) -> dict[str, object]:
             ],
         }
     elif schema == EVIDENCE_SCHEMAS["peak_memory"]:
+        base["status"] = "blocked"
         observation = {
-            "measurement_kind": "vercel-provider-peak-runtime-memory-bytes",
-            "peak_bytes": 1_400_000_000,
-            "provider_reported": True,
+            "deployment_filterable": True,
+            "measurement_kind": "vercel.function_invocation.peak_memory_mb",
+            "observability_plus_available": False,
+            "observability_plus_required": True,
+            "peak_memory_mb": None,
+            "plan": "hobby",
+            "provisioned_limit_mb": 2048,
+            "reason": "provider_metric_unavailable_on_hobby",
         }
     elif schema == EVIDENCE_SCHEMAS["lifecycle"]:
         observation = {
@@ -281,7 +290,7 @@ def test_provider_evidence_rejects_duplicate_keys_unknown_fields_secrets_paths_a
             validate_provider_evidence(canonical_json_bytes(changed))
 
 
-def test_pure_aggregator_derives_exact_fifteen_passes_only_from_bound_evidence(
+def test_hobby_aggregator_accepts_all_free_evidence_but_blocks_memory_and_attestation(
     tmp_path: Path,
 ) -> None:
     documents = _all_documents()
@@ -293,9 +302,42 @@ def test_pure_aggregator_derives_exact_fifteen_passes_only_from_bound_evidence(
 
     report = derive_provider_gate_report(candidate, evidence)
 
-    assert report["eligible"] is True
+    assert report["eligible"] is False
     assert [gate["gate_id"] for gate in report["gates"]] == list(REQUIRED_GATE_IDS)
-    assert [gate["status"] for gate in report["gates"]].count("pass") == 15
+    statuses = {gate["gate_id"]: gate["status"] for gate in report["gates"]}
+    assert statuses["provider_peak_memory"] == "blocked"
+    assert statuses["provider_deployment_attestation"] == "blocked"
+    assert list(statuses.values()).count("pass") == 13
+    memory = documents[list(EVIDENCE_SCHEMAS).index("peak_memory")]
+    assert memory["observation"]["reason"] == "provider_metric_unavailable_on_hobby"  # type: ignore[index]
+
+    logical_ids = {
+        kind: f"provider-evidence-{list(EVIDENCE_SCHEMAS).index(evidence_kind):02d}"
+        for kind, evidence_kind in {
+            "cold_wakes": "cold_wakes",
+            "deployment_metadata_configuration": "deployment_metadata",
+            "network_security_public_routes": "network_security",
+            "peak_memory": "peak_memory",
+            "protected_blob_coordination": "blob_admission",
+            "protected_browser_desktop_mobile": "browser",
+            "provider_image_measurement": "provider_image",
+            "provider_operation_accounting": "provider_accounting",
+            "restart_replacement_scale_to_zero": "lifecycle",
+            "warm_manifest": "warm_results",
+        }.items()
+    }
+    assert set(logical_ids) == set(PROVIDER_OBSERVATION_IDS)
+    with pytest.raises(CandidateError, match="all-pass"):
+        build_provider_attestation(
+            candidate,
+            report,
+            provider_name="vercel",
+            deployment_id=DEPLOYMENT,
+            image_digest=IMAGE,
+            image_size_bytes=900_000_000,
+            image_size_measurement_kind="provider-oci-manifest-size-bytes",
+            observation_to_evidence=logical_ids,
+        )
 
 
 def test_aggregator_blocks_missing_observation_and_fails_foreign_or_over_limit_evidence(
@@ -330,16 +372,20 @@ def test_aggregator_blocks_missing_observation_and_fails_foreign_or_over_limit_e
     )
     assert failed["eligible"] is False
 
-    over = _all_documents()
-    over[memory_index]["observation"]["peak_bytes"] = 1_500_000_001  # type: ignore[index]
-    over_candidate = _candidate(tmp_path / "over", over)
-    over_evidence = {
+    substituted = _all_documents()
+    substituted[memory_index]["observation"]["peak_memory_mb"] = 1400  # type: ignore[index]
+    substituted_candidate = _candidate(tmp_path / "substituted", substituted)
+    substituted_evidence = {
         f"provider-evidence-{index:02d}": canonical_json_bytes(document)
-        for index, document in enumerate(over)
+        for index, document in enumerate(substituted)
     }
-    over_report = derive_provider_gate_report(over_candidate, over_evidence)
+    substituted_report = derive_provider_gate_report(substituted_candidate, substituted_evidence)
     assert (
-        next(g for g in over_report["gates"] if g["gate_id"] == "provider_peak_memory")["status"]
+        next(
+            gate
+            for gate in substituted_report["gates"]
+            if gate["gate_id"] == "provider_peak_memory"
+        )["status"]
         == "fail"
     )
 

@@ -11,11 +11,15 @@ import base64
 import binascii
 import json
 import re
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from threading import Lock
 from typing import Mapping, Protocol
+from urllib.parse import quote
 from uuid import uuid4
 
 import requests
@@ -34,11 +38,20 @@ from baseball_rag.public_admission_state import (
 from baseball_rag.public_release_config import MINIMUM_VISITOR_DIGEST_KEY_BYTES
 
 PRODUCTION_OBJECT_KEY = "groundball/public-admission/v1/production/state.json"
+PROTECTED_PREVIEW_OBJECT_KEY = "groundball/public-admission/v1/protected-preview/state.json"
 _PROOF_OBJECT_PREFIX = "groundball/public-admission/v1/proof"
-_UPLOAD_API_ORIGIN = "https://vercel.com/api/blob"
+_UPLOAD_API_ORIGIN = "https://vercel.com/api/blob/"
 _PROOF_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 _STORE_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{1,63}$")
-_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{1,63}:\d{13}:[0-9a-f]+$")
+_OIDC_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+_MAX_OIDC_TOKEN_CHARACTERS = 8192
+_NO_REQUEST = object()
+_INVALID_REQUEST_CREDENTIAL = object()
+_request_oidc_token: ContextVar[str | object] = ContextVar(
+    "groundball_request_oidc_token",
+    default=_NO_REQUEST,
+)
 _IMF_FIXDATE_PATTERN = re.compile(
     r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) "
     r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) "
@@ -67,6 +80,69 @@ class BlobProviderError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__("Blob coordination request failed.")
+
+
+class BlobCredentialProvider(Protocol):
+    """Resolve one credential immediately before a provider operation."""
+
+    def resolve(self) -> str: ...
+
+
+class OidcBlobCredentialProvider:
+    """Request-scoped OIDC with a startup-only environment fallback."""
+
+    def __init__(self, *, startup_token: str) -> None:
+        if not _valid_oidc_token(startup_token):
+            raise ValueError("Blob OIDC credential configuration is invalid.")
+        self._startup_token = startup_token
+
+    def resolve(self) -> str:
+        request_token = _request_oidc_token.get()
+        if request_token is _NO_REQUEST:
+            return self._startup_token
+        if isinstance(request_token, str):
+            return request_token
+        raise BlobProviderError
+
+
+class StaticBlobCredentialProvider:
+    """Long-lived credential restricted by configuration loading to proof scope."""
+
+    def __init__(self, token: str) -> None:
+        if not _valid_static_token(token):
+            raise ValueError("Blob static credential configuration is invalid.")
+        self._token = token
+
+    def resolve(self) -> str:
+        return self._token
+
+
+@contextmanager
+def request_oidc_token_context(raw_token: str | None) -> Iterator[None]:
+    """Bind one validated incoming Vercel OIDC header to the current request."""
+    value: str | object = raw_token if _valid_oidc_token(raw_token) else _INVALID_REQUEST_CREDENTIAL
+    context_token: Token[str | object] = _request_oidc_token.set(value)
+    try:
+        yield
+    finally:
+        _request_oidc_token.reset(context_token)
+
+
+def _valid_oidc_token(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= _MAX_OIDC_TOKEN_CHARACTERS
+        and _OIDC_TOKEN_PATTERN.fullmatch(value) is not None
+    )
+
+
+def _valid_static_token(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= _MAX_OIDC_TOKEN_CHARACTERS
+        and value.strip() == value
+        and not any(char.isspace() or ord(char) < 33 or ord(char) == 127 for char in value)
+    )
 
 
 @dataclass(frozen=True)
@@ -140,17 +216,10 @@ class BlobCoordinationConfig:
 
     object_key: str
     store_id: str
-    token: str = field(repr=False)
     timeout_seconds: float = 5.0
     state_url: str = field(init=False)
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.token, str)
-            or not self.token
-            or any(char.isspace() for char in self.token)
-        ):
-            raise ValueError("Blob credential configuration is invalid.")
         if not isinstance(self.store_id, str):
             raise ValueError("Blob store identifier is invalid.")
         bare_store_id = self.store_id.removeprefix("store_")
@@ -164,7 +233,14 @@ class BlobCoordinationConfig:
             and self.object_key.endswith(proof_key_suffix)
             and _PROOF_ID_PATTERN.fullmatch(proof_id) is not None
         )
-        if self.object_key != PRODUCTION_OBJECT_KEY and not valid_proof_key:
+        if (
+            self.object_key
+            not in {
+                PRODUCTION_OBJECT_KEY,
+                PROTECTED_PREVIEW_OBJECT_KEY,
+            }
+            and not valid_proof_key
+        ):
             raise ValueError("Blob object key is invalid.")
         if (
             isinstance(self.timeout_seconds, bool)
@@ -180,14 +256,12 @@ class BlobCoordinationConfig:
     def proof(
         cls,
         *,
-        token: str,
         store_id: str,
         proof_id: str,
     ) -> BlobCoordinationConfig:
         if not isinstance(proof_id, str) or _PROOF_ID_PATTERN.fullmatch(proof_id) is None:
             raise ValueError("Blob proof identifier is invalid.")
         return cls(
-            token=token,
             store_id=store_id,
             object_key=f"{_PROOF_OBJECT_PREFIX}/{proof_id}/state.json",
         )
@@ -196,13 +270,18 @@ class BlobCoordinationConfig:
     def production(
         cls,
         *,
-        token: str,
         store_id: str,
     ) -> BlobCoordinationConfig:
         return cls(
-            token=token,
             store_id=store_id,
             object_key=PRODUCTION_OBJECT_KEY,
+        )
+
+    @classmethod
+    def protected_preview(cls, *, store_id: str) -> BlobCoordinationConfig:
+        return cls(
+            store_id=store_id,
+            object_key=PROTECTED_PREVIEW_OBJECT_KEY,
         )
 
 
@@ -264,16 +343,19 @@ def load_blob_public_admission(
         oidc_keys = {"BLOB_STORE_ID", "VERCEL_OIDC_TOKEN"}
         supplied_static = {key for key in static_keys if key in environment}
         supplied_oidc = {key for key in oidc_keys if key in environment}
-        if supplied_static == static_keys and not supplied_oidc:
-            if namespace != "proof":
-                raise ValueError
+        if "BLOB_READ_WRITE_TOKEN" in environment:
+            raise ValueError
+        credential_provider: BlobCredentialProvider
+        if supplied_static == static_keys and not supplied_oidc and namespace == "proof":
             store_id = environment["GROUNDBALL_BLOB_STORE_ID"]
-            token = environment["GROUNDBALL_BLOB_TOKEN"]
+            credential_provider = StaticBlobCredentialProvider(environment["GROUNDBALL_BLOB_TOKEN"])
             authentication_mode = "groundball_static_token"
         elif supplied_oidc == oidc_keys and not supplied_static:
             store_id = environment["BLOB_STORE_ID"]
-            token = environment["VERCEL_OIDC_TOKEN"]
-            authentication_mode = "vercel_oidc"
+            credential_provider = OidcBlobCredentialProvider(
+                startup_token=environment["VERCEL_OIDC_TOKEN"]
+            )
+            authentication_mode = "vercel_oidc_request_scoped"
         else:
             raise ValueError
         proof_id = environment.get("GROUNDBALL_BLOB_PROOF_ID")
@@ -281,17 +363,17 @@ def load_blob_public_admission(
             if proof_id is None:
                 raise ValueError
             config = BlobCoordinationConfig.proof(
-                token=token,
                 store_id=store_id,
                 proof_id=proof_id,
             )
-        elif namespace == "production":
-            if proof_id is not None:
+        elif namespace == "protected_preview":
+            if proof_id is not None or authentication_mode != "vercel_oidc_request_scoped":
                 raise ValueError
-            config = BlobCoordinationConfig.production(
-                token=token,
-                store_id=store_id,
-            )
+            config = BlobCoordinationConfig.protected_preview(store_id=store_id)
+        elif namespace == "production":
+            if proof_id is not None or authentication_mode != "vercel_oidc_request_scoped":
+                raise ValueError
+            config = BlobCoordinationConfig.production(store_id=store_id)
         else:
             raise ValueError
         digest_key = base64.b64decode(
@@ -304,7 +386,11 @@ def load_blob_public_admission(
     except (KeyError, ValueError, UnicodeEncodeError, binascii.Error):
         raise PublicAdmissionConfigurationError from None
     return ConfiguredPublicAdmission(
-        store=BlobCoordinationStore(config, transport=transport),
+        store=BlobCoordinationStore(
+            config,
+            credential_provider=credential_provider,
+            transport=transport,
+        ),
         authentication_mode=authentication_mode,
         digest_key=digest_key,
     )
@@ -317,12 +403,16 @@ class BlobCoordinationStore(CasStore):
         self,
         config: BlobCoordinationConfig,
         *,
+        credential_provider: BlobCredentialProvider,
         transport: HttpTransport | None = None,
         request_id_factory: Callable[[], str] | None = None,
     ) -> None:
         self._config = config
+        self._credential_provider = credential_provider
         self._transport = transport or RequestsHttpTransport()
-        self._request_id_factory = request_id_factory or (lambda: uuid4().hex)
+        self._request_id_factory = request_id_factory or (
+            lambda: new_blob_request_id(self._config.store_id)
+        )
         self._counts = OperationCounts()
         self._counts_lock = Lock()
 
@@ -349,12 +439,13 @@ class BlobCoordinationStore(CasStore):
     def read(self) -> CasSnapshot:
         self._increment("attempted_reads")
         try:
+            credential = self._credential_provider.resolve()
             response = self._transport.request(
                 method="GET",
                 url=f"{self._config.state_url}?cache=0",
                 headers={
                     "accept": "application/json",
-                    "authorization": f"Bearer {self._config.token}",
+                    "authorization": f"Bearer {credential}",
                 },
                 data=None,
                 timeout=self._config.timeout_seconds,
@@ -400,8 +491,9 @@ class BlobCoordinationStore(CasStore):
                 raise BlobProviderError from None
             if not isinstance(request_id, str) or _REQUEST_ID_PATTERN.fullmatch(request_id) is None:
                 raise BlobProviderError
+            credential = self._credential_provider.resolve()
             headers = {
-                "authorization": f"Bearer {self._config.token}",
+                "authorization": f"Bearer {credential}",
                 "content-type": "application/json",
                 "x-add-random-suffix": "0",
                 "x-allow-overwrite": "0" if create else "1",
@@ -417,7 +509,7 @@ class BlobCoordinationStore(CasStore):
                 headers["x-if-match"] = blob_version.etag
             response = self._transport.request(
                 method="PUT",
-                url=f"{_UPLOAD_API_ORIGIN}/{self._config.object_key}",
+                url=blob_upload_url(self._config.object_key),
                 headers=headers,
                 data=encode_admission_state(state),
                 timeout=self._config.timeout_seconds,
@@ -442,6 +534,16 @@ class BlobCoordinationStore(CasStore):
             values = self._counts.__dict__.copy()
             values[field_name] += 1
             self._counts = OperationCounts(**values)
+
+
+def blob_upload_url(object_key: str) -> str:
+    """Return the pinned v12 upload endpoint without credentials in the query."""
+    return f"{_UPLOAD_API_ORIGIN}?pathname={quote(object_key, safe='')}"
+
+
+def new_blob_request_id(store_id: str) -> str:
+    """Return the current first-party store:milliseconds:hex request ID shape."""
+    return f"{store_id}:{int(time.time() * 1000)}:{uuid4().hex}"
 
 
 def _header(headers: Mapping[str, str], name: str) -> str:

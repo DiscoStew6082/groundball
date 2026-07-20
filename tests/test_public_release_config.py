@@ -72,6 +72,9 @@ def test_local_ci_runtime_configuration_is_strict_and_cannot_claim_deployment() 
     assert config.provider_deployment is False
     assert config.admission_adapter == "local_ci_ephemeral"
     assert config.network_policy == "none"
+    assert config.resource_references == ()
+    assert config.startup_credential_references == ()
+    assert config.request_credential_headers == ()
     assert config.secret_references == ()
 
 
@@ -84,11 +87,10 @@ def test_protected_preview_runtime_is_provider_scoped_secret_free_and_oidc_nativ
     assert config.admission_adapter == "vercel_blob"
     assert config.network_policy == "provider_coordination_only"
     assert config.release_bundle == "ground-ball-release-bundle"
-    assert config.secret_references == (
-        "BLOB_STORE_ID",
-        "GROUNDBALL_VISITOR_DIGEST_KEY",
-        "VERCEL_OIDC_TOKEN",
-    )
+    assert config.resource_references == ("BLOB_STORE_ID",)
+    assert config.startup_credential_references == ("VERCEL_OIDC_TOKEN",)
+    assert config.request_credential_headers == ("x-vercel-oidc-token",)
+    assert config.secret_references == ("GROUNDBALL_VISITOR_DIGEST_KEY",)
     encoded = PROTECTED_RUNTIME_PATH.read_text(encoding="utf-8")
     assert "=" not in encoded
     assert "Bearer " not in encoded
@@ -101,6 +103,8 @@ def test_protected_preview_runtime_is_provider_scoped_secret_free_and_oidc_nativ
         lambda value: value.update({"provider_deployment": True}),
         lambda value: value.update({"scope": "protected_preview"}),
         lambda value: value.update({"secret_references": ["SECRET=value"]}),
+        lambda value: value.update({"request_credential_headers": ["x-vercel-oidc-token"]}),
+        lambda value: value.update({"resource_references": ["BLOB_READ_WRITE_TOKEN"]}),
     ],
 )
 def test_runtime_configuration_fails_closed_on_unknown_or_masquerading_input(
