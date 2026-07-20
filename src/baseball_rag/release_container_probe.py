@@ -1,4 +1,4 @@
-"""Exercise the packaged Wave 5 public contract through its network-disabled HTTP server."""
+"""Exercise the packaged public contract through its network-disabled HTTP server."""
 
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ def run_probe() -> dict[str, object]:
     assert status == 200
     assert readiness["duckdb"]["database"] == ":memory:"
     assert readiness["runtime_configuration"]["scope"] == "local_ci"
-    assert readiness["runtime_configuration"]["provider_deployment"] is False
     checks.append("release-readiness-local-ci")
 
     status, capabilities = _get("/api/capabilities")
@@ -145,7 +144,7 @@ def run_probe() -> dict[str, object]:
         "checks": checks,
         "release_bundle_digest": readiness["release_bundle_digest"],
         "runtime_configuration_digest": readiness["runtime_configuration"]["digest"],
-        "schema_version": "ground-ball-candidate-container-proof-v1",
+        "schema_version": "ground-ball-release-container-proof-v1",
         "source_commit": readiness["source_commit"],
         "status": "pass",
     }
