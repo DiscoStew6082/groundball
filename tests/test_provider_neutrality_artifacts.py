@@ -43,10 +43,8 @@ def test_url_free_generic_deployment_manifest_is_rejected(tmp_path: Path) -> Non
     assert scan(tmp_path) == (Finding("deployment.yaml", 1, "deployment-manifest", "<redacted>"),)
 
 
-def test_deployment_named_document_without_service_image_port_shape_is_allowed(
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "deployment.yaml").write_text(
+def test_deployment_path_near_miss_document_is_allowed(tmp_path: Path) -> None:
+    (tmp_path / "deployment-guide.yaml").write_text(
         "title: Deployment guide\nsteps:\n  - build an image\n",
         encoding="utf-8",
     )

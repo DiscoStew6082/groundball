@@ -124,16 +124,18 @@ def _artifact_files(root: Path, artifacts: Sequence[str | Path]) -> list[Path]:
             raise ValueError("invalid artifact")
     return selected
 def _url_allowed(value: str) -> bool:
-    parsed = urlsplit(value.rstrip(".,);]"))
-    if parsed.username is not None or parsed.password is not None or not parsed.hostname:
-        return False
+    try: parsed = urlsplit(value.rstrip(".,);]"))
+    except ValueError: return False
+    if parsed.username is not None or parsed.password is not None or not parsed.hostname: return False
     host = parsed.hostname.lower()
-    if host in {"localhost", "0.0.0.0"} or host.endswith(".localhost"):
-        return True
+    if host == "0.0.0.0":
+        try: port = parsed.port
+        except ValueError: return False
+        return parsed.scheme.lower() == "http" and port == 80 and not parsed.path and not parsed.query and not parsed.fragment
+    if host == "localhost" or host.endswith(".localhost"): return True
     try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return host in _ALLOWED_PUBLIC_HOSTS
+        address = ipaddress.ip_address(host); return address.version == 4 and address.is_loopback
+    except ValueError: return host in _ALLOWED_PUBLIC_HOSTS
 @lru_cache(maxsize=128)
 def _glob_anchor(pattern: str) -> str: return max(re.split(r"[*?]", re.sub(r"\[[^]]*\]", "*", pattern)), key=len)
 def _line_findings(relative: str, number: int, line: str, exact: list[dict[str, str]], globs: list[dict[str, str]], *, incomplete: bool = False) -> list[Finding]:
@@ -204,7 +206,10 @@ class _MemberStream:
         return value
     def complete(self) -> None:
         if self.seen != self.expected: raise ValueError
+def _deployment_finding(name: str, label: str) -> list[Finding]:
+    return [Finding(label, 1, "deployment-manifest", "<redacted>")] if Path(name).name.lower() in {"deployment.yaml", "deployment.yml"} else []
 def _scan_plain_member(stream: IO[bytes], size: int, name: str, label: str, exact: list[dict[str, str]], globs: list[dict[str, str]]) -> list[Finding]:
+    if deployment := _deployment_finding(name, label): return deployment
     bounded = _MemberStream(stream, size)
     if Path(name).suffix.lower() in _ALLOWED_BINARY_SUFFIXES:
         while bounded.read(CHUNK_BYTES): pass
@@ -256,25 +261,18 @@ def _scan_archive(source: Any, name: str, relative: str, exact: list[dict[str, s
                     except (OSError, RuntimeError, ValueError, tarfile.TarError): found.append(_unscanned(label))
     except (OSError, RuntimeError, ValueError, tarfile.TarError, zipfile.BadZipFile): return [_unscanned(relative)]
     return found
-def _deployment_finding(path: Path, relative: str) -> list[Finding]:
-    if Path(relative).name.lower() not in {"deployment.yaml", "deployment.yml"}:
-        return []
-    try:
-        raw = path.read_bytes(); text = raw.decode("utf-8") if len(raw) <= MAX_POLICY_BYTES else ""
-    except (OSError, UnicodeError):
-        return []
-    required = (r"(?m)^services:\s*$", r"(?m)^\s+image:\s*\S+", r"(?m)^\s+ports:\s*(?:$|\[)"); return [Finding(relative, 1, "deployment-manifest", "<redacted>")] if all(re.search(item, text) for item in required) else []
 def _scan_path(path: Path, relative: str, exact: list[dict[str, str]], globs: list[dict[str, str]]) -> list[Finding]:
     try:
         mode = path.lstat().st_mode
         if not stat.S_ISREG(mode):
             return [Finding(relative, 1, "unscanned-content", "<redacted>")]
+        if found := _deployment_finding(relative, relative): return found
         if path.suffix.lower() in _ALLOWED_BINARY_SUFFIXES:
             return []
         if _is_archive(relative):
             return _scan_archive(path, relative, relative, exact, globs)
         with path.open("rb") as stream:
-            return _scan_stream(stream, relative, exact, globs) + _deployment_finding(path, relative)
+            return _scan_stream(stream, relative, exact, globs)
     except OSError:
         return [Finding(relative, 1, "unscanned-content", "<redacted>")]
 def scan(root: str | Path, *, artifacts: Sequence[str | Path] = (), deny_policy: str | Path | None = None) -> tuple[Finding, ...]:

@@ -85,7 +85,7 @@ def test_unknown_root_hidden_configuration_directory_is_reported(tmp_path):
         ("http://" + "user:pass@localhost:8000/ok\n", [1]),
     ],
 )
-def test_public_loopback_and_local_bind_urls_are_allowed_but_unknown_url_is_not(
+def test_bounded_local_and_public_urls_are_allowed_but_other_urls_are_not(
     tmp_path, text, expected_lines
 ):
     (tmp_path / "links.txt").write_text(text, encoding="utf-8")
