@@ -5,14 +5,11 @@ on:
   pull_request:
     paths: &artifact-proof-paths
       - '.github/workflows/release-artifact-proof.yml'
-      - 'Dockerfile'
       - 'release/bundle/release-manifest.json'
       - 'release/config/**'
-      - 'release/proof/**'
       - 'scripts/check_provider_neutrality.py'
       - 'src/baseball_rag/release_artifact.py'
       - 'src/baseball_rag/release_bundle.py'
-      - 'src/baseball_rag/release_container_probe.py'
       - 'tests/test_ci_workflows.py'
   push:
     branches:
@@ -121,46 +118,6 @@ jobs:
           python -m zipfile -e dist/*.whl release-artifacts/package-contents/wheel
           tar -xzf dist/*.tar.gz -C release-artifacts/package-contents/sdist
 
-      - name: Build generic release image
-        shell: bash
-        run: |
-          set -euo pipefail
-          image_tag="ground-ball-release:${ARTIFACT_COMMIT}"
-          docker build --build-arg GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" -t "$image_tag" .
-          printf 'IMAGE_TAG=%s\n' "$image_tag" >> "$GITHUB_ENV"
-
-      - name: Prove network-disabled release container contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          container_name="ground-ball-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          docker run --detach --network none \
-            --env GROUNDBALL_RUNTIME_CONFIG=/app/release-config/local-ci-runtime.json \
-            --env PORT=80 \
-            --name "$container_name" "$IMAGE_TAG"
-          cleanup_container() {
-            docker logs "$container_name" > release-artifacts/evidence/container.log 2>&1 || true
-            docker rm --force "$container_name" >/dev/null 2>&1 || true
-          }
-          trap cleanup_container EXIT
-          ready=0
-          for _attempt in $(seq 1 30); do
-            if docker exec "$container_name" /app/.venv/bin/python -c \
-              'import urllib.request; urllib.request.urlopen("http://127.0.0.1/health", timeout=1).read()'
-            then
-              ready=1
-              break
-            fi
-            sleep 1
-          done
-          test "$ready" = 1
-          docker exec "$container_name" /app/.venv/bin/python -m baseball_rag.release_container_probe \
-            > release-artifacts/evidence/release-container-proof.json
-          cmp release/proof/release-container-proof.json \
-            release-artifacts/evidence/release-container-proof.json
-          docker exec "$container_name" /bin/sh -c \
-            'test ! -e /app/src/baseball_rag/db/download.py && test ! -e /app/src/baseball_rag/generation/llm.py && test ! -e /app/src/baseball_rag/query/catalog && test ! -e /app/src/baseball_rag/query/coverage && test -z "$(find /app -type f \( -name "*.duckdb" -o -name "*.zip" -o -name "coverage-report.md" \) -print -quit)"'
-
       - name: Build canonical Release Artifact identity
         shell: bash
         run: |
@@ -177,7 +134,6 @@ jobs:
               validate_release_artifact,
           )
           coverage = Path("release/bundle/src/baseball_rag/query/coverage/coverage-report.json")
-          container_proof = Path("release/proof/release-container-proof.json")
           artifact = build_release_artifact(
               source_commit=os.environ["SOURCE_COMMIT"],
               artifact_commit=os.environ["ARTIFACT_COMMIT"],
@@ -187,7 +143,6 @@ jobs:
               public_admission_policy_digest=os.environ["POLICY_DIGEST"],
               query_coverage_report_digest=hashlib.sha256(coverage.read_bytes()).hexdigest(),
               public_interface_revision="ground-ball-public-interface-v1",
-              release_container_proof_digest=hashlib.sha256(container_proof.read_bytes()).hexdigest(),
           )
           encoded = canonical_release_artifact_bytes(artifact)
           validate_release_artifact(encoded, expected_source_commit=os.environ["SOURCE_COMMIT"])
@@ -201,8 +156,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release-artifacts/docker-context
-          rsync -a --exclude-from=.dockerignore --exclude='/release-artifacts/' ./ release-artifacts/docker-context/
           uv run python scripts/check_provider_neutrality.py --root . \
             --artifact dist \
             --artifact release/bundle \

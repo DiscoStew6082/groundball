@@ -49,7 +49,7 @@ npm --prefix web run build
 npm --prefix web run package:check
 ```
 
-Ordinary CI runs dependency, lint, type, web, test, package-parity, and neutrality gates. Release Proof owns exhaustive coverage regeneration. Release Artifact Proof owns exact source-to-bundle topology, deterministic packaged behavior, generic network-disabled container proof, and artifact neutrality.
+Ordinary CI runs dependency, lint, type, web, test, package-parity, and neutrality gates. Release Proof owns exhaustive coverage regeneration. Release Artifact Proof owns exact source-to-bundle topology, deterministic packaged behavior, source and distribution builds, and artifact neutrality.
 
 ## Release assembly
 

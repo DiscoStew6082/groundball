@@ -20,7 +20,6 @@ BUNDLE = "3" * 64
 POLICY = "4" * 64
 COVERAGE = "5" * 64
 INTERFACE = "ground-ball-public-interface-v1"
-CONTAINER_PROOF = "6" * 64
 CHANGED_PATHS = (
     "release/bundle/data/manifest.json",
     "release/bundle/release-manifest.json",
@@ -37,7 +36,6 @@ def _artifact() -> dict[str, object]:
         public_admission_policy_digest=POLICY,
         query_coverage_report_digest=COVERAGE,
         public_interface_revision=INTERFACE,
-        release_container_proof_digest=CONTAINER_PROOF,
     )
 
 
@@ -46,13 +44,12 @@ def test_builds_the_exact_canonical_public_artifact() -> None:
 
     assert artifact == {
         "artifact_commit": ARTIFACT_COMMIT,
-        "artifact_id": "gbra_60f598ce48c4da53b2e4057249f4652ff5d3d4549d2f0b8bfc3816e678688b5d",
+        "artifact_id": "gbra_593b1e6a6dbd866c458abb214f5d3fffdc7aeb3846623a08f9970b8a1ba8f871",
         "public_admission_policy_digest": POLICY,
         "public_interface_revision": INTERFACE,
         "query_coverage_report_digest": COVERAGE,
         "release_bundle_digest": BUNDLE,
-        "release_container_proof_digest": CONTAINER_PROOF,
-        "schema_version": "ground-ball-release-artifact-v1",
+        "schema_version": "ground-ball-release-artifact-v2",
         "source_commit": SOURCE,
         "topology": {
             "artifact_parent_commit": SOURCE,
@@ -127,7 +124,6 @@ def test_topology_rejects_noncanonical_changed_paths(paths: object) -> None:
         ("release_bundle_digest", "sha256:" + "3" * 64),
         ("public_admission_policy_digest", "4" * 63),
         ("query_coverage_report_digest", "G" * 64),
-        ("release_container_proof_digest", True),
         ("public_interface_revision", ""),
         ("public_interface_revision", "/tmp/interface"),
         ("public_interface_revision", "to" + "ken=" + "se" + "cret"),
@@ -143,7 +139,6 @@ def test_builder_rejects_malformed_public_identity(argument: str, value: object)
         "public_admission_policy_digest": POLICY,
         "query_coverage_report_digest": COVERAGE,
         "public_interface_revision": INTERFACE,
-        "release_container_proof_digest": CONTAINER_PROOF,
     }
     arguments[argument] = value
 
@@ -157,7 +152,6 @@ def test_builder_rejects_malformed_public_identity(argument: str, value: object)
         "scope",
         "provider",
         "deployment_id",
-        "image_digest",
         "gate_report",
         "attestation",
         "credentials",
@@ -220,7 +214,6 @@ def test_validator_rejects_stale_artifact_id() -> None:
         ("expected_public_admission_policy_digest", "7" * 64),
         ("expected_query_coverage_report_digest", "7" * 64),
         ("expected_public_interface_revision", "ground-ball-public-interface-v2"),
-        ("expected_release_container_proof_digest", "7" * 64),
     ],
 )
 def test_validator_rejects_foreign_expected_bindings(expectation: str, foreign: str) -> None:
@@ -243,7 +236,7 @@ def test_release_artifact_digest_hashes_the_validated_complete_record() -> None:
     artifact = _artifact()
 
     assert release_artifact_digest(artifact) == (
-        "3991cc89fd8d61224df9ce50d8650ea039007ec85a67a1caeeac155dd13ce83a"
+        "0a90c05e0638edb278d6a0b899deed8f1bdf191388a34e33196125a45a4fb078"
     )
     assert release_artifact_digest(canonical_release_artifact_bytes(artifact)) == (
         release_artifact_digest(artifact)

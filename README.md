@@ -74,7 +74,7 @@ uv run python -m baseball_rag.query.eval_matrix
 uv run python scripts/check_provider_neutrality.py --root .
 ```
 
-The Release Bundle is assembled from an exact source commit. A valid Release Artifact is a direct child commit that changes only `release/bundle/**`. Public CI verifies that topology, bundle identity, deterministic query parity, package synchronization, generic network-disabled container behavior, and neutrality without deployment credentials or external runtime actions.
+The Release Bundle is assembled from an exact source commit. A valid Release Artifact is a direct child commit that changes only `release/bundle/**`. Public CI verifies that topology, bundle identity, deterministic query parity, source and distribution builds, package synchronization, and neutrality without deployment credentials or external runtime actions.
 
 ## Data and provenance
 
