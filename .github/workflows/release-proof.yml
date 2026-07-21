@@ -7,7 +7,7 @@ on:
       - main
     paths: &release-proof-paths
       - '.github/workflows/release-proof.yml'
-      - 'Dockerfile.vercel'
+      - 'Dockerfile'
       - 'data/**'
       - 'pyproject.toml'
       - 'release/bundle/**'

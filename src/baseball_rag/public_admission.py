@@ -13,11 +13,11 @@ from threading import Lock
 from typing import Iterator, Protocol
 
 from baseball_rag.public_release_config import (
-    DEPLOYMENT_CONCURRENCY_LIMIT,
     EXECUTION_DEADLINE_SECONDS,
     LEASE_SECONDS,
     MAXIMUM_CAS_ATTEMPTS,
     MONTHLY_START_LIMIT,
+    SYSTEM_CONCURRENCY_LIMIT,
     VISITOR_STARTS_PER_HOUR,
     VISITOR_STARTS_PER_MINUTE,
 )
@@ -82,7 +82,7 @@ class CoordinationStateError(ValueError):
 
 @dataclass(frozen=True)
 class CasVersion:
-    """Opaque store-specific version retained only for a matching CAS write."""
+    """Opaque coordination-specific version retained only for a matching CAS write."""
 
     _token: object = field(repr=False)
 
@@ -176,8 +176,8 @@ class CasCoordinator:
         except CoordinationStateError:
             return AdmissionOutcome("allowance_paused", "monthly_budget_invalid")
         except Exception:  # noqa: BLE001 - the policy must fail closed on Adapter failure
-            return AdmissionOutcome("provider_unavailable", "coordination_store_unavailable")
-        return AdmissionOutcome("provider_unavailable", "coordination_contention")
+            return AdmissionOutcome("service_unavailable", "coordination_unavailable")
+        return AdmissionOutcome("service_unavailable", "coordination_contention")
 
     def _snapshot_time(self, snapshot: CasSnapshot) -> datetime:
         return snapshot.observed_at if snapshot.observed_at is not None else self._clock()
@@ -190,7 +190,7 @@ class CasCoordinator:
         except CoordinationStateError:
             return AdmissionOutcome("allowance_paused", "monthly_budget_invalid")
         except Exception:  # noqa: BLE001 - readiness must not leak Adapter details
-            return AdmissionOutcome("provider_unavailable", "coordination_store_unavailable")
+            return AdmissionOutcome("service_unavailable", "coordination_unavailable")
         invalid = _budget_invalid_outcome(snapshot.state.monthly_budget, now)
         if invalid is not None:
             return invalid
@@ -284,12 +284,12 @@ def decide_admission(
                 retry_at=visitor_lease.expires_at,
             ),
         )
-    if len(live_running) >= DEPLOYMENT_CONCURRENCY_LIMIT:
+    if len(live_running) >= SYSTEM_CONCURRENCY_LIMIT:
         return AdmissionTransition(
             state=state,
             outcome=_retry_outcome(
                 "busy",
-                "deployment_capacity_occupied",
+                "system_capacity_occupied",
                 now=attempt.now,
                 retry_at=min(lease.expires_at for lease in live_running),
             ),

@@ -3,6 +3,10 @@ __pycache__/
 .git/
 .venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+release-artifacts/
 htmlcov/
 .coverage
 .github/
@@ -11,6 +15,7 @@ tests/
 .env
 web/node_modules/
 web/dist/
+src/baseball_rag/web_dist/
 data/*
 !data/manifest.json
 !data/secondary_sources

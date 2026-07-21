@@ -4,9 +4,11 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from inspect import signature
+from pathlib import Path
 
 import pytest
 
+import baseball_rag.query.runtime as query_runtime
 from baseball_rag.query import (
     All,
     Compare,
@@ -23,6 +25,50 @@ from baseball_rag.query import (
     prepare,
     published_sources,
 )
+from baseball_rag.query.runtime import PublishedDataUnavailableError
+
+
+@pytest.fixture
+def no_installed_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    local_data = Path(__file__).resolve().parents[1] / "release" / "bundle" / "data"
+    monkeypatch.delenv("GROUNDBALL_RELEASE_BUNDLE", raising=False)
+    monkeypatch.setenv("GROUNDBALL_DATA_DIR", str(local_data))
+    monkeypatch.setattr(query_runtime, "_installed_runtime", None)
+
+
+def test_install_published_runtime_becomes_the_process_runtime(
+    no_installed_runtime: None,
+) -> None:
+    runtime = query_runtime.published_data_runtime()
+
+    query_runtime.install_published_data_runtime(runtime)
+
+    assert query_runtime.published_data_runtime() is runtime
+
+
+def test_reinstalling_the_same_published_runtime_is_idempotent(
+    no_installed_runtime: None,
+) -> None:
+    runtime = query_runtime.published_data_runtime()
+
+    query_runtime.install_published_data_runtime(runtime)
+    query_runtime.install_published_data_runtime(runtime)
+
+    assert query_runtime.published_data_runtime() is runtime
+
+
+def test_installing_a_different_published_runtime_fails_closed(
+    no_installed_runtime: None,
+) -> None:
+    first = query_runtime.published_data_runtime()
+    different = replace(first, data_release=f"{first.data_release}-different")
+    query_runtime.install_published_data_runtime(first)
+
+    with pytest.raises(PublishedDataUnavailableError) as exc_info:
+        query_runtime.install_published_data_runtime(different)
+
+    assert str(exc_info.value) == "A different PublishedDataRuntime is already installed."
+    assert query_runtime.published_data_runtime() is first
 
 
 def test_shared_runtime_executes_concurrent_query_plans_without_corruption() -> None:

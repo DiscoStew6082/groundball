@@ -1,0 +1,218 @@
+name: Release Artifact Proof
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: &artifact-proof-paths
+      - '.github/workflows/release-artifact-proof.yml'
+      - 'Dockerfile'
+      - 'release/bundle/release-manifest.json'
+      - 'release/config/**'
+      - 'release/proof/**'
+      - 'scripts/check_provider_neutrality.py'
+      - 'src/baseball_rag/release_artifact.py'
+      - 'src/baseball_rag/release_bundle.py'
+      - 'src/baseball_rag/release_container_probe.py'
+      - 'tests/test_ci_workflows.py'
+  push:
+    branches:
+      - main
+      - implementation/**
+    paths: *artifact-proof-paths
+
+concurrency:
+  group: release-artifact-proof-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: npm ci
+        working-directory: web
+
+      - name: Establish exact source and artifact topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts/evidence
+          artifact_commit="$(git rev-parse HEAD)"
+          artifact_parent_commit="$(git rev-parse HEAD^)"
+          source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
+          test "$artifact_parent_commit" = "$source_commit"
+          git diff-tree --no-commit-id --name-only -r "$artifact_commit" > release-artifacts/artifact-changed-paths.txt
+          test -s release-artifacts/artifact-changed-paths.txt
+          test -z "$(grep -Ev '^release/bundle/' release-artifacts/artifact-changed-paths.txt || true)"
+          grep -Fx 'release/bundle/release-manifest.json' release-artifacts/artifact-changed-paths.txt
+          if test "${{ github.event_name }}" = "pull_request"; then
+            test "$artifact_commit" = "${{ github.event.pull_request.head.sha }}"
+            git merge-base --is-ancestor "${{ github.event.pull_request.base.sha }}" "$source_commit"
+          fi
+          printf 'SOURCE_COMMIT=%s\nARTIFACT_COMMIT=%s\nARTIFACT_PARENT_COMMIT=%s\n' \
+            "$source_commit" "$artifact_commit" "$artifact_parent_commit" >> "$GITHUB_ENV"
+
+      - name: Verify source contracts and deterministic parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_files=(Batting.csv Fielding.csv People.csv Pitching.csv)
+          cleanup_source_files() {
+            for name in "${source_files[@]}"; do rm -f -- "data/$name"; done
+          }
+          trap cleanup_source_files EXIT
+          for name in "${source_files[@]}"; do cp -- "release/bundle/data/$name" "data/$name"; done
+          uv run python -m baseball_rag.query.generate_catalog_compatibility --check
+          uv run python -m baseball_rag.query.generate_raw_inventory --check
+          uv run python -m baseball_rag.query.generate_coverage_report --check
+          uv run python -m baseball_rag.query.eval_matrix --json-report release-artifacts/evidence/query-eval.json
+          uv run python -m pytest \
+            tests/test_public_admission.py \
+            tests/test_public_app.py \
+            tests/test_public_execution.py \
+            tests/test_public_release_config.py \
+            tests/test_query_api_v1.py \
+            tests/test_release_artifact.py \
+            tests/test_release_bundle.py \
+            tests/test_release_runtime.py \
+            -q
+
+      - name: Verify Release Bundle and Public Admission Policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_digest="$(uv run python -m baseball_rag.release_bundle check release/bundle --expected-source-commit "$SOURCE_COMMIT")"
+          policy_digest="$(uv run python -m baseball_rag.public_release_config --check)"
+          printf 'BUNDLE_DIGEST=%s\nPOLICY_DIGEST=%s\n' "$bundle_digest" "$policy_digest" >> "$GITHUB_ENV"
+
+      - name: Verify web build and packaged fallback
+        run: |
+          npm test
+          npm run build
+          npm run package:check
+        working-directory: web
+
+      - name: Build Python package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv build
+          mkdir -p release-artifacts/package-contents/wheel release-artifacts/package-contents/sdist
+          python -m zipfile -e dist/*.whl release-artifacts/package-contents/wheel
+          tar -xzf dist/*.tar.gz -C release-artifacts/package-contents/sdist
+
+      - name: Build generic release image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="ground-ball-release:${ARTIFACT_COMMIT}"
+          docker build --build-arg GROUNDBALL_SOURCE_COMMIT="$SOURCE_COMMIT" -t "$image_tag" .
+          printf 'IMAGE_TAG=%s\n' "$image_tag" >> "$GITHUB_ENV"
+
+      - name: Prove network-disabled release container contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="ground-ball-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run --detach --network none \
+            --env GROUNDBALL_RUNTIME_CONFIG=/app/release-config/local-ci-runtime.json \
+            --env PORT=80 \
+            --name "$container_name" "$IMAGE_TAG"
+          cleanup_container() {
+            docker logs "$container_name" > release-artifacts/evidence/container.log 2>&1 || true
+            docker rm --force "$container_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup_container EXIT
+          ready=0
+          for _attempt in $(seq 1 30); do
+            if docker exec "$container_name" /app/.venv/bin/python -c \
+              'import urllib.request; urllib.request.urlopen("http://127.0.0.1/health", timeout=1).read()'
+            then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = 1
+          docker exec "$container_name" /app/.venv/bin/python -m baseball_rag.release_container_probe \
+            > release-artifacts/evidence/release-container-proof.json
+          cmp release/proof/release-container-proof.json \
+            release-artifacts/evidence/release-container-proof.json
+          docker exec "$container_name" /bin/sh -c \
+            'test ! -e /app/src/baseball_rag/db/download.py && test ! -e /app/src/baseball_rag/generation/llm.py && test ! -e /app/src/baseball_rag/query/catalog && test ! -e /app/src/baseball_rag/query/coverage && test -z "$(find /app -type f \( -name "*.duckdb" -o -name "*.zip" -o -name "coverage-report.md" \) -print -quit)"'
+
+      - name: Build canonical Release Artifact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from baseball_rag.release_artifact import (
+              build_release_artifact,
+              canonical_release_artifact_bytes,
+              release_artifact_digest,
+              validate_release_artifact,
+          )
+          coverage = Path("release/bundle/src/baseball_rag/query/coverage/coverage-report.json")
+          container_proof = Path("release/proof/release-container-proof.json")
+          artifact = build_release_artifact(
+              source_commit=os.environ["SOURCE_COMMIT"],
+              artifact_commit=os.environ["ARTIFACT_COMMIT"],
+              artifact_parent_commit=os.environ["ARTIFACT_PARENT_COMMIT"],
+              artifact_changed_paths=Path("release-artifacts/artifact-changed-paths.txt").read_text().splitlines(),
+              release_bundle_digest=os.environ["BUNDLE_DIGEST"],
+              public_admission_policy_digest=os.environ["POLICY_DIGEST"],
+              query_coverage_report_digest=hashlib.sha256(coverage.read_bytes()).hexdigest(),
+              public_interface_revision="ground-ball-public-interface-v1",
+              release_container_proof_digest=hashlib.sha256(container_proof.read_bytes()).hexdigest(),
+          )
+          encoded = canonical_release_artifact_bytes(artifact)
+          validate_release_artifact(encoded, expected_source_commit=os.environ["SOURCE_COMMIT"])
+          Path("release-artifacts/evidence/release-artifact.json").write_bytes(encoded)
+          Path("release-artifacts/evidence/release-artifact-digest.txt").write_text(
+              release_artifact_digest(artifact) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Scan source and produced artifacts for neutrality
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts/docker-context
+          rsync -a --exclude-from=.dockerignore --exclude='/release-artifacts/' ./ release-artifacts/docker-context/
+          uv run python scripts/check_provider_neutrality.py --root . \
+            --artifact dist \
+            --artifact release/bundle \
+            --artifact release-artifacts
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release-artifact-proof-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            dist/
+            release-artifacts/

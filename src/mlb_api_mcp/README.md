@@ -2,7 +2,6 @@
 
 [![CI Status](https://github.com/guillochon/mlb-api-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/guillochon/mlb-api-mcp/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/guillochon/mlb-api-mcp)
-[![smithery badge](https://smithery.ai/badge/@guillochon/mlb-api-mcp)](https://smithery.ai/server/@guillochon/mlb-api-mcp)
 ![Coverage](https://img.shields.io/badge/coverage-86.27%25-brightgreen)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that provides comprehensive access to MLB statistics and baseball data through a FastMCP-based interface.
@@ -73,14 +72,6 @@ The following HTTP endpoints are available:
 - Full response schema descriptions for better AI integration
 
 ## Installation
-
-### Installing via Smithery
-
-To install MLB API Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@guillochon/mlb-api-mcp):
-
-```bash
-npx -y @smithery/cli install @guillochon/mlb-api-mcp --client claude
-```
 
 ### Option 1: Local Installation
 
@@ -202,8 +193,8 @@ Once the server is running, visit `http://localhost:8002/docs` for comprehensive
 
 ## Dependencies
 
-- **mcp[cli]**: MCP-compliant server framework with CLI support
-- **FastAPI**: Web framework for HTTP transport
+- **FastMCP**: MCP-compliant server framework
+- **Starlette**: Web framework used directly for HTTP routes and middleware
 - **python-mlb-statsapi**: Official MLB Statistics API wrapper
 - **uvicorn[standard]**: ASGI server for running the app
 - **websockets**: WebSocket support (latest version to avoid deprecation warnings)
@@ -222,22 +213,18 @@ This project uses:
 
 ### Setup Pre-commit Hooks
 
-1. Install pre-commit:
+Sync the test extra, optional development tools, and the default development dependency group:
 
 ```bash
-pip install pre-commit
+uv sync --locked --extra test --extra dev
+uv run pre-commit install
 ```
 
-2. Initialize pre-commit hooks:
+Now, the linting checks will run automatically whenever you commit code. From this nested
+project directory in the Ground Ball monorepo, the manual command is scoped to this nested package:
 
 ```bash
-pre-commit install
-```
-
-Now, the linting checks will run automatically whenever you commit code. You can also run them manually:
-
-```bash
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 ## Contributing

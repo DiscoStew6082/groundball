@@ -1,1 +1,1 @@
-{"admission_adapter":"local_ci_ephemeral","network_policy":"none","provider_deployment":false,"public_mode":true,"release_bundle":"ground-ball-release-bundle","schema_version":"ground-ball-runtime-configuration-v1","scope":"local_ci","secret_references":[]}
+{"network_policy":"none","public_mode":true,"release_bundle":"ground-ball-release-bundle","schema_version":"ground-ball-runtime-configuration-v1","scope":"local_ci"}

@@ -61,6 +61,8 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run ruff check src/ tests/
+      - name: Check public tree neutrality
+        run: uv run python scripts/check_provider_neutrality.py --root .
 
   typecheck:
     runs-on: ubuntu-latest
@@ -91,6 +93,8 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
+      - run: npm run package:check
+        working-directory: web
 
   test:
     runs-on: ubuntu-latest
@@ -117,7 +121,7 @@ jobs:
       - name: Fast Python test suite
         run: >-
           uv run python -m pytest tests/
-          -m "not llm and not release_proof"
+          -m "not release_proof"
           --cov=baseball_rag
           --cov-report=xml
           --cov-report=term-missing

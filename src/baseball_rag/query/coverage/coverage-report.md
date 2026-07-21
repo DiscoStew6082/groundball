@@ -5,7 +5,7 @@
 - Catalog: `published-query-catalog-v3`
 - Data release: `neuml-baseballdata:lahman-2025:2026-01-11`
 - Report schema: `query-coverage-report-v1`
-- Proof ID: `1c54d833e4949e64bb1575ed695748125295d3af358c3f3771cb16170eb90f7a`
+- Proof ID: `12f9423ae9247dbb89bb7dc571fcc738f5863c447390baaf34a5716bc9502132`
 - Covered obligations: 5253 / 5253
 - Uncovered obligations: 0
 

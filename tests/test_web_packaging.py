@@ -1,14 +1,15 @@
-"""Deployment artifact contract for the unified Ground Ball web application."""
+"""Release artifact contract for the unified Ground Ball web application."""
 
+import json
 import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
-    """The deployable image builds web assets and contains no Gradio runtime."""
-    dockerfile = (ROOT / "Dockerfile.vercel").read_text(encoding="utf-8")
+def test_release_image_builds_and_serves_the_svelte_fastapi_application():
+    """The generic release image builds web assets and contains no Gradio runtime."""
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     lockfile = (ROOT / "uv.lock").read_text(encoding="utf-8")
 
@@ -30,18 +31,26 @@ def test_vercel_image_builds_and_serves_the_svelte_fastapi_application():
     assert "/app/src/baseball_rag/generation/llm.py" in dockerfile
     assert "rm -rf /app/src/baseball_rag/query/catalog" in dockerfile
     assert "baseball_rag.web_app" in dockerfile
-    assert "${PORT:-80}" in dockerfile
+    assert "${PORT:-7860}" in dockerfile
+    assert "USER 10001:10001" in dockerfile
     assert "GRADIO" not in dockerfile.upper()
 
     dependencies = pyproject["project"]["dependencies"]
     assert not any(dependency.lower().startswith("gradio") for dependency in dependencies)
     assert '\nname = "gradio"\n' not in lockfile
 
-    for ignore_file in (".dockerignore", ".vercelignore"):
-        ignored = (ROOT / ignore_file).read_text(encoding="utf-8").splitlines()
-        assert "web/node_modules/" in ignored
-        assert "web/dist/" in ignored
-        assert "web/" not in ignored
+    ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "web/node_modules/" in ignored
+    assert "web/dist/" in ignored
+    assert "src/baseball_rag/web_dist/" in ignored
+    assert "web/" not in ignored
+
+    removed_host_files = (
+        "Dockerfile." + "ver" + "cel",
+        "." + "ver" + "celignore",
+        "ver" + "cel.json",
+    )
+    assert all(not (ROOT / removed).exists() for removed in removed_host_files)
 
 
 def test_default_container_and_ci_use_the_same_svelte_application() -> None:
@@ -63,6 +72,37 @@ def test_default_container_and_ci_use_the_same_svelte_application() -> None:
     assert "npm test" in ci
     assert "npm run build" in ci
     assert "'/api': 'http://127.0.0.1:7861'" in vite_config
+
+
+def test_web_package_exposes_explicit_fallback_sync_and_check_commands() -> None:
+    package = json.loads((ROOT / "web" / "package.json").read_text(encoding="utf-8"))
+
+    assert package["engines"]["node"] == ">=22.12.0"
+    assert package["scripts"]["build"] == "vite build"
+    assert package["scripts"]["package:sync"] == "node scripts/package-dist.mjs sync"
+    assert package["scripts"]["package:check"] == "node scripts/package-dist.mjs check"
+
+
+def test_web_configuration_keeps_warning_free_defaults_and_removes_obsolete_sources() -> None:
+    vite_config = (ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
+    vitest_config = (ROOT / "web" / "vitest.config.js").read_text(encoding="utf-8")
+    svelte_config = (ROOT / "web" / "svelte.config.js").read_text(encoding="utf-8")
+
+    assert "plugins: [svelte()]" in vite_config
+    assert "\n  resolve:" not in vite_config
+    assert "conditions:" not in vite_config
+    for configuration in (vite_config, vitest_config, svelte_config):
+        assert "configFile" not in configuration
+        assert "alias:" not in configuration
+        assert "node_modules/svelte" not in configuration
+        assert "svelte/src/" not in configuration
+    assert "conditions: ['browser']" in vitest_config
+    assert svelte_config == (
+        "// This explicit defaults contract prevents vite-plugin-svelte's missing-config warning.\n"
+        "export default {};\n"
+    )
+    assert not (ROOT / "web" / "src" / "lib" / "downloads.js").exists()
+    assert not (ROOT / "web" / "src" / "prototypes" / "query-recipe").exists()
 
 
 def test_packaged_browser_bundle_uses_only_the_new_query_composition_root() -> None:

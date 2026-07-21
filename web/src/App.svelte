@@ -252,6 +252,15 @@
     }
   }
 
+  function mobileHeading(key) {
+    return {
+      'player.name': 'Name',
+      season: 'Year',
+      'batting.HR': 'HR',
+      'batting.SB': 'SB',
+    }[key] ?? key;
+  }
+
   function outcomeTitle(run) {
     if (!run) return '';
     const kind = run.kind ?? run.error;
@@ -265,7 +274,7 @@
     if (kind === 'timed_out') return 'Query timed out';
     if (kind === 'export_too_large') return 'Complete export refused';
     if (kind === 'allowance_paused') return 'Public allowance paused';
-    if (kind === 'provider_unavailable' || kind === 'unavailable') return 'Query unavailable';
+    if (kind === 'service_unavailable' || kind === 'unavailable') return 'Query unavailable';
     if (kind === 'malformed') return 'Malformed response';
     if (kind === 'failed') return 'Query failed';
     return 'Query result';
@@ -390,20 +399,20 @@
               {#if lastCompletedRun.pagination}
                 <p class="result-count">returned {lastCompletedRun.returned_row_count} of {lastCompletedRun.total_matched_count} matched</p>
                 <div class="pagination-controls" aria-label="Result pagination">
-                  <label>Rows per page
+                  <label><span class="desktop-pagination-label">Rows per page</span><span class="mobile-pagination-label">Rows</span>
                     <select aria-label="Rows per page" value={lastCompletedRun.pagination.size} disabled={pending} on:change={changePageSize}>
                       <option value="25">25</option><option value="50">50</option><option value="100">100</option>
                     </select>
                   </label>
                   <div>
-                    <button type="button" aria-label="Previous page" disabled={pending || lastCompletedRun.pagination.offset === 0} on:click={() => runPage(lastCompletedRun.pagination.size, Math.max(0, lastCompletedRun.pagination.offset - lastCompletedRun.pagination.size))}>Previous</button>
+                    <button type="button" aria-label="Previous page" disabled={pending || lastCompletedRun.pagination.offset === 0} on:click={() => runPage(lastCompletedRun.pagination.size, Math.max(0, lastCompletedRun.pagination.offset - lastCompletedRun.pagination.size))}><span class="desktop-control-label">Previous</span><span class="mobile-control-label">Prev</span></button>
                     <button type="button" aria-label="Next page" disabled={pending || !lastCompletedRun.pagination.has_more} on:click={() => runPage(lastCompletedRun.pagination.size, lastCompletedRun.pagination.offset + lastCompletedRun.pagination.size)}>Next</button>
                   </div>
                 </div>
               {/if}
               {#if lastCompletedRun.rows?.length}
                 <div class="result-scroller" data-testid="results">
-                  <table><thead><tr>{#each Object.keys(lastCompletedRun.rows[0]) as key}<th>{key}</th>{/each}</tr></thead>
+                  <table class:four-column-result={Object.keys(lastCompletedRun.rows[0]).length === 4}><thead><tr>{#each Object.keys(lastCompletedRun.rows[0]) as key}<th><span class="desktop-heading">{key}</span><span class="mobile-heading">{mobileHeading(key)}</span></th>{/each}</tr></thead>
                     <tbody>{#each lastCompletedRun.rows as row}<tr>{#each Object.values(row) as value}<td>{value ?? '—'}</td>{/each}</tr>{/each}</tbody>
                   </table>
                 </div>

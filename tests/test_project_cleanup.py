@@ -49,9 +49,9 @@ def test_old_primary_query_modules_are_deleted() -> None:
 def test_only_clean_query_and_retrosheet_http_routes_remain() -> None:
     server = (REPO_ROOT / "src/baseball_rag/api/server.py").read_text(encoding="utf-8")
 
-    assert '@app.post("/api/query-runs")' in server
-    assert '@app.get("/api/query-catalog")' in server
-    assert '@app.get("/api/query-coverage")' in server
-    assert '@app.post("/api/retrosheet/queries")' in server
-    assert '@app.post("/query")' not in server
-    assert '@app.post("/api/query")' not in server
+    assert '@router.post("/api/query-runs")' in server
+    assert '@router.get("/api/query-catalog")' in server
+    assert '@router.get("/api/query-coverage")' in server
+    assert '@router.post("/api/retrosheet/queries")' in server
+    assert '@router.post("/query")' not in server
+    assert '@router.post("/api/query")' not in server
