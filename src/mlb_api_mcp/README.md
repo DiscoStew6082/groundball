@@ -73,7 +73,7 @@ The following HTTP endpoints are available:
 
 ## Installation
 
-### Option 1: Local Installation
+### Local Installation
 
 1. Install uv if you haven't already:
 
@@ -100,59 +100,6 @@ source .venv/bin/activate  # On Unix/macOS
 
 ```bash
 uv pip install -e .
-```
-
-### Option 2: Docker Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/guillochon/mlb-api-mcp.git
-cd mlb-api-mcp
-```
-
-2. Build the Docker image:
-```bash
-docker build -t mlb-api-mcp .
-```
-
-3. Run the container (default timezone is UTC, uses Python 3.12):
-```bash
-docker run -p 8002:8002 mlb-api-mcp
-```
-
-#### Setting the Timezone
-
-To run the container in your local timezone, pass the `TZ` environment variable (e.g., for New York):
-
-```bash
-docker run -e TZ=America/New_York -p 8002:8002 mlb-api-mcp
-```
-
-Replace `America/New_York` with your desired [IANA timezone name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
-
-The server will be available at `http://localhost:8002` with:
-- **MCP Server**: `http://localhost:8002/mcp/`
-- **Documentation**: `http://localhost:8002/docs`
-
-#### Docker Options
-
-You can also run the container with additional options:
-
-```bash
-# Run in detached mode
-docker run -d -p 8002:8002 --name mlb-api-server mlb-api-mcp
-
-# Run with custom port mapping
-docker run -p 3000:8002 mlb-api-mcp
-
-# View logs
-docker logs mlb-api-server
-
-# Stop the container
-docker stop mlb-api-server
-
-# Remove the container
-docker rm mlb-api-server
 ```
 
 ## Usage
@@ -204,7 +151,7 @@ Once the server is running, visit `http://localhost:8002/docs` for comprehensive
 ## Development
 
 This project uses:
-- Python 3.10+ (Docker uses Python 3.12)
+- Python 3.10+
 - FastMCP for the web framework
 - uv for fast Python package management
 - Hatchling for build management

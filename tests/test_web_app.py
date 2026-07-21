@@ -100,7 +100,7 @@ def test_dev_main_uses_local_port_7861(monkeypatch) -> None:
     assert calls == [{"server_name": "127.0.0.1", "server_port": 7861, "ttl_seconds": None}]
 
 
-def test_main_uses_container_defaults(monkeypatch) -> None:
+def test_main_uses_public_server_defaults(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(web_app, "_launch_app", lambda **kwargs: calls.append(kwargs))
 

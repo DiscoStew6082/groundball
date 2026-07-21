@@ -1,4 +1,4 @@
-"""Immutable container data integrity checks."""
+"""Immutable packaged data integrity checks."""
 
 import hashlib
 import json

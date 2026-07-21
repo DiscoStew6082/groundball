@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-RELEASE_ARTIFACT_SCHEMA = "ground-ball-release-artifact-v1"
+RELEASE_ARTIFACT_SCHEMA = "ground-ball-release-artifact-v2"
 RELEASE_BUNDLE_MANIFEST_PATH = "release/bundle/release-manifest.json"
 
 _FULL_COMMIT = re.compile(r"^[0-9a-f]{40}$")
@@ -23,7 +23,6 @@ _ARTIFACT_FIELDS = {
     "public_interface_revision",
     "query_coverage_report_digest",
     "release_bundle_digest",
-    "release_container_proof_digest",
     "schema_version",
     "source_commit",
     "topology",
@@ -33,7 +32,6 @@ _DIGEST_FIELDS = (
     "public_admission_policy_digest",
     "query_coverage_report_digest",
     "release_bundle_digest",
-    "release_container_proof_digest",
 )
 
 
@@ -89,7 +87,6 @@ def build_release_artifact(
     public_admission_policy_digest: str,
     query_coverage_report_digest: str,
     public_interface_revision: str,
-    release_container_proof_digest: str,
 ) -> dict[str, object]:
     """Build the exact canonical public Release Artifact record."""
     validate_artifact_topology(
@@ -102,7 +99,6 @@ def build_release_artifact(
         "public_admission_policy_digest": public_admission_policy_digest,
         "query_coverage_report_digest": query_coverage_report_digest,
         "release_bundle_digest": release_bundle_digest,
-        "release_container_proof_digest": release_container_proof_digest,
     }
     for field, value in identities.items():
         if not _is_sha256(value):
@@ -116,7 +112,6 @@ def build_release_artifact(
         "public_interface_revision": public_interface_revision,
         "query_coverage_report_digest": query_coverage_report_digest,
         "release_bundle_digest": release_bundle_digest,
-        "release_container_proof_digest": release_container_proof_digest,
         "schema_version": RELEASE_ARTIFACT_SCHEMA,
         "source_commit": source_commit,
         "topology": {
@@ -138,7 +133,6 @@ def validate_release_artifact(
     expected_public_admission_policy_digest: str | None = None,
     expected_query_coverage_report_digest: str | None = None,
     expected_public_interface_revision: str | None = None,
-    expected_release_container_proof_digest: str | None = None,
 ) -> dict[str, object]:
     """Validate canonical bytes or a mapping and return a detached plain object."""
     document = _canonical_document(payload)
@@ -186,7 +180,6 @@ def validate_release_artifact(
         "public_admission_policy_digest": expected_public_admission_policy_digest,
         "query_coverage_report_digest": expected_query_coverage_report_digest,
         "public_interface_revision": expected_public_interface_revision,
-        "release_container_proof_digest": expected_release_container_proof_digest,
     }
     for field, expected in expectations.items():
         if expected is not None and document[field] != expected:

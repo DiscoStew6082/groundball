@@ -9,7 +9,7 @@ This ledger records the current public repository contract. Concrete hosting imp
 3. **Portable public composition** — `PublicAppBindings` injects the deployment-shared store, digest material, initializer, and runner. Missing or unsafe bindings fail closed.
 4. **Public result envelope** — bounded 25/50/100 pages, complete-or-refused export, and immutable completed-run state.
 5. **Deterministic parity** — natural, structured, and bounded follow-up paths share one Query Recipe, Query Plan, result, and evidence contract.
-6. **Release Artifact identity** — canonical `ground-ball-release-artifact-v1` binds source/artifact topology, Release Bundle, Public Admission Policy, Coverage Report, public interface revision, and offline container proof.
+6. **Release Artifact identity** — canonical `ground-ball-release-artifact-v2` binds source/artifact topology, Release Bundle, Public Admission Policy, Coverage Report, and public interface revision.
 7. **Package parity** — the built Svelte application is byte-synchronized with `src/baseball_rag/web_dist/`.
 8. **Dependency hygiene** — root and nested locks, warning policy, dependency audits, and pre-commit revisions are explicit CI contracts.
 
@@ -19,7 +19,7 @@ The public tree has one portable composition seam and no concrete hosting adapte
 
 `scripts/check_provider_neutrality.py` scans the tracked source plus explicitly supplied build artifacts. It rejects personal absolute paths, unknown hidden configuration, sensitive assignments, resource identifier assignments, non-approved URL hosts, malformed deny policy, and caller-supplied exact/glob deny rules. Findings and reports are canonical and redact matched content.
 
-Ordinary CI invokes the scanner directly. Release Artifact Proof scans source and produced package, bundle, workflow, and generic container-context artifacts. Private release verification may add an unchanged external deny policy without changing public scanner behavior.
+Ordinary CI invokes the scanner directly. Release Artifact Proof scans source and produced package, bundle, workflow, and proof artifacts. Private release verification may add an unchanged external deny policy without changing public scanner behavior.
 
 ## Release Artifact proof
 
@@ -30,9 +30,8 @@ The proof workflow must establish:
 - Release Bundle and Public Admission Policy identities are exact;
 - catalog compatibility, raw inventory, Coverage Report, and deterministic eval parity pass;
 - the web build equals the packaged fallback byte-for-byte;
-- wheel, source distribution, Release Bundle, uploaded proof material, and generic container context scan clean;
-- a generic local container starts with networking disabled and passes `release_container_probe`;
-- the canonical Release Artifact record binds the actual source, artifact, policy, coverage, interface, bundle, and offline proof digests.
+- wheel, source distribution, Release Bundle, and uploaded proof material scan clean;
+- the canonical Release Artifact record binds the actual source, artifact, policy, coverage, interface, and bundle digests.
 
 The workflow contains no deployment command, external runtime checkout, protected environment, provider observation, or secret requirement.
 
@@ -50,5 +49,4 @@ The direct child artifact commit contains only a deterministic reassembly of `re
 - Public mode fails closed without safe bindings.
 - Execution deadline remains ten seconds and leases remain fifteen seconds.
 - Runtime installation remains one-shot and immutable within a process.
-- The generic release image runs as UID/GID 10001.
 - The accepted dark responsive Svelte UI and public result controls remain unchanged.

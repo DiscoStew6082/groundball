@@ -23,7 +23,7 @@ The direct-import `baseball_rag.api.server.app` remains available for local use 
 
 - `release/bundle/` is the immutable deterministic payload.
 - `baseball_rag.release_bundle` assembles and verifies the bundle against an exact source commit.
-- `baseball_rag.release_artifact` binds the source commit, artifact-only child commit, bundle, Public Admission Policy, Coverage Report, public interface revision, and offline container proof.
+- `baseball_rag.release_artifact` binds the source commit, artifact-only child commit, bundle, Public Admission Policy, Coverage Report, and public interface revision.
 - Source changes are committed first. The next commit may change only `release/bundle/**`, and its direct parent must be the source commit.
 - Public CI proves the same source-to-artifact topology without deployment or external runtime evidence.
 
@@ -38,13 +38,12 @@ The direct-import `baseball_rag.api.server.app` remains available for local use 
 - `src/baseball_rag/release_bundle.py`: deterministic Release Bundle assembly and verification.
 - `src/baseball_rag/release_runtime.py`: offline startup and readiness checks.
 - `src/baseball_rag/release_artifact.py`: canonical public Release Artifact identity.
-- `src/baseball_rag/release_container_probe.py`: network-disabled packaged HTTP contract proof.
 
 ## Frozen seams
 
 - Preserve the Query contracts and exact Coverage Report.
 - Preserve one Svelte/FastAPI application for local and public composition.
-- Preserve a ten-second execution deadline, lease accounting, fail-closed public mode, immutable runtime caching, and UID/GID 10001 in the generic release image.
+- Preserve a ten-second execution deadline, lease accounting, fail-closed public mode, and immutable runtime caching.
 - Do not add a second query interface, hidden retry, local machine fallback, or public hosting implementation.
 
 ## Baseline checks

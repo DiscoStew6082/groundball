@@ -7,65 +7,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_release_image_builds_and_serves_the_svelte_fastapi_application():
-    """The generic release image builds web assets and contains no Gradio runtime."""
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+def test_python_distribution_has_no_obsolete_gradio_runtime() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     lockfile = (ROOT / "uv.lock").read_text(encoding="utf-8")
-
-    assert "FROM node:22-alpine AS web-build" in dockerfile
-    assert "COPY web/package.json web/package-lock.json ./" in dockerfile
-    assert "RUN npm ci" in dockerfile
-    assert "COPY web/ ./" in dockerfile
-    assert "RUN npm run build" in dockerfile
-    assert "COPY --from=web-build /web/dist /app/web/dist" in dockerfile
-    assert "COPY release/bundle/ /app/release-bundle/" in dockerfile
-    assert "GROUNDBALL_RELEASE_BUNDLE=/app/release-bundle" in dockerfile
-    assert "GROUNDBALL_SOURCE_COMMIT=${GROUNDBALL_SOURCE_COMMIT}" in dockerfile
-    assert "--expected-source-commit" in dockerfile
-    assert "baseball_rag.release_runtime import release_readiness" in dockerfile
-    assert "baseball_rag.db.download" not in dockerfile
-    assert "huggingface.co" not in dockerfile
-    assert "rm -f /app/src/baseball_rag/db/download.py" in dockerfile
-    assert "/app/src/baseball_rag/db/secondary_sources/retrosheet_events.py" in dockerfile
-    assert "/app/src/baseball_rag/generation/llm.py" in dockerfile
-    assert "rm -rf /app/src/baseball_rag/query/catalog" in dockerfile
-    assert "baseball_rag.web_app" in dockerfile
-    assert "${PORT:-7860}" in dockerfile
-    assert "USER 10001:10001" in dockerfile
-    assert "GRADIO" not in dockerfile.upper()
 
     dependencies = pyproject["project"]["dependencies"]
     assert not any(dependency.lower().startswith("gradio") for dependency in dependencies)
     assert '\nname = "gradio"\n' not in lockfile
 
-    ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
-    assert "web/node_modules/" in ignored
-    assert "web/dist/" in ignored
-    assert "src/baseball_rag/web_dist/" in ignored
-    assert "web/" not in ignored
 
-    removed_host_files = (
-        "Dockerfile." + "ver" + "cel",
-        "." + "ver" + "celignore",
-        "ver" + "cel.json",
-    )
-    assert all(not (ROOT / removed).exists() for removed in removed_host_files)
-
-
-def test_default_container_and_ci_use_the_same_svelte_application() -> None:
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+def test_ci_builds_the_svelte_application_used_by_the_python_package() -> None:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     vite_config = (ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
-
-    assert "FROM node:22-alpine AS web-build" in dockerfile
-    assert "RUN npm ci" in dockerfile
-    assert "RUN npm run build" in dockerfile
-    assert "COPY --from=web-build /web/dist /app/web/dist" in dockerfile
-    assert "baseball_rag.web_app" in dockerfile
-    assert "8001" not in dockerfile
-    assert "GROUNDBALL_ARCHITECTURE_ENABLED=0" in dockerfile
-    assert "GROUNDBALL_DEVELOPER_TOOLS_ENABLED=0" in dockerfile
 
     assert "actions/setup-node@v6" in ci
     assert "npm ci" in ci
