@@ -16,6 +16,7 @@ _SPEC.loader.exec_module(_MODULE)
 Finding = _MODULE.Finding
 main = _MODULE.main
 scan = _MODULE.scan
+_HTTP = "http" + "://"
 
 
 def _canonical(value):
@@ -73,15 +74,18 @@ def test_unknown_root_hidden_configuration_directory_is_reported(tmp_path):
     [
         (
             "https://example.com/spec\nhttp://localhost:8000/ok\n"
+            "INFO: Uvicorn running on http://0.0.0.0:80 (Press CTRL+C to quit)\n"
+            + f"{_HTTP}0.0.0.1:80\n{_HTTP}10.0.0.1:80\n"
+            + f"{_HTTP}8.8.8.8:80\n{_HTTP}0.0.0.0.evil.invalid:80\n"
             + "https://"
             + "private.invalid/v1/jobs\n",
-            [3],
+            [4, 5, 6, 7, 8],
         ),
         ("https://" + "user@example.com/spec\n", [1]),
         ("http://" + "user:pass@localhost:8000/ok\n", [1]),
     ],
 )
-def test_public_and_loopback_urls_are_allowed_but_unknown_url_is_not(
+def test_public_loopback_and_local_bind_urls_are_allowed_but_unknown_url_is_not(
     tmp_path, text, expected_lines
 ):
     (tmp_path / "links.txt").write_text(text, encoding="utf-8")

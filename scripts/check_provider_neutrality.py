@@ -128,7 +128,7 @@ def _url_allowed(value: str) -> bool:
     if parsed.username is not None or parsed.password is not None or not parsed.hostname:
         return False
     host = parsed.hostname.lower()
-    if host == "localhost" or host.endswith(".localhost"):
+    if host in {"localhost", "0.0.0.0"} or host.endswith(".localhost"):
         return True
     try:
         return ipaddress.ip_address(host).is_loopback
