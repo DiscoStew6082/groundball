@@ -1,5 +1,8 @@
 import importlib.util
 import io
+import json
+import shutil
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -16,6 +19,7 @@ sys.modules[_SPEC.name] = _MODULE
 _SPEC.loader.exec_module(_MODULE)
 CHUNK_BYTES = _MODULE.CHUNK_BYTES
 Finding = _MODULE.Finding
+main = _MODULE.main
 scan = _MODULE.scan
 
 
@@ -78,19 +82,134 @@ def test_top_level_wheel_and_tar_members_are_scanned(tmp_path: Path) -> None:
     ]
 
 
-def test_nested_archive_member_fails_closed_without_exposing_payload(
-    tmp_path: Path,
-) -> None:
+def _nested_wheel(path: Path, name: str, payload: bytes) -> None:
     nested = io.BytesIO()
     with zipfile.ZipFile(nested, "w") as archive:
-        archive.writestr("config.txt", "https://" + "private.invalid/secret\n")
+        archive.writestr(name, payload)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("payload.zip", nested.getvalue())
+
+
+def test_safe_nested_archive_scans_clean(tmp_path: Path) -> None:
+    _nested_wheel(tmp_path / "package.whl", "README.txt", b"safe release payload\n")
+
+    assert scan(tmp_path) == ()
+
+
+def test_nested_archive_private_url_is_detected_without_exposing_payload(
+    tmp_path: Path,
+) -> None:
+    _nested_wheel(
+        tmp_path / "package.whl",
+        "config.txt",
+        b"https://" + b"private.invalid/secret\n",
+    )
+
+    assert scan(tmp_path) == (
+        Finding(
+            "package.whl!payload.zip!config.txt",
+            1,
+            "nonpublic-url",
+            "<redacted>",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("suffix", "mode"), [(".tar", "w"), (".tar.gz", "w:gz"), (".tgz", "w:gz"), (".tar.xz", "w:xz")]
+)
+def test_supported_nested_tar_archives_scan_clean(tmp_path: Path, suffix: str, mode: str) -> None:
+    nested = io.BytesIO()
+    with tarfile.open(fileobj=nested, mode=mode) as archive:
+        member = tarfile.TarInfo("README.txt")
+        member.size = len(b"safe release payload\n")
+        archive.addfile(member, io.BytesIO(b"safe release payload\n"))
+    with zipfile.ZipFile(tmp_path / "package.whl", "w") as archive:
+        archive.writestr("payload" + suffix, nested.getvalue())
+
+    assert scan(tmp_path) == ()
+
+
+def test_nested_archive_forbidden_literal_is_detected_and_redacted(tmp_path: Path) -> None:
+    forbidden = "credential-" + "literal"
+    _nested_wheel(tmp_path / "package.whl", "config.txt", (forbidden + "\n").encode())
+    policy = tmp_path / "policy.json"
+    policy.write_bytes(
+        (
+            json.dumps(
+                {
+                    "exact_rules": [{"rule_id": "private.credential", "value": forbidden}],
+                    "glob_rules": [],
+                    "schema_version": 1,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode()
+    )
+
+    assert scan(tmp_path, deny_policy=policy) == (
+        Finding(
+            "package.whl!payload.zip!config.txt",
+            1,
+            "private.credential",
+            "<redacted>",
+        ),
+    )
+
+
+def test_nested_archives_fail_closed_on_unsafe_corrupt_unsupported_and_depth(
+    tmp_path: Path,
+) -> None:
+    unsafe = io.BytesIO()
+    with zipfile.ZipFile(unsafe, "w") as archive:
+        archive.writestr("../escape.txt", "clean\n")
+    deep = io.BytesIO()
+    with zipfile.ZipFile(deep, "w") as archive:
+        archive.writestr("deeper.zip", unsafe.getvalue())
+    encrypted = bytearray(deep.getvalue())
+    encrypted[encrypted.index(b"PK\x01\x02") + 8] |= 1
     wheel = tmp_path / "package.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
-        archive.writestr("payload.zip", nested.getvalue())
+        archive.writestr("unsafe.zip", unsafe.getvalue())
+        archive.writestr("corrupt.zip", b"not a zip")
+        archive.writestr("unsupported.tar.bz2", b"not inspected")
+        archive.writestr("deep.zip", deep.getvalue())
+        archive.writestr("encrypted.zip", encrypted)
+
+    assert [(item.path, item.rule_id) for item in scan(tmp_path)] == [
+        ("package.whl!corrupt.zip", "unscanned-content"),
+        ("package.whl!deep.zip!deeper.zip", "unscanned-content"),
+        ("package.whl!encrypted.zip!deeper.zip", "unscanned-content"),
+        ("package.whl!unsafe.zip!<unsafe-member>", "unscanned-content"),
+        ("package.whl!unsupported.tar.bz2", "unscanned-content"),
+    ]
+
+
+def test_nested_archive_size_limit_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _nested_wheel(tmp_path / "package.whl", "README.txt", b"safe\n")
+    monkeypatch.setattr(_MODULE, "MAX_NESTED_ARCHIVE_BYTES", 1)
 
     assert scan(tmp_path) == (
         Finding("package.whl!payload.zip", 1, "unscanned-content", "<redacted>"),
     )
+
+
+@pytest.mark.release_proof
+def test_uv_build_wheel_and_sdist_scan_clean_under_generic_policy() -> None:
+    dist = Path("dist")
+    shutil.rmtree(dist, ignore_errors=True)
+    try:
+        subprocess.run(["uv", "build"], check=True)
+        names = sorted(path.name for path in dist.iterdir())
+        assert any(name.endswith(".whl") for name in names)
+        assert any(name.endswith(".tar.gz") for name in names)
+        assert main(["--root", ".", "--artifact", "dist"]) == 0
+    finally:
+        shutil.rmtree(dist, ignore_errors=True)
 
 
 def test_artifact_count_and_path_bounds(tmp_path: Path) -> None:
