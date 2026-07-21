@@ -1,5 +1,5 @@
 """Bounded fail-closed pre-publication scanner for provider-specific residue."""
-# ruff: noqa: E501
+# ruff: noqa: E501, E701, E702
 
 from __future__ import annotations
 
@@ -19,15 +19,9 @@ from pathlib import Path
 from typing import IO, Any, Iterable, Sequence
 from urllib.parse import urlsplit
 
-CHUNK_BYTES = 65_536
-OVERLAP_CHARACTERS = 512
-MAX_ARCHIVE_MEMBERS = 4096
-MAX_ARTIFACTS = 16
-MAX_POLICY_BYTES = 65_536
-MAX_RULES_PER_KIND = 64
-_ALLOWED_BINARY_SUFFIXES = {".png"}
-_EXTRACTED_ARCHIVE_SUFFIXES = {".zip", ".whl"}
-_ALLOWED_HIDDEN = {".git", ".github"}
+CHUNK_BYTES, OVERLAP_CHARACTERS, MAX_ARCHIVE_MEMBERS, MAX_ARTIFACTS = 65_536, 512, 4096, 16
+MAX_POLICY_BYTES, MAX_RULES_PER_KIND = 65_536, 64
+_ALLOWED_BINARY_SUFFIXES = {".png"}; _ARCHIVE_SUFFIXES = (".zip", ".whl", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz2", ".txz"); _ALLOWED_HIDDEN = {".git", ".github"}
 _ALLOWED_PUBLIC_HOSTS = frozenset("astral.sh baseballsavant.mlb.com blogs.fangraphs.com creativecommons.org en.wikipedia.org example.com files.pythonhosted.org github.com huggingface.co img.shields.io modelcontextprotocol.io opencollective.com pypi.org raw.githubusercontent.com registry.npmjs.org sabr.org stathead.com statsapi.mlb.com svelte.dev tidelift.com www.example.com www.fangraphs.com www.mlb.com www.retrosheet.org www.statmuse.com www.w3.org".split())  # noqa: E501  # fmt: skip
 _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _PERSONAL_PATH = re.compile(r"/(?:Users|Volumes)/[^/\s\"']+")
@@ -215,6 +209,8 @@ def _scan_stream(stream: IO[bytes], relative: str, exact: list[dict[str, str]], 
         return [Finding(relative, 1, "unscanned-content", "<redacted>")]
     return findings
 
+def _is_archive(name: str) -> bool: return name.lower().endswith(_ARCHIVE_SUFFIXES)
+
 def _scan_archive(path: Path, relative: str, exact: list[dict[str, str]], globs: list[dict[str, str]]) -> list[Finding]:
     found: list[Finding] = []
     try:
@@ -228,13 +224,13 @@ def _scan_archive(path: Path, relative: str, exact: list[dict[str, str]], globs:
                     mode = zip_member.external_attr >> 16
                     if zip_member.is_dir():
                         continue
-                    if stat.S_ISLNK(mode):
+                    if stat.S_ISLNK(mode) or _is_archive(zip_member.filename):
                         found.append(Finding(label, 1, "unscanned-content", "<redacted>"))
-                    elif Path(zip_member.filename).suffix.lower() not in (_ALLOWED_BINARY_SUFFIXES | _EXTRACTED_ARCHIVE_SUFFIXES):
+                    elif Path(zip_member.filename).suffix.lower() not in _ALLOWED_BINARY_SUFFIXES:
                         with archive.open(zip_member) as stream:
                             found.extend(_scan_stream(stream, label, exact, globs))
         else:
-            with tarfile.open(path, "r:gz") as archive:
+            with tarfile.open(path, "r:*") as archive:
                 tar_members = archive.getmembers()
                 if len(tar_members) > MAX_ARCHIVE_MEMBERS:
                     raise ValueError
@@ -242,9 +238,9 @@ def _scan_archive(path: Path, relative: str, exact: list[dict[str, str]], globs:
                     if tar_member.isdir():
                         continue
                     label = f"{relative}!{tar_member.name}"
-                    if not tar_member.isfile():
+                    if not tar_member.isfile() or _is_archive(tar_member.name):
                         found.append(Finding(label, 1, "unscanned-content", "<redacted>"))
-                    elif Path(tar_member.name).suffix.lower() not in (_ALLOWED_BINARY_SUFFIXES | _EXTRACTED_ARCHIVE_SUFFIXES):
+                    elif Path(tar_member.name).suffix.lower() not in _ALLOWED_BINARY_SUFFIXES:
                         tar_stream = archive.extractfile(tar_member)
                         if tar_stream is None:
                             raise OSError
@@ -254,6 +250,15 @@ def _scan_archive(path: Path, relative: str, exact: list[dict[str, str]], globs:
         return [Finding(relative, 1, "unscanned-content", "<redacted>")]
     return found
 
+def _deployment_finding(path: Path, relative: str) -> list[Finding]:
+    if Path(relative).name.lower() not in {"deployment.yaml", "deployment.yml"}:
+        return []
+    try:
+        raw = path.read_bytes(); text = raw.decode("utf-8") if len(raw) <= MAX_POLICY_BYTES else ""
+    except (OSError, UnicodeError):
+        return []
+    required = (r"(?m)^services:\s*$", r"(?m)^\s+image:\s*\S+", r"(?m)^\s+ports:\s*(?:$|\[)"); return [Finding(relative, 1, "deployment-manifest", "<redacted>")] if all(re.search(item, text) for item in required) else []
+
 def _scan_path(path: Path, relative: str, exact: list[dict[str, str]], globs: list[dict[str, str]]) -> list[Finding]:
     try:
         mode = path.lstat().st_mode
@@ -261,10 +266,10 @@ def _scan_path(path: Path, relative: str, exact: list[dict[str, str]], globs: li
             return [Finding(relative, 1, "unscanned-content", "<redacted>")]
         if path.suffix.lower() in _ALLOWED_BINARY_SUFFIXES:
             return []
-        if path.suffix.lower() in {".zip", ".whl"} or relative.endswith(".tar.gz"):
+        if _is_archive(relative):
             return _scan_archive(path, relative, exact, globs)
         with path.open("rb") as stream:
-            return _scan_stream(stream, relative, exact, globs)
+            return _scan_stream(stream, relative, exact, globs) + _deployment_finding(path, relative)
     except OSError:
         return [Finding(relative, 1, "unscanned-content", "<redacted>")]
 

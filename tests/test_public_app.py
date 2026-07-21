@@ -169,6 +169,54 @@ def test_generic_public_configuration_without_bindings_is_fail_closed(
     assert response.json() == UNAVAILABLE
 
 
+def test_runtime_configuration_infers_public_mode_without_demo_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROUNDBALL_PUBLIC_DEMO", raising=False)
+    monkeypatch.setenv(
+        "GROUNDBALL_RUNTIME_CONFIG",
+        str(Path("release/config/local-ci-runtime.json").resolve()),
+    )
+
+    client = TestClient(create_app())
+
+    assert client.get("/api/capabilities").json()["mode"] == "public"
+    response = client.post("/api/query-runs", json={"question": "40-40"})
+    assert response.status_code == 503
+    assert response.json() == UNAVAILABLE
+
+
+def test_runtime_configuration_inference_validates_public_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "runtime.json"
+    runtime.write_text(
+        '{"network_policy":"none","public_mode":false,'
+        '"release_bundle":"ground-ball-release-bundle",'
+        '"schema_version":"ground-ball-runtime-configuration-v1",'
+        '"scope":"local_ci"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GROUNDBALL_RUNTIME_CONFIG", str(runtime))
+
+    with pytest.raises(ValueError, match="Runtime configuration values are invalid"):
+        create_app()
+
+
+def test_explicit_local_mode_precedes_public_runtime_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "GROUNDBALL_RUNTIME_CONFIG",
+        str(Path("release/config/local-ci-runtime.json").resolve()),
+    )
+
+    client = TestClient(create_app(public=False))
+
+    assert client.get("/api/capabilities").json()["mode"] == "local"
+    assert client.post("/api/query-runs", json={}).status_code == 422
+
+
 def test_unbound_public_gate_precedes_request_parsing_and_size_policy() -> None:
     response = TestClient(create_app(public=True)).post(
         "/api/query-runs",

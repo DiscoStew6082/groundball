@@ -15,7 +15,10 @@ from starlette.responses import JSONResponse
 
 from baseball_rag.public_admission import CasCoordinator, CasStore, InMemoryCasStore
 from baseball_rag.public_execution import ExecutionOutcome, ExecutionRequest
-from baseball_rag.public_release_config import MINIMUM_VISITOR_DIGEST_KEY_BYTES
+from baseball_rag.public_release_config import (
+    MINIMUM_VISITOR_DIGEST_KEY_BYTES,
+    load_runtime_configuration,
+)
 
 INITIALIZATION_WAIT_SECONDS = 5.0
 _UNAVAILABLE_BODY = {
@@ -87,8 +90,13 @@ class _InitializationGate:
 
 
 class _ClosedGate:
+    def __init__(self, *, expose_capabilities: bool = False) -> None:
+        self._expose_capabilities = expose_capabilities
+
     async def middleware(self, request: Request, call_next):
-        if request.url.path == "/health":
+        if request.url.path == "/health" or (
+            self._expose_capabilities and request.url.path == "/api/capabilities"
+        ):
             return await call_next(request)
         return JSONResponse(_UNAVAILABLE_BODY, status_code=503)
 
@@ -142,12 +150,18 @@ def create_app(
     public: bool | None = None,
 ) -> FastAPI:
     """Create one local app or a process-shared fail-closed public app."""
+    runtime_configured_public = False
     configured_public = os.environ.get("GROUNDBALL_PUBLIC_DEMO", "").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
+    if public is None and bindings is None:
+        runtime_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
+        if runtime_path is not None:
+            runtime_configured_public = load_runtime_configuration(runtime_path).public_mode
+            configured_public = runtime_configured_public
     public_mode = (bindings is not None or configured_public) if public is None else public
     if bindings is not None and not public_mode:
         raise ValueError("Public bindings require public mode.")
@@ -157,7 +171,7 @@ def create_app(
     if not public_mode:
         return create_server_app(public_mode=False, lifespan=None)
     if bindings is None:
-        closed_gate = _ClosedGate()
+        closed_gate = _ClosedGate(expose_capabilities=runtime_configured_public)
         return create_server_app(
             public_mode=True,
             public_gate=closed_gate.middleware,
