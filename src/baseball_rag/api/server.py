@@ -366,6 +366,20 @@ def capabilities(request: Request):
             }
             for capability in retrosheet_capabilities
         ],
+        "assistant": {
+            "enabled": bool(getattr(request.app.state, "question_bindings", None))
+            or bool(
+                getattr(
+                    (getattr(request.app.state, "public_components", None) or (None, None, None))[
+                        2
+                    ],
+                    "supports_assistant",
+                    False,
+                )
+            ),
+            "topics": ["pregame", "team_history", "definition"],
+            "factual_prose": "source_records_and_verified_queries",
+        },
         "llm_required": False,
         "history": "browser_local",
     }
@@ -398,8 +412,18 @@ def query_run(req: QueryInputRequest, request: Request):
         )
 
     from baseball_rag.query.adapters import run_query_input
+    from baseball_rag.question_interpretation import run_question_input
 
+    question_bindings = getattr(request.app.state, "question_bindings", None)
     try:
+        if question_bindings is not None:
+            return run_question_input(
+                question=req.question,
+                recipe=req.recipe,
+                previous_recipe=req.previous_recipe,
+                interpret=question_bindings.interpret,
+                research_sources=question_bindings.research_sources,
+            )
         return run_query_input(
             question=req.question,
             recipe=req.recipe,
@@ -746,11 +770,13 @@ def create_server_app(
     public_components: tuple[CasCoordinator, bytes, Any] | None = None,
     public_gate: Any = None,
     lifespan: Any = _lifespan,
+    question_bindings: Any = None,
 ) -> FastAPI:
     """Install the existing server routes with app-scoped public composition."""
     created = FastAPI(title="Groundball API", lifespan=lifespan)
     created.state.public_mode_override = public_mode
     created.state.public_components = public_components
+    created.state.question_bindings = question_bindings
     created.middleware("http")(_query_cors_middleware)
     if public_gate is not None:
 

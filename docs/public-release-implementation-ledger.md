@@ -12,6 +12,7 @@ This ledger records the current public repository contract. Concrete hosting imp
 6. **Release Artifact identity** — canonical `ground-ball-release-artifact-v2` binds source/artifact topology, Release Bundle, Public Admission Policy, Coverage Report, and public interface revision.
 7. **Package parity** — the built Svelte application is byte-synchronized with `src/baseball_rag/web_dist/`.
 8. **Dependency hygiene** — root and nested locks, warning policy, dependency audits, and pre-commit revisions are explicit CI contracts.
+9. **Sourced assistant** — the same chat accepts bounded research answers with citations, complete source records, browser-local JSON export, and visible attribution. Public source owns interpretation prompts/schema and factual construction; optional transport and source I/O are injected.
 
 ## Public neutrality closure
 
@@ -49,4 +50,4 @@ The direct child artifact commit contains only a deterministic reassembly of `re
 - Public mode fails closed without safe bindings.
 - Execution deadline remains ten seconds and leases remain fifteen seconds.
 - Runtime installation remains one-shot and immutable within a process.
-- The accepted dark responsive Svelte UI and public result controls remain unchanged.
+- The dark responsive Svelte layout and existing query controls are preserved; assistant answers use their own evidence and JSON download controls in the same chat.

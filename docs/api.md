@@ -15,7 +15,7 @@ Returns `{ "status": "ok" }`.
 
 ## `GET /api/capabilities`
 
-Returns the server-enforced query, catalog, Coverage Report, Retrosheet, and browser-local history capabilities. The structured query path reports `llm_required: false` in local and public modes.
+Returns query, catalog, Coverage Report, Retrosheet, assistant, and browser-local history capabilities. `assistant.enabled` reflects injected support, with topics `pregame`, `team_history`, and `definition`. `llm_required: false` describes the independent structured query engine; optional question interpretation may use an injected model transport.
 
 ## `POST /api/query-runs`
 
@@ -43,9 +43,11 @@ Provide exactly one natural-language question or structured recipe. A natural-la
 }
 ```
 
-Responses are rendering-neutral outcomes: `rows`, `no_data`, `exported`, `needs_clarification`, `rejected`, `unavailable`, or `failed`. Factual rows are withheld when proof verification is unavailable.
+Responses are rendering-neutral outcomes: `rows`, `no_data`, `exported`, `answer`, `needs_clarification`, `rejected`, `unavailable`, or `failed`. Factual rows are withheld when proof verification is unavailable.
 
-Public composition applies the same request body, result envelope, admission, lease, and ten-second execution deadline to both deterministic POST routes. Missing public bindings return a sanitized unavailable response before request parsing.
+With assistant bindings, a supported research question can return `kind: "answer"` and `schema: "ground-ball-assistant-answer-v1"`. The payload contains `title`, `summary`, up to five `facts`, `sources`, nullable `fixture`, `limitations`, `attributions`, and `requested_count`. Facts reference adjacent citations by `source_ids`; historical statistical facts also retain their `query_run`. Sources include their URL, observation time, license, attribution, supporting `record`, and fingerprint. The browser downloads this complete object locally rather than issuing a query export. See [assistant scope](assistant.md).
+
+Public composition applies admission, leases, and the ten-second execution deadline to query/assistant requests and the separate Retrosheet POST route. Missing public bindings return a sanitized unavailable response before request parsing.
 
 ## `GET /api/query-catalog`
 
@@ -72,5 +74,7 @@ Unsupported shapes return `422`; they do not fall through to an LLM.
 ## Public application composition
 
 Use `baseball_rag.public_app.create_app` with `PublicAppBindings` supplied by the outer runtime. Bindings contain a deployment-shared CAS implementation, stable digest material, an initializer, and a hard-stop execution runner. The public repository deliberately supplies no concrete hosting implementation.
+
+`QuestionBindings` optionally supplies local interpretation and `ResearchSources`; public runners inject these within their execution boundary. `question_interpretation.py` owns the prompt, output schema, validation, and `run_question_input`. Transports and source callbacks supply I/O, not alternative prompts, factual answer prose, or query semantics. Without these bindings, the deterministic query interface remains available.
 
 Portable application configuration is limited to release bundle selection, local web assets, local-CI proof configuration, CORS origins, source identity, and runtime cache timing. Default CORS origins are localhost and loopback only.

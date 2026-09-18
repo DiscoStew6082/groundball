@@ -1,6 +1,6 @@
 # Architecture
 
-Ground Ball has one structured-query pipeline and three adapters.
+Ground Ball has one structured-query pipeline and a bounded sourced assistant, presented through the same application. The structured pipeline remains:
 
 ```text
 question or recipe
@@ -33,6 +33,16 @@ The plan contract is closed and versioned. Unknown keys, coercible-but-wrong typ
 
 The compiler owns all SQL structure and identifiers. Recipe literals become bound parameters. Cross-source results use only catalog-declared relationships and combinations. Ranking and pagination use deterministic total ordering; tie policy is explicit.
 
+## Question interpretation and sourced answers
+
+`question_interpretation.py` owns the model prompt, closed response schema, validation, and `run_question_input`. The existing deterministic adapter runs first. When injected interpretation is available, it may propose a published Query Recipe, a bounded research request, a clarification code, or rejection. It cannot supply factual prose or SQL. Proposed recipes still pass the same planner and compiler.
+
+`assistant.py` owns factual selection and rendering for `pregame`, `team_history`, and `definition`. Statistical facts retain their immutable Query Run and QueryEvidence. `ResearchSources` supplies only bounded fixture and historical postseason records; public code validates their scope and constructs the answer. The outer runtime owns model transport and external I/O, while the public repository remains the source of product behavior.
+
+`ground-ball-assistant-answer-v1` adds at most five sourced facts to the existing `/api/query-runs` endpoint. Each answer retains source records, observation times, fingerprints, limitations, and application-owned credits from `source_attribution.py`. The Svelte chat renders plain text and safe HTTPS citations, preserves the last completed answer after a failed attempt, and supports browser-local history and full JSON downloads. Query recipe editing, pagination, and CSV export remain Query Run operations.
+
+Fixture metadata identifies the next listed upcoming game, not a complete schedule. Statistical history ends in 2025; World Series context requires supporting records. Ten reviewed definitions link to their individual MLB glossary references. Unsupported conditions must be rejected or clarified, never removed to produce a generic answer. See [assistant.md](assistant.md).
+
 ## Data identity and evidence
 
 DuckDB loads People, Batting, Pitching, Fielding, and the versioned TeamReference asset. Runtime compatibility compares the catalog against a semantic data-manifest hash: provenance timestamps may change without changing identity, but table content, checksums, row counts, or schema changes invalidate it.
@@ -58,4 +68,4 @@ The JSON report is canonical; Markdown and the human HTTP view are derived from 
 
 Retrosheet event queries use six explicit template families in `db/retrosheet_query_templates.py` and a checksum-validated, year-aware identity reference generated from the official Retrosheet team catalog plus Lahman season names. They are not a fallback for arbitrary questions.
 
-Player biography and general explanation classes remain callable auxiliary modules. They do not participate in query interpretation or structured factual execution. Biography claim vocabulary now consumes the Published Query Catalog instead of a second stat registry.
+Legacy biography and open-explanation modules are auxiliary and are not the same-chat assistant's factual answer path. They do not arbitrate structured statistics or extend the Published Query Catalog.

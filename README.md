@@ -2,9 +2,19 @@
 
 [![CI](https://github.com/DiscoStew6082/groundball/actions/workflows/ci.yml/badge.svg)](https://github.com/DiscoStew6082/groundball/actions/workflows/ci.yml)
 
-Ground Ball is a local-first query engine for historical MLB data. Natural-language questions and structured Query Recipes compile to one closed, versioned Query Plan, execute against DuckDB, and return immutable rows with the exact SQL, bound values, source fingerprints, and release proof behind the result.
+Ground Ball answers baseball questions with cited sources and verified historical MLB statistics in one chat. Statistical questions and structured Query Recipes compile to a closed, versioned Query Plan, execute against DuckDB, and return immutable rows with SQL, bound values, source fingerprints, and release proof.
 
-The primary query path is deterministic. It does not need an LLM, a network connection, or a machine-specific service.
+The structured query engine is deterministic and works without an LLM or network connection. Optional question interpretation uses a model only to select a validated recipe or bounded research request. Public application code constructs factual answers from evidence.
+
+## Sourced assistant
+
+When the optional assistant bindings are available, the same chat supports:
+
+- Historical context for one MLB team, using the verified statistical release through 2025.
+- Context for that team's next listed upcoming game, with dated historical statistics and supported World Series meetings. Fixture coverage is limited and start times can change.
+- Ten reviewed stat definitions: 2B, AVG, BB, ERA, HR, OPS, PO, RBI, SB, and WHIP, each linked to its MLB glossary source.
+
+Answers contain at most five fact cards with citations, expandable source records, observation times, scope limits, and visible attribution. Full answer JSON downloads and history stay in the browser. Missing evidence can produce fewer facts or an unavailable response. Current-season statistics, injuries, starters, news, and unsupported date or multi-team constraints are not supplied or silently discarded. See [assistant scope and evidence](docs/assistant.md).
 
 ## What is queryable
 
@@ -18,7 +28,7 @@ The primary query path is deterministic. It does not need an LLM, a network conn
 
 Every loaded field and row is reachable through discovery, filtering, stable pagination, or export. Promoted values add reviewed baseball semantics such as AVG, OPS, leader ranking, tie handling, grain-aware aggregation, and cross-discipline relationships. Arbitrary SQL and formulas are rejected.
 
-Retrosheet event queries are a separate, explicitly bounded capability. Player biographies and open explanations remain auxiliary and do not arbitrate structured query facts.
+Retrosheet event queries remain a separate, explicitly bounded capability. Assistant statistics reuse the same verified Query Runs; model output and external records do not define new statistical capabilities.
 
 ## Architecture
 
@@ -36,7 +46,7 @@ Natural-language question or Query Recipe
     HTTP, CLI, and Svelte adapters
 ```
 
-The Published Query Catalog under `src/baseball_rag/query/catalog/` is the capability authority. Public mode is composed through injected `PublicAppBindings`; this repository contains no concrete hosting adapter. Missing public bindings fail closed.
+The Published Query Catalog under `src/baseball_rag/query/catalog/` is the structured-query capability authority. This repository also owns the interpretation prompt/schema and sourced answer construction. The outer runtime injects model transport and bounded source callbacks. Public mode is composed through injected `PublicAppBindings`; missing public bindings fail closed. See [architecture](docs/architecture.md).
 
 ## Run locally
 
@@ -79,6 +89,12 @@ The Release Bundle is assembled from an exact source commit. A valid Release Art
 ## Data and provenance
 
 The structured data is derived from [`NeuML/baseballdata`](https://huggingface.co/datasets/NeuML/baseballdata), a Lahman Baseball Database distribution. `data/manifest.json` records source URLs, row counts, checksums, coverage, and license metadata. Retrosheet-derived projections retain their own provenance and legal records.
+
+**Retrosheet credit**
+
+The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at "www.retrosheet.org".
+
+[Retrosheet](https://www.retrosheet.org/) supplies historical records used by supported event queries and World Series context. Required credits travel with answers and downloadable evidence. See [source attribution](docs/source-attribution.md).
 
 Populate or refresh local CSVs with:
 

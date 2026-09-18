@@ -7,10 +7,10 @@
 
   const sections = [
     ['Query', 'Ask the record'],
-    ['Evidence', 'Last Query Run details'],
+    ['Evidence', 'Sources and query evidence'],
     ['Browse fields', 'Raw and promoted catalog'],
-    ['History', 'Recipe and run snapshots'],
-    ['Architecture', 'How the query path works'],
+    ['History', 'Answer and query snapshots'],
+    ['Architecture', 'How answers are checked'],
   ];
   let sectionButtons = [];
 

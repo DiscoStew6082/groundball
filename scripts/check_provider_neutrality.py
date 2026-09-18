@@ -25,7 +25,7 @@ MAX_POLICY_BYTES, MAX_RULES_PER_KIND = 65_536, 64
 MAX_ARCHIVE_DEPTH, MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBER_BYTES = 2, 2_147_483_648, 805_306_368
 MAX_NESTED_ARCHIVE_BYTES, MAX_COMPRESSION_RATIO = 134_217_728, 100
 _ALLOWED_BINARY_SUFFIXES = {".png"}; _ARCHIVE_SUFFIXES = (".zip", ".whl", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz2", ".txz"); _NESTED_ARCHIVES = (".zip", ".whl", ".tar", ".tar.gz", ".tar.xz", ".tgz"); _ARCHIVE_LIKE = (*_ARCHIVE_SUFFIXES, ".7z", ".rar", ".jar", ".gz", ".bz2", ".xz"); _ALLOWED_HIDDEN = {".git", ".github"}
-_ALLOWED_PUBLIC_HOSTS = frozenset("astral.sh baseballsavant.mlb.com blogs.fangraphs.com creativecommons.org en.wikipedia.org example.com files.pythonhosted.org github.com huggingface.co img.shields.io modelcontextprotocol.io opencollective.com pypi.org raw.githubusercontent.com registry.npmjs.org sabr.org stathead.com statsapi.mlb.com svelte.dev tidelift.com www.example.com www.fangraphs.com www.mlb.com www.retrosheet.org www.statmuse.com www.w3.org".split())  # noqa: E501  # fmt: skip
+_ALLOWED_PUBLIC_HOSTS = frozenset("astral.sh baseballsavant.mlb.com blogs.fangraphs.com creativecommons.org en.wikipedia.org example.com files.pythonhosted.org github.com huggingface.co img.shields.io modelcontextprotocol.io opencollective.com pypi.org raw.githubusercontent.com registry.npmjs.org sabr.org stathead.com statsapi.mlb.com svelte.dev tidelift.com www.example.com www.fangraphs.com www.mlb.com www.retrosheet.org www.statmuse.com www.thesportsdb.com www.wikidata.org www.w3.org".split())  # noqa: E501  # fmt: skip
 _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _PERSONAL_PATH = re.compile(r"/(?:Users|Volumes)/[^/\s\"']+")
 _NAME_SEGMENTS = r"(?:[A-Za-z0-9]+[_-])*"

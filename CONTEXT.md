@@ -4,20 +4,24 @@ This is the canonical current architecture and domain context. Historical implem
 
 ## Product contract
 
-- Ground Ball is a local-first historical MLB query engine.
+- Ground Ball combines a local-first historical MLB query engine with a bounded sourced baseball assistant in the same chat.
 - Every loaded primary Lahman field and row is discoverable and reachable through filtering, stable pagination, or export. The synthesized TeamReference source has the same guarantee.
 - The Published Query Catalog is the only structured-query capability authority.
 - A Query Recipe is the visible, editable request. Query Plan v1 is its closed, deterministic, serializable meaning and contains no user SQL or executable code.
 - The compiler owns identifiers and emits parameterized DuckDB SQL. User values are bound data.
 - QueryEvidence binds factual outcomes to the plan, catalog revision, data release, SQL, bound values, immutable result fingerprint, and source fingerprints.
 - Factual adapter results are available only when the checked-in Coverage Report passes and matches the runtime exactly.
-- Retrosheet event queries are separately governed. Biography generation and open explanation remain auxiliary.
+- Retrosheet event queries are separately governed. Assistant statistics reuse verified immutable Query Runs; external records do not extend the Published Query Catalog.
+- Assistant answers use `ground-ball-assistant-answer-v1`, with at most five sourced facts, source records, observation times, fingerprints, scope limits, and required attribution.
+- Assistant scope is one team's historical context through 2025, its next listed upcoming fixture with historical World Series context when supported, or one of ten reviewed stat definitions. Unsupported conditions are rejected rather than dropped. Current injuries, starters, news, and current-season statistics are not supplied.
 
 ## Public composition
 
 `baseball_rag.public_app.create_app` is the public composition boundary. Local construction needs no bindings. Public construction accepts only injected `PublicAppBindings`: a deployment-shared CAS store, stable digest key, initializer, and hard-stop execution runner. Missing or unsafe bindings fail closed. The public repository contains no concrete hosting adapter or environment-driven hosting construction.
 
 The direct-import `baseball_rag.api.server.app` remains available for local use and offline release proof. Its local-CI runtime configuration is network-disabled and cannot claim shared deployment authority.
+
+Public source owns the interpretation prompt, response schema, validation, `run_question_input`, and factual answer construction. Optional model transport and bounded external source callbacks are injected by the outer runtime. `QuestionBindings` supplies optional local interpretation; public execution injects these dependencies within its existing hard-stop boundary. No transport or source callback owns product prompts, query semantics, or factual prose.
 
 ## Release model
 
@@ -30,6 +34,9 @@ The direct-import `baseball_rag.api.server.app` remains available for local use 
 ## Current modules
 
 - `src/baseball_rag/query/`: catalog-backed planning, compilation, execution, evidence, and coverage.
+- `src/baseball_rag/question_interpretation.py`: public interpretation contract and same-endpoint dispatch to validated queries or bounded research.
+- `src/baseball_rag/assistant.py`: sourced answer construction, verified Query Run reuse, and `ResearchSources` callback interfaces.
+- `src/baseball_rag/source_attribution.py`: application-owned source credits, including the required Retrosheet notice.
 - `src/baseball_rag/public_admission.py`: opaque CAS state, admission, leases, rates, and monthly budget.
 - `src/baseball_rag/public_app.py`: injected public application bindings and fail-closed initialization.
 - `src/baseball_rag/public_execution.py`: isolated child-process execution with a ten-second hard stop.
@@ -43,6 +50,7 @@ The direct-import `baseball_rag.api.server.app` remains available for local use 
 
 - Preserve the Query contracts and exact Coverage Report.
 - Preserve one Svelte/FastAPI application for local and public composition.
+- Preserve safe text rendering, adjacent source citations, visible attribution, and evidence-complete local JSON downloads for assistant answers.
 - Preserve a ten-second execution deadline, lease accounting, fail-closed public mode, and immutable runtime caching.
 - Do not add a second query interface, hidden retry, local machine fallback, or public hosting implementation.
 

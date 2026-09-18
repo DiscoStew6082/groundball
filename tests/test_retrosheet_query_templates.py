@@ -145,6 +145,10 @@ def test_opponent_nickname_resolves_through_season_aware_retrosheet_identity():
     assert result["kind"] == "rows"
     assert len(result["rows"]) == 2
     assert {row["opponent_team"] for row in result["rows"]} == {"Los Angeles Angels of Anaheim"}
+    from baseball_rag.source_attribution import RETROSHEET_CREDIT
+
+    assert result["attributions"][0]["text"] == RETROSHEET_CREDIT
+    assert result["evidence"]["sources"][0]["attribution"] == RETROSHEET_CREDIT
 
 
 def test_retrosheet_team_reference_is_generated_from_upstream_identity_columns(tmp_path):

@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
 
   import ChatComposer from './lib/ChatComposer.svelte';
+  import AssistantAnswer from './lib/AssistantAnswer.svelte';
   import DetailsSheet from './lib/DetailsSheet.svelte';
   import NavigationMenu from './lib/NavigationMenu.svelte';
 
@@ -109,7 +110,7 @@
         body: JSON.stringify(body),
       });
       const payload = await readResponse(response);
-      if (['rows', 'no_data'].includes(payload.kind)) {
+      if (['rows', 'no_data', 'answer'].includes(payload.kind)) {
         lastCompletedRun = payload;
         completedQuestion = submittedQuestion;
         attemptOutcome = null;
@@ -261,6 +262,16 @@
     }[key] ?? key;
   }
 
+  function attributionUrl(value) {
+    if (typeof value !== 'string') return null;
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+    } catch {
+      return null;
+    }
+  }
+
   function outcomeTitle(run) {
     if (!run) return '';
     const kind = run.kind ?? run.error;
@@ -295,7 +306,7 @@
           aria-expanded={navOpen}
           on:click={() => (navOpen = !navOpen)}
         ><span class="ball-mark" aria-hidden="true">GB</span></button>
-        <div><h1>Ground Ball</h1><p>Historical MLB · deterministic query system</p></div>
+        <div><h1>Ground Ball</h1><p>Sourced baseball answers · historical MLB stats</p></div>
       </div>
       <span class="runtime-status">{capabilities ? 'Ready' : 'Connecting'}</span>
     </header>
@@ -333,8 +344,10 @@
         </section>
       {:else if activeSurface === 'Evidence'}
         <section class="evidence-surface">
-          <small>LAST QUERY RUN</small><h2>Evidence</h2>
-          {#if lastCompletedRun?.evidence}
+          <small>LAST COMPLETED RESULT</small><h2>Evidence</h2>
+          {#if lastCompletedRun?.kind === 'answer'}
+            <AssistantAnswer answer={lastCompletedRun} />
+          {:else if lastCompletedRun?.evidence}
             <dl>
               <dt>Catalog</dt><dd>{lastCompletedRun.evidence.catalog_revision}</dd>
               <dt>Data release</dt><dd>{lastCompletedRun.evidence.data_release}</dd>
@@ -342,21 +355,21 @@
               <dt>Fingerprint</dt><dd>{lastCompletedRun.evidence.result_fingerprint}</dd>
             </dl>
             <button bind:this={detailsButton} type="button" aria-label="Open query details" on:click={() => (detailsOpen = true)}>Open full Details</button>
-          {:else}<p>Run a query to inspect its plan, rows, calculations, sources, and SQL.</p>{/if}
+          {:else}<p>Ask a question to inspect its sources or historical query evidence.</p>{/if}
         </section>
       {:else if activeSurface === 'History'}
         <section class="history-surface">
-          <small>LOCAL HISTORY</small><h2>Query snapshots</h2>
+          <small>LOCAL HISTORY</small><h2>Answer and query snapshots</h2>
           {#if history.length}
             {#each history as entry}
-              <button type="button" on:click={() => restoreHistory(entry)}><strong>{entry.question || entry.recipe.source}</strong><small>{entry.saved_at}</small></button>
+              <button type="button" on:click={() => restoreHistory(entry)}><strong>{entry.question || entry.run?.title || entry.recipe?.source || 'Saved result'}</strong><small>{entry.saved_at}</small></button>
             {/each}
-          {:else}<p>No saved Query Runs yet.</p>{/if}
+          {:else}<p>No saved answers or Query Runs yet.</p>{/if}
         </section>
       {:else if activeSurface === 'Architecture'}
         <section class="architecture-surface">
-          <small>COMPOSITION ROOT</small><h2>One deterministic query path</h2>
-          <p>Natural language and structured edits produce the same Query Recipe, canonical Query Plan, immutable Query Run, and evidence.</p>
+          <small>COMPOSITION ROOT</small><h2>Sourced answers and historical queries</h2>
+          <p>Baseball answers include source records, observation times, and scope limits. Historical statistical questions and structured edits use a Query Recipe, canonical Query Plan, immutable Query Run, and evidence.</p>
           <code>Query Recipe → prepare → Query Plan → execute → Query Run</code>
         </section>
       {:else}
@@ -365,7 +378,7 @@
             <section class="feed-welcome">
               <span class="welcome-mark" aria-hidden="true">GB</span>
               <h2>Ask the record.</h2>
-              <p>Edit the 40-40 example in the composer, browse any published raw field, or ask a reviewed baseball question.</p>
+              <p>Ask a baseball question, explore historical stats with the 40-40 example, or browse the published fields. Answers show their sources and scope.</p>
             </section>
           {/if}
 
@@ -391,7 +404,12 @@
             </section>
           {/if}
 
-          {#if lastCompletedRun}
+          {#if lastCompletedRun?.kind === 'answer'}
+            <section class="run-card" aria-label="Completed assistant answer" aria-live="polite">
+              {#if completedQuestion}<p class="feed-question">{completedQuestion}</p>{/if}
+              <AssistantAnswer answer={lastCompletedRun} />
+            </section>
+          {:else if lastCompletedRun}
             <section class="run-card" aria-label="Completed query result" aria-live="polite">
               {#if completedQuestion}<p class="feed-question">{completedQuestion}</p>{/if}
               <small>{lastCompletedRun.kind.replaceAll('_', ' ')}</small><h2>{outcomeTitle(lastCompletedRun)}</h2>
@@ -420,6 +438,15 @@
               {#if lastCompletedRun.plan}
                 <button bind:this={detailsButton} class="details-link" type="button" aria-label="Open query details" on:click={() => (detailsOpen = true)}>Details ›</button>
               {/if}
+              {#if lastCompletedRun.attributions?.length}
+                <section class="query-source-credit" aria-label="Source attribution">
+                  <h3>Source attribution</h3>
+                  {#each lastCompletedRun.attributions as credit}
+                    {@const href = attributionUrl(credit.url)}
+                    <p>{credit.text} {#if href}<a {href} target="_blank" rel="noopener noreferrer">{credit.provider}</a>{/if}</p>
+                  {/each}
+                </section>
+              {/if}
             </section>
           {/if}
 
@@ -432,6 +459,13 @@
   </section>
 </main>
 
-{#if detailsOpen && lastCompletedRun}
+{#if detailsOpen && lastCompletedRun && lastCompletedRun.kind !== 'answer'}
   <DetailsSheet result={lastCompletedRun} {recipeText} {pending} onClose={closeDetails} onRunRecipe={runRecipeText} onExport={exportResult} onBrowseFields={browseFromDetails} />
 {/if}
+
+<style>
+  .query-source-credit { margin-top: 18px; padding: 14px; border: 1px solid #756232; border-radius: 10px; color: var(--text); background: var(--panel); overflow-wrap: anywhere; }
+  .query-source-credit h3 { margin: 0 0 8px; font-size: 14px; }
+  .query-source-credit p { margin: 10px 0; font-size: 13px; line-height: 1.6; }
+  .query-source-credit a { color: #e4c773; text-underline-offset: 3px; }
+</style>

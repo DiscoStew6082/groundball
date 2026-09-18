@@ -1,5 +1,7 @@
 """Tests for corpus content existence."""
 
+from urllib.parse import urlsplit
+
 from baseball_rag.corpus import get_stat_defs
 
 
@@ -31,3 +33,19 @@ class TestCorpusContent:
         for path in get_stat_defs():
             result = parse_frontmatter(path.read_text())
             assert len(result["body"].strip()) > 50, f"{path.name} body too short"
+
+    def test_stat_definitions_retain_individual_primary_source_links(self):
+        """Reviewed definitions expose distinct MLB glossary references for citations."""
+        from baseball_rag.corpus.frontmatter import parse_frontmatter
+
+        urls = []
+        for path in get_stat_defs():
+            metadata = parse_frontmatter(path.read_text())["metadata"]
+            source_url = metadata.get("source_url", "")
+            parsed = urlsplit(source_url)
+            assert parsed.scheme == "https", f"{path.name} needs an HTTPS source"
+            assert parsed.netloc == "www.mlb.com", f"{path.name} needs a primary source"
+            assert parsed.path.startswith("/glossary/standard-stats/")
+            assert parsed.path.removeprefix("/glossary/standard-stats/").strip("/")
+            urls.append(source_url)
+        assert len(set(urls)) == len(urls), "Definitions must cite their own glossary entries"

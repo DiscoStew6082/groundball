@@ -13,6 +13,7 @@ from baseball_rag.db.retrosheet_query_templates import (
     match_retrosheet_template,
 )
 from baseball_rag.query.runtime import published_data_runtime
+from baseball_rag.source_attribution import RETROSHEET_CREDIT, source_credit
 
 _QUERY_LOCK = threading.Lock()
 
@@ -58,12 +59,20 @@ def execute_retrosheet_query(question: str) -> dict[str, Any]:
     return {
         "kind": "rows" if rows else "no_data",
         "capability": "retrosheet",
+        "attributions": [source_credit("retrosheet")],
         "template": matched.template_id,
         "rows": rows,
         "evidence": {
             "parameterized_sql": limited_sql,
             "bound_values": list(matched.params),
-            "sources": [{"identity": "Retrosheet", "detail": matched.source_detail}],
+            "sources": [
+                {
+                    "identity": "Retrosheet",
+                    "detail": matched.source_detail,
+                    "attribution": RETROSHEET_CREDIT,
+                    "url": "https://www.retrosheet.org/",
+                }
+            ],
             "row_count": len(rows),
         },
     }

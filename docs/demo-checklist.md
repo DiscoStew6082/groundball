@@ -18,4 +18,6 @@ Open `http://127.0.0.1:7861/`.
 7. Export a result and show that the downloaded snapshot matches the visible rows.
 8. Open the Coverage Report; show six passing gates, 5,253 covered obligations, and zero uncovered.
 
-The takeaway: one catalog and one deterministic plan/compiler path own structured baseball facts. Every result is inspectable, proof-bound, and independent of an LLM or network service.
+These structured query results share one catalog and deterministic plan/compiler path, with inspectable evidence and release proof independent of an LLM or network service.
+
+When `assistant.enabled` is true, also ask for historical context about one team or an explanation of OPS. Show adjacent citations, expanded source records, visible attribution, and the full JSON download. Upcoming-game context requires available fixture evidence and must disclose that it covers the next listed game, not a complete schedule. See [assistant scope](assistant.md).

@@ -19,6 +19,7 @@ from baseball_rag.public_release_config import (
     MINIMUM_VISITOR_DIGEST_KEY_BYTES,
     load_runtime_configuration,
 )
+from baseball_rag.question_interpretation import QuestionBindings
 
 INITIALIZATION_WAIT_SECONDS = 5.0
 _UNAVAILABLE_BODY = {
@@ -148,6 +149,7 @@ def create_app(
     *,
     bindings: PublicAppBindings | None = None,
     public: bool | None = None,
+    question_bindings: QuestionBindings | None = None,
 ) -> FastAPI:
     """Create one local app or a process-shared fail-closed public app."""
     runtime_configured_public = False
@@ -169,7 +171,11 @@ def create_app(
     from baseball_rag.api.server import create_server_app
 
     if not public_mode:
-        return create_server_app(public_mode=False, lifespan=None)
+        return create_server_app(
+            public_mode=False, lifespan=None, question_bindings=question_bindings
+        )
+    if question_bindings is not None:
+        raise ValueError("Hosted interpretation must execute inside the injected hard-stop runner.")
     if bindings is None:
         closed_gate = _ClosedGate(expose_capabilities=runtime_configured_public)
         return create_server_app(

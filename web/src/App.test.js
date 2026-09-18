@@ -3,6 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App.svelte';
 
+const NativeURL = URL;
+const retrosheetCredit = 'The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at "www.retrosheet.org".';
+const assistantAnswer = {
+  kind: 'answer',
+  schema: 'ground-ball-assistant-answer-v1',
+  title: 'A game and its history',
+  summary: 'A scheduled game with historical context.',
+  requested_count: 1,
+  fixture: { home_team: 'Boston Red Sox', away_team: 'New York Yankees', starts_at: '2026-09-18T23:10:00Z', venue: 'Fenway Park', status: 'Scheduled' },
+  facts: [{ id: 'fact-1', text: 'Boston scored 7 runs in this historical game.', source_ids: ['retro-1'] }],
+  sources: [{ id: 'retro-1', title: 'Retrosheet game record', url: 'https://www.retrosheet.org/', observed_at: '2026-09-18T10:00:00Z', license: 'Retrosheet attribution required', attribution: retrosheetCredit, record: { game_id: 'BOS202409130', scope: 'Historical game record', home_score: 7 }, fingerprint: 'record-123' }],
+  limitations: ['Historical context does not establish current form.'],
+  attributions: [{ provider: 'Retrosheet', text: retrosheetCredit, url: 'https://www.retrosheet.org/' }],
+};
+
 const capabilities = {
   name: 'Ground Ball',
   mode: 'local',
@@ -107,14 +122,164 @@ async function mountApp(
 
 beforeEach(() => {
   localStorage.clear();
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: vi.fn(() => 'blob:ground-ball-export'),
-    revokeObjectURL: vi.fn(),
+  vi.stubGlobal('URL', class extends NativeURL {
+    static createObjectURL = vi.fn(() => 'blob:ground-ball-export');
+    static revokeObjectURL = vi.fn();
   });
 });
 
 describe('Ground Ball answer-first application', () => {
+  it('shows a readable local fixture time and scheduled status while preserving the source timestamp', async () => {
+    const NativeDateTimeFormat = Intl.DateTimeFormat;
+    // Model a browser configured for New York without changing the host timezone.
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locale, options) {
+      return new NativeDateTimeFormat('en-US', { ...options, timeZone: 'America/New_York' });
+    });
+    let calls = 0;
+    await mountApp(() => response({
+      ...assistantAnswer,
+      fixture: { ...assistantAnswer.fixture, status: 'NS', starts_at: ++calls === 1 ? '2026-09-18T23:10:00Z' : 'Time to be confirmed' },
+    }));
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Game details"] time')).not.toBeNull());
+    const time = document.querySelector('[aria-label="Game details"] time');
+    expect(time.textContent).toContain('Sep 18, 2026');
+    expect(time.textContent).toContain('7:10 PM EDT');
+    expect(time.getAttribute('datetime')).toBe('2026-09-18T23:10:00Z');
+    expect(document.querySelector('[aria-label="Game details"]').textContent).toContain('Scheduled');
+    const savedFixture = JSON.parse(localStorage.getItem('ground-ball-query-history'))[0].run.fixture;
+    expect(savedFixture.starts_at).toBe('2026-09-18T23:10:00Z');
+    expect(savedFixture.status).toBe('NS');
+
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Game details"]').textContent).toContain('Time to be confirmed'));
+  });
+
+  it('renders supplied query source credit visibly while keeping unsafe attribution links inactive', async () => {
+    const run = { ...rowsRun, attributions: [
+      ...assistantAnswer.attributions,
+      { provider: 'Unsafe source', text: '<img src=x onerror=alert(1)>', url: 'javascript:alert(1)' },
+    ] };
+    await mountApp(() => response(run));
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Completed query result"]')).not.toBeNull());
+    const credit = document.querySelector('[aria-label="Completed query result"] [aria-label="Source attribution"]');
+    expect(credit).not.toBeNull();
+    expect(credit.textContent).toContain(retrosheetCredit);
+    expect(credit.closest('details')).toBeNull();
+    expect(credit.querySelectorAll('a')).toHaveLength(1);
+    expect(credit.querySelector('a').href).toBe('https://www.retrosheet.org/');
+    expect(credit.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(credit.querySelector('img')).toBeNull();
+  });
+
+  it('restores sourced history as text and never activates unsafe source or attribution URLs', async () => {
+    const unsafeUrls = ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'http://example.com', '//example.com', 'https://' + 'user:secret@example.com', 'not a URL'];
+    const stored = {
+      ...assistantAnswer,
+      title: '<img src=x onerror=alert(1)>',
+      sources: unsafeUrls.map((url, index) => ({ ...assistantAnswer.sources[0], id: `unsafe-${index}`, url, title: `Unsafe source ${index}`, attribution: `Credit ${index}` })),
+      attributions: unsafeUrls.map((url, index) => ({ provider: `Unsafe provider ${index}`, text: `Credit ${index}`, url })),
+      facts: [{ id: 'unsafe-fact', text: '<script>alert(1)</script>', source_ids: unsafeUrls.map((_, index) => `unsafe-${index}`), query_run: rowsRun }],
+    };
+    localStorage.setItem('ground-ball-query-history', JSON.stringify([{ question: 'Saved question', run: stored, saved_at: '2026-09-18' }]));
+    const fetchMock = await mountApp();
+    document.querySelector('[aria-label="Open application navigation"]').click();
+    await tick();
+    [...document.querySelectorAll('[role="menu"] button')].find((button) => button.textContent.includes('History')).click();
+    await tick();
+    document.querySelector('.history-surface button').click();
+    await tick();
+    const answer = document.querySelector('[aria-label="Completed assistant answer"]');
+    expect(answer.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(answer.textContent).toContain('<script>alert(1)</script>');
+    expect(answer.querySelectorAll('img, script, a')).toHaveLength(0);
+    expect(answer.querySelector('[aria-label="Historical query evidence"]').textContent).toContain('result-123');
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+  });
+
+  it('retains a completed assistant answer after a failed attempt and restores its full local snapshot', async () => {
+    let calls = 0;
+    const fetchMock = await mountApp(() => ++calls === 1
+      ? response(assistantAnswer)
+      : response({ error: 'service_unavailable', detail: 'Source unavailable.' }, false, 503));
+    inputText('Ask Ground Ball', 'Give me historical context');
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Completed assistant answer"]')).not.toBeNull());
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Latest attempt"]')).not.toBeNull());
+    expect(document.querySelector('[aria-label="Completed assistant answer"]').textContent).toContain(retrosheetCredit);
+    expect(JSON.parse(localStorage.getItem('ground-ball-query-history'))[0].run).toEqual(assistantAnswer);
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)[1].body)).toEqual({ question: 'Give me historical context' });
+
+    document.querySelector('[aria-label="Open application navigation"]').click();
+    await tick();
+    [...document.querySelectorAll('[role="menu"] button')].find((button) => button.textContent.includes('History')).click();
+    await tick();
+    document.querySelector('.history-surface button').click();
+    await tick();
+    expect(document.querySelector('[aria-label="Latest attempt"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Completed assistant answer"]').textContent).toContain(assistantAnswer.facts[0].text);
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2);
+  });
+
+  it('keeps source-owned attribution visible when an answer has no aggregate credits', async () => {
+    await mountApp(() => response({ ...assistantAnswer, attributions: [] }));
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Source attribution"]')).not.toBeNull());
+    const credit = document.querySelector('[aria-label="Source attribution"]');
+    expect(credit.textContent).toContain(retrosheetCredit);
+    expect(credit.closest('details')).toBeNull();
+  });
+
+  it('downloads the complete assistant evidence and attribution locally without issuing a query export', async () => {
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const fetchMock = await mountApp(() => response(assistantAnswer));
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Completed assistant answer"]')).not.toBeNull());
+    const download = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('Download answer JSON'));
+    expect(download).toBeDefined();
+    download.click();
+    await vi.waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    expect(clickSpy.mock.instances[0].download).toBe('ground-ball-answer.json');
+    const blob = URL.createObjectURL.mock.calls[0][0];
+    const content = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsText(blob);
+    });
+    expect(JSON.parse(content)).toEqual(assistantAnswer);
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+    expect(document.body.textContent).not.toContain('Export CSV');
+  });
+
+  it('renders a sourced answer with adjacent citations, visible credit, and expandable evidence in the same chat', async () => {
+    await mountApp(() => response(assistantAnswer));
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Completed assistant answer"]')).not.toBeNull());
+    const answer = document.querySelector('[aria-label="Completed assistant answer"]');
+    const fact = [...answer.querySelectorAll('li')].find((item) => item.textContent.includes(assistantAnswer.facts[0].text));
+    expect(fact.querySelector('a').href).toBe('https://www.retrosheet.org/');
+    expect(answer.textContent).toContain('Fenway Park');
+    expect(answer.textContent).toContain(assistantAnswer.limitations[0]);
+    const credits = answer.querySelector('[aria-label="Source attribution"]');
+    expect(credits.textContent).toContain(retrosheetCredit);
+    expect(credits.closest('details')).toBeNull();
+    expect(credits.querySelector('a').href).toBe('https://www.retrosheet.org/');
+
+    const evidence = answer.querySelector('details[aria-label="Source evidence"]');
+    evidence.open = true;
+    await tick();
+    expect(evidence.textContent).toContain('2026-09-18T10:00:00Z');
+    expect(evidence.textContent).toContain('Historical game record');
+    expect(evidence.textContent).toContain('BOS202409130');
+    expect(evidence.textContent).toContain('record-123');
+    expect(document.querySelector('[aria-label="Open query details"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Result pagination"]')).toBeNull();
+  });
+
   it('runs the editable 40-40 example and exposes one evidence-complete Details surface', async () => {
     const fetchMock = await mountApp();
 
