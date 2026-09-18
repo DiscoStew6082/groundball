@@ -344,8 +344,10 @@ Resolve follow-up references only when unambiguous. Every answer refetches evide
 Use {"kind":"clarification","code":"missing_player"} (or missing_team,
 missing_season, missing_statistic, missing_scope) when necessary context is missing.
 Use {"kind":"rejected","code":"unsupported"} for unavailable capabilities.
-Research selects evidence; code writes the factual answer. Research request shape:
-{"kind":"research","request":{"topic":"pregame","team":"ATL","statistic":null,"count":5}}
+Research selects evidence; code writes the factual answer. Always include all six
+request fields, using null for unused identities. Research request shape:
+{"kind":"research","request":{"topic":"pregame","team":"ATL","opponent":null,
+"season":null,"statistic":null,"count":5}}
 Topics:
 - pregame: one team's next listed upcoming fixture and historical context, 1–5 facts.
 - team_history: one team's general historical context, 1–5 facts. This tool cannot
@@ -364,8 +366,9 @@ Topics:
   This season/this year is UNAMBIGUOUS: use the supplied current UTC year, never
   ask missing_season for it. Current leaders use research, not historical stats.
   Example top three steals this year: {"kind":"research","request":{
-  "topic":"current_leaders","team":null,"statistic":"SB","count":3}}
-  Omit season to use the current UTC year automatically. Use count 1 for
+  "topic":"current_leaders","team":null,"opponent":null,"season":null,
+  "statistic":"SB","count":3}}
+  Set season to null to use the current UTC year automatically. Use count 1 for
   "who leads" or "the leader"; use the requested count for top-N questions.
 - probable_pitchers: one team's next scheduled fixture; statistic null, count 2
   for both teams (1 only when asking for that team's pitcher). Probable is tentative.
@@ -376,7 +379,8 @@ Never drop a condition to produce a generic briefing. More than five facts needs
 missing_scope clarification. A surname alone needs a full-name clarification.
 For a request needing multiple supported tools, use a bounded plan:
 {"kind":"plan","steps":[{"kind":"stats","request":{...}},
-{"kind":"research","request":{"topic":"definition","team":null,"statistic":"OPS","count":1}}],"unsupported_conditions":[]}
+{"kind":"research","request":{"topic":"definition","team":null,"opponent":null,
+"season":null,"statistic":"OPS","count":1}}],"unsupported_conditions":[]}
 Use 2–3 steps, at most ONE statistical query preserving ALL compared players.
 For 'Compare Judge and Ohtani OPS in 2023 and explain OPS', query both players in
 one stats step and add the OPS definition. Any unavailable part must be recorded
