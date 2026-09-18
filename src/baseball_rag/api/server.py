@@ -23,6 +23,7 @@ from starlette.responses import (
     Response,
 )
 
+from baseball_rag.assistant import RESEARCH_TOPICS
 from baseball_rag.public_admission import (
     AdmissionAttempt,
     AdmissionOutcome,
@@ -318,6 +319,7 @@ class QueryInputRequest(BaseModel):
     question: str | None = Field(default=None, min_length=1, max_length=QUESTION_CHARACTER_LIMIT)
     recipe: dict[str, Any] | None = None
     previous_recipe: dict[str, Any] | None = None
+    previous_context: dict[str, Any] | None = None
 
 
 class RetrosheetQueryRequest(BaseModel):
@@ -377,7 +379,7 @@ def capabilities(request: Request):
                     False,
                 )
             ),
-            "topics": ["pregame", "team_history", "definition"],
+            "topics": list(RESEARCH_TOPICS),
             "factual_prose": "source_records_and_verified_queries",
         },
         "llm_required": False,
@@ -394,11 +396,21 @@ def query_run(req: QueryInputRequest, request: Request):
             status_code=422,
             detail="Provide exactly one natural-language question or structured recipe.",
         )
-    if req.previous_recipe is not None and req.question is None:
+    if (
+        req.previous_recipe is not None or req.previous_context is not None
+    ) and req.question is None:
         raise HTTPException(
             status_code=422,
-            detail="Previous recipe context is accepted only with a natural-language question.",
+            detail="Previous context is accepted only with a natural-language question.",
         )
+    if req.previous_context is not None:
+        from baseball_rag.public_results import compact_json_bytes
+
+        try:
+            if len(compact_json_bytes(req.previous_context)) > 2048:
+                raise ValueError("Previous answer context may not exceed 2048 bytes.")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if _request_is_public(request):
         return _execute_public_request(
@@ -408,6 +420,7 @@ def query_run(req: QueryInputRequest, request: Request):
                 question=req.question,
                 recipe=req.recipe,
                 previous_recipe=req.previous_recipe,
+                previous_context=req.previous_context,
             ),
         )
 
@@ -416,13 +429,14 @@ def query_run(req: QueryInputRequest, request: Request):
 
     question_bindings = getattr(request.app.state, "question_bindings", None)
     try:
-        if question_bindings is not None:
+        if question_bindings is not None or req.previous_context is not None:
             return run_question_input(
                 question=req.question,
                 recipe=req.recipe,
                 previous_recipe=req.previous_recipe,
-                interpret=question_bindings.interpret,
-                research_sources=question_bindings.research_sources,
+                previous_context=req.previous_context,
+                interpret=question_bindings.interpret if question_bindings else None,
+                research_sources=question_bindings.research_sources if question_bindings else None,
             )
         return run_query_input(
             question=req.question,

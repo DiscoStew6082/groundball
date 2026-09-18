@@ -12,6 +12,7 @@ The information used here was obtained free of charge from and is copyrighted by
 
 - Historical statistics: Sean Lahman / SABR, via NeuML, with CC BY-SA 3.0 metadata retained in [`release/legal/lahman-neuml.json`](../release/legal/lahman-neuml.json) and the data manifest.
 - Fixture metadata: TheSportsDB, with its source attribution and API terms recorded in the answer. A listed fixture does not establish schedule completeness.
+- Current batting leaders and probable pitchers: MLB records, with dated observations, retained raw records, team mapping and normalized values. MLB source terms apply; probable pitchers and schedules may change.
 - Stat definitions: concise reviewed project text linked to individual MLB glossary pages through corpus `source_url` metadata. The citation identifies the reference; it does not imply that the full glossary text is distributed here.
 
 The project license does not replace these source terms. Credits remain part of visible answers and retained evidence.

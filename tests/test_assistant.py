@@ -51,7 +51,18 @@ def meetings(team, opponent):
                 "ws2021",
                 "Retrosheet 2021 World Series",
                 "https://www.retrosheet.org/boxesetc/2021/YPS_2021.htm",
-                {"winner": "ATL", "loser": "HOU", "wins": [4, 2]},
+                {
+                    "year": 2021,
+                    "round": "World Series",
+                    "games": [
+                        ["20211026", "0", "ATL", "HOU", 6, 2],
+                        ["20211027", "0", "ATL", "HOU", 2, 7],
+                        ["20211029", "0", "HOU", "ATL", 0, 2],
+                        ["20211030", "0", "HOU", "ATL", 2, 3],
+                        ["20211031", "0", "HOU", "ATL", 9, 5],
+                        ["20211102", "0", "ATL", "HOU", 7, 0],
+                    ],
+                },
             ),
         }
     ]

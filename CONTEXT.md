@@ -13,7 +13,8 @@ This is the canonical current architecture and domain context. Historical implem
 - Factual adapter results are available only when the checked-in Coverage Report passes and matches the runtime exactly.
 - Retrosheet event queries are separately governed. Assistant statistics reuse verified immutable Query Runs; external records do not extend the Published Query Catalog.
 - Assistant answers use `ground-ball-assistant-answer-v1`, with at most five sourced facts, source records, observation times, fingerprints, scope limits, and required attribution.
-- Assistant scope is one team's historical context through 2025, its next listed upcoming fixture with historical World Series context when supported, or one of ten reviewed stat definitions. Unsupported conditions are rejected rather than dropped. Current injuries, starters, news, and current-season statistics are not supplied.
+- Assistant scope includes team history through 2025, next-game context, historical World Series follow-ups, ten reviewed definitions, current regular-season MLB batting leaders (HR/RBI/SB), and probable pitchers for the next scheduled fixture. Current records require injected sources, freshness and retained evidence; probable pitchers remain tentative. Injuries, news and other unsupported conditions are rejected rather than dropped.
+- Bounded compound plans use two or three tool steps and at most one statistical query, composing no more than five sourced facts. Any unavailable step prevents a partial answer. Browser follow-up context contains only validated references; facts are retrieved again.
 
 ## Public composition
 
@@ -22,6 +23,8 @@ This is the canonical current architecture and domain context. Historical implem
 The direct-import `baseball_rag.api.server.app` remains available for local use and offline release proof. Its local-CI runtime configuration is network-disabled and cannot claim shared deployment authority.
 
 Public source owns the interpretation prompt, response schema, validation, `run_question_input`, and factual answer construction. Optional model transport and bounded external source callbacks are injected by the outer runtime. `QuestionBindings` supplies optional local interpretation; public execution injects these dependencies within its existing hard-stop boundary. No transport or source callback owns product prompts, query semantics, or factual prose.
+
+Ordinary statistics use catalog-derived typed intent slots translated into the existing Query Recipe. Complex filters, raw rows, windows, qualifications and exports retain the direct recipe path. Typed season scopes are checked against immutable release coverage.
 
 Interpretation grammar derives field operators and literal types from the Published Query Catalog. Natural-language player filters share the people identity resolver across equality, alternatives and exclusions, preserving disambiguated IDs. Explicit-name and season checks can reject missing or contradictory scope; these are partial safeguards, not proof of complete language understanding. QueryEvidence verifies execution of the visible recipe, not that a model preserved every condition in the original question.
 
@@ -36,6 +39,7 @@ Interpretation grammar derives field operators and literal types from the Publis
 ## Current modules
 
 - `src/baseball_rag/query/`: catalog-backed planning, compilation, execution, evidence, and coverage.
+- `src/baseball_rag/query_intent.py`: catalog-derived statistics slots and deterministic recipe translation.
 - `src/baseball_rag/question_interpretation.py`: public interpretation contract and same-endpoint dispatch to validated queries or bounded research.
 - `src/baseball_rag/assistant.py`: sourced answer construction, verified Query Run reuse, and `ResearchSources` callback interfaces.
 - `src/baseball_rag/source_attribution.py`: application-owned source credits, including the required Retrosheet notice.

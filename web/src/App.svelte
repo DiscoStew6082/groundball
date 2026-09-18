@@ -79,6 +79,8 @@
     await runRequest({
       question,
       ...(lastCompletedRun?.recipe ? { previous_recipe: lastCompletedRun.recipe } : {}),
+      ...(lastCompletedRun?.context && typeof lastCompletedRun.context === 'object' && !Array.isArray(lastCompletedRun.context)
+        ? { previous_context: lastCompletedRun.context } : {}),
     });
   }
 

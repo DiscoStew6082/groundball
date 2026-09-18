@@ -185,6 +185,42 @@ def test_query_run_request_requires_exactly_one_clean_input():
     assert "Unknown Query Recipe predicate fields" in nested.json()["detail"]
 
 
+def test_public_api_preserves_bounded_research_context_at_execution_boundary(monkeypatch):
+    _, runner = configure_public_proof(monkeypatch)
+    context = {"version": 1, "topic": "team_history", "team": "ATL"}
+    response = client.post(
+        "/api/query-runs",
+        json={"question": "Tell me more about their history", "previous_context": context},
+    )
+
+    assert response.status_code == 200
+    assert runner.requests[0].previous_context == context
+    invalid = client.post("/api/query-runs", json={"recipe": {}, "previous_context": context})
+    oversized = client.post(
+        "/api/query-runs",
+        json={"question": "Tell me more", "previous_context": {"topic": "x" * 2048}},
+    )
+    assert invalid.status_code == oversized.status_code == 422
+    assert len(runner.requests) == 1
+
+
+def test_local_api_rejects_fact_bearing_research_context():
+    response = client.post(
+        "/api/query-runs",
+        json={
+            "question": "Tell me more about their history",
+            "previous_context": {
+                "version": 1,
+                "topic": "team_history",
+                "team": "ATL",
+                "facts": ["A fabricated claim from browser history"],
+            },
+        },
+    )
+
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
 def test_query_run_rejects_non_finite_recipe_literals(literal: str):
     response = client.post(

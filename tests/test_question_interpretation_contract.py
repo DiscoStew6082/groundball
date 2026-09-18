@@ -28,7 +28,16 @@ def execution(monkeypatch):
     monkeypatch.setattr(
         interpretation,
         "published_data_runtime",
-        lambda: SimpleNamespace(connection=object(), connection_lock=nullcontext()),
+        lambda: SimpleNamespace(
+            connection=object(),
+            connection_lock=nullcontext(),
+            manifest={
+                "files": [
+                    {"table": table, "year_coverage": {"min": 1871, "max": 2025}}
+                    for table in ("batting", "pitching", "fielding")
+                ]
+            },
+        ),
     )
     monkeypatch.setattr(
         interpretation, "resolve_player_by_name", lambda name, _: PlayerResolution(name, [])
@@ -77,6 +86,31 @@ def test_compact_catalog_preserves_every_identity_and_its_supported_scope():
             "null_policy",
         ):
             assert actual[key] == expected[key]
+
+
+def test_model_recipe_cannot_return_only_the_covered_part_of_requested_years(execution):
+    recipe = {
+        "source": "Batting",
+        "grain": "player-season",
+        "selections": ["player.name", "season", "batting.HR"],
+        "predicate": {
+            "kind": "any",
+            "predicates": [
+                {"kind": "compare", "value": "season", "operator": "equals", "literal": year}
+                for year in (2023, 2026)
+            ],
+        },
+    }
+    result = interpretation.run_question_input(
+        question="Show home run totals for 2023 and 2026",
+        interpret=lambda *_: {"kind": "recipe", "recipe": recipe},
+    )
+    assert result["kind"] == "rejected"
+    assert execution == []
+    # The explicit structured API preserves its existing filter semantics.
+    result = interpretation.run_question_input(recipe=recipe)
+    assert result["kind"] == "no_data"
+    assert execution == [{"recipe": recipe}]
 
 
 def test_model_comparison_grammar_preserves_field_specific_operator_capabilities():

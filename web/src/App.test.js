@@ -396,6 +396,25 @@ describe('Ground Ball answer-first application', () => {
     expect(document.body.textContent).not.toContain('Jose Canseco');
   });
 
+  it('sends only research references from the last completed answer with a follow-up', async () => {
+    const context = { version: 1, topic: 'team_history', team: 'ATL' };
+    const requests = [];
+    await mountApp((body) => {
+      requests.push(body);
+      return response({ ...assistantAnswer, context });
+    });
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Completed assistant answer"]')).not.toBeNull());
+
+    inputText('Ask Ground Ball', 'Tell me more about their history');
+    document.querySelector('.chat-composer').dispatchEvent(new SubmitEvent('submit', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]).toEqual({
+      question: 'Tell me more about their history',
+      previous_context: context,
+    });
+  });
+
   it('keeps the last completed table visible while the next attempt is pending', async () => {
     let finishSecond;
     const secondResponse = new Promise((resolve) => {

@@ -576,3 +576,85 @@ def test_explicit_full_statistic_name_keeps_its_primary_definition(question, sta
     assert result["kind"] == "answer"
     assert result["title"] == statistic
     assert result["sources"][0]["provider"] == "mlb_glossary"
+
+
+@pytest.mark.parametrize(
+    "question,statistic,count",
+    [
+        ("Who leads MLB in stolen bases this year?", "HR", 1),
+        ("Who are the top five home run leaders this season?", "HR", 1),
+        ("Who leads MLB in home runs and RBI this year?", "HR", 1),
+        ("Who had the most home runs last season?", "HR", 1),
+    ],
+)
+def test_current_leader_plan_cannot_change_statistic_count_or_period(question, statistic, count):
+    from datetime import UTC, datetime
+
+    from baseball_rag.assistant import ResearchSources
+
+    def must_not_fetch(*_):
+        pytest.fail("Mismatched current research reached external source")
+
+    result = run_question_input(
+        question=question,
+        interpret=lambda *_: {
+            "kind": "research",
+            "request": {
+                "topic": "current_leaders",
+                "team": None,
+                "statistic": statistic,
+                "season": datetime.now(UTC).year,
+                "count": count,
+            },
+        },
+        research_sources=ResearchSources(must_not_fetch, must_not_fetch, must_not_fetch),
+    )
+    assert result["kind"] == "rejected"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Who has more homers this year, Aaron Judge or Shohei Ohtani?",
+        "Who leads the National League in home runs this year?",
+    ],
+)
+def test_current_leaders_cannot_drop_player_or_league_scope(question):
+    from baseball_rag.assistant import ResearchSources
+
+    def must_not_fetch(*_):
+        pytest.fail("Narrow request became a league-wide leaderboard")
+
+    result = run_question_input(
+        question=question,
+        interpret=lambda *_: {
+            "kind": "research",
+            "request": {"topic": "current_leaders", "team": None, "statistic": "HR", "count": 1},
+        },
+        research_sources=ResearchSources(must_not_fetch, must_not_fetch, must_not_fetch),
+    )
+    assert result["kind"] == "rejected"
+
+
+def test_comparison_recipe_cannot_drop_requested_explanation():
+    from baseball_rag.query_intent import translate_stats_intent
+
+    recipe = translate_stats_intent(
+        {
+            "source": "Batting",
+            "subject": "players",
+            "players": ["Aaron Judge", "Shohei Ohtani"],
+            "exclude_players": [],
+            "teams": [],
+            "exclude_teams": [],
+            "period": {"kind": "seasons", "years": [2023]},
+            "statistics": ["batting.OPS"],
+            "ranking": None,
+            "unsupported_conditions": [],
+        }
+    )
+    result = run_question_input(
+        question="Compare Aaron Judge and Shohei Ohtani OPS in 2023 and explain the difference.",
+        interpret=lambda *_: {"kind": "recipe", "recipe": recipe},
+    )
+    assert result["kind"] == "rejected"

@@ -19,6 +19,10 @@ def source_credit(provider: str) -> dict[str, str]:
             "Stat definitions paraphrased from the MLB glossary.",
             "https://www.mlb.com/glossary",
         ),
+        "mlb_stats": (
+            "Current baseball records from MLB. Probable pitchers and schedules may change.",
+            "https://www.mlb.com/",
+        ),
         "groundball": (
             "Ground Ball stat-definition reference.",
             "https://github.com/DiscoStew6082/groundball",

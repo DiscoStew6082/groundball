@@ -12,9 +12,11 @@ When the optional assistant bindings are available, the same chat supports:
 
 - Historical context for one MLB team, using the verified statistical release through 2025.
 - Context for that team's next listed upcoming game, with dated historical statistics and supported World Series meetings. Fixture coverage is limited and start times can change.
+- Historical comparisons combined with sourced explanations, and follow-ups about a referenced World Series.
+- Current regular-season HR, RBI and stolen-base leaders, plus tentative probable pitchers for the next game, when current-source callbacks are available.
 - Ten reviewed stat definitions: 2B, AVG, BB, ERA, HR, OPS, PO, RBI, SB, and WHIP, each linked to its MLB glossary source.
 
-Answers contain at most five fact cards with citations, expandable source records, observation times, scope limits, and visible attribution. Full answer JSON downloads and history stay in the browser. Missing evidence can produce fewer facts or an unavailable response. Current-season statistics, injuries, starters, news, and unsupported date or multi-team constraints are not supplied or silently discarded. See [assistant scope and evidence](docs/assistant.md).
+Answers contain at most five fact cards with citations, expandable source records, observation times, scope limits, and visible attribution. Full answer JSON downloads and history stay in the browser. Missing evidence can produce fewer facts or an unavailable response. Injuries, news, live statistics beyond the listed leaderboards, and unsupported date constraints are declined. A multi-part request is answered only when every part can be supported. See [assistant scope and evidence](docs/assistant.md).
 
 ## What is queryable
 

@@ -17,6 +17,7 @@ class ExecutionRequest:
     question: str | None
     recipe: dict[str, Any] | None
     previous_recipe: dict[str, Any] | None = None
+    previous_context: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class SubprocessExecutionRunner:
                 "question": request.question,
                 "recipe": request.recipe,
                 "previous_recipe": request.previous_recipe,
+                "previous_context": request.previous_context,
             }
         ).encode("utf-8")
         try:
@@ -108,11 +110,21 @@ def _execute(request: ExecutionRequest) -> dict[str, Any]:
         if request.operation == "query":
             from baseball_rag.public_results import run_public_query_input
 
-            payload = run_public_query_input(
-                question=request.question,
-                recipe=request.recipe,
-                previous_recipe=request.previous_recipe,
-            )
+            if request.previous_context is not None:
+                from baseball_rag.question_interpretation import run_question_input
+
+                payload = run_question_input(
+                    question=request.question,
+                    recipe=request.recipe,
+                    previous_recipe=request.previous_recipe,
+                    previous_context=request.previous_context,
+                )
+            else:
+                payload = run_public_query_input(
+                    question=request.question,
+                    recipe=request.recipe,
+                    previous_recipe=request.previous_recipe,
+                )
         else:
             from baseball_rag.retrosheet_query import execute_retrosheet_query
 
@@ -137,6 +149,7 @@ def main() -> int:
             question=raw_request.get("question"),
             recipe=raw_request.get("recipe"),
             previous_recipe=raw_request.get("previous_recipe"),
+            previous_context=raw_request.get("previous_context"),
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         print(json.dumps({"kind": "failed"}))

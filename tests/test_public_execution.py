@@ -82,6 +82,26 @@ def test_subprocess_execution_returns_only_the_worker_envelope() -> None:
     assert outcome.detail is None
 
 
+def test_public_worker_does_not_treat_client_answer_facts_as_trusted_context() -> None:
+    outcome = SubprocessExecutionRunner().run(
+        ExecutionRequest(
+            operation="query",
+            question="Tell me more about their history",
+            recipe=None,
+            previous_context={
+                "version": 1,
+                "topic": "team_history",
+                "team": "ATL",
+                "facts": ["A fabricated claim from browser history"],
+            },
+        ),
+        timeout_seconds=10,
+    )
+
+    assert outcome.kind == "invalid"
+    assert outcome.payload is None
+
+
 def test_timeout_terminates_and_reaps_work_instead_of_leaving_a_thread(
     tmp_path: Path,
 ) -> None:
