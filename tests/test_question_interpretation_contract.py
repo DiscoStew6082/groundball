@@ -10,6 +10,7 @@ import pytest
 
 from baseball_rag import question_interpretation as interpretation
 from baseball_rag.db.player_identity import PlayerCandidate, PlayerResolution
+from baseball_rag.query import adapters
 from baseball_rag.query.adapters import adapt_natural_query, catalog_payload, recipe_to_dict
 from baseball_rag.query.contracts import QueryRecipe
 
@@ -32,6 +33,8 @@ def execution(monkeypatch):
     monkeypatch.setattr(
         interpretation, "resolve_player_by_name", lambda name, _: PlayerResolution(name, [])
     )
+    monkeypatch.setattr(adapters, "published_data_runtime", interpretation.published_data_runtime)
+    monkeypatch.setattr(adapters, "resolve_player_by_name", interpretation.resolve_player_by_name)
     monkeypatch.setattr(interpretation, "find_player_mentions", lambda *_: [])
     monkeypatch.setattr(
         interpretation,
@@ -195,7 +198,7 @@ def test_ambiguous_entity_clarifies_before_either_natural_path_executes(
     execution, monkeypatch, model_path
 ):
     monkeypatch.setattr(
-        interpretation,
+        adapters,
         "resolve_player_by_name",
         lambda name, _: PlayerResolution(
             name,
@@ -225,7 +228,7 @@ def test_unique_natural_entity_is_canonicalized_but_explicit_recipe_is_preserved
     execution, monkeypatch
 ):
     monkeypatch.setattr(
-        interpretation,
+        adapters,
         "resolve_player_by_name",
         lambda name, _: PlayerResolution(
             name,

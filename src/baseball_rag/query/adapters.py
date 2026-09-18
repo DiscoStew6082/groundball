@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any, cast
 
+from baseball_rag.db.player_identity import resolve_player_by_name
 from baseball_rag.query.contracts import (
     All,
     Compare,
@@ -38,6 +40,7 @@ from baseball_rag.query.registry import (
     published_sources,
     published_values,
 )
+from baseball_rag.query.runtime import published_data_runtime
 from baseball_rag.query.service import execute, prepare
 
 
@@ -58,7 +61,10 @@ def run_query_input(
         adapted = adapt_natural_query(question, previous_recipe=previous_recipe)
         if isinstance(adapted, (NeedsClarification, Rejected)):
             return _planning_payload(adapted, recipe=None)
-        resolved_recipe = adapted
+        normalized = resolve_natural_recipe(adapted)
+        if isinstance(normalized, NeedsClarification):
+            return _planning_payload(normalized, recipe=None)
+        resolved_recipe = normalized
     else:
         resolved_recipe = recipe_from_dict(cast(Mapping[str, Any], recipe))
 
@@ -81,6 +87,80 @@ def adapt_natural_query(
         if not isinstance(previous_plan, Ready):
             raise ValueError("Previous recipe context must be a valid completed Query Recipe.")
     return interpret_recipe(question, previous_recipe=resolved_previous)
+
+
+def resolve_natural_recipe(recipe: QueryRecipe) -> QueryRecipe | NeedsClarification:
+    """Resolve natural-language names once for assistant, CLI and HTTP callers.
+
+    Explicit structured recipes retain literal semantics and do not use this
+    normalization. Unique identities survive aliases and duplicate display names.
+    """
+    if recipe.predicate is None:
+        return recipe
+    predicate = _resolve_natural_predicate(recipe.predicate)
+    if isinstance(predicate, NeedsClarification):
+        return predicate
+    return replace(recipe, predicate=predicate)
+
+
+def _resolve_natural_predicate(
+    predicate: Predicate, *, require_match: bool = False
+) -> Predicate | NeedsClarification:
+    if isinstance(predicate, Not):
+        child = _resolve_natural_predicate(predicate.predicate, require_match=True)
+        if isinstance(child, NeedsClarification):
+            return child
+        return replace(predicate, predicate=child)
+    if isinstance(predicate, (All, AnyPredicate)):
+        resolved: list[Predicate] = []
+        for item in predicate.predicates:
+            outcome = _resolve_natural_predicate(
+                item, require_match=require_match or isinstance(predicate, AnyPredicate)
+            )
+            if isinstance(outcome, NeedsClarification):
+                return outcome
+            resolved.append(outcome)
+        return replace(predicate, predicates=tuple(resolved))
+    if (
+        isinstance(predicate, Compare)
+        and predicate.value == "player.name"
+        and predicate.operator == "one_of"
+        and isinstance(predicate.literal, tuple)
+    ):
+        comparisons: list[Predicate] = []
+        for name in predicate.literal:
+            outcome = _resolve_natural_predicate(
+                replace(predicate, operator="equals", literal=name), require_match=True
+            )
+            if isinstance(outcome, NeedsClarification):
+                return outcome
+            assert isinstance(outcome, Compare)
+            comparisons.append(outcome)
+        return AnyPredicate(tuple(comparisons))
+    if (
+        isinstance(predicate, Compare)
+        and predicate.value == "player.name"
+        and predicate.operator == "equals"
+        and isinstance(predicate.literal, str)
+    ):
+        runtime = published_data_runtime()
+        with runtime.connection_lock:
+            resolution = resolve_player_by_name(predicate.literal, runtime.connection)
+            duplicate_name = (
+                resolution.player is not None
+                and resolve_player_by_name(
+                    resolution.player.full_name, runtime.connection
+                ).ambiguous
+            )
+        if resolution.ambiguous or (
+            resolution.player is None and (require_match or len(predicate.literal.split()) < 2)
+        ):
+            return NeedsClarification("Which player's full name should I use?")
+        if resolution.player is not None:
+            if duplicate_name:
+                return replace(predicate, value="player.id", literal=resolution.player.player_id)
+            return replace(predicate, literal=resolution.player.full_name)
+    return predicate
 
 
 def recipe_to_dict(recipe: QueryRecipe) -> dict[str, Any]:

@@ -9,6 +9,14 @@ from baseball_rag.query.adapters import catalog_payload, run_query_input
 from baseball_rag.query.coverage import canonical_proof_id, load_coverage_report
 
 
+@pytest.mark.parametrize("name,total", [("Ken Griffey Jr.", 22), ("Ken Griffey Sr.", 4)])
+def test_natural_query_identity_is_preserved_without_an_assistant_binding(name, total):
+    result = run_query_input(question=f"how many home runs did {name} hit in 1990")
+    assert result["kind"] == "rows"
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["batting.HR"] == total
+
+
 def test_natural_language_and_structured_input_return_the_same_recipe_and_plan():
     natural = run_query_input(question="who had the most RBIs in 1962")
     structured = run_query_input(recipe=natural["recipe"])

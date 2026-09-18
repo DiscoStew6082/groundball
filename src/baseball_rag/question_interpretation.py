@@ -10,7 +10,7 @@ import json
 import math
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,10 +28,10 @@ from baseball_rag.query.adapters import (
     catalog_payload,
     recipe_from_dict,
     recipe_to_dict,
+    resolve_natural_recipe,
 )
 from baseball_rag.query.contracts import (
     All,
-    Compare,
     NeedsClarification,
     Not,
     Predicate,
@@ -487,74 +487,10 @@ def _model_output(proposed: Any) -> dict[str, Any]:
     raise ValueError("Unknown interpretation shape.")
 
 
-def _resolve_natural_predicate(
-    predicate: Predicate, *, require_match: bool = False
-) -> Predicate | NeedsClarification:
-    if isinstance(predicate, Not):
-        child = _resolve_natural_predicate(predicate.predicate, require_match=True)
-        if isinstance(child, NeedsClarification):
-            return child
-        return replace(predicate, predicate=child)
-    if isinstance(predicate, (All, AnyPredicate)):
-        resolved: list[Predicate] = []
-        for item in predicate.predicates:
-            outcome = _resolve_natural_predicate(
-                item, require_match=require_match or isinstance(predicate, AnyPredicate)
-            )
-            if isinstance(outcome, NeedsClarification):
-                return outcome
-            resolved.append(outcome)
-        return replace(predicate, predicates=tuple(resolved))
-    if (
-        isinstance(predicate, Compare)
-        and predicate.value == "player.name"
-        and predicate.operator == "one_of"
-        and isinstance(predicate.literal, tuple)
-    ):
-        comparisons: list[Predicate] = []
-        for name in predicate.literal:
-            outcome = _resolve_natural_predicate(
-                replace(predicate, operator="equals", literal=name), require_match=True
-            )
-            if isinstance(outcome, NeedsClarification):
-                return outcome
-            assert isinstance(outcome, Compare)
-            comparisons.append(outcome)
-        return AnyPredicate(tuple(comparisons))
-    if (
-        isinstance(predicate, Compare)
-        and predicate.value == "player.name"
-        and predicate.operator == "equals"
-        and isinstance(predicate.literal, str)
-    ):
-        runtime = published_data_runtime()
-        with runtime.connection_lock:
-            resolution = resolve_player_by_name(predicate.literal, runtime.connection)
-            duplicate_name = (
-                resolution.player is not None
-                and resolve_player_by_name(
-                    resolution.player.full_name, runtime.connection
-                ).ambiguous
-            )
-        if resolution.ambiguous or (
-            resolution.player is None and (require_match or len(predicate.literal.split()) < 2)
-        ):
-            return NeedsClarification(_CLARIFICATION_QUESTIONS["missing_player"])
-        if resolution.player is not None:
-            if duplicate_name:
-                return replace(predicate, value="player.id", literal=resolution.player.player_id)
-            return replace(predicate, literal=resolution.player.full_name)
-    return predicate
-
-
 def _run_natural_recipe(mapping: Mapping[str, Any]) -> dict[str, Any]:
-    recipe = recipe_from_dict(mapping)
-    if recipe.predicate is not None:
-        predicate = _resolve_natural_predicate(recipe.predicate)
-        if isinstance(predicate, NeedsClarification):
-            return _planning_payload(predicate)
-        recipe = replace(recipe, predicate=predicate)
-    # Canonical entity literals still go through the same public planner/compiler.
+    recipe = resolve_natural_recipe(recipe_from_dict(mapping))
+    if isinstance(recipe, NeedsClarification):
+        return _planning_payload(recipe)
     return run_public_query_input(recipe=recipe_to_dict(recipe))
 
 
