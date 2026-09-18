@@ -294,7 +294,7 @@ def _response_schema() -> dict[str, Any]:
             "statistic": {"enum": [None, *DEFINITIONS]},
             "count": {"type": "integer", "minimum": 1, "maximum": 5},
         },
-        ["topic", "team", "statistic", "count"],
+        ["topic", "team", "opponent", "season", "statistic", "count"],
     )
     tools = [
         obj({"kind": {"const": "recipe"}, "recipe": recipe_ref}),
@@ -355,6 +355,10 @@ Topics:
 - series_meeting: historical World Series between team and opponent in season;
   include opponent canonical ID and season integer. Useful for 'tell me more about
   that World Series' using previous_context references. 1–5 details.
+  Example for the Cubs and Cleveland in 2016:
+  {"kind":"research","request":{"topic":"series_meeting","team":"CHN",
+  "opponent":"CLE","season":2016,"statistic":null,"count":3}}
+  A named World Series uses this tool, never team_history.
 - current_leaders: league-wide current regular-season batting HR, RBI or SB only;
   team null, statistic HR/RBI/SB, season current UTC year, count 1–5 leaders plus ties.
   This season/this year is UNAMBIGUOUS: use the supplied current UTC year, never

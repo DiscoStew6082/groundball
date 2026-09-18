@@ -699,3 +699,12 @@ def test_series_scope_cannot_be_replaced_by_general_team_history(scope):
         },
     )
     assert result["kind"] == "rejected"
+
+
+def test_research_tool_schema_requires_explicit_identity_fields():
+    schema = interpretation_request("World Series details", None)["response_format"]["json_schema"]
+    research = schema["$defs"]["research"]
+    assert {"team", "opponent", "season"} <= set(research["required"])
+    # Other tools explicitly return null for identities they do not use.
+    assert None in research["properties"]["opponent"]["enum"]
+    assert {"type": "null"} in research["properties"]["season"]["anyOf"]
