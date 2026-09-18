@@ -348,7 +348,9 @@ Research selects evidence; code writes the factual answer. Research request shap
 {"kind":"research","request":{"topic":"pregame","team":"ATL","statistic":null,"count":5}}
 Topics:
 - pregame: one team's next listed upcoming fixture and historical context, 1–5 facts.
-- team_history: one team's historical context, 1–5 facts.
+- team_history: one team's general historical context, 1–5 facts. This tool cannot
+  restrict facts to playoffs or World Series. For series history, ask which season
+  and opponent unless previous_context identifies the specific series.
 - definition: one supported statistic explained for a new fan; team null, count 1.
 - series_meeting: historical World Series between team and opponent in season;
   include opponent canonical ID and season integer. Useful for 'tell me more about
@@ -748,6 +750,11 @@ def _research_matches_explicit_scope(
     Unsupported qualifiers must not quietly become a generic team briefing.
     """
     text = question.casefold().replace("-", " ")
+    if (
+        re.search(r"\b(?:world series|postseason|playoffs?)\b", text)
+        and plan["topic"] != "series_meeting"
+    ):
+        return False
     statistics = _outer_identities(
         [
             (match.start(), match.end(), statistic)
@@ -895,8 +902,14 @@ def _research_matches_explicit_scope(
             r"\b(?:what (?:is|are|does)|how (?:is|are))\s+(?:the\s+)?(?:" + terms + r")\b",
             text,
         )
+        referenced_statistic = (
+            not statistics
+            and context is not None
+            and context.get("statistic") == plan["statistic"]
+            and bool(re.search(r"\b(?:that|this|it)\b", text))
+        )
         return (
-            statistics == {plan["statistic"]}
+            (statistics == {plan["statistic"]} or referenced_statistic)
             and bool(explanation or direct_question)
             and not (mentions or game_context or history_context)
         )

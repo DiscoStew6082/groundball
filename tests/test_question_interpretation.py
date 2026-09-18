@@ -658,3 +658,44 @@ def test_comparison_recipe_cannot_drop_requested_explanation():
         interpret=lambda *_: {"kind": "recipe", "recipe": recipe},
     )
     assert result["kind"] == "rejected"
+
+
+@pytest.mark.parametrize("statistic", ["OPS", "WHIP"])
+def test_definition_followup_uses_matching_reference_context(statistic):
+    result = run_question_input(
+        question="Explain that statistic again.",
+        previous_context={"version": 1, "topic": "definition", "statistic": statistic},
+        interpret=lambda *_: {
+            "kind": "research",
+            "request": {"topic": "definition", "statistic": statistic, "count": 1},
+        },
+    )
+    assert result["kind"] == "answer"
+    assert result["context"]["statistic"] == statistic
+
+
+@pytest.mark.parametrize(
+    "context", [None, {"version": 1, "topic": "definition", "statistic": "WHIP"}]
+)
+def test_definition_followup_rejects_missing_or_conflicting_reference(context):
+    result = run_question_input(
+        question="Explain that statistic again.",
+        previous_context=context,
+        interpret=lambda *_: {
+            "kind": "research",
+            "request": {"topic": "definition", "statistic": "OPS", "count": 1},
+        },
+    )
+    assert result["kind"] == "rejected"
+
+
+@pytest.mark.parametrize("scope", ["World Series", "postseason", "playoff"])
+def test_series_scope_cannot_be_replaced_by_general_team_history(scope):
+    result = run_question_input(
+        question=f"Give me three interesting details about Braves {scope} history.",
+        interpret=lambda *_: {
+            "kind": "research",
+            "request": {"topic": "team_history", "team": "ATL", "count": 3},
+        },
+    )
+    assert result["kind"] == "rejected"
