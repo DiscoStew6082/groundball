@@ -11,6 +11,7 @@ import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any
 
 from baseball_rag.assistant import (
@@ -20,7 +21,7 @@ from baseball_rag.assistant import (
     research_answer,
     validate_research_request,
 )
-from baseball_rag.db.player_identity import resolve_player_by_name
+from baseball_rag.db.player_identity import find_player_mentions, resolve_player_by_name
 from baseball_rag.public_results import run_public_query_input
 from baseball_rag.query.adapters import (
     adapt_natural_query,
@@ -32,6 +33,7 @@ from baseball_rag.query.contracts import (
     All,
     Compare,
     NeedsClarification,
+    Not,
     Predicate,
     QueryRecipe,
     Ready,
@@ -157,11 +159,13 @@ def _response_schema() -> dict[str, Any]:
         {"raw_rows", "group_by"}
         | {grain for value in catalog["values"] for grain in value["allowed_grains"]}
     )
-    operators = sorted(
-        {operation for field in catalog["fields"] for operation in field["operations"]}
-        - {"select", "group", "sort", "export"}
-    )
-    scalar = {"type": ["string", "number", "boolean", "null"]}
+    comparison_groups: dict[tuple[str, tuple[str, ...]], list[str]] = {}
+    for item in [*catalog["fields"], *catalog["values"]]:
+        operations = tuple(sorted(set(item["operations"]) - {"select", "group", "sort", "export"}))
+        if operations:
+            comparison_groups.setdefault((item["data_type"], operations), []).append(
+                item["identity"]
+            )
 
     def obj(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
         return {
@@ -171,28 +175,51 @@ def _response_schema() -> dict[str, Any]:
             "additionalProperties": False,
         }
 
-    comparison = obj(
-        {
-            "kind": {"const": "compare"},
-            "value": {"type": "string"},
-            "operator": {"enum": operators},
-            "literal": {
-                "anyOf": [
-                    scalar,
-                    {"type": "array", "items": scalar},
-                    obj(
-                        {
-                            "kind": {"const": "value_ref"},
-                            "identity": {"type": "string"},
-                        }
-                    ),
-                ]
-            },
-        }
-    )
+    literal_types = {
+        "text": "string",
+        "date": "string",
+        "integer": "integer",
+        "number": "number",
+        "baseball_innings": "number",
+    }
+    comparisons = []
+    for (data_type, operations), identities in comparison_groups.items():
+        scalar = {"type": literal_types[data_type]}
+        for array_operator in (None, "one_of", "range"):
+            operators = (
+                [operation for operation in operations if operation not in {"one_of", "range"}]
+                if array_operator is None
+                else [array_operator]
+                if array_operator in operations
+                else []
+            )
+            if not operators:
+                continue
+            literal = (
+                {"type": "array", "items": scalar, "minItems": 1}
+                if array_operator == "one_of"
+                else {"type": "array", "items": scalar, "minItems": 2, "maxItems": 2}
+                if array_operator == "range"
+                else {
+                    "anyOf": [
+                        scalar,
+                        obj({"kind": {"const": "value_ref"}, "identity": {"type": "string"}}),
+                    ]
+                }
+            )
+            comparisons.append(
+                obj(
+                    {
+                        "kind": {"const": "compare"},
+                        "value": {"enum": identities},
+                        "operator": {"enum": operators},
+                        "literal": literal,
+                    }
+                )
+            )
     predicate = {
         "anyOf": [
-            comparison,
+            *comparisons,
             obj(
                 {
                     "kind": {"enum": ["all", "any"]},
@@ -321,6 +348,10 @@ capabilities use {"kind":"rejected","code":"unsupported"}.
 Never invent a field, formula, player ID, team ID, eligibility threshold or answer.
 Use player.name with an equals literal for a supplied full player name. Recognize
 ordinary synonyms such as homers and dingers as batting.HR when batting is clear.
+For multiple named players preserve EVERY name in one_of or an any group of equals.
+Never answer a comparison with a recipe that filters to just one named player.
+Use not around player.name equals for exclusions, including excluded name aliases.
+For a list of seasons use any of season equals predicates (season has no one_of).
 Raw fields (case-sensitive, e.g. Batting.HR) use raw_rows; promoted values (e.g.
 batting.HR) use one of their allowed_grains. Use player-season for season totals,
 player-career for career totals. Raw group_by selections must equal groupings.
@@ -351,6 +382,12 @@ Question: How many homers did Babe Ruth hit in 1927?
 Question: Who hit the most homers in 1927?
 {"kind":"recipe","recipe":{"source":"Batting","grain":"player-season","selections":["player.name","season","batting.HR"],
 "predicate":{"kind":"compare","value":"season","operator":"equals","literal":1927},"ranking":{"value":"batting.HR","direction":"highest","count":1,"tie_policy":"include_ties","within":[]},"output":{"kind":"interactive_page","size":25,"offset":0}}}
+Question: Compare Hank Aaron and Willie Mays home runs in 1965.
+{"kind":"recipe","recipe":{"source":"Batting","grain":"player-season","selections":["player.name","season","batting.HR"],
+"predicate":{"kind":"all","predicates":[
+{"kind":"compare","value":"player.name","operator":"one_of","literal":["Hank Aaron","Willie Mays"]},
+{"kind":"compare","value":"season","operator":"equals","literal":1965}]},
+"output":{"kind":"interactive_page","size":25,"offset":0}}}
 Question: How many home runs did Smith hit in 2023?
 {"kind":"clarification","code":"missing_player"}
 Catalog: tabular arrays follow declared columns; operations_index and grains_index
@@ -366,7 +403,13 @@ def interpretation_request(question: str, previous: dict[str, Any] | None) -> di
         "messages": [
             {
                 "role": "system",
-                "content": _RESEARCH_INSTRUCTIONS + _INSTRUCTIONS + _json(_compact_catalog()),
+                "content": (
+                    f"Current UTC date: {datetime.now(UTC).date().isoformat()}. "
+                    "Resolve relative periods from this date, not model training knowledge.\n"
+                    + _RESEARCH_INSTRUCTIONS
+                    + _INSTRUCTIONS
+                    + _json(_compact_catalog())
+                ),
             },
             {"role": "user", "content": _json({"question": question, "previous_recipe": previous})},
         ],
@@ -444,15 +487,40 @@ def _model_output(proposed: Any) -> dict[str, Any]:
     raise ValueError("Unknown interpretation shape.")
 
 
-def _resolve_natural_predicate(predicate: Predicate) -> Predicate | NeedsClarification:
+def _resolve_natural_predicate(
+    predicate: Predicate, *, require_match: bool = False
+) -> Predicate | NeedsClarification:
+    if isinstance(predicate, Not):
+        child = _resolve_natural_predicate(predicate.predicate, require_match=True)
+        if isinstance(child, NeedsClarification):
+            return child
+        return replace(predicate, predicate=child)
     if isinstance(predicate, (All, AnyPredicate)):
         resolved: list[Predicate] = []
         for item in predicate.predicates:
-            outcome = _resolve_natural_predicate(item)
+            outcome = _resolve_natural_predicate(
+                item, require_match=require_match or isinstance(predicate, AnyPredicate)
+            )
             if isinstance(outcome, NeedsClarification):
                 return outcome
             resolved.append(outcome)
         return replace(predicate, predicates=tuple(resolved))
+    if (
+        isinstance(predicate, Compare)
+        and predicate.value == "player.name"
+        and predicate.operator == "one_of"
+        and isinstance(predicate.literal, tuple)
+    ):
+        comparisons: list[Predicate] = []
+        for name in predicate.literal:
+            outcome = _resolve_natural_predicate(
+                replace(predicate, operator="equals", literal=name), require_match=True
+            )
+            if isinstance(outcome, NeedsClarification):
+                return outcome
+            assert isinstance(outcome, Compare)
+            comparisons.append(outcome)
+        return AnyPredicate(tuple(comparisons))
     if (
         isinstance(predicate, Compare)
         and predicate.value == "player.name"
@@ -462,13 +530,20 @@ def _resolve_natural_predicate(predicate: Predicate) -> Predicate | NeedsClarifi
         runtime = published_data_runtime()
         with runtime.connection_lock:
             resolution = resolve_player_by_name(predicate.literal, runtime.connection)
+            duplicate_name = (
+                resolution.player is not None
+                and resolve_player_by_name(
+                    resolution.player.full_name, runtime.connection
+                ).ambiguous
+            )
         if resolution.ambiguous or (
-            resolution.player is None and len(predicate.literal.split()) < 2
+            resolution.player is None and (require_match or len(predicate.literal.split()) < 2)
         ):
             return NeedsClarification(_CLARIFICATION_QUESTIONS["missing_player"])
         if resolution.player is not None:
+            if duplicate_name:
+                return replace(predicate, value="player.id", literal=resolution.player.player_id)
             return replace(predicate, literal=resolution.player.full_name)
-    # Negative name predicates are exclusions, not requests to select a player.
     return predicate
 
 
@@ -481,6 +556,123 @@ def _run_natural_recipe(mapping: Mapping[str, Any]) -> dict[str, Any]:
         recipe = replace(recipe, predicate=predicate)
     # Canonical entity literals still go through the same public planner/compiler.
     return run_public_query_input(recipe=recipe_to_dict(recipe))
+
+
+def _recipe_preserves_named_scope(question: str, mapping: dict[str, Any]) -> bool:
+    """Check explicit people, exclusions and years against the proposed recipe.
+
+    This does not choose intent or repair missing conditions. Names come from the
+    published people data, not a second registry of supported questions.
+    """
+    recipe = recipe_from_dict(mapping)
+    runtime = published_data_runtime()
+    represented: set[str] = set()
+    excluded: set[str] = set()
+    years: set[int] = set()
+    player_filters: dict[int, set[str]] = {}
+    requested_years = {int(year) for year in re.findall(r"\b(?:18|19|20)\d{2}\b", question)}
+    if re.search(r"\b(?:this|current)\s+(?:year|season)\b", question, re.IGNORECASE):
+        requested_years.add(datetime.now(UTC).year)
+
+    def visit(predicate: Predicate, negative: bool = False) -> None:
+        if isinstance(predicate, (All, AnyPredicate)):
+            for child in predicate.predicates:
+                visit(child, negative)
+        elif isinstance(predicate, Not):
+            visit(predicate.predicate, not negative)
+        else:
+            values = (
+                predicate.literal if isinstance(predicate.literal, tuple) else (predicate.literal,)
+            )
+            if predicate.value == "player.name":
+                player_filters[id(predicate)] = set()
+                for value in values:
+                    if isinstance(value, str):
+                        ids = {
+                            candidate.player_id
+                            for candidate in resolve_player_by_name(
+                                value, runtime.connection
+                            ).candidates
+                        }
+                        represented.update(ids)
+                        player_filters[id(predicate)].update(ids)
+                        if negative or predicate.operator == "not_equals":
+                            excluded.update(ids)
+            elif predicate.value == "player.id" or predicate.value.endswith(".playerID"):
+                ids = {value for value in values if isinstance(value, str)}
+                player_filters[id(predicate)] = ids
+                represented.update(ids)
+                if negative or predicate.operator == "not_equals":
+                    excluded.update(ids)
+            if predicate.value == "season" or predicate.value.casefold().endswith(
+                ("year", "yearid")
+            ):
+                years.update(value for value in values if type(value) is int)
+                if (
+                    predicate.operator == "range"
+                    and len(values) == 2
+                    and isinstance(values[0], int)
+                    and isinstance(values[1], int)
+                ):
+                    years.update(year for year in requested_years if values[0] <= year <= values[1])
+
+    def allows(
+        predicate: Predicate, *, player: str | None = None, year: int | None = None
+    ) -> bool | None:
+        # Partial evaluation checks only explicit identity/season constraints.
+        # Unrelated statistics remain unknown: a threshold may validly yield no
+        # rows, whereas player=A AND player=B cannot represent a comparison.
+        if isinstance(predicate, Not):
+            result = allows(predicate.predicate, player=player, year=year)
+            return None if result is None else not result
+        if isinstance(predicate, (All, AnyPredicate)):
+            outcomes = [allows(child, player=player, year=year) for child in predicate.predicates]
+            decisive = isinstance(predicate, AnyPredicate)
+            if decisive in outcomes:
+                return decisive
+            return None if None in outcomes else not decisive
+        if player is not None and id(predicate) in player_filters:
+            if predicate.operator in {"equals", "one_of"}:
+                return player in player_filters[id(predicate)]
+            if predicate.operator == "not_equals":
+                return player not in player_filters[id(predicate)]
+        if year is not None and (
+            predicate.value == "season" or predicate.value.casefold().endswith(("year", "yearid"))
+        ):
+            literal = predicate.literal
+            if predicate.operator == "equals" and type(literal) is int:
+                return year == literal
+            if predicate.operator == "range" and isinstance(literal, tuple) and len(literal) == 2:
+                lower, upper = literal
+                if type(lower) is int and type(upper) is int:
+                    return lower <= year <= upper
+        return None
+
+    with runtime.connection_lock:
+        if recipe.predicate is not None:
+            visit(recipe.predicate)
+        if not requested_years <= years:
+            return False
+        if recipe.predicate is not None and any(
+            allows(recipe.predicate, year=year) is False for year in requested_years
+        ):
+            return False
+        for mention in find_player_mentions(question, runtime.connection):
+            ids = {candidate.player_id for candidate in mention.resolution.candidates}
+            if not ids <= represented:
+                return False
+            if recipe.predicate is not None and any(
+                allows(recipe.predicate, player=player) is False for player in ids - excluded
+            ):
+                return False
+            preceding = question[: mention.start].casefold()
+            if re.search(r"(?:excluding|except|without|other than|not)\s*$", preceding) and (
+                not ids <= excluded
+                or recipe.predicate is None
+                or any(allows(recipe.predicate, player=player) is not False for player in ids)
+            ):
+                return False
+    return True
 
 
 _DEFINITION_TERMS = {
@@ -567,13 +759,23 @@ def _research_matches_explicit_scope(question: str, plan: dict[str, Any]) -> boo
         )
     }
     count = re.search(
-        r"\b(\d+|" + "|".join(numbers) + r")\s+(?:(?:interesting|surprising|fun)\s+)?"
+        r"\b(\d+|(?:a\s+)?dozen|(?:a\s+)?couple(?:\s+of)?|"
+        + "|".join(numbers)
+        + r")\s+(?:(?:really|very|particularly|interesting|surprising|fun)\s+)*"
         r"(?:details?|facts?|things?|story|stories|talking points?)\b",
         text,
     )
     if count:
         count_text = count.group(1)
-        requested = int(count_text) if count_text.isdigit() else numbers[count_text]
+        requested = (
+            int(count_text)
+            if count_text.isdigit()
+            else 12
+            if "dozen" in count_text
+            else 2
+            if "couple" in count_text
+            else numbers[count_text]
+        )
         if requested != plan["count"]:
             return False
     matches: list[tuple[int, int, str]] = []
@@ -673,6 +875,15 @@ def run_question_input(
             }
         return research_answer(result["request"], sources=research_sources)
     if result["kind"] == "recipe":
+        if not _recipe_preserves_named_scope(question, result["recipe"]):
+            return {
+                "kind": "rejected",
+                "reason": (
+                    "The interpretation did not preserve the requested players, "
+                    "exclusions or seasons. "
+                    "Please rephrase or use the recipe editor."
+                ),
+            }
         if any(
             _research_matches_explicit_scope(
                 question, {"topic": "definition", "statistic": statistic, "team": None, "count": 1}

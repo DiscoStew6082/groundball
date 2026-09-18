@@ -5,6 +5,66 @@ import pytest
 from baseball_rag.question_interpretation import interpretation_request, run_question_input
 
 
+@pytest.mark.parametrize(
+    "names,expected",
+    [
+        (["Aaron Judge", "Ronald Acuna Jr."], {"Aaron Judge": 37, "Ronald Acuña": 41}),
+        (["Aaron Judge", "Zephyrus Moonbat"], None),
+        (["Aaron Judge", "Smith"], None),
+    ],
+)
+@pytest.mark.parametrize("form", ["one_of", "any"])
+def test_multi_player_comparison_resolves_each_name_before_returning_verified_totals(
+    names, expected, form
+):
+    names_predicate = (
+        {
+            "kind": "compare",
+            "value": "player.name",
+            "operator": "one_of",
+            "literal": names,
+        }
+        if form == "one_of"
+        else {
+            "kind": "any",
+            "predicates": [
+                {"kind": "compare", "value": "player.name", "operator": "equals", "literal": name}
+                for name in names
+            ],
+        }
+    )
+    result = run_question_input(
+        question=f"Who hit more homers in 2023, {' or '.join(names)}?",
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["player.name", "season", "batting.HR"],
+                "predicate": {
+                    "kind": "all",
+                    "predicates": [
+                        {
+                            "kind": "compare",
+                            "value": "season",
+                            "operator": "equals",
+                            "literal": 2023,
+                        },
+                        names_predicate,
+                    ],
+                },
+            },
+        },
+    )
+    if expected is None:
+        assert result["kind"] == "needs_clarification"
+        assert not result.get("rows")
+        return
+    assert result["kind"] == "rows"
+    assert {row["player.name"]: row["batting.HR"] for row in result["rows"]} == expected
+    assert result["verification"]["status"] == "verified"
+
+
 def test_an_injected_model_can_request_grounded_research_without_writing_the_answer():
     calls = []
 
@@ -50,6 +110,268 @@ def test_plain_historical_query_remains_available_without_a_model():
     result = run_question_input(question="how many home runs did Aaron Judge hit in 2023")
     assert result["kind"] == "rows"
     assert result["rows"][0]["batting.HR"] == 37
+
+
+@pytest.mark.parametrize("suffix,total", [("Jr.", 22), ("Sr.", 4)])
+def test_suffix_disambiguation_keeps_the_selected_player_identity(suffix, total):
+    result = run_question_input(question=f"how many home runs did Ken Griffey {suffix} hit in 1990")
+    assert result["kind"] == "rows"
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["batting.HR"] == total
+
+
+def test_model_season_list_and_name_exclusion_keep_all_requested_conditions():
+    result = run_question_input(
+        question="Show Aaron Judge and Matt Olson homers for 2022 and 2023, excluding Matt Olson",
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["player.name", "season", "batting.HR"],
+                "predicate": {
+                    "kind": "all",
+                    "predicates": [
+                        {
+                            "kind": "any",
+                            "predicates": [
+                                {
+                                    "kind": "compare",
+                                    "value": "season",
+                                    "operator": "equals",
+                                    "literal": year,
+                                }
+                                for year in [2022, 2023]
+                            ],
+                        },
+                        {
+                            "kind": "compare",
+                            "value": "player.name",
+                            "operator": "one_of",
+                            "literal": ["Aaron Judge", "Matt Olson"],
+                        },
+                        {
+                            "kind": "not",
+                            "predicate": {
+                                "kind": "compare",
+                                "value": "player.name",
+                                "operator": "equals",
+                                "literal": "Matt Olson",
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+    )
+    assert result["kind"] == "rows"
+    assert {(row["player.name"], row["season"]): row["batting.HR"] for row in result["rows"]} == {
+        ("Aaron Judge", 2022): 62,
+        ("Aaron Judge", 2023): 37,
+    }
+
+
+def test_excluded_name_alias_is_resolved_inside_negation():
+    result = run_question_input(
+        question="Compare Aaron Judge and Ronald Acuna Jr. homers in 2023, excluding Acuna",
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["player.name", "season", "batting.HR"],
+                "predicate": {
+                    "kind": "all",
+                    "predicates": [
+                        {
+                            "kind": "compare",
+                            "value": "season",
+                            "operator": "equals",
+                            "literal": 2023,
+                        },
+                        {
+                            "kind": "compare",
+                            "value": "player.name",
+                            "operator": "one_of",
+                            "literal": ["Aaron Judge", "Ronald Acuna Jr."],
+                        },
+                        {
+                            "kind": "not",
+                            "predicate": {
+                                "kind": "compare",
+                                "value": "player.name",
+                                "operator": "equals",
+                                "literal": "Ronald Acuna Jr.",
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+    )
+    assert result["kind"] == "rows"
+    assert result["rows"] == [{"player.name": "Aaron Judge", "season": 2023, "batting.HR": 37}]
+
+
+@pytest.mark.parametrize("count", ["a dozen", "2 really interesting"])
+def test_research_must_preserve_counts_with_common_modifiers(count):
+    result = run_question_input(
+        question=f"Give me {count} facts about Braves history",
+        interpret=lambda *_: {
+            "kind": "research",
+            "request": {"topic": "team_history", "team": "ATL", "count": 5},
+        },
+    )
+    assert result["kind"] == "rejected"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Who hit more homers in 2023, Aaron Judge or Ronald Acuna Jr.?",
+        "Who led MLB in home runs in 2023, excluding Aaron Judge?",
+        "Show Aaron Judge home-run totals for both 2022 and 2023",
+    ],
+)
+def test_model_cannot_return_verified_numbers_after_dropping_a_person_exclusion_or_year(question):
+    from baseball_rag.query.adapters import adapt_natural_query, recipe_to_dict
+
+    proposal = recipe_to_dict(adapt_natural_query("how many home runs did Aaron Judge hit in 2023"))
+    result = run_question_input(
+        question=question, interpret=lambda *_: {"kind": "recipe", "recipe": proposal}
+    )
+    assert result["kind"] == "rejected"
+    assert not result.get("rows")
+
+
+@pytest.mark.parametrize("period", ["this year", "the current season"])
+def test_current_period_cannot_be_replaced_with_a_historical_season(period):
+    result = run_question_input(
+        question=f"Who has the most homers {period}?",
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["player.name", "season", "batting.HR"],
+                "predicate": {
+                    "kind": "compare",
+                    "value": "season",
+                    "operator": "equals",
+                    "literal": 2023,
+                },
+                "ranking": {
+                    "value": "batting.HR",
+                    "direction": "highest",
+                    "count": 1,
+                    "tie_policy": "include_ties",
+                    "within": [],
+                },
+            },
+        },
+    )
+    assert result["kind"] == "rejected"
+    assert not result.get("rows")
+
+
+@pytest.mark.parametrize(
+    "value,literals,question",
+    [
+        (
+            "player.name",
+            ["Aaron Judge", "Ronald Acuna Jr."],
+            "Compare Aaron Judge and Ronald Acuna Jr. homers in 2023",
+        ),
+        ("season", [2022, 2023], "Compare Aaron Judge homers in 2022 and 2023"),
+    ],
+)
+def test_comparison_cannot_become_an_impossible_conjunction(value, literals, question):
+    result = run_question_input(
+        question=question,
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["player.name", "season", "batting.HR"],
+                "predicate": {
+                    "kind": "all",
+                    "predicates": [
+                        {
+                            "kind": "compare",
+                            "value": "season",
+                            "operator": "equals",
+                            "literal": 2023,
+                        },
+                        {
+                            "kind": "compare",
+                            "value": "player.name",
+                            "operator": "equals",
+                            "literal": "Aaron Judge",
+                        },
+                        *[
+                            {
+                                "kind": "compare",
+                                "value": value,
+                                "operator": "equals",
+                                "literal": literal,
+                            }
+                            for literal in literals
+                        ],
+                    ],
+                },
+            },
+        },
+    )
+    assert result["kind"] == "rejected"
+    assert not result.get("rows")
+
+
+def test_exclusion_must_apply_to_every_branch_of_the_proposed_query():
+    result = run_question_input(
+        question="Compare Aaron Judge and Matt Olson homers in 2023, excluding Matt Olson",
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["player.name", "season", "batting.HR"],
+                "predicate": {
+                    "kind": "all",
+                    "predicates": [
+                        {
+                            "kind": "compare",
+                            "value": "season",
+                            "operator": "equals",
+                            "literal": 2023,
+                        },
+                        {
+                            "kind": "any",
+                            "predicates": [
+                                {
+                                    "kind": "compare",
+                                    "value": "player.name",
+                                    "operator": "one_of",
+                                    "literal": ["Aaron Judge", "Matt Olson"],
+                                },
+                                {
+                                    "kind": "not",
+                                    "predicate": {
+                                        "kind": "compare",
+                                        "value": "player.name",
+                                        "operator": "equals",
+                                        "literal": "Matt Olson",
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+            },
+        },
+    )
+    assert result["kind"] == "rejected"
+    assert not result.get("rows")
 
 
 def test_model_prompt_is_portable_and_contains_research_capabilities():

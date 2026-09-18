@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 
 import duckdb
 from unidecode import unidecode
@@ -109,6 +110,63 @@ def resolve_player_by_name(name: str, conn: duckdb.DuckDBPyConnection) -> Player
             normalized,
         ),
     )
+
+
+@dataclass(frozen=True)
+class PlayerMention:
+    """An explicit full-name mention grounded in the same people identity authority."""
+
+    start: int
+    end: int
+    resolution: PlayerResolution
+
+
+@lru_cache(maxsize=1)
+def _known_full_names(connection: duckdb.DuckDBPyConnection) -> frozenset[str]:
+    return frozenset(
+        _mention_text(str(row[0]))
+        for row in connection.execute("SELECT nameFirst || ' ' || nameLast FROM people").fetchall()
+        if row[0]
+    )
+
+
+def _mention_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9 ]", "", unidecode(value).lower())
+
+
+def find_player_mentions(text: str, conn: duckdb.DuckDBPyConnection) -> list[PlayerMention]:
+    """Find explicit published full names, preserving suffixes and source spans.
+
+    This is grounding for validation, not intent routing or a fuzzy entity guess.
+    Unknown names remain the responsibility of the normal identity resolver.
+    """
+    names = _known_full_names(conn)
+    tokens = list(re.finditer(r"\S+", text))
+    words = [_mention_text(token.group()) for token in tokens]
+    mentions = []
+    for start in range(len(words)):
+        for end in range(start + 2, min(start + 6, len(words)) + 1):
+            name = " ".join(words[start:end])
+            if name not in names:
+                continue
+            if end < len(words) and words[end] in {"jr", "sr", "ii", "iii", "iv"}:
+                name += " " + words[end]
+                end += 1
+            mentions.append(
+                PlayerMention(
+                    tokens[start].start(), tokens[end - 1].end(), resolve_player_by_name(name, conn)
+                )
+            )
+    return [
+        mention
+        for mention in mentions
+        if not any(
+            other.start <= mention.start
+            and other.end >= mention.end
+            and other.end - other.start > mention.end - mention.start
+            for other in mentions
+        )
+    ]
 
 
 def resolve_retrosheet_id(

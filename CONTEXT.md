@@ -23,6 +23,8 @@ The direct-import `baseball_rag.api.server.app` remains available for local use 
 
 Public source owns the interpretation prompt, response schema, validation, `run_question_input`, and factual answer construction. Optional model transport and bounded external source callbacks are injected by the outer runtime. `QuestionBindings` supplies optional local interpretation; public execution injects these dependencies within its existing hard-stop boundary. No transport or source callback owns product prompts, query semantics, or factual prose.
 
+Interpretation grammar derives field operators and literal types from the Published Query Catalog. Natural-language player filters share the people identity resolver across equality, alternatives and exclusions, preserving disambiguated IDs. Explicit-name and season checks can reject missing or contradictory scope; these are partial safeguards, not proof of complete language understanding. QueryEvidence verifies execution of the visible recipe, not that a model preserved every condition in the original question.
+
 ## Release model
 
 - `release/bundle/` is the immutable deterministic payload.

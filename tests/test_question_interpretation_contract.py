@@ -32,6 +32,7 @@ def execution(monkeypatch):
     monkeypatch.setattr(
         interpretation, "resolve_player_by_name", lambda name, _: PlayerResolution(name, [])
     )
+    monkeypatch.setattr(interpretation, "find_player_mentions", lambda *_: [])
     monkeypatch.setattr(
         interpretation,
         "run_public_query_input",
@@ -73,6 +74,57 @@ def test_compact_catalog_preserves_every_identity_and_its_supported_scope():
             "null_policy",
         ):
             assert actual[key] == expected[key]
+
+
+def test_model_comparison_grammar_preserves_field_specific_operator_capabilities():
+    schema = interpretation.interpretation_request("Compare players", None)["response_format"][
+        "json_schema"
+    ]
+    comparisons = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            properties = node.get("properties", {})
+            if properties.get("kind") == {"const": "compare"}:
+                comparisons.append(properties)
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(schema)
+
+    def allowed(identity):
+        return {
+            operator
+            for comparison in comparisons
+            if identity in comparison["value"].get("enum", [])
+            for operator in comparison["operator"]["enum"]
+        }
+
+    assert allowed("player.name") == {"equals", "one_of"}
+    assert "range" in allowed("season")
+    assert "one_of" not in allowed("season")
+    assert "not_equals" not in allowed("player.name")
+
+
+def test_model_name_list_grammar_does_not_allow_seasons_as_player_names():
+    schema = interpretation.interpretation_request("Compare players", None)["response_format"][
+        "json_schema"
+    ]
+    choices = schema["$defs"]["predicate"]["anyOf"]
+    name_lists = [
+        branch["properties"]["literal"]
+        for branch in choices
+        if "player.name" in branch["properties"].get("value", {}).get("enum", [])
+        and "one_of" in branch["properties"]["operator"]["enum"]
+    ]
+    assert name_lists
+    for literal in name_lists:
+        assert literal["type"] == "array"
+        assert literal["items"]["type"] == "string"
+        assert literal["minItems"] == 1
 
 
 @pytest.mark.parametrize(
