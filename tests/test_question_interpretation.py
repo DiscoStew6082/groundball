@@ -59,6 +59,31 @@ def test_model_prompt_is_portable_and_contains_research_capabilities():
     assert any(branch["properties"]["kind"] == {"const": "research"} for branch in schema["oneOf"])
 
 
+def test_definition_cannot_be_replaced_by_a_statistical_table(monkeypatch):
+    from baseball_rag import question_interpretation as core
+
+    monkeypatch.setattr(
+        core, "_run_natural_recipe", lambda *_: pytest.fail("Wrong answer type executed")
+    )
+    result = run_question_input(
+        question="Explain OPS for a new fan",
+        interpret=lambda *_: {
+            "kind": "recipe",
+            "recipe": {
+                "source": "Batting",
+                "grain": "player-season",
+                "selections": ["batting.OPS"],
+                "predicate": None,
+                "ranking": None,
+                "ordering": [],
+                "groupings": [],
+                "output": {"kind": "interactive_page", "offset": 0, "size": 25},
+            },
+        },
+    )
+    assert result["kind"] == "rejected"
+
+
 def test_same_local_http_route_accepts_injected_interpretation_without_hosting_code():
     from fastapi.testclient import TestClient
 
