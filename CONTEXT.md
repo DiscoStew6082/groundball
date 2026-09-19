@@ -28,6 +28,8 @@ Ordinary statistics use catalog-derived typed intent slots translated into the e
 
 Interpretation grammar derives field operators and literal types from the Published Query Catalog. Natural-language player filters share the people identity resolver across equality, alternatives and exclusions, preserving disambiguated IDs. Explicit-name and season checks can reject missing or contradictory scope; these are partial safeguards, not proof of complete language understanding. QueryEvidence verifies execution of the visible recipe, not that a model preserved every condition in the original question.
 
+Interpretation guidance explicitly treats listed seasons as alternatives and one World Series meeting as one research request, including both teams. These instructions remain model-independent; injected transports own endpoint and model configuration.
+
 ## Release model
 
 - `release/bundle/` is the immutable deterministic payload.

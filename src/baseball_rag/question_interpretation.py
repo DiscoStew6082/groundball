@@ -461,6 +461,14 @@ def interpretation_request(question: str, previous: dict[str, Any] | None) -> di
                     + _RESEARCH_INSTRUCTIONS
                     + _INSTRUCTIONS
                     + _json(_compact_catalog())
+                    + "\nBefore returning the interpretation: for explicitly listed seasons, "
+                    "prefer typed stats with every requested year in period.years. "
+                    "A direct recipe must join different season equalities with any, never all: "
+                    "one row cannot have two different seasons. "
+                    "A question about one World Series meeting needs exactly one research "
+                    "request with topic series_meeting, both team and opponent, season and "
+                    "the requested count. Return that research object directly, not a plan "
+                    "with the same meeting repeated for each team.\n"
                 ),
             },
             {
