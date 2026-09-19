@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-uv sync
+uv sync --locked --extra dev
 npm --prefix web ci
 uv run python -m baseball_rag.db.download
 ```
@@ -36,8 +36,8 @@ The Coverage Report fingerprints query modules and the deterministic eval matrix
 ```bash
 uv run ruff format --check src/ tests/
 uv run ruff check src/ tests/
-uv run mypy src/baseball_rag/
-uv run pytest tests/ -m 'not release_proof' -q
+uv run python -m mypy src/baseball_rag/
+uv run python -m pytest tests/ -m 'not release_proof' -q
 uv run python -m baseball_rag.coverage_proof_validator
 uv run python -m baseball_rag.query.eval_matrix
 uv run python -m baseball_rag.query.generate_catalog_compatibility --check
@@ -50,6 +50,23 @@ npm --prefix web run package:check
 ```
 
 Ordinary CI runs dependency, lint, type, web, test, package-parity, and neutrality gates. Release Proof owns exhaustive coverage regeneration. Release Artifact Proof owns exact source-to-bundle topology, deterministic packaged behavior, source and distribution builds, and artifact neutrality.
+
+## Dependency security
+
+CI checks both Python locks and the web npm lock. Audit the complete locked dependency set, including development dependencies, after dependency changes:
+
+```bash
+uv lock --check
+uv export --frozen --format requirements-txt --no-emit-project --all-extras --all-groups > /tmp/groundball-dependencies.txt
+uvx pip-audit --progress-spinner off --no-deps --disable-pip -r /tmp/groundball-dependencies.txt
+(cd src/mlb_api_mcp && uv lock --check && uv export --frozen --format requirements-txt --no-emit-project --all-extras --all-groups > /tmp/groundball-mlb-dependencies.txt)
+uvx pip-audit --progress-spinner off --no-deps --disable-pip -r /tmp/groundball-mlb-dependencies.txt
+npm --prefix web audit --audit-level=low
+```
+
+Use targeted patched updates and locked installs. For oversized or sensitive parametrized inputs, supply short semantic pytest IDs so verbose CI logs and duration summaries do not print the entire payload.
+
+Scale validation to the change. Documentation-only edits need reference, consistency and neutrality checks; they do not by themselves warrant rerunning model evaluations or rebuilding a release. Runtime, dependency and generated-contract changes require their relevant gates. Finish related documentation before an authorized push to avoid superseding CI with successive documentation commits.
 
 ## Release assembly
 

@@ -14,6 +14,14 @@ This ledger records the current public repository contract. Concrete hosting imp
 8. **Dependency hygiene** — root and nested locks, warning policy, dependency audits, and pre-commit revisions are explicit CI contracts.
 9. **Sourced assistant** — the same chat accepts bounded research answers with citations, complete source records, browser-local JSON export, and visible attribution. Public source owns interpretation prompts/schema and factual construction; optional transport and source I/O are injected.
 
+## Assistant and dependency completion, 2026-09-18
+
+The assistant is implemented, including typed statistics extraction, shared player resolution, bounded two- or three-step composition, reference-only follow-ups, and contracts for current batting leaders and probable pitchers. Wider catalog capabilities retain direct Query Recipes. Explicit research identities and scope checks preserve definition and World Series follow-ups. Model output selects operations; public code constructs facts from verified results and retained source records.
+
+Implementation anchors are `74910a9`, `49aab9b`, `733d1cb`, `e0b169c`, `e034e0d`, `3a953f5`, and `3a6e548`. The dependency update is `aac74e3`; its direct-child artifact is `99a46c8`. Validation at that release included 699 fast Python tests, 80 nested-project tests, 37 UI tests and two packaging tests, all 26 query-matrix cases, generated-contract checks, lint/types, package parity and provider neutrality. These finite checks do not establish that every natural-language request is understood.
+
+The public CI, Release Proof and Release Artifact Proof completed successfully for `99a46c8`. Runtime integration and operational evidence remain outside this repository. [Assistant scope](assistant.md) and [source attribution](source-attribution.md) define the supported behavior and required credits.
+
 ## Public neutrality closure
 
 The public tree has one portable composition seam and no concrete hosting adapter, hosting configuration, external-runtime probe, release-environment record, credential requirement, or private package dependency. Default CORS origins are localhost and loopback only. Public source never imports private application packages.

@@ -36,6 +36,15 @@ Interpretation grammar derives field operators and literal types from the Publis
 - Source changes are committed first. The next commit may change only `release/bundle/**`, and its direct parent must be the source commit.
 - Public CI proves the same source-to-artifact topology without deployment or external runtime evidence.
 
+## Completed work, 2026-09-18
+
+- Shared sourced answers and visible data attribution landed in `74910a9`; natural-language identity resolution was consolidated in `49aab9b` and `733d1cb`.
+- Typed statistics, bounded compound plans, current-source callback contracts and reference-only follow-ups landed in `e0b169c`. Later corrections preserve definition references and World Series scope and require explicit research identity fields (`e034e0d`, `3a953f5`, `3a6e548`).
+- Dependency fixes landed in `aac74e3`, followed by release artifact `99a46c8`. Root and nested Python locks and the web lock passed complete dependency audits. These are dated results, not a guarantee about future advisories.
+- The implementation is a bounded model-and-tool workflow. One interpretation can choose multiple supported operations; the model does not consume tool results to plan another autonomous iteration. Evidence proves the returned operation and sources, not universal language understanding.
+
+The architecture and assistant guides describe the current implementation. Earlier experiments are evidence for decisions, not unimplemented work. Broader news, injuries, unrestricted live statistics and autonomous research remain outside the supported scope. See [the implementation ledger](docs/public-release-implementation-ledger.md).
+
 ## Current modules
 
 - `src/baseball_rag/query/`: catalog-backed planning, compilation, execution, evidence, and coverage.
@@ -68,7 +77,7 @@ uv run python -m baseball_rag.query.generate_raw_inventory --check
 uv run python -m baseball_rag.query.generate_coverage_report --check
 uv run python -m baseball_rag.query.eval_matrix
 uv run python scripts/check_provider_neutrality.py --root .
-uv run pytest tests/ -m 'not release_proof' -q
+uv run python -m pytest tests/ -m 'not release_proof' -q
 npm --prefix web test
 npm --prefix web run build
 npm --prefix web run package:check

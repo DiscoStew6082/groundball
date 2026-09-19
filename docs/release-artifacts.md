@@ -17,7 +17,7 @@ Ground Ball release artifacts are identified by content and exact Git topology, 
 4. Commit only `release/bundle/**` as the source commit's direct child.
 5. Validate that the manifest source SHA equals the parent and that every artifact-commit path is under `release/bundle/`.
 
-Any source correction requires a new source commit and a newly assembled artifact-only child.
+A source correction included in a new release requires a new source commit and a newly assembled artifact-only child. Documentation-only commits do not replace an existing exact artifact or require an external runtime to be repinned. When a new artifact is produced, its source must still be its sole direct parent.
 
 ## Deterministic assembly
 
