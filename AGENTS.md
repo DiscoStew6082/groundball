@@ -7,3 +7,4 @@
 - Run risk-scaled Python, web, lint, type, release, and neutrality checks before committing.
 - Do not restore deleted query compatibility facades, alternate registries, provider implementations, or deployment tooling.
 - Keep release topology non-circular: commit source artifacts first, then commit only `release/bundle/**` with the source commit as the artifact commit's direct parent.
+- For Ground Ball, Stewart's approval to deploy a change also authorizes committing and pushing the corresponding validated changes to his `groundball` and `groundball-ops` repositories. Complete the release workflow through GitHub publication, required CI checks, and live deployment verification without requesting separate push approval. Push public source and release-artifact commits before private commits that reference them. Respect any explicit instruction to keep work local or not push.
