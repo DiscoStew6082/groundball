@@ -22,6 +22,14 @@ def test_generated_admission_policy_is_derived_from_enforced_constants() -> None
     policy = admission_policy_document()
 
     assert policy == {
+        "abuse_identity": {
+            "bound_source": "trusted_deployment_resolver",
+            "client_cookie_identity": False,
+            "client_forwarding_headers": False,
+            "maximum_bytes": 512,
+            "minimum_keyed_digest_key_bytes": 32,
+            "unbound": "shared_anonymous_bucket",
+        },
         "admission_charging": {"charged_before_execution": True, "refunded": False},
         "cas": {"maximum_attempts": 8},
         "concurrency": {"system": 4, "visitor": 1},
@@ -39,17 +47,10 @@ def test_generated_admission_policy_is_derived_from_enforced_constants() -> None
             "visitor_starts_per_minute": 3,
         },
         "request_body_bytes": 16_384,
-        "schema_version": "ground-ball-public-admission-policy-v1",
+        "schema_version": "ground-ball-public-admission-policy-v2",
         "shared_state": {
             "codec_schema_version": 1,
             "configuration_identity": "ground-ball-public-admission-state-v1",
-        },
-        "visitor_cookie": {
-            "http_only": True,
-            "minimum_keyed_digest_key_bytes": 32,
-            "name": "groundball_visitor",
-            "same_site": "lax",
-            "secure": True,
         },
     }
 

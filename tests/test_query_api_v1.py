@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 import baseball_rag.api.server as api_server
 from baseball_rag.api.server import app
 from baseball_rag.public_admission import (
+    DEPLOYMENT_ANONYMOUS_IDENTITY,
     AdmissionState,
     CasCoordinator,
     CasStore,
@@ -83,6 +84,7 @@ def configure_public_proof(
         CasCoordinator(coordination, clock=lambda: NOW),
     )
     monkeypatch.setattr(api_server, "_visitor_digest_key", b"test-visitor-digest-key" * 2)
+    monkeypatch.setattr(api_server, "_public_abuse_identity", None)
     monkeypatch.setattr(api_server, "_public_admission_is_shared", True)
     monkeypatch.setattr(api_server, "_public_execution_runner", configured_runner)
     monkeypatch.setattr(api_server, "_public_demo_enabled", lambda: True)
@@ -363,17 +365,12 @@ def test_public_query_run_is_admitted_once_and_releases_only_its_lease(
             recipe=None,
         )
     ]
-    cookie = response.headers["set-cookie"]
-    assert "groundball_visitor=" in cookie
-    assert "HttpOnly" in cookie
-    assert "Secure" in cookie
-    assert "SameSite=lax" in cookie
+    assert "set-cookie" not in response.headers
     state, _ = coordination.read()
     assert state.running == ()
     assert state.monthly_budget.charged_starts == 1
-    cookie_value = response.cookies["groundball_visitor"]
     assert [item[0] for item in state.starts_by_visitor] == [
-        visitor_digest(cookie_value, digest_key=b"test-visitor-digest-key" * 2)
+        visitor_digest(DEPLOYMENT_ANONYMOUS_IDENTITY, digest_key=b"test-visitor-digest-key" * 2)
     ]
 
 
@@ -495,7 +492,7 @@ def test_public_allowance_pause_never_enters_execution(
         "retry_at": "2026-08-01T00:00:00+00:00",
     }
     assert response.headers["retry-after"] == "1080000"
-    assert "groundball_visitor=" in response.headers["set-cookie"]
+    assert "set-cookie" not in response.headers
     assert runner.requests == []
     state, _ = coordination.read()
     assert state.monthly_budget.charged_starts == 100
@@ -693,7 +690,7 @@ def test_public_busy_and_rate_refusals_expose_exact_retry_times(
 ) -> None:
     cookie_value = "existing-opaque-value"
     digest_key = b"test-visitor-digest-key" * 2
-    visitor = visitor_digest(cookie_value, digest_key=digest_key)
+    visitor = visitor_digest(DEPLOYMENT_ANONYMOUS_IDENTITY, digest_key=digest_key)
     runner = RecordingRunner(ExecutionOutcome("completed", payload={"kind": "rows"}))
     busy_state = AdmissionState(
         running=(

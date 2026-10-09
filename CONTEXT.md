@@ -20,6 +20,8 @@ This is the canonical current architecture and domain context. Historical implem
 
 `baseball_rag.public_app.create_app` is the public composition boundary. Local construction needs no bindings. Public construction accepts only injected `PublicAppBindings`: a deployment-shared CAS store, stable digest key, initializer, and hard-stop execution runner. Missing or unsafe bindings fail closed. The public repository contains no concrete hosting adapter or environment-driven hosting construction.
 
+Public admission uses a deployment-owned abuse identity, never the visitor cookie or caller-supplied forwarding headers. `PublicAppBindings.abuse_identity` may resolve a stable identity from verified deployment metadata. Without that resolver, all anonymous requests share one deployment-wide rate and concurrency bucket. Resolver failure or an invalid identity refuses the request before charging the monthly budget. HMAC digests keep raw identities out of coordination state.
+
 The direct-import `baseball_rag.api.server.app` remains available for local use and offline release proof. Its local-CI runtime configuration is network-disabled and cannot claim shared deployment authority.
 
 Public source owns the interpretation prompt, response schema, validation, `run_question_input`, and factual answer construction. Optional model transport and bounded external source callbacks are injected by the outer runtime. `QuestionBindings` supplies optional local interpretation; public execution injects these dependencies within its existing hard-stop boundary. No transport or source callback owns product prompts, query semantics, or factual prose.

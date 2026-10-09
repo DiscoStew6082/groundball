@@ -42,6 +42,9 @@ class PublicAppBindings:
     digest_key: bytes
     initializer: Callable[[], None]
     execution_runner: PublicExecutionRunner
+    # Must use verified deployment metadata; raw cookies/forwarding headers are unsafe.
+    # An omitted resolver deliberately puts all anonymous requests in one stable bucket.
+    abuse_identity: Callable[[Request], str] | None = None
 
 
 InitializationState = Literal["initializing", "ready", "failed"]
@@ -129,6 +132,8 @@ def _reset_initialization_for_tests() -> None:
 def _validated_components(
     bindings: PublicAppBindings,
 ) -> tuple[CasCoordinator, bytes, PublicExecutionRunner]:
+    if bindings.abuse_identity is not None and not callable(bindings.abuse_identity):
+        raise ValueError("Public abuse identity requires a trusted deployment resolver.")
     if (
         isinstance(bindings.store, InMemoryCasStore)
         or getattr(bindings.store, "deployment_shared", False) is not True
@@ -202,6 +207,7 @@ def create_app(
     return create_server_app(
         public_mode=True,
         public_components=(coordinator, digest_key, execution_runner),
+        public_abuse_identity=bindings.abuse_identity,
         public_gate=gate.middleware,
         lifespan=lifespan,
     )

@@ -205,7 +205,7 @@ def test_thirteenth_start_in_a_rolling_hour_is_rate_limited_until_exact_expiry()
     assert thirteenth.outcome.retry_at == NOW + timedelta(minutes=5)
 
 
-def test_release_and_cookie_rotation_cannot_refund_deployment_budget() -> None:
+def test_release_and_distinct_abuse_identities_cannot_refund_deployment_budget() -> None:
     state = decide_admission(
         AdmissionState(monthly_budget=MonthlyBudget(period="2026-07", charged_starts=0)),
         AdmissionAttempt(visitor="visitor-a", run_id="run-a", now=NOW),
@@ -216,8 +216,8 @@ def test_release_and_cookie_rotation_cannot_refund_deployment_budget() -> None:
     assert released.running == ()
     assert released.starts_for("visitor-a") == (NOW,)
     assert released.monthly_budget.charged_starts == 1
-    assert visitor_digest("cookie-a", digest_key=b"key") != visitor_digest(
-        "cookie-b", digest_key=b"key"
+    assert visitor_digest("trusted-origin-a", digest_key=b"key") != visitor_digest(
+        "trusted-origin-b", digest_key=b"key"
     )
 
 
@@ -396,10 +396,10 @@ def test_current_budget_readiness_distinguishes_invalid_state_from_coordination_
     assert unavailable.readiness().kind == "service_unavailable"
 
 
-def test_visitor_digest_is_stable_keyed_and_never_contains_cookie_material() -> None:
-    first = visitor_digest("opaque-cookie", digest_key=b"a" * 32)
+def test_visitor_digest_is_stable_keyed_and_never_contains_origin_material() -> None:
+    first = visitor_digest("trusted-origin", digest_key=b"a" * 32)
 
-    assert first == visitor_digest("opaque-cookie", digest_key=b"a" * 32)
-    assert first != visitor_digest("opaque-cookie", digest_key=b"b" * 32)
-    assert "opaque-cookie" not in first
+    assert first == visitor_digest("trusted-origin", digest_key=b"a" * 32)
+    assert first != visitor_digest("trusted-origin", digest_key=b"b" * 32)
+    assert "trusted-origin" not in first
     assert len(first) == 64

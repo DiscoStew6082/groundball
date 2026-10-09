@@ -25,6 +25,7 @@ from starlette.responses import (
 
 from baseball_rag.assistant import RESEARCH_TOPICS
 from baseball_rag.public_admission import (
+    DEPLOYMENT_ANONYMOUS_IDENTITY,
     AdmissionAttempt,
     AdmissionOutcome,
     AdmissionState,
@@ -44,10 +45,6 @@ from baseball_rag.public_release_config import (
     EXECUTION_DEADLINE_SECONDS,
     MINIMUM_VISITOR_DIGEST_KEY_BYTES,
     QUESTION_CHARACTER_LIMIT,
-    VISITOR_COOKIE_HTTP_ONLY,
-    VISITOR_COOKIE_NAME,
-    VISITOR_COOKIE_SAME_SITE,
-    VISITOR_COOKIE_SECURE,
     RuntimeConfiguration,
     load_runtime_configuration,
     validate_release_environment,
@@ -85,12 +82,12 @@ _DEFAULT_CORS_ORIGINS = (
 )
 _REPOSITORY_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 _PACKAGE_WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
-_PUBLIC_VISITOR_COOKIE = VISITOR_COOKIE_NAME
 _PUBLIC_EXECUTION_DEADLINE_SECONDS = float(EXECUTION_DEADLINE_SECONDS)
 
 # Import-time process state is intentionally never coordination authority.
 _public_admission: CasCoordinator | None = None
 _visitor_digest_key: bytes | None = None
+_public_abuse_identity: Callable[[Request], str] | None = None
 _public_admission_is_shared = False
 _public_runtime_configuration: RuntimeConfiguration | None = None
 _public_execution_runner = SubprocessExecutionRunner()
@@ -103,11 +100,15 @@ def configure_public_admission(
     store: CasStore,
     digest_key: bytes,
     clock: Callable[[], datetime] | None = None,
+    abuse_identity: Callable[[Request], str] | None = None,
 ) -> CasCoordinator:
     """Install a future shared-store Adapter without coupling it to FastAPI."""
     global _public_admission, _public_admission_is_shared, _visitor_digest_key
+    global _public_abuse_identity
 
     shared_store = getattr(store, "deployment_shared", False) is True
+    if abuse_identity is not None and not callable(abuse_identity):
+        raise ValueError("Public abuse identity requires a trusted deployment resolver.")
     if isinstance(store, InMemoryCasStore) or not shared_store:
         raise ValueError("Public admission requires a deployment-shared CAS store.")
     if not isinstance(digest_key, bytes) or len(digest_key) < MINIMUM_VISITOR_DIGEST_KEY_BYTES:
@@ -118,13 +119,14 @@ def configure_public_admission(
     coordinator = CasCoordinator(store, clock=clock)
     _public_admission = coordinator
     _visitor_digest_key = bytes(digest_key)
+    _public_abuse_identity = abuse_identity
     _public_admission_is_shared = True
     return coordinator
 
 
 def _configure_release_runtime_if_declared() -> None:
     global _public_admission, _public_admission_is_shared, _public_runtime_configuration
-    global _visitor_digest_key
+    global _visitor_digest_key, _public_abuse_identity
 
     configured_path = os.environ.get("GROUNDBALL_RUNTIME_CONFIG")
     if configured_path is None:
@@ -148,6 +150,7 @@ def _configure_release_runtime_if_declared() -> None:
         b"ground-ball-local-ci-ephemeral-visitor-identity"
     ).digest()
     _public_admission_is_shared = False
+    _public_abuse_identity = None
 
 
 def _shared_public_admission_components() -> tuple[CasCoordinator, bytes]:
@@ -455,9 +458,17 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
         if configured is None:
             coordinator, digest_key = _shared_public_admission_components()
             execution_runner = _public_execution_runner
+            identity_resolver = _public_abuse_identity
         else:
             coordinator, digest_key, execution_runner = configured
-    except RuntimeError:
+            identity_resolver = getattr(request.app.state, "public_abuse_identity", None)
+        identity = (
+            DEPLOYMENT_ANONYMOUS_IDENTITY
+            if identity_resolver is None
+            else identity_resolver(request)
+        )
+        visitor = visitor_digest(identity, digest_key=digest_key)
+    except Exception:  # noqa: BLE001 - identity failures must not authorize or leak details
         _record_timing_phase(phases, "admission", request_started)
         unavailable_response = JSONResponse(
             {
@@ -475,11 +486,6 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
     fallback_deadline = getattr(request.state, "public_execution_fallback_deadline", None)
     if fallback_deadline is None:
         fallback_deadline = _deadline_monotonic() + _PUBLIC_EXECUTION_DEADLINE_SECONDS
-    visitor_value = request.cookies.get(_PUBLIC_VISITOR_COOKIE)
-    new_visitor = visitor_value is None
-    if visitor_value is None:
-        visitor_value = secrets.token_urlsafe(32)
-    visitor = visitor_digest(visitor_value, digest_key=digest_key)
     run_id = secrets.token_hex(16)
     admission = coordinator.admit(
         AdmissionAttempt(visitor=visitor, run_id=run_id, now=datetime.now(UTC))
@@ -511,8 +517,6 @@ def _execute_public_request(request: Request, execution: ExecutionRequest) -> Re
                 coordinator.release(run_id)
             finally:
                 _record_timing_phase(phases, "release", release_started)
-    if new_visitor:
-        _set_visitor_cookie(response, visitor_value)
     _set_server_timing(response, phases, request_started)
     return response
 
@@ -591,17 +595,6 @@ def _execution_outcome_response(outcome: ExecutionOutcome) -> Response:
             "detail": "Public Query Run execution failed.",
         },
         status_code=503,
-    )
-
-
-def _set_visitor_cookie(response: Response, visitor_value: str) -> None:
-    response.set_cookie(
-        _PUBLIC_VISITOR_COOKIE,
-        visitor_value,
-        secure=VISITOR_COOKIE_SECURE,
-        httponly=VISITOR_COOKIE_HTTP_ONLY,
-        samesite=VISITOR_COOKIE_SAME_SITE,
-        path="/",
     )
 
 
@@ -782,6 +775,7 @@ def create_server_app(
     *,
     public_mode: bool | None = None,
     public_components: tuple[CasCoordinator, bytes, Any] | None = None,
+    public_abuse_identity: Callable[[Request], str] | None = None,
     public_gate: Any = None,
     lifespan: Any = _lifespan,
     question_bindings: Any = None,
@@ -790,6 +784,7 @@ def create_server_app(
     created = FastAPI(title="Groundball API", lifespan=lifespan)
     created.state.public_mode_override = public_mode
     created.state.public_components = public_components
+    created.state.public_abuse_identity = public_abuse_identity
     created.state.question_bindings = question_bindings
     created.middleware("http")(_query_cors_middleware)
     if public_gate is not None:

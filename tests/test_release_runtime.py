@@ -110,16 +110,20 @@ class SharedProofStore:
         return self.inner.compare_and_swap(version, state)
 
 proof_coordination = SharedProofStore()
+proof_identity = ["offline-proof-default"]
 coordinator = configure_public_admission(
     store=proof_coordination,
     digest_key=b"offline-release-proof-key-material",
+    abuse_identity=lambda _request: proof_identity[0],
 )
 if not coordinator.initialize_current_budget():
     raise AssertionError("release proof could not create the initial monthly budget")
 
 
 def visitor_headers(case):
-    return {"cookie": f"groundball_visitor=release-proof-{case}"}
+    # Trusted no-network fixture metadata, not a client-controlled admission header.
+    proof_identity[0] = f"offline-proof-{case}"
+    return {}
 
 
 structured_ohtani_recipe = {
