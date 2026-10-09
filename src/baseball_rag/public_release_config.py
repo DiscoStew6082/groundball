@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
-POLICY_SCHEMA_VERSION = "ground-ball-public-admission-policy-v1"
+POLICY_SCHEMA_VERSION = "ground-ball-public-admission-policy-v2"
 RUNTIME_SCHEMA_VERSION = "ground-ball-runtime-configuration-v1"
 SHARED_STATE_CONFIGURATION_IDENTITY = "ground-ball-public-admission-state-v1"
 SHARED_STATE_SCHEMA_VERSION = 1
@@ -23,11 +23,8 @@ MONTHLY_START_LIMIT = 100
 EXECUTION_DEADLINE_SECONDS = 10
 LEASE_SECONDS = 15
 MAXIMUM_CAS_ATTEMPTS = 8
-VISITOR_COOKIE_NAME = "groundball_visitor"
-VISITOR_COOKIE_SECURE = True
-VISITOR_COOKIE_HTTP_ONLY = True
-VISITOR_COOKIE_SAME_SITE: Literal["lax"] = "lax"
 MINIMUM_VISITOR_DIGEST_KEY_BYTES = 32
+MAXIMUM_ABUSE_IDENTITY_BYTES = 512
 _OWNED_RELEASE_ENVIRONMENT_KEYS = frozenset(
     {
         "GROUNDBALL_PUBLIC_DEMO",
@@ -80,6 +77,14 @@ def validate_release_environment(environment: Mapping[str, str]) -> None:
 def admission_policy_document() -> dict[str, object]:
     """Return the canonical read model directly from enforced constants."""
     return {
+        "abuse_identity": {
+            "bound_source": "trusted_deployment_resolver",
+            "client_cookie_identity": False,
+            "client_forwarding_headers": False,
+            "maximum_bytes": MAXIMUM_ABUSE_IDENTITY_BYTES,
+            "minimum_keyed_digest_key_bytes": MINIMUM_VISITOR_DIGEST_KEY_BYTES,
+            "unbound": "shared_anonymous_bucket",
+        },
         "admission_charging": {"charged_before_execution": True, "refunded": False},
         "cas": {"maximum_attempts": MAXIMUM_CAS_ATTEMPTS},
         "concurrency": {
@@ -104,13 +109,6 @@ def admission_policy_document() -> dict[str, object]:
         "shared_state": {
             "codec_schema_version": SHARED_STATE_SCHEMA_VERSION,
             "configuration_identity": SHARED_STATE_CONFIGURATION_IDENTITY,
-        },
-        "visitor_cookie": {
-            "http_only": VISITOR_COOKIE_HTTP_ONLY,
-            "minimum_keyed_digest_key_bytes": MINIMUM_VISITOR_DIGEST_KEY_BYTES,
-            "name": VISITOR_COOKIE_NAME,
-            "same_site": VISITOR_COOKIE_SAME_SITE,
-            "secure": VISITOR_COOKIE_SECURE,
         },
     }
 

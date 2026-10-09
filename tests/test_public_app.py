@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -16,11 +16,14 @@ from fastapi.testclient import TestClient
 import baseball_rag.api.server as api_server
 import baseball_rag.public_app as public_app_module
 from baseball_rag.public_admission import (
+    DEPLOYMENT_ANONYMOUS_IDENTITY,
     AdmissionState,
     CasSnapshot,
     CasStore,
     InMemoryCasStore,
     MonthlyBudget,
+    RunLease,
+    visitor_digest,
 )
 from baseball_rag.public_app import PublicAppBindings, create_app
 from baseball_rag.public_execution import ExecutionOutcome, ExecutionRequest
@@ -74,13 +77,133 @@ def bindings(
     coordination: SharedMemoryStore | None = None,
     initializer=None,
     runner: RecordingRunner | None = None,
+    abuse_identity=None,
 ) -> PublicAppBindings:
     return PublicAppBindings(
         store=coordination or ready_coordination(),
         digest_key=b"stable-public-visitor-digest-key",
         initializer=initializer or (lambda: None),
         execution_runner=runner or RecordingRunner(),
+        abuse_identity=abuse_identity,
     )
+
+
+def test_cookie_rotation_and_spoofed_headers_cannot_exhaust_shared_budget() -> None:
+    coordination = ready_coordination()
+    runner = RecordingRunner()
+    client = TestClient(create_app(bindings=bindings(coordination=coordination, runner=runner)))
+
+    responses = [
+        client.post(
+            "/api/query-runs" if index % 2 == 0 else "/api/retrosheet/queries",
+            json={"question": "question"},
+            headers={
+                **({"cookie": f"groundball_visitor=rotated-{index}"} if index % 3 else {}),
+                "x-forwarded-for": f"192.0.2.{index + 1}",
+                "forwarded": f"for=192.0.2.{index + 1}",
+            },
+        )
+        for index in range(100)
+    ]
+
+    assert [response.status_code for response in responses] == [200] * 3 + [429] * 97
+    assert all("set-cookie" not in response.headers for response in responses)
+    state = coordination.read().state
+    assert state.monthly_budget.charged_starts == 3
+    assert len(state.starts_by_visitor) == 1
+    assert len(runner.requests) == 3
+
+
+def test_trusted_identity_binding_partitions_limits_without_using_cookies() -> None:
+    coordination = ready_coordination()
+    identity = ["verified-origin-a"]
+    client = TestClient(
+        create_app(
+            bindings=bindings(
+                coordination=coordination, abuse_identity=lambda _request: identity[0]
+            )
+        )
+    )
+    for index in range(4):
+        response = client.post(
+            "/api/query-runs",
+            json={"question": "question"},
+            headers={"cookie": f"groundball_visitor=rotated-{index}"},
+        )
+        assert response.status_code == (200 if index < 3 else 429)
+    identity[0] = "verified-origin-b"
+    assert client.post("/api/query-runs", json={"question": "question"}).status_code == 200
+    state = coordination.read().state
+    assert state.monthly_budget.charged_starts == 4
+    assert sorted(len(starts) for _, starts in state.starts_by_visitor) == [1, 3]
+    assert "verified-origin" not in repr(state)
+    assert state.starts_for(visitor_digest("verified-origin-a", digest_key=bindings().digest_key))
+
+
+@pytest.mark.parametrize("active_lease", [True, False], ids=["concurrency", "hourly_rate"])
+def test_rotated_cookies_preserve_active_lease_and_hourly_limit(active_lease: bool) -> None:
+    now = datetime.now(UTC)
+    visitor = visitor_digest(DEPLOYMENT_ANONYMOUS_IDENTITY, digest_key=bindings().digest_key)
+    original = AdmissionState(
+        running=(RunLease(visitor, "active", now + timedelta(seconds=15)),) if active_lease else (),
+        starts_by_visitor=((visitor, tuple(now - timedelta(minutes=i) for i in range(5, 17))),),
+        monthly_budget=MonthlyBudget(period=now.strftime("%Y-%m"), charged_starts=12),
+    )
+    coordination = SharedMemoryStore(original)
+    runner = RecordingRunner()
+    client = TestClient(create_app(bindings=bindings(coordination=coordination, runner=runner)))
+
+    for cookie in [None, "unsigned", "", "malformed.token", "changed-again"]:
+        response = client.post(
+            "/api/query-runs",
+            json={"question": "question"},
+            headers={"cookie": f"groundball_visitor={cookie}"} if cookie is not None else {},
+        )
+        assert response.status_code == 429
+        assert response.json()["reason"] == (
+            "visitor_run_active" if active_lease else "twelve_starts_per_hour"
+        )
+    assert coordination.read().state == original
+    assert runner.requests == []
+
+
+@pytest.mark.parametrize("identity", [None, "", " ", "x" * 513, "identity\n", 123, b"bytes"])
+def test_invalid_trusted_identity_fails_closed_without_charging(identity) -> None:
+    coordination = ready_coordination()
+    runner = RecordingRunner()
+    client = TestClient(
+        create_app(
+            bindings=bindings(
+                coordination=coordination,
+                runner=runner,
+                abuse_identity=lambda _request: identity,
+            )
+        )
+    )
+
+    response = client.post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "service_unavailable"
+    assert "identity" not in response.text
+    assert runner.requests == []
+    assert coordination.read().state.monthly_budget.charged_starts == 0
+
+
+def test_trusted_identity_failure_never_falls_back_to_anonymous_admission() -> None:
+    def unavailable(_request):
+        raise RuntimeError("private identity provider details")
+
+    coordination = ready_coordination()
+    client = TestClient(
+        create_app(bindings=bindings(coordination=coordination, abuse_identity=unavailable))
+    )
+
+    response = client.post("/api/query-runs", json={"question": "question"})
+
+    assert response.status_code == 503
+    assert "private" not in response.text
+    assert coordination.read().state.monthly_budget.charged_starts == 0
 
 
 @pytest.fixture(autouse=True)

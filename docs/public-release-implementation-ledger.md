@@ -5,8 +5,8 @@ This ledger records the current public repository contract. Concrete hosting imp
 ## Delivered foundations
 
 1. **Immutable Release Bundle** — deterministic Lahman, catalog, coverage, compact Retrosheet, provenance, and legal payload with exact source identity.
-2. **Public Admission Policy** — fail-closed CAS admission, stable visitor digest, bounded rates, monthly allowance, concurrency limits, fifteen-second leases, and ten-second hard-stop execution.
-3. **Portable public composition** — `PublicAppBindings` injects the deployment-shared store, digest material, initializer, and runner. Missing or unsafe bindings fail closed.
+2. **Public Admission Policy** — fail-closed CAS admission, deployment-owned abuse identity, bounded rates, monthly allowance, concurrency limits, fifteen-second leases, and ten-second hard-stop execution. Cookies do not select admission state; an unbound identity resolver uses one shared anonymous bucket.
+3. **Portable public composition** — `PublicAppBindings` injects the deployment-shared store, digest material, initializer, runner, and optional trusted abuse-identity resolver. Missing or unsafe bindings fail closed.
 4. **Public result envelope** — bounded 25/50/100 pages, complete-or-refused export, and immutable completed-run state.
 5. **Deterministic parity** — natural, structured, and bounded follow-up paths share one Query Recipe, Query Plan, result, and evidence contract.
 6. **Release Artifact identity** — canonical `ground-ball-release-artifact-v2` binds source/artifact topology, Release Bundle, Public Admission Policy, Coverage Report, and public interface revision.

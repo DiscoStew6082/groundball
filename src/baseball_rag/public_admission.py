@@ -15,6 +15,7 @@ from typing import Iterator, Protocol
 from baseball_rag.public_release_config import (
     EXECUTION_DEADLINE_SECONDS,
     LEASE_SECONDS,
+    MAXIMUM_ABUSE_IDENTITY_BYTES,
     MAXIMUM_CAS_ATTEMPTS,
     MONTHLY_START_LIMIT,
     SYSTEM_CONCURRENCY_LIMIT,
@@ -25,11 +26,22 @@ from baseball_rag.public_release_config import (
 RUN_DEADLINE = timedelta(seconds=EXECUTION_DEADLINE_SECONDS)
 RUN_LEASE_DURATION = timedelta(seconds=LEASE_SECONDS)
 _BUDGET_PERIOD_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
+DEPLOYMENT_ANONYMOUS_IDENTITY = "deployment-anonymous-v1"
 
 
-def visitor_digest(opaque_cookie: str, *, digest_key: bytes) -> str:
-    """Keep the opaque first-party Visitor token out of coordination state."""
-    return hmac.new(digest_key, opaque_cookie.encode(), hashlib.sha256).hexdigest()
+def visitor_digest(abuse_identity: str, *, digest_key: bytes) -> str:
+    """Pseudonymize a trusted deployment identity, never a client cookie."""
+    if (
+        not isinstance(abuse_identity, str)
+        or not 1 <= len(abuse_identity) <= MAXIMUM_ABUSE_IDENTITY_BYTES
+        or any(not 33 <= ord(character) <= 126 for character in abuse_identity)
+    ):
+        raise ValueError("Public abuse identity must be bounded printable ASCII without spaces.")
+    return hmac.new(
+        digest_key,
+        b"ground-ball-abuse-identity-v2\0" + abuse_identity.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 @dataclass(frozen=True)
