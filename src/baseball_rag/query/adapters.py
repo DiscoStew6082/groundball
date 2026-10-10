@@ -41,7 +41,7 @@ from baseball_rag.query.registry import (
     published_values,
 )
 from baseball_rag.query.runtime import published_data_runtime
-from baseball_rag.query.service import execute, prepare
+from baseball_rag.query.service import ExportContentTooLargeError, _execute, execute, prepare
 
 
 def run_query_input(
@@ -49,6 +49,8 @@ def run_query_input(
     question: str | None = None,
     recipe: Mapping[str, Any] | None = None,
     previous_recipe: Mapping[str, Any] | None = None,
+    export_row_max: int | None = None,
+    export_content_max: int | None = None,
 ) -> dict[str, Any]:
     """Resolve exactly one Adapter input into one discriminated query outcome."""
     if (question is None) == (recipe is None):
@@ -71,7 +73,32 @@ def run_query_input(
     planned = prepare(resolved_recipe)
     if not isinstance(planned, Ready):
         return _planning_payload(planned, recipe=resolved_recipe)
-    return _execution_payload(resolved_recipe, planned, execute(planned.plan))
+    try:
+        outcome = (
+            execute(planned.plan)
+            if export_row_max is None and export_content_max is None
+            else _execute(
+                planned.plan, export_row_max=export_row_max, export_content_max=export_content_max
+            )
+        )
+    except ExportContentTooLargeError as exc:
+        verification = verification_payload(exc.evidence)
+        if verification["status"] != "verified":
+            return {"kind": "unavailable", "reason": verification["reason"]}
+        return {
+            "kind": "export_too_large",
+            "error": "export_too_large",
+            "total_matched_count": exc.evidence.matched_row_count,
+            "ceiling": {
+                "name": "downloadable_bytes",
+                "maximum": exc.maximum,
+                "observed": exc.observed,
+            },
+            "detail": "The complete export exceeds the public downloadable bytes ceiling.",
+            "guidance": "Add filters to narrow the result, then export again.",
+            "evidence": _evidence_payload(exc.evidence),
+        }
+    return _execution_payload(resolved_recipe, planned, outcome)
 
 
 def adapt_natural_query(

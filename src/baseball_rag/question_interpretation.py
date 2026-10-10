@@ -25,6 +25,7 @@ from baseball_rag.assistant import (
     validate_research_request,
 )
 from baseball_rag.db.player_identity import find_player_mentions, resolve_player_by_name
+from baseball_rag.integration_budget import MAX_FIELDS, MAX_ITEMS, validate_envelope
 from baseball_rag.public_results import run_public_query_input
 from baseball_rag.query.adapters import (
     adapt_natural_query,
@@ -54,6 +55,9 @@ from baseball_rag.query_intent import (
 
 MAX_PROMPT_CHARS = 48_000
 MAX_RESPONSE_BYTES = 65_536
+MAX_PREDICATE_DEPTH = 12
+MAX_PREDICATE_NODES = 128
+MAX_PREDICATE_BRANCHES = 32
 _CLARIFICATION_QUESTIONS = {
     "missing_team": "Which MLB team should I use?",
     "missing_player": "Which player's full name should I use?",
@@ -100,9 +104,42 @@ def _finite_float(value: str) -> float:
 
 
 def decode_interpretation_json(value: bytes | str) -> Any:
-    return json.loads(
+    if not isinstance(value, (bytes, str)) or len(value) > MAX_RESPONSE_BYTES:
+        raise ValueError("Interpretation response is too large or invalid.")
+    encoded = value.encode("utf-8") if isinstance(value, str) else value
+    if len(encoded) > MAX_RESPONSE_BYTES:
+        raise ValueError("Interpretation response is too large.")
+    # Bound container depth and width before the recursive JSON decoder allocates.
+    text = encoded.decode("utf-8")
+    stack: list[tuple[str, int]] = []
+    quoted = escaped = False
+    for char in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            stack.append((char, 1))
+            if len(stack) > 32:
+                raise ValueError("Interpretation JSON is too deep.")
+        elif char in "]}" and stack:
+            stack.pop()
+        elif char == "," and stack:
+            container, count = stack[-1]
+            count += 1
+            if count > (MAX_FIELDS if container == "{" else MAX_ITEMS):
+                raise ValueError("Interpretation JSON collection is too large.")
+            stack[-1] = (container, count)
+    decoded = json.loads(
         value, object_pairs_hook=_object, parse_constant=_nonfinite, parse_float=_finite_float
     )
+    validate_envelope(decoded, max_bytes=MAX_RESPONSE_BYTES, max_depth=32)
+    return decoded
 
 
 def _compact_catalog() -> dict[str, Any]:
@@ -205,7 +242,7 @@ def _response_schema() -> dict[str, Any]:
             if not operators:
                 continue
             literal = (
-                {"type": "array", "items": scalar, "minItems": 1}
+                {"type": "array", "items": scalar, "minItems": 1, "maxItems": MAX_ITEMS}
                 if array_operator == "one_of"
                 else {"type": "array", "items": scalar, "minItems": 2, "maxItems": 2}
                 if array_operator == "range"
@@ -236,6 +273,7 @@ def _response_schema() -> dict[str, Any]:
                         "type": "array",
                         "items": {"$ref": "#/$defs/predicate"},
                         "minItems": 1,
+                        "maxItems": MAX_PREDICATE_BRANCHES,
                     },
                 }
             ),
@@ -301,7 +339,7 @@ def _response_schema() -> dict[str, Any]:
         obj({"kind": {"const": "stats"}, "request": {"$ref": "#/$defs/stats"}}),
         obj({"kind": {"const": "research"}, "request": {"$ref": "#/$defs/research"}}),
     ]
-    return {
+    schema: dict[str, Any] = {
         "type": "object",
         "$defs": {
             "predicate": predicate,
@@ -332,6 +370,19 @@ def _response_schema() -> dict[str, Any]:
             obj({"kind": {"const": "rejected"}, "code": {"const": "unsupported"}}),
         ],
     }
+    # Keep constrained-decoding grammar within the same runtime collection bounds.
+    pending: list[Any] = [schema]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            if node.get("type") == "array":
+                node.setdefault("maxItems", MAX_ITEMS)
+            if node.get("type") == "string":
+                node.setdefault("maxLength", 4096)
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    return schema
 
 
 _RESEARCH_INSTRUCTIONS = (
@@ -490,6 +541,24 @@ def interpretation_request(question: str, previous: dict[str, Any] | None) -> di
 
 
 def _validated_recipe(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        pending = [(value.get("predicate"), 1)]
+        nodes = 0
+        while pending:
+            predicate, depth = pending.pop()
+            if predicate is None:
+                continue
+            nodes += 1
+            if depth > MAX_PREDICATE_DEPTH or nodes > MAX_PREDICATE_NODES:
+                raise ValueError("Model predicate is too large or deep.")
+            if isinstance(predicate, dict):
+                if predicate.get("kind") in {"all", "any"}:
+                    children = predicate.get("predicates")
+                    if not isinstance(children, list) or len(children) > MAX_PREDICATE_BRANCHES:
+                        raise ValueError("Model predicate has too many branches.")
+                    pending.extend((child, depth + 1) for child in children)
+                elif predicate.get("kind") == "not":
+                    pending.append((predicate.get("predicate"), depth + 1))
     if not isinstance(value, dict):
         raise ValueError("Recipe must be an object.")
     recipe = recipe_from_dict(value if "output" in value else _page(value))
@@ -519,6 +588,7 @@ def _planning_payload(adapted: NeedsClarification) -> dict[str, Any]:
 
 
 def _model_output(proposed: Any) -> dict[str, Any]:
+    validate_envelope(proposed, max_bytes=MAX_RESPONSE_BYTES, max_depth=32)
     if not isinstance(proposed, dict):
         raise ValueError("Interpretation must be an object.")
     kind = proposed.get("kind")

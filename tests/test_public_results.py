@@ -314,6 +314,61 @@ def test_public_export_returns_complete_supported_content(output_format: str) ->
     assert exported["export"]["format"] == output_format
 
 
+def test_default_worker_exports_exact_public_row_ceiling() -> None:
+    import csv
+
+    from baseball_rag.public_execution import ExecutionRequest, SubprocessExecutionRunner
+    from baseball_rag.query.registry import CATALOG_DIR
+
+    with (CATALOG_DIR / "assets/team_reference.csv").open(newline="", encoding="utf-8") as data:
+        records = sorted(csv.DictReader(data), key=lambda row: (-int(row["yearID"]), row["teamID"]))
+    selected = records[:EXPORT_ROW_MAX]
+    cutoff = int(selected[-1]["yearID"])
+    final_teams = [row["teamID"] for row in selected if int(row["yearID"]) == cutoff]
+    recipe = {
+        "source": "TeamReference",
+        "grain": "raw_rows",
+        "selections": ["TeamReference.yearID", "TeamReference.teamID", "TeamReference.name"],
+        "predicate": {
+            "kind": "any",
+            "predicates": [
+                {
+                    "kind": "compare",
+                    "value": "TeamReference.yearID",
+                    "operator": "greater_than",
+                    "literal": cutoff,
+                },
+                {
+                    "kind": "all",
+                    "predicates": [
+                        {
+                            "kind": "compare",
+                            "value": "TeamReference.yearID",
+                            "operator": "equals",
+                            "literal": cutoff,
+                        },
+                        {
+                            "kind": "compare",
+                            "value": "TeamReference.teamID",
+                            "operator": "one_of",
+                            "literal": final_teams,
+                        },
+                    ],
+                },
+            ],
+        },
+        "output": {"kind": "export", "format": "json"},
+    }
+    outcome = SubprocessExecutionRunner().run(
+        ExecutionRequest(operation="query", question=None, recipe=recipe), timeout_seconds=10
+    )
+    assert outcome.kind == "completed"
+    assert outcome.payload is not None
+    assert outcome.payload["kind"] == "exported"
+    assert outcome.payload["evidence"]["matched_row_count"] == EXPORT_ROW_MAX
+    assert len(outcome.payload["rows"]) == EXPORT_ROW_MAX
+
+
 def test_public_export_content_byte_boundary_is_enforced_on_the_real_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -345,8 +400,8 @@ def test_public_export_response_byte_boundary_is_enforced_on_the_real_payload(
 ) -> None:
     recipe = run_query_input(question="who had the most RBIs in 1962")["recipe"]
     recipe["output"] = {"kind": "export", "format": "csv"}
-    local_export = run_query_input(recipe=recipe)
-    measured = export_measurements(local_export)
+    public_export = run_public_query_input(recipe=recipe)
+    measured = export_measurements(public_export)
     monkeypatch.setattr(public_results, "EXPORT_RESPONSE_MAX_BYTES", measured["response_bytes"])
 
     exact = run_public_query_input(recipe=recipe)
@@ -366,7 +421,9 @@ def test_public_export_response_byte_boundary_is_enforced_on_the_real_payload(
     assert "rows" not in beyond and "export" not in beyond
 
 
-def test_public_export_refuses_complete_team_reference_result_without_partial_material() -> None:
+def test_public_export_refuses_complete_team_reference_result_without_partial_material(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     recipe = {
         "source": "TeamReference",
         "grain": "raw_rows",
@@ -378,7 +435,37 @@ def test_public_export_refuses_complete_team_reference_result_without_partial_ma
         "output": {"kind": "export", "format": "json"},
     }
 
+    from dataclasses import replace
+
+    import baseball_rag.query.service as service
+    from baseball_rag.query.runtime import published_data_runtime
+
+    runtime = published_data_runtime()
+
+    class CountOnlyCursor:
+        def __init__(self, cursor):
+            self.cursor = cursor
+            self.description = cursor.description
+
+        def fetchone(self):
+            return self.cursor.fetchone()
+
+        def fetchall(self):
+            pytest.fail("An over-limit export must refuse before fetching all rows.")
+
+    class Connection:
+        def execute(self, sql, values):
+            return CountOnlyCursor(runtime.connection.execute(sql, values))
+
+    monkeypatch.setattr(
+        service, "published_data_runtime", lambda: replace(runtime, connection=Connection())
+    )
     refusal = run_public_query_input(recipe=recipe)
+
+    evidence = refusal.pop("evidence", None)
+    assert evidence is not None
+    assert evidence["matched_row_count"] == 3_613
+    assert evidence["row_count"] == 0
 
     assert refusal == {
         "kind": "export_too_large",

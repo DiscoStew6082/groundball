@@ -14,12 +14,21 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Protocol, TypedDict
+from tempfile import TemporaryDirectory
+from typing import Callable, NotRequired, Protocol, TypedDict
 from zoneinfo import ZoneInfo
 
 import requests
 
 from baseball_rag.db.duckdb_schema import DATA_DIR
+from baseball_rag.db.ingestion_limits import (
+    DEFAULT_LIMITS,
+    bounded_text_lines,
+    bounded_zip,
+    copy_bounded,
+    install_staged_files,
+    validate_archive,
+)
 
 RETROSHEET_DOWNLOAD_BASE_URL = "https://www.retrosheet.org/downloads"
 RETROSHEET_ATTRIBUTION = (
@@ -46,7 +55,7 @@ class YearCoverage(TypedDict):
 
 
 class RetrosheetFileManifest(TypedDict):
-    archive: str
+    archive: NotRequired[str]
     path: str
     source_url: str
     table: str
@@ -54,7 +63,7 @@ class RetrosheetFileManifest(TypedDict):
     rows: int
     year_coverage: YearCoverage
     sha256: str
-    archive_sha256: str
+    archive_sha256: NotRequired[str]
 
 
 @dataclass(frozen=True)
@@ -76,6 +85,31 @@ ARCHIVES: tuple[RetrosheetArchive, ...] = (
     RetrosheetArchive("biodata.zip", "biofile0.csv", "retrosheet_biofile", False),
 )
 
+# Official biodata.zip includes these companion CSVs. They are not extracted.
+BIODATA_MEMBERS = frozenset(
+    {
+        "ballparks0.csv",
+        "biofile0.csv",
+        "coaches0.csv",
+        "managers0.csv",
+        "relatives.csv",
+        "teams0.csv",
+        "umpires0.csv",
+    }
+)
+
+
+def _validate_raw_members(archive: zipfile.ZipFile, expected_name: str) -> None:
+    members = validate_archive(archive, DEFAULT_LIMITS)
+    names = {member.filename for member in members}
+    allowed = BIODATA_MEMBERS if expected_name == "biofile0.csv" else {expected_name}
+    if (
+        expected_name not in names
+        or not names <= allowed
+        or any(member.is_dir() for member in members)
+    ):
+        raise RuntimeError("Retrosheet archive must contain only expected CSV members")
+
 
 def download_all(
     target_dir: Path | None = None,
@@ -88,10 +122,24 @@ def download_all(
     target_dir.mkdir(parents=True, exist_ok=True)
     get = http_get or _requests_get
 
-    for archive in ARCHIVES:
-        _download_archive(archive, target_dir, get)
-
-    return write_manifest(target_dir, downloaded_at=downloaded_at)
+    with TemporaryDirectory(prefix=".retrosheet-", dir=target_dir.parent) as temporary:
+        staging = Path(temporary)
+        # Governed local derivation is never supplied by a raw-source archive.
+        derived_name = "pitcher_strikeout_side_events.csv"
+        if (target_dir / derived_name).exists():
+            with (
+                (target_dir / derived_name).open("rb") as source,
+                (staging / derived_name).open("wb") as output,
+            ):
+                copy_bounded(
+                    iter(lambda: source.read(8192), b""), output, DEFAULT_LIMITS.member_bytes
+                )
+        for archive in ARCHIVES:
+            _download_archive(archive, staging, get)
+        write_manifest(staging, downloaded_at=downloaded_at)
+        names = [name for archive in ARCHIVES for name in (archive.archive_name, archive.csv_name)]
+        install_staged_files(staging, target_dir, [*names, MANIFEST_FILENAME])
+    return target_dir / MANIFEST_FILENAME
 
 
 def write_manifest(target_dir: Path | None = None, *, downloaded_at: str | None = None) -> Path:
@@ -149,27 +197,30 @@ def _download_archive(archive: RetrosheetArchive, target_dir: Path, http_get: Ht
         raise RuntimeError(f"Failed to download {archive.source_url}: HTTP {response.status_code}")
 
     archive_path = target_dir / archive.archive_name
-    with archive_path.open("wb") as output:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:
-                output.write(chunk)
-
-    _extract_zip(archive_path, target_dir)
+    try:
+        with archive_path.open("wb") as output:
+            copy_bounded(
+                response.iter_content(chunk_size=8192), output, DEFAULT_LIMITS.download_bytes
+            )
+        _extract_zip(archive_path, target_dir, archive.csv_name)
+    finally:
+        close = getattr(response, "close", None)
+        if close is not None:
+            close()
 
 
 def _requests_get(url: str, timeout: int) -> requests.Response:
-    return requests.get(url, timeout=timeout)
+    return requests.get(url, timeout=timeout, stream=True)
 
 
-def _extract_zip(archive_path: Path, target_dir: Path) -> None:
-    with zipfile.ZipFile(archive_path) as archive:
-        for member in archive.infolist():
-            destination = (target_dir / member.filename).resolve()
-            if not destination.is_relative_to(target_dir.resolve()):
-                raise RuntimeError(
-                    f"Refusing to extract unsafe Retrosheet member: {member.filename}"
-                )
-            archive.extract(member, target_dir)
+def _extract_zip(archive_path: Path, target_dir: Path, expected_name: str) -> None:
+    with bounded_zip(archive_path, DEFAULT_LIMITS) as archive:
+        _validate_raw_members(archive, expected_name)
+        with (
+            archive.open(expected_name) as source,
+            (target_dir / expected_name).open("wb") as output,
+        ):
+            copy_bounded(iter(lambda: source.read(8192), b""), output, DEFAULT_LIMITS.member_bytes)
 
 
 def _file_manifest(target_dir: Path, archive: RetrosheetArchive) -> RetrosheetFileManifest:
@@ -191,43 +242,63 @@ def _file_manifest(target_dir: Path, archive: RetrosheetArchive) -> RetrosheetFi
 
 
 def _existing_derived_file_manifests(target_dir: Path) -> list[RetrosheetFileManifest]:
-    manifest_path = target_dir / MANIFEST_FILENAME
-    if not manifest_path.exists():
+    path = target_dir / "pitcher_strikeout_side_events.csv"
+    if not path.exists():
         return []
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    raw_tables = {archive.table_name for archive in ARCHIVES}
-    derived = []
-    for item in manifest.get("files", []):
-        if item.get("table") not in raw_tables:
-            derived.append(item)
-    return derived
+    rows, coverage = _csv_metadata(path, None, path.name)
+    return [
+        {
+            "path": f"data/secondary_sources/retrosheet/{path.name}",
+            "source_url": "https://www.retrosheet.org/events/",
+            "table": "retrosheet_pitcher_strikeout_side_events",
+            "kind": "event_derived_evidence",
+            "rows": rows,
+            "year_coverage": coverage,
+            "sha256": _sha256(path),
+        }
+    ]
 
 
-def _csv_metadata(path: Path, archive_path: Path, member_name: str) -> tuple[int, YearCoverage]:
-    years: list[int] = []
+def _csv_metadata(
+    path: Path, archive_path: Path | None, member_name: str
+) -> tuple[int, YearCoverage]:
+    min_year: int | None = None
+    max_year: int | None = None
     with _open_csv_text(path, archive_path, member_name) as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(bounded_text_lines(f))
+        if not reader.fieldnames or len(reader.fieldnames) > 256:
+            raise RuntimeError("Invalid Retrosheet CSV header")
+        if not {"gid", "id", "retroID"}.intersection(reader.fieldnames):
+            raise RuntimeError("Invalid Retrosheet CSV identity header")
         rows = 0
         for row in reader:
             rows += 1
+            if rows > DEFAULT_LIMITS.rows or None in row or None in row.values():
+                raise RuntimeError("Retrosheet CSV exceeds row budget or has invalid rows")
             year = _row_year(row)
             if year is not None:
-                years.append(year)
+                min_year = year if min_year is None else min(min_year, year)
+                max_year = year if max_year is None else max(max_year, year)
 
     return rows, {
-        "min": min(years) if years else None,
-        "max": max(years) if years else None,
+        "min": min_year,
+        "max": max_year,
     }
 
 
 @contextlib.contextmanager
-def _open_csv_text(path: Path, archive_path: Path, member_name: str):
-    if archive_path.exists():
-        with zipfile.ZipFile(archive_path) as archive:
+def _open_csv_text(path: Path, archive_path: Path | None, member_name: str):
+    if archive_path is not None and archive_path.exists():
+        if archive_path.stat().st_size > DEFAULT_LIMITS.download_bytes:
+            raise RuntimeError("Retrosheet archive exceeds byte budget")
+        with bounded_zip(archive_path, DEFAULT_LIMITS) as archive:
+            _validate_raw_members(archive, member_name)
             with archive.open(member_name) as raw:
                 with io.TextIOWrapper(raw, encoding="utf-8", newline="") as f:
                     yield f
         return
+    if path.stat().st_size > DEFAULT_LIMITS.member_bytes:
+        raise RuntimeError("Retrosheet CSV exceeds byte budget")
     with path.open(newline="", encoding="utf-8") as f:
         yield f
 
@@ -261,7 +332,7 @@ def _sha256(path: Path) -> str:
 def _csv_sha256(path: Path, archive_path: Path, member_name: str) -> str:
     if archive_path.exists():
         digest = hashlib.sha256()
-        with zipfile.ZipFile(archive_path) as archive:
+        with bounded_zip(archive_path, DEFAULT_LIMITS) as archive:
             with archive.open(member_name) as f:
                 for chunk in iter(lambda: f.read(1024 * 1024), b""):
                     digest.update(chunk)

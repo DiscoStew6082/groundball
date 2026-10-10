@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -139,6 +140,25 @@ def _execute(request: ExecutionRequest) -> dict[str, Any]:
 
 
 def main() -> int:
+    # Apply an address-space budget before importing query code on platforms
+    # supporting it. Darwin rejects these rlimits; deployment runners on that
+    # platform must supply process memory isolation in addition to query caps.
+    try:
+        if sys.platform != "darwin":
+            import resource
+
+            soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+            maximum = 1024 * 1024 * 1024
+            limits = [
+                maximum,
+                *(value for value in (soft, hard) if value != resource.RLIM_INFINITY),
+            ]
+            budget = min(limits)
+            resource.setrlimit(resource.RLIMIT_AS, (budget, budget))
+    except (ImportError, OSError, ValueError):
+        print(json.dumps({"kind": "failed"}))
+        return 2
+    os.environ["GROUNDBALL_PUBLIC_WORKER"] = "1"
     try:
         raw_request = json.loads(sys.stdin.buffer.read())
         operation = raw_request["operation"]

@@ -78,7 +78,7 @@ def test_download_retrosheet_sources_fetches_required_archives_and_writes_manife
     assert len(manifest["files"][0]["sha256"]) == 64
 
 
-def test_retrosheet_manifest_reads_zip_members_and_preserves_derived_entries(tmp_path):
+def test_retrosheet_manifest_reads_zip_members_and_recomputes_local_derived_entries(tmp_path):
     archives = {
         "batting.zip": _zip_bytes(
             "batting.csv",
@@ -123,6 +123,9 @@ def test_retrosheet_manifest_reads_zip_members_and_preserves_derived_entries(tmp
         ),
         encoding="utf-8",
     )
+    (tmp_path / "pitcher_strikeout_side_events.csv").write_text(
+        "retroID,year\ncampb101,1969\n", encoding="utf-8"
+    )
 
     manifest_path = retrosheet.write_manifest(
         tmp_path,
@@ -135,6 +138,7 @@ def test_retrosheet_manifest_reads_zip_members_and_preserves_derived_entries(tmp
     assert tables["retrosheet_batting"]["rows"] == 1
     assert tables["retrosheet_batting"]["year_coverage"] == {"min": 1969, "max": 1969}
     assert "retrosheet_pitcher_strikeout_side_events" in tables
+    assert tables["retrosheet_pitcher_strikeout_side_events"]["sha256"] != "abc"
 
 
 def test_retrosheet_manifest_can_fall_back_to_loose_csvs(tmp_path):

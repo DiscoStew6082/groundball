@@ -17,6 +17,7 @@ from duckdb import DuckDBPyConnection
 
 from baseball_rag.db.duckdb_schema import DATA_DIR
 from baseball_rag.db.packaged_data import verify_manifest_file
+from baseball_rag.query.asset_paths import contained_asset_path
 from baseball_rag.query.data_identity import semantic_manifest_sha256
 from baseball_rag.query.fingerprint import RowFingerprint
 from baseball_rag.query.registry import (
@@ -25,7 +26,7 @@ from baseball_rag.query.registry import (
     _SourceBinding,
     discover_fields,
 )
-from baseball_rag.release_bundle import check_release_bundle
+from baseball_rag.release_bundle import configured_release_bundle_snapshot
 
 
 class PublishedDataUnavailableError(ValueError):
@@ -68,8 +69,9 @@ def published_data_runtime() -> PublishedDataRuntime:
 
     bundle_root = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
     if bundle_root:
-        check_release_bundle(bundle_root)
-        configured = (Path(bundle_root) / "data").resolve()
+        identity = configured_release_bundle_snapshot()
+        assert identity is not None
+        configured = identity.manifest_path.parent / "data"
     else:
         configured = Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
     loaded = _runtime_for(str(configured))
@@ -81,7 +83,7 @@ def published_data_runtime() -> PublishedDataRuntime:
 @lru_cache(maxsize=None)
 def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     data_dir = Path(data_dir_value)
-    manifest_path = data_dir / "manifest.json"
+    manifest_path = _safe_asset(data_dir, "manifest.json")
     compatibility = _read_json(CATALOG_DIR / "compatibility.json")
     catalog = _read_json(CATALOG_DIR / "published_catalog.json")
     inventory_path = CATALOG_DIR / "raw_fields.json"
@@ -114,7 +116,7 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     if set(promoted_hashes) != expected_promoted:
         raise PublishedDataUnavailableError("Promoted catalog file set is not compatible.")
     for filename, expected_digest in promoted_hashes.items():
-        promoted_path = CATALOG_DIR / filename
+        promoted_path = _safe_asset(CATALOG_DIR, filename)
         try:
             observed_digest = hashlib.sha256(promoted_path.read_bytes()).hexdigest()
         except OSError as exc:
@@ -149,11 +151,23 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     ):
         raise PublishedDataUnavailableError("Team-reference manifest is not compatible.")
 
-    connection = duckdb.connect(database=":memory:")
+    # Validate every catalog-selected path before opening any selected asset or
+    # loading relations. No checksum failure may be used as a traversal guard.
+    sources = _source_bindings()
+    asset_paths = tuple(_asset_path(source.kind, source.asset, data_dir) for source in sources)
+    for source in sources:
+        if source.reference_manifest is not None:
+            _safe_asset(CATALOG_DIR, source.reference_manifest)
+    public_execution = os.environ.get("GROUNDBALL_PUBLIC_WORKER") == "1" or bool(
+        os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+    )
+    config: dict[str, Any] = (
+        {"memory_limit": "256MB", "threads": 4, "temp_directory": ""} if public_execution else {}
+    )
+    connection = duckdb.connect(database=":memory:", config=config)
     source_fingerprints: dict[str, str] = {}
     try:
-        for source in _source_bindings():
-            asset_path = _asset_path(source.kind, source.asset, data_dir)
+        for source, asset_path in zip(sources, asset_paths, strict=True):
             if asset_path is None or not asset_path.exists():
                 raise PublishedDataUnavailableError(
                     f"Published source {source.identity!r} is missing."
@@ -192,7 +206,15 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
 def _asset_path(kind: str, asset: str | None, data_dir: Path) -> Path | None:
     if asset is None:
         return None
-    return (CATALOG_DIR / asset) if kind == "synthesized_team_reference" else (data_dir / asset)
+    root = CATALOG_DIR if kind == "synthesized_team_reference" else data_dir
+    return _safe_asset(root, asset)
+
+
+def _safe_asset(root: Path, name: object) -> Path:
+    try:
+        return contained_asset_path(root, name)
+    except ValueError as exc:
+        raise PublishedDataUnavailableError(str(exc)) from exc
 
 
 def _verify_reference(
@@ -202,7 +224,7 @@ def _verify_reference(
 ) -> None:
     if manifest_name is None:
         raise PublishedDataUnavailableError("Team reference has no manifest binding.")
-    manifest = _read_json(CATALOG_DIR / manifest_name)
+    manifest = _read_json(_safe_asset(CATALOG_DIR, manifest_name))
     if manifest["reference_version"] != expected_version:
         raise PublishedDataUnavailableError("Team-reference revision is not compatible.")
     digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()
@@ -244,7 +266,7 @@ def _verify_rows(
     manifest: dict[str, Any],
 ) -> None:
     if source.reference_manifest is not None:
-        expected = int(_read_json(CATALOG_DIR / source.reference_manifest)["rows"])
+        expected = int(_read_json(_safe_asset(CATALOG_DIR, source.reference_manifest))["rows"])
     else:
         matches = [
             item for item in manifest.get("files", []) if item.get("table") == source.manifest_table
@@ -301,7 +323,8 @@ def _source_fingerprint(
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        safe_path = _safe_asset(CATALOG_DIR, path.relative_to(CATALOG_DIR).as_posix())
+        return json.loads(safe_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise PublishedDataUnavailableError(
             f"Required catalog asset {path.name!r} is missing or unreadable."
@@ -314,13 +337,14 @@ def _quote(identifier: str) -> str:
 
 def _load_release_retrosheet(connection: DuckDBPyConnection, data_dir: Path) -> None:
     """Load only the compact Retrosheet projection admitted to the Release Bundle."""
-    retrosheet_dir = data_dir / "secondary_sources" / "retrosheet"
-    projection = retrosheet_dir / "pitcher_strikeout_side_events.csv"
-    projection_manifest = retrosheet_dir / "manifest.json"
+    projection = _safe_asset(
+        data_dir, "secondary_sources/retrosheet/pitcher_strikeout_side_events.csv"
+    )
+    projection_manifest = _safe_asset(data_dir, "secondary_sources/retrosheet/manifest.json")
     verify_manifest_file(projection_manifest, projection)
 
-    reference = CATALOG_DIR / "assets" / "retrosheet_team_reference.csv"
-    reference_manifest = CATALOG_DIR / "assets" / "retrosheet_team_reference.manifest.json"
+    reference = _safe_asset(CATALOG_DIR, "assets/retrosheet_team_reference.csv")
+    reference_manifest = _safe_asset(CATALOG_DIR, "assets/retrosheet_team_reference.manifest.json")
     reference_metadata = _read_json(reference_manifest)
     if hashlib.sha256(reference.read_bytes()).hexdigest() != reference_metadata.get("sha256"):
         raise PublishedDataUnavailableError(

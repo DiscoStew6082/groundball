@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from baseball_rag.integration_budget import validate_envelope
 from baseball_rag.public_results import run_public_query_input
 from baseball_rag.source_attribution import source_credit
 
@@ -64,6 +65,8 @@ RESEARCH_TOPICS = (
     "probable_pitchers",
 )
 CURRENT_BATTING_STATS = ("HR", "RBI", "SB")
+MAX_RESEARCH_BYTES = 200_000
+MAX_RESEARCH_DEPTH = 16
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,19 @@ class ResearchSources:
     postseason_meetings: Callable[[str, str], list[dict[str, Any]]]
     batting_leaders: Callable[[str, int, int], dict[str, Any] | None] | None = None
     probable_pitchers: Callable[[str], dict[str, Any] | None] | None = None
+
+
+def _meeting_records(value: Any) -> list[dict[str, Any]]:
+    validate_envelope(value, max_bytes=MAX_RESEARCH_BYTES, max_depth=MAX_RESEARCH_DEPTH)
+    if type(value) is not list:
+        raise ValueError("Postseason records must be a bounded list.")
+    return [
+        {
+            key: meeting[key]
+            for key in ("year", "winner_id", "loser_id", "winner_wins", "loser_wins", "source")
+        }
+        for meeting in value
+    ]
 
 
 def validate_answer_context(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -148,6 +164,8 @@ def validate_research_request(request: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _source(raw: Mapping[str, Any], provider: str) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        raise ValueError("Source evidence must be an object.")
     url = raw.get("url")
     if not isinstance(url, str):
         raise ValueError("Source URL is missing.")
@@ -415,9 +433,12 @@ def research_answer(
     if plan["topic"] == "pregame":
         try:
             fixture = sources.next_fixture(team) if sources else None
+            validate_envelope(fixture, max_bytes=MAX_RESEARCH_BYTES, max_depth=MAX_RESEARCH_DEPTH)
             if fixture is None:
                 raise ValueError("No supported fixture.")
             home, away = fixture["home_team_id"], fixture["away_team_id"]
+            if not isinstance(fixture["starts_at"], str):
+                raise ValueError("Fixture start requires a timestamp string.")
             start = datetime.fromisoformat(fixture["starts_at"].replace("Z", "+00:00"))
             if (
                 team not in {home, away}
@@ -431,10 +452,26 @@ def research_answer(
                 raise ValueError("No unstarted matching game.")
             opponent = away if team == home else home
             context["opponent"] = opponent
-            evidence.append(_source(fixture["source"], "thesportsdb"))
+            source = _source(fixture["source"], "thesportsdb")
+            observed = datetime.fromisoformat(source["observed_at"].replace("Z", "+00:00"))
+            if not -60 <= (datetime.now(UTC) - observed).total_seconds() <= 600:
+                raise ValueError("Fixture observation is stale.")
+            normalized = {
+                key: fixture[key]
+                for key in ("id", "home_team_id", "away_team_id", "starts_at", "status")
+            }
+            if "venue" in fixture:
+                normalized["venue"] = fixture["venue"]
+            if (
+                not isinstance(normalized["id"], str)
+                or not normalized["id"]
+                or ("venue" in normalized and not isinstance(normalized["venue"], str))
+                or source["record"].get("normalized") != normalized
+            ):
+                raise ValueError("Fixture differs from retained normalized source records.")
+            evidence.append(source)
             # Display names are canonical; strings returned by external APIs are data only.
-            fixture = {**fixture, "home_team": TEAM_NAMES[home], "away_team": TEAM_NAMES[away]}
-            fixture.pop("source")
+            fixture = {**normalized, "home_team": TEAM_NAMES[home], "away_team": TEAM_NAMES[away]}
         except (OSError, ValueError, KeyError, TypeError):
             return {
                 "kind": "unavailable",
@@ -443,7 +480,7 @@ def research_answer(
             }
         assert sources is not None
         try:
-            meetings = sources.postseason_meetings(team, opponent)
+            meetings = _meeting_records(sources.postseason_meetings(team, opponent))
             if meetings:
                 meeting = max(meetings, key=lambda m: m["year"])
                 candidates.append(_meeting_fact(meeting, team, opponent))
@@ -520,7 +557,9 @@ def _definition(statistic: str) -> dict[str, Any]:
 
 def _series_answer(plan: dict[str, Any], sources: ResearchSources | None) -> dict[str, Any]:
     try:
-        meetings = sources.postseason_meetings(plan["team"], plan["opponent"]) if sources else []
+        meetings = _meeting_records(
+            sources.postseason_meetings(plan["team"], plan["opponent"]) if sources else []
+        )
         meeting = next(m for m in meetings if m["year"] == plan["season"])
         fact, source = _meeting_fact(meeting, plan["team"], plan["opponent"])
         facts = [fact]
@@ -593,6 +632,7 @@ def _current_answer(plan: dict[str, Any], sources: ResearchSources | None) -> di
             )
         else:
             data = sources.probable_pitchers(plan["team"]) if sources.probable_pitchers else None
+        validate_envelope(data, max_bytes=MAX_RESEARCH_BYTES, max_depth=MAX_RESEARCH_DEPTH)
         if not isinstance(data, dict) or not isinstance(data.get("source"), Mapping):
             raise ValueError("Current source unavailable.")
         source = _source(data["source"], "mlb_stats")

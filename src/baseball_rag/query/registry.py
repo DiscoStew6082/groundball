@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from baseball_rag.query.asset_paths import canonical_asset_name, contained_asset_path
+from baseball_rag.release_bundle import configured_release_bundle_snapshot
+
 _PACKAGE_CATALOG_DIR = Path(__file__).with_name("catalog")
-_RELEASE_BUNDLE = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+_RELEASE_BUNDLE = configured_release_bundle_snapshot()
 CATALOG_DIR = (
-    Path(_RELEASE_BUNDLE) / "src/baseball_rag/query/catalog"
+    _RELEASE_BUNDLE.manifest_path.parent / "src/baseball_rag/query/catalog"
     if _RELEASE_BUNDLE
     else _PACKAGE_CATALOG_DIR
 )
@@ -140,6 +142,10 @@ class _CombinationBinding:
 @lru_cache(maxsize=1)
 def _source_bindings() -> tuple[_SourceBinding, ...]:
     payload = _read_json("published_sources.json")
+    for item in payload["sources"]:
+        for field in ("asset", "reference_manifest"):
+            if item.get(field) is not None:
+                canonical_asset_name(item[field])
     return tuple(
         _SourceBinding(
             identity=item["identity"],
@@ -695,4 +701,4 @@ def field_by_identity(identity: str) -> RawField | None:
 
 
 def _read_json(filename: str) -> dict[str, Any]:
-    return json.loads((CATALOG_DIR / filename).read_text(encoding="utf-8"))
+    return json.loads(contained_asset_path(CATALOG_DIR, filename).read_text(encoding="utf-8"))

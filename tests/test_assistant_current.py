@@ -68,6 +68,24 @@ def test_normalized_rows_cannot_differ_from_retained_source_records():
     assert answer(data)["kind"] == "unavailable"
 
 
+@pytest.mark.parametrize("shape", ["wide_array", "large_string", "deep_record", "cyclic_record"])
+def test_current_sources_refuse_unbounded_retained_records(shape):
+    data = bound(leaders())
+    record = data["source"]["record"]
+    if shape == "wide_array":
+        record["raw"] = [0] * 129
+    elif shape == "large_string":
+        record["raw"] = "x" * 5000
+    elif shape == "cyclic_record":
+        record["raw"] = record
+    else:
+        raw = "leaf"
+        for _ in range(20):
+            raw = {"child": raw}
+        record["raw"] = raw
+    assert answer(data)["kind"] == "unavailable"
+
+
 @pytest.mark.parametrize(
     "change",
     [

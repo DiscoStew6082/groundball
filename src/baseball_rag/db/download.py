@@ -6,10 +6,19 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
 import duckdb
 import requests
+
+from baseball_rag.db.ingestion_limits import (
+    DEFAULT_LIMITS,
+    bounded_text_lines,
+    copy_bounded,
+    install_staged_files,
+)
+from baseball_rag.query.registry import discover_fields
 
 DATA_FILES = ["Batting.csv", "Fielding.csv", "People.csv", "Pitching.csv"]
 BASE_URL = "https://huggingface.co/datasets/NeuML/baseballdata/resolve/main"
@@ -35,14 +44,26 @@ def download_csv(filename: str, db_dir: Path) -> Path:
     url = f"{BASE_URL}/{filename}"
     dest = db_dir / filename
 
-    response = requests.get(url, timeout=60)
+    if filename not in DATA_FILES:
+        raise ValueError("Unknown Lahman CSV filename")
+    response = requests.get(url, timeout=60, stream=True)
     if response.status_code != 200:
         raise RuntimeError(f"Failed to download {url}: HTTP {response.status_code}")
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with open(dest, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+    try:
+        with TemporaryDirectory(prefix=".lahman-", dir=dest.parent) as temporary:
+            staging = Path(temporary)
+            with (staging / filename).open("wb") as f:
+                copy_bounded(
+                    response.iter_content(chunk_size=8192), f, DEFAULT_LIMITS.download_bytes
+                )
+            _csv_metadata(staging / filename)
+            install_staged_files(staging, db_dir, [filename])
+    finally:
+        close = getattr(response, "close", None)
+        if close is not None:
+            close()
 
     return dest
 
@@ -59,9 +80,14 @@ def download_all(db_dir: Path | None = None) -> list[Path]:
     if db_dir is None:
         db_dir = DATA_DIR
 
-    paths = [download_csv(fname, Path(db_dir)) for fname in DATA_FILES]
-    write_manifest(Path(db_dir), paths=paths)
-    return paths
+    db_dir = Path(db_dir)
+    db_dir.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".lahman-set-", dir=db_dir.parent) as temporary:
+        staging = Path(temporary)
+        paths = [download_csv(fname, staging) for fname in DATA_FILES]
+        write_manifest(staging, paths=paths)
+        install_staged_files(staging, db_dir, [*DATA_FILES, "manifest.json"])
+    return [db_dir / name for name in DATA_FILES]
 
 
 def write_manifest(db_dir: Path | None = None, *, paths: list[Path] | None = None) -> Path:
@@ -143,19 +169,33 @@ def _file_manifest(path: Path) -> dict:
 
 
 def _csv_metadata(path: Path) -> tuple[int, dict[str, int] | None]:
+    if path.stat().st_size > DEFAULT_LIMITS.download_bytes:
+        raise RuntimeError("Lahman CSV exceeds byte budget")
     with path.open(newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
+        reader = csv.reader(bounded_text_lines(f))
         header = next(reader)
+        required_columns = {field.column for field in discover_fields(source=path.stem)}
+        if not required_columns or not required_columns.issubset(header):
+            raise RuntimeError("Lahman CSV is missing published raw columns")
+        if len(header) > 256 or len(set(header)) != len(header):
+            raise RuntimeError("Invalid Lahman CSV header")
+        for count, row in enumerate(reader, 1):
+            if count > DEFAULT_LIMITS.rows:
+                raise RuntimeError("Lahman CSV exceeds row budget")
+            if len(row) != len(header):
+                raise RuntimeError("Invalid Lahman CSV row")
     conn = duckdb.connect()
     try:
-        row_count_result = conn.execute(f"SELECT count(*) FROM read_csv_auto('{path}')").fetchone()
+        row_count_result = conn.execute(
+            "SELECT count(*) FROM read_csv_auto(?)", [str(path)]
+        ).fetchone()
         if row_count_result is None:
             raise RuntimeError(f"Could not count rows in {path}")
         row_count = row_count_result[0]
         if "yearID" not in header:
             return int(row_count), None
         year_result = conn.execute(
-            f"SELECT min(yearID), max(yearID) FROM read_csv_auto('{path}')"
+            "SELECT min(yearID), max(yearID) FROM read_csv_auto(?)", [str(path)]
         ).fetchone()
         if year_result is None:
             raise RuntimeError(f"Could not compute year coverage for {path}")

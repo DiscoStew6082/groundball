@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from baseball_rag.query.coverage import load_passing_coverage_report
+from baseball_rag.query.registry import CATALOG_DIR
 from baseball_rag.query.runtime import published_data_runtime
-from baseball_rag.release_bundle import ReleaseBundleError, check_release_bundle
+from baseball_rag.release_bundle import ReleaseBundleError, configured_release_bundle_snapshot
 from baseball_rag.retrosheet_event_capabilities import published_retrosheet_event_capabilities
 
 
@@ -42,10 +42,16 @@ def release_readiness() -> ReleaseReadiness:
     expected_source_commit = os.environ.get("GROUNDBALL_SOURCE_COMMIT")
     if not expected_source_commit:
         raise ReleaseBundleError("GROUNDBALL_SOURCE_COMMIT is required for release readiness.")
-    bundle_root = Path(configured)
-    identity = check_release_bundle(bundle_root, expected_source_commit=expected_source_commit)
+    identity = configured_release_bundle_snapshot()
+    assert identity is not None
     manifest = json.loads(identity.manifest_path.read_text(encoding="utf-8"))
     runtime = published_data_runtime()
+    verified_root = identity.manifest_path.parent
+    if (
+        runtime.data_dir != verified_root / "data"
+        or CATALOG_DIR != verified_root / "src/baseball_rag/query/catalog"
+    ):
+        raise ReleaseBundleError("Release runtime is not bound to the verified snapshot.")
     coverage = load_passing_coverage_report()
     relation_rows = runtime.connection.execute(
         "SELECT table_name FROM information_schema.tables "

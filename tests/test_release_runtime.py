@@ -12,11 +12,28 @@ from pathlib import Path
 import pytest
 
 import baseball_rag.query.runtime as query_runtime
-from baseball_rag.release_bundle import assemble_release_bundle
+from baseball_rag.release_bundle import (
+    ReleaseBundleError,
+    assemble_release_bundle,
+    check_release_bundle,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_COMMIT = "a" * 40
 pytestmark = pytest.mark.release_proof
+
+
+def test_readiness_rejects_bundle_that_disagrees_with_deployment_digest(monkeypatch):
+    from baseball_rag.release_runtime import release_readiness
+
+    bundle = ROOT / "release" / "bundle"
+    identity = check_release_bundle(bundle)
+    source_commit = json.loads(identity.manifest_path.read_text())["source_commit"]
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(bundle))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", source_commit)
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE_DIGEST", "0" * 64)
+    with pytest.raises(ReleaseBundleError, match="digest"):
+        release_readiness()
 
 
 @pytest.fixture
@@ -41,12 +58,19 @@ def test_uninstalled_runtime_preserves_local_and_release_bundle_cache(
 
     bundle = tmp_path / "bundle"
     shutil.copytree(ROOT / "release" / "bundle", bundle)
+    identity = check_release_bundle(bundle)
+    source_commit = json.loads(identity.manifest_path.read_text())["source_commit"]
     monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE", str(bundle))
+    monkeypatch.setenv("GROUNDBALL_SOURCE_COMMIT", source_commit)
+    monkeypatch.setenv("GROUNDBALL_RELEASE_BUNDLE_DIGEST", identity.digest)
     release = query_runtime.published_data_runtime()
 
     assert query_runtime.published_data_runtime() is release
     assert release is not local
-    assert release.data_dir == (bundle / "data").resolve()
+    assert release.data_dir != (bundle / "data").resolve()
+    bundle.rename(tmp_path / "replaced-bundle")
+    bundle.mkdir()
+    assert query_runtime.published_data_runtime() is release
 
 
 def test_fresh_subprocess_can_install_its_own_published_runtime(
@@ -282,6 +306,7 @@ print(json.dumps({
         "GROUNDBALL_PUBLIC_DEMO": "1",
         "GROUNDBALL_RELEASE_BUNDLE": str(bundle),
         "GROUNDBALL_SOURCE_COMMIT": SOURCE_COMMIT,
+        "GROUNDBALL_RELEASE_BUNDLE_DIGEST": identity.digest,
     }
     completed = subprocess.run(
         [sys.executable, "-c", script],

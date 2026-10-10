@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -86,6 +87,92 @@ def bindings(
         execution_runner=runner or RecordingRunner(),
         abuse_identity=abuse_identity,
     )
+
+
+@pytest.mark.parametrize("path", ["/api/query-runs", "/api/retrosheet/queries"])
+def test_public_body_stream_stops_at_byte_ceiling(path: str) -> None:
+    runner = RecordingRunner()
+    application = create_app(bindings=bindings(runner=runner))
+    reads = 0
+    sent = []
+
+    async def receive():
+        nonlocal reads
+        reads += 1
+        if reads > 2:
+            raise AssertionError("The oversized body must not be drained.")
+        return {"type": "http.request", "body": b"x" * 8193, "more_body": True}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(
+        application(
+            {
+                "type": "http",
+                "asgi": {"version": "3.0"},
+                "http_version": "1.1",
+                "method": "POST",
+                "scheme": "http",
+                "path": path,
+                "raw_path": path.encode(),
+                "query_string": b"",
+                "root_path": "",
+                "headers": [],
+                "server": ("testserver", 80),
+                "client": ("127.0.0.1", 1234),
+            },
+            receive,
+            send,
+        )
+    )
+    assert sent[0]["status"] == 413
+    assert reads == 2
+    assert runner.requests == []
+
+
+def test_public_body_receive_deadline_releases_slow_request(monkeypatch) -> None:
+    monkeypatch.setattr(api_server, "_PUBLIC_EXECUTION_DEADLINE_SECONDS", 0.02)
+    runner = RecordingRunner()
+    application = create_app(bindings=bindings(runner=runner))
+    sent = []
+    cancelled = False
+
+    async def receive():
+        nonlocal cancelled
+        try:
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+        raise AssertionError("The body receive deadline must stop this request.")
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(
+        application(
+            {
+                "type": "http",
+                "asgi": {"version": "3.0"},
+                "http_version": "1.1",
+                "method": "POST",
+                "scheme": "http",
+                "path": "/api/query-runs",
+                "raw_path": b"/api/query-runs",
+                "query_string": b"",
+                "root_path": "",
+                "headers": [],
+                "server": ("testserver", 80),
+                "client": ("127.0.0.1", 1234),
+            },
+            receive,
+            send,
+        )
+    )
+    assert sent[0]["status"] == 408
+    assert cancelled
+    assert runner.requests == []
 
 
 def test_cookie_rotation_and_spoofed_headers_cannot_exhaust_shared_budget() -> None:

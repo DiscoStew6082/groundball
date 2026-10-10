@@ -8,23 +8,43 @@ import hashlib
 import io
 import json
 import re
-import zipfile
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, Protocol
 from zoneinfo import ZoneInfo
 
 import requests
 
 from baseball_rag.db.duckdb_schema import DATA_DIR
+from baseball_rag.db.ingestion_limits import (
+    DEFAULT_LIMITS,
+    bounded_text_lines,
+    bounded_zip,
+    copy_bounded,
+    install_staged_files,
+    validate_archive,
+)
 from baseball_rag.db.secondary_sources.retrosheet import RETROSHEET_ATTRIBUTION
 
 RETROSHEET_EVENT_BASE_URL = "https://www.retrosheet.org/events"
 RETROSHEET_EVENT_DATA_DIR = DATA_DIR / "secondary_sources" / "retrosheet"
 PITCHER_STRIKEOUT_SIDE_EVENTS_CSV = "pitcher_strikeout_side_events.csv"
+MAX_EVENT_YEARS = 200
+MAX_EVENT_ROWS_PER_YEAR = 1_000_000
+MAX_DERIVED_ROWS = 1_000_000
+MAX_DERIVED_BYTES = 128 * 1024 * 1024
+# Annual play-by-play is much smaller than the complete raw statistics archives.
+DEFAULT_LIMITS = replace(
+    DEFAULT_LIMITS,
+    download_bytes=64 * 1024 * 1024,
+    expanded_bytes=256 * 1024 * 1024,
+    member_bytes=16 * 1024 * 1024,
+)
 
 
 class _HttpResponse(Protocol):
@@ -77,20 +97,37 @@ def download_pitcher_strikeout_side_events(
     target_dir = Path(target_dir or RETROSHEET_EVENT_DATA_DIR)
     target_dir.mkdir(parents=True, exist_ok=True)
     get = http_get or _requests_get
-    rows = list(
-        derive_pitcher_strikeout_side_events(
-            range(start_year, end_year + 1),
-            http_get=get,
+    if (
+        start_year < 1871
+        or end_year > 2100
+        or end_year < start_year
+        or end_year - start_year + 1 > MAX_EVENT_YEARS
+    ):
+        raise ValueError(
+            "Retrosheet event years must be an ordered range of at most 200 years since 1871"
         )
-    )
+    rows: list[PitcherHalfInning] = []
+    retained_bytes = 0
+    for row in derive_pitcher_strikeout_side_events(range(start_year, end_year + 1), http_get=get):
+        if len(rows) >= MAX_DERIVED_ROWS:
+            raise RuntimeError("Derived events exceed row budget")
+        retained_bytes += 512
+        for field in fields(row):
+            value = getattr(row, field.name)
+            values = value if isinstance(value, tuple) else (value,)
+            retained_bytes += sum(len(str(item).encode("utf-8")) + 64 for item in values)
+        if retained_bytes > MAX_DERIVED_BYTES:
+            raise RuntimeError("Derived events exceed retained byte budget")
+        rows.append(row)
     output_path = target_dir / PITCHER_STRIKEOUT_SIDE_EVENTS_CSV
-    _write_pitcher_strikeout_side_events(output_path, rows)
-    _write_event_manifest(
-        target_dir,
-        output_path=output_path,
-        rows=rows,
-        downloaded_at=downloaded_at,
-    )
+    with TemporaryDirectory(prefix=".retrosheet-events-", dir=target_dir.parent) as temporary:
+        staging = Path(temporary)
+        staged_output = staging / output_path.name
+        _write_pitcher_strikeout_side_events(staged_output, rows)
+        _write_event_manifest(
+            staging, output_path=staged_output, rows=rows, downloaded_at=downloaded_at
+        )
+        install_staged_files(staging, target_dir, [output_path.name, "manifest.json"])
     return output_path
 
 
@@ -100,59 +137,83 @@ def derive_pitcher_strikeout_side_events(
     http_get: HttpGet,
 ) -> Iterable[PitcherHalfInning]:
     """Yield pitcher half-innings where all recorded outs were strikeouts."""
-    for year in years:
+    requested_years = list(islice(years, MAX_EVENT_YEARS + 1))
+    if len(requested_years) > MAX_EVENT_YEARS or any(
+        not 1871 <= year <= 2100 for year in requested_years
+    ):
+        raise ValueError("Retrosheet event years exceed supported budget")
+    for year in requested_years:
         response = http_get(f"{RETROSHEET_EVENT_BASE_URL}/{year}eve.zip", 60)
-        if response.status_code == 404:
-            continue
-        if response.status_code != 200:
-            raise RuntimeError(f"Failed to download Retrosheet events for {year}")
-        archive_bytes = b"".join(chunk for chunk in response.iter_content(1024 * 1024) if chunk)
-        yield from _derive_year_pitcher_strikeout_side_events(year, archive_bytes)
+        try:
+            if response.status_code == 404:
+                continue
+            if response.status_code != 200:
+                raise RuntimeError(f"Failed to download Retrosheet events for {year}")
+            with TemporaryDirectory(prefix="retrosheet-event-archive-") as temporary:
+                archive_path = Path(temporary) / "events.zip"
+                with archive_path.open("wb") as output:
+                    copy_bounded(response.iter_content(8192), output, DEFAULT_LIMITS.download_bytes)
+                yield from _derive_year_pitcher_strikeout_side_events(year, archive_path)
+        finally:
+            close = getattr(response, "close", None)
+            if close is not None:
+                close()
 
 
 def _derive_year_pitcher_strikeout_side_events(
     year: int,
-    archive_bytes: bytes,
+    archive_bytes: bytes | Path,
 ) -> Iterable[PitcherHalfInning]:
     half_innings: dict[tuple[str, int, int], _HalfInningBuilder] = defaultdict(_HalfInningBuilder)
     game_info_by_id: dict[str, dict[str, str]] = {}
-    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
-        for member_name in archive.namelist():
+    archive_input = io.BytesIO(archive_bytes) if isinstance(archive_bytes, bytes) else archive_bytes
+    if isinstance(archive_bytes, bytes) and len(archive_bytes) > DEFAULT_LIMITS.download_bytes:
+        raise RuntimeError("Event archive exceeds byte budget")
+    line_count = 0
+    with bounded_zip(archive_input, DEFAULT_LIMITS) as archive:
+        members = validate_archive(archive, DEFAULT_LIMITS)
+        for member in members:
+            member_name = member.filename
             if not member_name.upper().endswith((".EVA", ".EVN", ".EVF", ".EVR")):
                 continue
             current_pitcher: dict[int, str | None] = {0: None, 1: None}
             game_id: str | None = None
             game_info: dict[str, str] = {}
-            for raw_line in archive.read(member_name).decode("latin1").splitlines():
-                if not raw_line:
-                    continue
-                fields = _parse_csv_line(raw_line)
-                row_type = fields[0]
-                if row_type == "id":
-                    game_id = fields[1]
-                    current_pitcher = {0: None, 1: None}
-                    game_info = {}
-                    game_info_by_id[game_id] = game_info
-                elif row_type == "info" and len(fields) >= 3:
-                    game_info[fields[1]] = fields[2]
-                elif row_type in {"start", "sub"} and len(fields) >= 6 and fields[5] == "1":
-                    current_pitcher[int(fields[3])] = fields[1]
-                elif row_type == "play" and len(fields) >= 7 and game_id is not None:
-                    event = fields[6]
-                    if event == "NP":
+            with archive.open(member) as raw, io.TextIOWrapper(raw, encoding="latin1") as source:
+                yield_lines = bounded_text_lines(source, max_chars=16_384)
+                for raw_line in yield_lines:
+                    line_count += 1
+                    if line_count > MAX_EVENT_ROWS_PER_YEAR:
+                        raise RuntimeError("Retrosheet events exceed row budget")
+                    if not raw_line.strip():
                         continue
-                    inning = int(fields[1])
-                    batting_home = int(fields[2])
-                    fielding_home = 1 - batting_home
-                    pitcher_id = current_pitcher.get(fielding_home)
-                    if pitcher_id is None:
-                        continue
-                    builder = half_innings[(game_id, inning, batting_home)]
-                    builder.add_event(
-                        pitcher_id=pitcher_id,
-                        event=event,
-                        outs=_event_out_counts(event),
-                    )
+                    fields = _parse_csv_line(raw_line)
+                    row_type = fields[0]
+                    if row_type == "id":
+                        game_id = fields[1]
+                        current_pitcher = {0: None, 1: None}
+                        game_info = {}
+                        game_info_by_id[game_id] = game_info
+                    elif row_type == "info" and len(fields) >= 3:
+                        game_info[fields[1]] = fields[2]
+                    elif row_type in {"start", "sub"} and len(fields) >= 6 and fields[5] == "1":
+                        current_pitcher[int(fields[3])] = fields[1]
+                    elif row_type == "play" and len(fields) >= 7 and game_id is not None:
+                        event = fields[6]
+                        if event == "NP":
+                            continue
+                        inning = int(fields[1])
+                        batting_home = int(fields[2])
+                        fielding_home = 1 - batting_home
+                        pitcher_id = current_pitcher.get(fielding_home)
+                        if pitcher_id is None:
+                            continue
+                        builder = half_innings[(game_id, inning, batting_home)]
+                        builder.add_event(
+                            pitcher_id=pitcher_id,
+                            event=event,
+                            outs=_event_out_counts(event),
+                        )
 
     for (game_id, inning, batting_home), builder in sorted(half_innings.items()):
         for row in builder.rows(
@@ -367,7 +428,7 @@ def _write_event_manifest(
 
 
 def _requests_get(url: str, timeout: int) -> requests.Response:
-    return requests.get(url, timeout=timeout)
+    return requests.get(url, timeout=timeout, stream=True)
 
 
 def _parse_csv_line(raw_line: str) -> list[str]:

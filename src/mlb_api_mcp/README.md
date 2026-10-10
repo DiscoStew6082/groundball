@@ -251,3 +251,25 @@ def test_new_function_error_handling(mcp):
         result = new_function(param='value')
         assert 'error' in result
 ```
+
+### Resource and HTTP limits
+
+HTTP mode binds to `127.0.0.1` by default. `--host` accepts only loopback
+addresses. Remote clients require a separately configured authenticated gateway
+that forwards to loopback. This package does not provide that gateway. Wildcard
+CORS is disabled. HTTP POST bodies have a 64 KiB limit and a five-second receipt
+deadline. Uvicorn accepts at most eight concurrent connections.
+HTTP requests must present a loopback `Host`. If `Origin` is present, it must
+also identify a loopback HTTP or HTTPS origin. Native clients may omit `Origin`.
+These checks prevent a browser from using a remote hostname that resolves to
+the loopback server. The current FastMCP `/mcp` route is used without slash rewriting.
+
+MLB tools share one active-call slot and a 60-call rolling minute limit per
+server. Excess work returns an error without calling the upstream service.
+Statcast queries accept at most seven inclusive calendar days. Multi-player
+queries accept at most 40 players, and fields lists accept at most 128 items.
+Statcast frames are limited to 20,000 rows, 128 columns and 16 MiB before record
+conversion. Responses are built under a 1 MiB JSON budget. Narrow a refused
+query instead of retrying the same range. The upstream library fetches its
+DataFrame before these frame checks; date and concurrency bounds constrain that
+work, but this package cannot guarantee the upstream library's allocation size.

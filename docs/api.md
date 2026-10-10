@@ -47,7 +47,7 @@ Responses are rendering-neutral outcomes: `rows`, `no_data`, `exported`, `answer
 
 With assistant bindings, a supported research question can return `kind: "answer"` and `schema: "ground-ball-assistant-answer-v1"`. The payload contains `title`, `summary`, up to five `facts`, `sources`, nullable `fixture`, `limitations`, `attributions`, and `requested_count`, plus reference-only `context` where applicable. Compound statistical answers also retain a follow-up `recipe`. Facts reference adjacent citations by `source_ids`; historical statistical facts also retain their `query_run`. Sources include their URL, observation time, license, attribution, supporting `record`, and fingerprint. The browser downloads this complete object locally rather than issuing a query export. See [assistant scope](assistant.md).
 
-Public composition applies admission, leases, and the ten-second execution deadline to query/assistant requests and the separate Retrosheet POST route. Missing public bindings return a sanitized unavailable response before request parsing.
+Public composition applies admission, leases, and the ten-second execution deadline to query/assistant requests and the separate Retrosheet POST route. Missing public bindings return a sanitized unavailable response before request parsing. Public bodies are read incrementally: receipt stops with `413` as soon as the 16 KiB ceiling is crossed. A body still incomplete after ten seconds receives `408`; rejected uploads do not start a run or charge admission.
 
 ## `GET /api/query-catalog`
 
@@ -81,4 +81,4 @@ Without an identity resolver, all anonymous callers share a single deployment bu
 
 `QuestionBindings` optionally supplies local interpretation and `ResearchSources`; public runners inject these within their execution boundary. `question_interpretation.py` owns the prompt, output schema, validation, and `run_question_input`. Transports and source callbacks supply I/O, not alternative prompts, factual answer prose, or query semantics. Without these bindings, the deterministic query interface remains available.
 
-Portable application configuration is limited to release bundle selection, local web assets, local-CI proof configuration, CORS origins, source identity, and runtime cache timing. Default CORS origins are localhost and loopback only.
+Portable application configuration is limited to release bundle selection and its independently approved digest, local web assets, local-CI proof configuration, CORS origins, source identity, and runtime cache timing. Configure release identity before importing catalog modules. Default CORS origins are localhost and loopback only.

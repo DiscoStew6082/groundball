@@ -1,6 +1,6 @@
 """The shared assistant answers with records, not model-authored factual prose."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -20,13 +20,13 @@ def record(identity, title, url, fields):
 
 def fixture(team):
     assert team == "ATL"
-    return {
+    data = {
         "id": "2601483",
         "home_team_id": "HOU",
         "home_team": "Houston Astros",
         "away_team_id": "ATL",
         "away_team": "Atlanta Braves",
-        "starts_at": "2099-09-19T00:10:00Z",
+        "starts_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
         "status": "NS",
         "venue": "Daikin Park",
         "source": record(
@@ -36,6 +36,84 @@ def fixture(team):
             {"event_id": "2601483"},
         ),
     }
+    data["source"]["record"]["normalized"] = {
+        key: data[key]
+        for key in ("id", "home_team_id", "away_team_id", "starts_at", "status", "venue")
+    }
+    return data
+
+
+@pytest.mark.parametrize("fault", ["stale", "future_observation", "unbound", "wrong_team"])
+def test_pregame_refuses_stale_or_unbound_fixture_evidence(fault):
+    def invalid_fixture(team):
+        data = fixture(team)
+        if fault == "stale":
+            data["source"]["observed_at"] = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        elif fault == "future_observation":
+            data["source"]["observed_at"] = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        elif fault == "unbound":
+            del data["source"]["record"]["normalized"]
+        else:
+            data["source"]["record"]["normalized"]["home_team_id"] = "NYA"
+        return data
+
+    answer = research_answer(
+        {"topic": "pregame", "team": "ATL", "count": 1},
+        sources=ResearchSources(invalid_fixture, meetings),
+    )
+    assert answer["kind"] == "unavailable"
+    assert "fixture" not in answer
+
+
+@pytest.mark.parametrize(
+    "shape", ["wide_array", "large_string", "too_many_fields", "invalid_start"]
+)
+def test_pregame_refuses_oversized_adapter_envelopes(shape):
+    def oversized_fixture(team):
+        data = fixture(team)
+        if shape == "wide_array":
+            data["untrusted_extra"] = [0] * 129
+        elif shape == "large_string":
+            data["untrusted_extra"] = "x" * 200_001
+        elif shape == "invalid_start":
+            data["starts_at"] = 123
+        else:
+            data.update({f"extra_{index}": index for index in range(65)})
+        return data
+
+    result = research_answer(
+        {"topic": "pregame", "team": "ATL", "count": 1},
+        sources=ResearchSources(oversized_fixture, meetings),
+    )
+    assert result["kind"] == "unavailable"
+
+
+@pytest.mark.parametrize(
+    "shape", ["many_meetings", "deep_record", "cyclic_record", "missing_source", "list_source"]
+)
+def test_series_refuses_invalid_meeting_envelopes(shape):
+    def invalid_meetings(team, opponent):
+        data = meetings(team, opponent)
+        if shape == "many_meetings":
+            return data * 129
+        if shape in {"missing_source", "list_source"}:
+            data[0]["source"] = None if shape == "missing_source" else []
+            return data
+        record = data[0]["source"]["record"]
+        if shape == "cyclic_record":
+            record["extra"] = record
+        else:
+            extra = "leaf"
+            for _ in range(20):
+                extra = {"child": extra}
+            record["extra"] = extra
+        return data
+
+    result = research_answer(
+        {"topic": "series_meeting", "team": "ATL", "opponent": "HOU", "season": 2021},
+        sources=ResearchSources(fixture, invalid_meetings),
+    )
+    assert result["kind"] == "unavailable"
 
 
 def meetings(team, opponent):

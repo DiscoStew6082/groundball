@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 import generic_api
@@ -235,14 +236,9 @@ def test_get_statcast_pitcher(mcp):
     get_statcast_pitcher = get_tool(mcp, "get_statcast_pitcher")
     assert get_statcast_pitcher is not None
 
-    class DummyDF:
-        def to_dict(self, orient=None):
-            return [{"foo": "bar"}]
+    data = pd.DataFrame([{"foo": "bar"}])
 
-        def astype(self, dtype):
-            return self
-
-    with patch("mlb_api.statcast_pitcher", return_value=DummyDF()):
+    with patch("mlb_api.statcast_pitcher", return_value=data):
         result = get_statcast_pitcher(start_date="2022-04-01", end_date="2022-04-07", player_id=456)
         assert "statcast_data" in result
 
@@ -251,14 +247,9 @@ def test_get_statcast_batter(mcp):
     get_statcast_batter = get_tool(mcp, "get_statcast_batter")
     assert get_statcast_batter is not None
 
-    class DummyDF:
-        def to_dict(self, orient=None):
-            return [{"foo": "bar"}]
+    data = pd.DataFrame([{"foo": "bar"}])
 
-        def astype(self, dtype):
-            return self
-
-    with patch("mlb_api.statcast_batter", return_value=DummyDF()):
+    with patch("mlb_api.statcast_batter", return_value=data):
         result = get_statcast_batter(start_date="2022-04-01", end_date="2022-04-07", player_id=123)
         assert "statcast_data" in result
 
@@ -267,18 +258,16 @@ def test_get_statcast_team(mcp):
     get_statcast_team = get_tool(mcp, "get_statcast_team")
     assert get_statcast_team is not None
 
-    class DummyDF:
-        def to_dict(self, orient=None):
-            # Simulate a row with many fields
-            return [
-                {"foo": "bar", "baz": "qux", "batter": "b1", "pitcher": "p1"},
-                {"foo": "bar2", "baz": "qux2", "batter": "b2", "pitcher": "p2"},
-            ]
-
-        def astype(self, dtype):
-            return self
-
-    with patch("mlb_api.statcast", return_value=DummyDF()):
+    data = pd.DataFrame(
+        [
+            {"foo": "bar", "baz": "qux", "batter": "b1", "pitcher": "p1"},
+            {"foo": "bar2", "baz": "qux2", "batter": "b2", "pitcher": "p2"},
+        ]
+    )
+    with (
+        patch("mlb_api.statcast", return_value=data),
+        patch("mlb_api.get_team_abbreviation_from_name", return_value="NYY"),
+    ):
         # Test with one field
         result = get_statcast_team(start_date="2022-04-01", end_date="2022-04-07", team="Yankees", fields=["foo"])
         assert "statcast_data" in result

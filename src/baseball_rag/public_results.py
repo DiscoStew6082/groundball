@@ -91,7 +91,13 @@ def run_public_query_input(
     assert recipe is not None
     structured_recipe = _with_public_output_defaults(recipe)
     _validate_public_output(structured_recipe)
-    return _apply_public_result_policy(run_query_input(recipe=structured_recipe))
+    return _apply_public_result_policy(
+        run_query_input(
+            recipe=structured_recipe,
+            export_row_max=EXPORT_ROW_MAX,
+            export_content_max=EXPORT_CONTENT_MAX_BYTES,
+        )
+    )
 
 
 def _apply_public_planning_defaults(payload: dict[str, Any]) -> dict[str, Any]:
@@ -121,7 +127,10 @@ def _with_public_default_page(recipe: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _apply_public_result_policy(payload: dict[str, Any]) -> dict[str, Any]:
-    if payload.get("kind") == "exported":
+    if payload.get("kind") == "exported" or (
+        payload.get("kind") == "rows"
+        and payload.get("recipe", {}).get("output", {}).get("kind") == "export"
+    ):
         total = int(payload["evidence"]["matched_row_count"])
         exceeded = first_exceeded_export_ceiling(
             total_matched_count=total,
@@ -158,6 +167,7 @@ def _apply_public_result_policy(payload: dict[str, Any]) -> dict[str, Any]:
                 f"The complete export exceeds the public {labels[str(exceeded['name'])]} ceiling."
             ),
             "guidance": "Add filters to narrow the result, then export again.",
+            "evidence": payload["evidence"],
         }
     if payload.get("kind") not in {"rows", "no_data"}:
         return payload

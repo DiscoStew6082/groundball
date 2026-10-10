@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -13,13 +12,14 @@ from baseball_rag.query.contracts import QueryEvidence
 from baseball_rag.query.data_identity import semantic_manifest_sha256
 from baseball_rag.query.registry import CATALOG_DIR, catalog_revision
 from baseball_rag.query.runtime import published_data_runtime
+from baseball_rag.release_bundle import configured_release_bundle_snapshot
 
 REPORT_SCHEMA_VERSION = "query-coverage-report-v1"
 MODULE_DIR = Path(__file__).resolve().parent
 COVERAGE_DIR = MODULE_DIR / "coverage"
-_RELEASE_BUNDLE = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+_RELEASE_BUNDLE = configured_release_bundle_snapshot()
 COVERAGE_REPORT_PATH = (
-    Path(_RELEASE_BUNDLE) / "src/baseball_rag/query/coverage/coverage-report.json"
+    _RELEASE_BUNDLE.manifest_path.parent / "src/baseball_rag/query/coverage/coverage-report.json"
     if _RELEASE_BUNDLE
     else COVERAGE_DIR / "coverage-report.json"
 )

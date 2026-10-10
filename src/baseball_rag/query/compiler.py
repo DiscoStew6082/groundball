@@ -35,6 +35,8 @@ def compile_raw_plan(
     plan: QueryPlanV1,
     relation: str,
     primary_key: tuple[str, ...],
+    *,
+    export_row_max: int | None = None,
 ) -> tuple[str, tuple[Scalar, ...]]:
     """Compile a validated single-source raw plan."""
     selected_parts: list[str] = []
@@ -94,6 +96,8 @@ def compile_raw_plan(
                 order_parts.append(f"{alias} ASC NULLS LAST")
 
     page_predicate = "TRUE"
+    if isinstance(plan.output, Export) and export_row_max is not None:
+        page_predicate = f"match_count.__matched_count <= {export_row_max}"
     if isinstance(plan.output, InteractivePage):
         first_row = plan.output.offset + 1
         last_row = plan.output.offset + plan.output.size
@@ -168,6 +172,7 @@ def compile_promoted_plan(
     plan: QueryPlanV1,
     *,
     include_match_aliases: bool = False,
+    export_row_max: int | None = None,
 ) -> tuple[str, tuple[Scalar, ...]]:
     """Compile one validated promoted plan from catalog declarations only."""
     combination = next(
@@ -179,7 +184,7 @@ def compile_promoted_plan(
         None,
     )
     if combination is not None:
-        return _compile_composed_plan(plan, combination.sources)
+        return _compile_composed_plan(plan, combination.sources, export_row_max=export_row_max)
     grain = grain_by_identity(plan.grain)
     source = source_by_identity(plan.source)
     if grain is None or source is None:
@@ -356,6 +361,8 @@ def compile_promoted_plan(
         f"FROM {source_name}{rank_filter}"
     )
     page_predicate = "TRUE"
+    if isinstance(plan.output, Export) and export_row_max is not None:
+        page_predicate = f"match_count.__matched_count <= {export_row_max}"
     if isinstance(plan.output, InteractivePage):
         first_row = plan.output.offset + 1
         last_row = plan.output.offset + plan.output.size
@@ -379,6 +386,8 @@ def compile_promoted_plan(
 def _compile_composed_plan(
     plan: QueryPlanV1,
     allowed_sources: tuple[str, ...],
+    *,
+    export_row_max: int | None = None,
 ) -> tuple[str, tuple[Scalar, ...]]:
     grain = grain_by_identity(plan.grain)
     if grain is None or plan.groupings:
@@ -505,6 +514,8 @@ def _compile_composed_plan(
         f"AS __row_number FROM {source_name}{rank_filter}"
     )
     page_predicate = "TRUE"
+    if isinstance(plan.output, Export) and export_row_max is not None:
+        page_predicate = f"match_count.__matched_count <= {export_row_max}"
     if isinstance(plan.output, InteractivePage):
         page_predicate = (
             f"__row_number BETWEEN {plan.output.offset + 1} "

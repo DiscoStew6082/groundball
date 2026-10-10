@@ -22,6 +22,36 @@ def _json_bytes(value: object) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
 
 
+def test_verified_snapshot_rejects_independently_pinned_wrong_digest(tmp_path):
+    from baseball_rag.release_bundle import verified_release_bundle_snapshot
+
+    source = tmp_path / "source"
+    _source_tree(source)
+    bundle = tmp_path / "bundle"
+    assemble_release_bundle(source, bundle, source_commit=SOURCE_COMMIT)
+    with pytest.raises(ReleaseBundleError, match="digest"):
+        verified_release_bundle_snapshot(
+            bundle, expected_source_commit=SOURCE_COMMIT, expected_digest="0" * 64
+        )
+
+
+def test_verified_snapshot_remains_bound_after_original_path_replacement(tmp_path):
+    from baseball_rag.release_bundle import verified_release_bundle_snapshot
+
+    source = tmp_path / "source"
+    _source_tree(source)
+    bundle = tmp_path / "bundle"
+    identity = assemble_release_bundle(source, bundle, source_commit=SOURCE_COMMIT)
+    checked = verified_release_bundle_snapshot(
+        bundle, expected_source_commit=SOURCE_COMMIT, expected_digest=identity.digest
+    )
+    bundle.rename(tmp_path / "old")
+    bundle.mkdir()
+    (bundle / "release-manifest.json").write_text("untrusted replacement")
+    assert check_release_bundle(checked.manifest_path.parent).digest == identity.digest
+    assert checked.manifest_path.parent != bundle
+
+
 def _write(path: Path, content: bytes | str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content.encode() if isinstance(content, str) else content)

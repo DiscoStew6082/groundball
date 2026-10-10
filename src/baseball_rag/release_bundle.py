@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import csv
 import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
@@ -30,6 +33,8 @@ REQUIRED_COVERAGE_GATE_IDS = frozenset(
 )
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
 _FULL_COMMIT = re.compile(r"[0-9a-f]{40}")
+SNAPSHOT_MEMBER_MAX_BYTES = 64 * 1024 * 1024
+SNAPSHOT_TOTAL_MAX_BYTES = 128 * 1024 * 1024
 
 _LAHMAN_CSVS = (
     "data/Batting.csv",
@@ -103,6 +108,104 @@ class ReleaseBundleIdentity:
 
     digest: str
     manifest_path: Path
+
+
+def _remove_snapshot(root: Path) -> None:
+    for directory, _directories, files in os.walk(root):
+        os.chmod(directory, 0o700)
+        for name in files:
+            os.chmod(Path(directory) / name, 0o600)
+    shutil.rmtree(root, ignore_errors=True)
+
+
+@lru_cache(maxsize=1)
+def verified_release_bundle_snapshot(
+    bundle_root: Path | str, *, expected_source_commit: str, expected_digest: str
+) -> ReleaseBundleIdentity:
+    """Pin a bounded private snapshot, consumed independently of its original path.
+
+    The deployment supplies the expected digest independently of bundle bytes.
+    Copy only governed members through no-follow directory/file descriptors,
+    then check the copied object before exposing any catalog or data reader.
+    """
+    _validate_source_commit(expected_source_commit)
+    if not isinstance(expected_digest, str) or not _FULL_SHA256.fullmatch(expected_digest):
+        raise ReleaseBundleError("Expected Release Bundle digest is malformed.")
+    snapshot = Path(tempfile.mkdtemp(prefix="groundball-release-")).resolve()
+    descriptors: list[int] = []
+    total = 0
+    try:
+        root_fd = os.open(bundle_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(root_fd)
+        for relative in (*_PAYLOAD_PATHS, MANIFEST_FILENAME):
+            parent_fd = root_fd
+            member_fds: list[int] = []
+            try:
+                parts = relative.split("/")
+                for component in parts[:-1]:
+                    parent_fd = os.open(
+                        component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd
+                    )
+                    member_fds.append(parent_fd)
+                file_fd = os.open(
+                    parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd
+                )
+                member_fds.append(file_fd)
+                metadata = os.fstat(file_fd)
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ReleaseBundleError("Release snapshot member is not a regular file.")
+                if metadata.st_size > SNAPSHOT_MEMBER_MAX_BYTES:
+                    raise ReleaseBundleError("Release snapshot member exceeds its byte limit.")
+                target = snapshot / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                member_bytes = 0
+                with target.open("wb") as output:
+                    while chunk := os.read(file_fd, 1024 * 1024):
+                        member_bytes += len(chunk)
+                        total += len(chunk)
+                        if (
+                            member_bytes > SNAPSHOT_MEMBER_MAX_BYTES
+                            or total > SNAPSHOT_TOTAL_MAX_BYTES
+                        ):
+                            raise ReleaseBundleError("Release snapshot exceeds its byte limit.")
+                        output.write(chunk)
+            finally:
+                for descriptor in reversed(member_fds):
+                    os.close(descriptor)
+        identity = check_release_bundle(snapshot, expected_source_commit=expected_source_commit)
+        if identity.digest != expected_digest:
+            raise ReleaseBundleError("Release Bundle digest does not match expectation.")
+        for directory, _directories, files in os.walk(snapshot):
+            for name in files:
+                os.chmod(Path(directory) / name, 0o400)
+            os.chmod(directory, 0o500)
+        atexit.register(_remove_snapshot, snapshot)
+        return identity
+    except OSError as exc:
+        _remove_snapshot(snapshot)
+        raise ReleaseBundleError("Release snapshot member is missing or unsafe.") from exc
+    except BaseException:
+        _remove_snapshot(snapshot)
+        raise
+    finally:
+        for descriptor in descriptors:
+            os.close(descriptor)
+
+
+def configured_release_bundle_snapshot() -> ReleaseBundleIdentity | None:
+    """Resolve the deployment's independently pinned release object, if configured."""
+    configured = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
+    if not configured:
+        return None
+    source_commit = os.environ.get("GROUNDBALL_SOURCE_COMMIT")
+    expected_digest = os.environ.get("GROUNDBALL_RELEASE_BUNDLE_DIGEST")
+    if not source_commit or not expected_digest:
+        raise ReleaseBundleError(
+            "GROUNDBALL_SOURCE_COMMIT and GROUNDBALL_RELEASE_BUNDLE_DIGEST are required."
+        )
+    return verified_release_bundle_snapshot(
+        configured, expected_source_commit=source_commit, expected_digest=expected_digest
+    )
 
 
 def assemble_release_bundle(
@@ -311,6 +414,13 @@ def _validate_governed_payload(root: Path) -> dict[str, Any]:
     catalog_dir = root / _CATALOG_ROOT
     catalog = _read_object(catalog_dir / "published_catalog.json", "published catalog")
     registry = _read_object(catalog_dir / "published_sources.json", "source registry")
+    for source in _require_object_list(registry.get("sources"), "source registry sources"):
+        for field in ("asset", "reference_manifest"):
+            if source.get(field) is not None:
+                value = source[field]
+                if not isinstance(value, str):
+                    raise ReleaseBundleError("Catalog asset path is malformed.")
+                _validate_relative_path(value)
     inventory = _read_object(catalog_dir / "raw_fields.json", "raw inventory")
     compatibility = _read_object(catalog_dir / "compatibility.json", "compatibility")
     catalog_revision = _require_string(catalog.get("catalog_revision"), "catalog revision")
@@ -756,7 +866,15 @@ def _sha256(path: Path) -> str:
 
 def _validate_relative_path(path: str) -> None:
     pure = PurePosixPath(path)
-    if pure.is_absolute() or ".." in pure.parts or pure.as_posix() != path:
+    if (
+        not path
+        or "\\" in path
+        or "\0" in path
+        or ":" in path
+        or pure.is_absolute()
+        or any(part in {"", ".", ".."} for part in path.split("/"))
+        or pure.as_posix() != path
+    ):
         raise ReleaseBundleError(f"Payload path is not canonical: {path}.")
 
 

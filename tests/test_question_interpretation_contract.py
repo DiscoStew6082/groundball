@@ -176,6 +176,11 @@ def test_model_name_list_grammar_does_not_allow_seasons_as_player_names():
         '{"value":-Infinity}',
         '{"value":1e999}',
         b'{"question":"\xff"}',
+        pytest.param('{"value":"' + "x" * 65_536 + '"}', id="oversize_ascii"),
+        pytest.param('{"value":"' + "é" * 33_000 + '"}', id="oversize_utf8"),
+        "[" * 40 + "0" + "]" * 40,
+        json.dumps(list(range(129))),
+        json.dumps({str(index): index for index in range(65)}),
     ],
 )
 def test_json_decoder_rejects_ambiguous_malformed_or_nonfinite_input(encoded):
@@ -205,6 +210,29 @@ def test_model_prose_and_unpublished_query_fields_never_reach_execution(executio
     assert result["kind"] == "rejected"
     assert "Unverified assertion" not in json.dumps(result)
     assert "rows" not in result and "evidence" not in result
+    assert execution == []
+
+
+@pytest.mark.parametrize("shape", ["deep", "wide", "many_nodes"])
+def test_model_predicate_budget_refuses_excessive_work_before_execution(execution, shape):
+    recipe = _recipe()
+    leaf = {"kind": "compare", "value": "season", "operator": "equals", "literal": 2023}
+    if shape == "deep":
+        predicate = leaf
+        for _ in range(13):
+            predicate = {"kind": "not", "predicate": predicate}
+    elif shape == "wide":
+        predicate = {"kind": "all", "predicates": [leaf] * 33}
+    else:
+        predicate = {
+            "kind": "all",
+            "predicates": [{"kind": "any", "predicates": [leaf] * 32} for _ in range(4)],
+        }
+    recipe["predicate"] = predicate
+    result = interpretation.run_question_input(
+        question="Judge homers?", interpret=lambda *_: {"kind": "recipe", "recipe": recipe}
+    )
+    assert result["kind"] == "rejected"
     assert execution == []
 
 

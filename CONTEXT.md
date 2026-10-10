@@ -39,6 +39,7 @@ Interpretation guidance explicitly treats listed seasons as alternatives and one
 - `baseball_rag.release_artifact` binds the source commit, artifact-only child commit, bundle, Public Admission Policy, Coverage Report, and public interface revision.
 - Source changes are committed first. The next commit may change only `release/bundle/**`, and its direct parent must be the source commit.
 - Public CI proves the same source-to-artifact topology without deployment or external runtime evidence.
+- Release runtime independently pins the approved bundle digest and source commit, then uses one verified private snapshot for catalog, data and coverage consumption. Identity is configured before catalog imports. Pregame adapters retain fresh normalized fixture evidence; external model and research envelopes have mandatory structural budgets. See [security hardening](docs/security-hardening.md).
 
 ## Completed work, 2026-09-18
 

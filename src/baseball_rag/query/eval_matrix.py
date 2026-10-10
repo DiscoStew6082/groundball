@@ -16,6 +16,7 @@ from baseball_rag.db.retrosheet_query_templates import (
 from baseball_rag.query.adapters import _execution_payload, recipe_from_dict, run_query_input
 from baseball_rag.query.contracts import ExecutionFailed, Ready
 from baseball_rag.query.service import prepare
+from baseball_rag.release_bundle import check_release_bundle
 from baseball_rag.retrosheet_event_capabilities import (
     published_retrosheet_event_capabilities,
 )
@@ -83,6 +84,8 @@ def _run_case(case: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_retrosheet_case(case: dict[str, Any]) -> dict[str, Any]:
+    identity = check_release_bundle(RELEASE_BUNDLE_PATH)
+    source_commit = json.loads(identity.manifest_path.read_text())["source_commit"]
     question = case["retrosheet_question"]
     local_match = match_retrosheet_template(question)
     if local_match is None:
@@ -101,6 +104,8 @@ def _run_retrosheet_case(case: dict[str, Any]) -> dict[str, Any]:
         {
             "GROUNDBALL_PUBLIC_DEMO": "1",
             "GROUNDBALL_RELEASE_BUNDLE": str(RELEASE_BUNDLE_PATH),
+            "GROUNDBALL_SOURCE_COMMIT": source_commit,
+            "GROUNDBALL_RELEASE_BUNDLE_DIGEST": identity.digest,
         },
         clear=False,
     ):

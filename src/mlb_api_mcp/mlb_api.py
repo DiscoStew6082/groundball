@@ -1,10 +1,76 @@
+import json
+import time
+from collections import deque
 from datetime import datetime
+from functools import wraps
+from threading import BoundedSemaphore
 from typing import Any, List, Optional
 
 import mlbstatsapi
 from pybaseball import statcast, statcast_batter, statcast_pitcher
 
 mlb = mlbstatsapi.Mlb()
+MAX_DATE_DAYS = 7
+MAX_PLAYERS = 40
+MAX_FIELDS = 128
+MAX_STATCAST_ROWS = 20_000
+MAX_FRAME_BYTES = 16 * 1024 * 1024
+MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_TOOL_CALLS_PER_MINUTE = 60
+
+
+def _bounded_records(data, fields=None) -> dict:
+    if len(data) > MAX_STATCAST_ROWS or len(data.columns) > MAX_FIELDS:
+        return {"error": "Statcast result exceeds row or column budget; narrow the date range"}
+    if int(data.memory_usage(deep=True).sum()) > MAX_FRAME_BYTES:
+        return {"error": "Statcast result exceeds memory budget; narrow the date range"}
+    columns = list(data.columns)
+    selected = set(columns if fields is None else ["batter", "pitcher", *fields])
+    records = []
+    total = len('{"statcast_data":[]}')
+    for values in data.itertuples(index=False, name=None):
+        record = {key: str(value) for key, value in zip(columns, values, strict=True) if key in selected}
+        total += len(json.dumps(record, ensure_ascii=True).encode("utf-8")) + 2
+        if total > MAX_RESPONSE_BYTES:
+            return {"error": "Statcast response exceeds byte budget; narrow the date range"}
+        records.append(record)
+    if not records:
+        return {"error": "No Statcast data found for the given date range"}
+    return {"statcast_data": records}
+
+
+class _ToolAdmission:
+    def __init__(self):
+        self.slot = BoundedSemaphore(1)
+        self.calls = deque()
+
+    def bounded(self, function):
+        @wraps(function)
+        def call(*args, **kwargs):
+            for value in (*args, *kwargs.values()):
+                if isinstance(value, str) and len(value) > 8192:
+                    return {"error": "Tool argument exceeds character budget"}
+                if isinstance(value, (list, tuple)) and len(value) > MAX_FIELDS:
+                    return {"error": "Tool argument exceeds item budget"}
+            if not self.slot.acquire(blocking=False):
+                return {"error": "Tool concurrency limit reached; retry later"}
+            try:
+                now = time.monotonic()
+                while self.calls and self.calls[0] <= now - 60:
+                    self.calls.popleft()
+                if len(self.calls) >= MAX_TOOL_CALLS_PER_MINUTE:
+                    return {"error": "Tool request rate limit reached; retry later"}
+                self.calls.append(now)
+                result = function(*args, **kwargs)
+                if isinstance(result, dict):
+                    error = check_result_size(result, "query")
+                    if error:
+                        return error
+                return result
+            finally:
+                self.slot.release()
+
+        return call
 
 
 def get_multiple_player_stats(
@@ -190,20 +256,15 @@ def check_result_size(result: dict, context: str) -> Optional[dict]:
     """
     Utility to check the size of a result dictionary (by word count). Returns an error dict if too large, else None.
     """
-    import json
-
-    word_count = len(json.dumps(result).split())
-    if word_count > 100000:
-        return {
-            "error": (
-                f"Result too large ({word_count} words). Please narrow your query "
-                f"(e.g., shorter date range, specific {context})."
-            )
-        }
+    size = 0
+    for chunk in json.JSONEncoder(default=str).iterencode(result):
+        size += len(chunk.encode("utf-8"))
+        if size > MAX_RESPONSE_BYTES:
+            return {"error": f"Result exceeds response byte budget; narrow your {context}"}
     return None
 
 
-def validate_date_range(start_date: str, end_date: str) -> Optional[dict]:
+def validate_date_range(start_date: str, end_date: str, max_days: int = MAX_DATE_DAYS) -> Optional[dict]:
     """
     Utility to check that start_date is before or equal to end_date.
     Returns an error dict if invalid, else None.
@@ -213,6 +274,8 @@ def validate_date_range(start_date: str, end_date: str) -> Optional[dict]:
         end = datetime.strptime(end_date, "%Y-%m-%d")
         if start > end:
             return {"error": f"start_date ({start_date}) must be before or equal to end_date ({end_date})"}
+        if (end - start).days + 1 > max_days:
+            return {"error": f"Date range must contain at most {max_days} days"}
     except Exception as e:
         return {"error": f"Invalid date format: {e}"}
     return None
@@ -220,8 +283,10 @@ def validate_date_range(start_date: str, end_date: str) -> Optional[dict]:
 
 def setup_mlb_tools(mcp):
     """Setup MLB tools for the MCP server"""
+    admission = _ToolAdmission()
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_standings(
         season: Optional[int] = None,
         standingsTypes: Optional[str] = None,
@@ -269,6 +334,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_schedule(
         start_date: str,
         end_date: str,
@@ -290,7 +356,7 @@ def setup_mlb_tools(mcp):
         """
         try:
             # Validate date range
-            date_error = validate_date_range(start_date, end_date)
+            date_error = validate_date_range(start_date, end_date, max_days=366)
             if date_error:
                 return date_error
             team_id = get_team_id_from_name(team) if team is not None else None
@@ -312,6 +378,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_team_info(
         team: str,
         season: Optional[int] = None,
@@ -351,6 +418,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_player_info(player_id: int) -> dict:
         """
         Get information about a specific player by ID.
@@ -368,6 +436,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_boxscore(game_id: int, timecode: Optional[str] = None, fields: Optional[str] = None) -> dict:
         """
         Get boxscore for a specific game by game_id.
@@ -392,6 +461,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_multiple_mlb_player_stats(
         player_ids: str,
         group: Optional[str] = None,
@@ -413,6 +483,8 @@ def setup_mlb_tools(mcp):
             dict: Player statistics.
         """
         try:
+            if player_ids.count(",") + 1 > MAX_PLAYERS:
+                return {"error": "Player fan-out exceeds 40 players"}
             player_ids_list = [pid.strip() for pid in player_ids.split(",")]
 
             # Use the helper function from the original code
@@ -425,6 +497,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_sabermetrics(
         player_ids: str, season: int, stat_name: Optional[str] = None, group: str = "hitting"
     ) -> dict:
@@ -441,6 +514,8 @@ def setup_mlb_tools(mcp):
             dict: Sabermetric statistics.
         """
         try:
+            if player_ids.count(",") + 1 > MAX_PLAYERS:
+                return {"error": "Player fan-out exceeds 40 players"}
             player_ids_list = [pid.strip() for pid in player_ids.split(",")]
             result = get_sabermetrics_for_players(mlb, player_ids_list, season, stat_name, group)
             return result
@@ -448,6 +523,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_game_highlights(game_id: int) -> dict:
         """
         Get game highlights for a specific game by game_id.
@@ -465,6 +541,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_game_pace(season: int, sport_id: int = 1) -> dict:
         """
         Get game pace statistics for a given season.
@@ -483,6 +560,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_game_scoring_plays(
         game_id: int, eventType: Optional[str] = None, timecode: Optional[str] = None, fields: Optional[str] = None
     ) -> dict:
@@ -516,6 +594,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_linescore(game_id: int) -> dict:
         """
         Get linescore for a specific game by game_id.
@@ -533,6 +612,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_roster(
         team: str,
         date: Optional[str] = None,
@@ -577,6 +657,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_search_players(fullname: str, sport_id: int = 1, search_key: str = "fullname") -> dict:
         """
         Search for players by name.
@@ -596,6 +677,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_players(sport_id: int = 1, season: Optional[int] = None) -> dict:
         """
         Get all players for a specific sport.
@@ -617,6 +699,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_draft(year_id: int) -> dict:
         """
         Get draft information for a specific year.
@@ -634,6 +717,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_awards(award_id: int) -> dict:
         """
         Get award recipients for a specific award.
@@ -651,6 +735,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_search_teams(team_name: str, search_key: str = "name") -> dict:
         """
         Search for teams by name or ID.
@@ -690,6 +775,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_teams(sport_id: int = 1, season: Optional[int] = None) -> dict:
         """
         Get all teams for a specific sport.
@@ -711,6 +797,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_mlb_game_lineup(game_id: int) -> dict:
         """
         Get lineup information for a specific game by game_id.
@@ -794,6 +881,7 @@ def setup_mlb_tools(mcp):
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_statcast_pitcher(
         player_id: int,
         start_date: str,
@@ -827,24 +915,12 @@ def setup_mlb_tools(mcp):
             if date_error:
                 return date_error
             data = statcast_pitcher(start_date, end_date, player_id)
-            # Convert all columns to string to ensure JSON serializability
-            data = data.astype(str)
-            result = {"statcast_data": data.to_dict(orient="records")}
-            if not result["statcast_data"]:
-                return {
-                    "error": (
-                        f"No Statcast data found for the given date range ({start_date} to {end_date}). The date "
-                        "range may have resulted in nothing being returned."
-                    )
-                }
-            size_error = check_result_size(result, "player")
-            if size_error:
-                return size_error
-            return result
+            return _bounded_records(data)
         except Exception as e:
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_statcast_batter(
         player_id: int,
         start_date: str,
@@ -878,24 +954,12 @@ def setup_mlb_tools(mcp):
             if date_error:
                 return date_error
             data = statcast_batter(start_date, end_date, player_id)
-            # Convert all columns to string to ensure JSON serializability
-            data = data.astype(str)
-            result = {"statcast_data": data.to_dict(orient="records")}
-            if not result["statcast_data"]:
-                return {
-                    "error": (
-                        f"No Statcast data found for the given date range ({start_date} to {end_date}). The date "
-                        "range may have resulted in nothing being returned."
-                    )
-                }
-            size_error = check_result_size(result, "player")
-            if size_error:
-                return size_error
-            return result
+            return _bounded_records(data)
         except Exception as e:
             return {"error": str(e)}
 
     @mcp.tool()
+    @admission.bounded
     def get_statcast_team(
         team: str,
         start_date: str,
@@ -953,28 +1017,6 @@ def setup_mlb_tools(mcp):
             if not abbreviation:
                 return {"error": f"Could not find 3-letter abbreviation for team '{team}'"}
             data = statcast(start_date, end_date, team=abbreviation)
-            # Convert all columns to string to ensure JSON serializability
-            data = data.astype(str)
-            records = data.to_dict(orient="records")
-            # Always include batter and pitcher, plus all requested fields
-            filtered_records = []
-            for row in records:
-                filtered_row = {}
-                for key in ["batter", "pitcher", *list(fields)]:
-                    if key in row:
-                        filtered_row[key] = row[key]
-                filtered_records.append(filtered_row)
-            result = {"statcast_data": filtered_records}
-            if not result["statcast_data"]:
-                return {
-                    "error": (
-                        f"No Statcast data found for the given date range ({start_date} to {end_date}). The date "
-                        "range may have resulted in nothing being returned."
-                    )
-                }
-            size_error = check_result_size(result, "team")
-            if size_error:
-                return size_error
-            return result
+            return _bounded_records(data, fields)
         except Exception as e:
             return {"error": str(e)}

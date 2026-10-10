@@ -9,6 +9,7 @@ import json
 from datetime import date
 from typing import Any, Iterable, Mapping
 
+from baseball_rag.query.asset_paths import contained_asset_path
 from baseball_rag.query.compiler import compile_promoted_plan, compile_raw_plan
 from baseball_rag.query.contracts import (
     All,
@@ -60,6 +61,21 @@ from baseball_rag.query.runtime import (
 )
 
 PLAN_VERSION = "query-plan-v1"
+
+
+class ExportContentTooLargeError(ValueError):
+    """An optional caller budget refused rendering, retaining query evidence."""
+
+    def __init__(self, evidence: QueryEvidence, maximum: int, observed: int):
+        super().__init__("The complete export exceeds its content byte budget.")
+        self.evidence = evidence
+        self.maximum = maximum
+        self.observed = observed
+
+
+class _ContentBudgetExceededError(ValueError):
+    def __init__(self, observed: int):
+        self.observed = observed
 
 
 def prepare(recipe: QueryRecipe) -> PlanningOutcome:
@@ -127,7 +143,20 @@ def prepare(recipe: QueryRecipe) -> PlanningOutcome:
 
 
 def execute(plan: QueryPlanV1) -> ExecutionOutcome:
+    """Execute a Query Plan through the frozen public QueryService interface."""
+    return _execute(plan)
+
+
+def _execute(
+    plan: QueryPlanV1, *, export_row_max: int | None = None, export_content_max: int | None = None
+) -> ExecutionOutcome:
     """Execute a validated Query Plan using only registry-owned SQL identifiers."""
+    if export_row_max is not None and (type(export_row_max) is not int or export_row_max < 0):
+        raise ValueError("Export row maximum must be a nonnegative integer.")
+    if export_content_max is not None and (
+        type(export_content_max) is not int or export_content_max < 0
+    ):
+        raise ValueError("Export content maximum must be a nonnegative integer.")
     current_revision = catalog_revision()
     if plan.catalog_revision != current_revision:
         return ExecutionUnavailable(
@@ -148,9 +177,11 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
 
     try:
         if is_promoted_grain(plan.grain):
-            sql, bound_values = compile_promoted_plan(plan)
+            sql, bound_values = compile_promoted_plan(plan, export_row_max=export_row_max)
         else:
-            sql, bound_values = compile_raw_plan(plan, source.relation, source.primary_key)
+            sql, bound_values = compile_raw_plan(
+                plan, source.relation, source.primary_key, export_row_max=export_row_max
+            )
         runtime = published_data_runtime()
         active_connection = runtime.connection
     except (ValueError, PublishedDataUnavailableError) as exc:
@@ -160,7 +191,16 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
         with runtime.connection_lock:
             cursor = active_connection.execute(sql, list(bound_values))
             columns = [str(item[0]) for item in cursor.description]
-            materialized = cursor.fetchall()
+            first = cursor.fetchone()
+            over_limit = (
+                isinstance(plan.output, Export)
+                and export_row_max is not None
+                and first is not None
+                and int(first[-2]) > export_row_max
+            )
+            materialized = [first] if first is not None else []
+            if not over_limit:
+                materialized.extend(cursor.fetchall())
     except Exception as exc:
         return ExecutionFailed(f"Query execution failed: {exc}")
 
@@ -217,13 +257,18 @@ def execute(plan: QueryPlanV1) -> ExecutionOutcome:
     )
     if not rows and matched_row_count == 0:
         return NoData(plan=plan, rows=rows, evidence=evidence)
-    if isinstance(plan.output, Export):
+    if isinstance(plan.output, Export) and not over_limit:
+        try:
+            content = _render_export(rows, plan.output.format, maximum_bytes=export_content_max)
+        except _ContentBudgetExceededError as exc:
+            assert export_content_max is not None
+            raise ExportContentTooLargeError(evidence, export_content_max, exc.observed) from exc
         return Exported(
             plan=plan,
             rows=rows,
             evidence=evidence,
             format=plan.output.format,
-            content=_render_export(rows, plan.output.format),
+            content=content,
         )
     return Rows(plan=plan, rows=rows, evidence=evidence)
 
@@ -426,7 +471,9 @@ def _evidence(
         source_release = data_release
         if source.reference_manifest is not None:
             reference = json.loads(
-                (CATALOG_DIR / source.reference_manifest).read_text(encoding="utf-8")
+                contained_asset_path(CATALOG_DIR, source.reference_manifest).read_text(
+                    encoding="utf-8"
+                )
             )
             expected_rows = reference.get("rows")
             sha256 = reference.get("sha256")
@@ -464,10 +511,24 @@ def _evidence(
     )
 
 
-def _render_export(rows: tuple[dict[str, Scalar], ...], output_format: str) -> str:
+def _render_export(
+    rows: tuple[dict[str, Scalar], ...], output_format: str, *, maximum_bytes: int | None = None
+) -> str:
+    class BoundedOutput(io.StringIO):
+        observed = 0
+
+        def write(self, value: str) -> int:
+            self.observed += len(value.encode("utf-8"))
+            if maximum_bytes is not None and self.observed > maximum_bytes:
+                raise _ContentBudgetExceededError(self.observed)
+            return super().write(value)
+
+    output = BoundedOutput(newline="")
     if output_format == "json":
-        return json.dumps(rows, ensure_ascii=False, sort_keys=True, default=str)
-    output = io.StringIO(newline="")
+        encoder = json.JSONEncoder(ensure_ascii=False, sort_keys=True, default=str)
+        for chunk in encoder.iterencode(rows):
+            output.write(chunk)
+        return output.getvalue()
     fieldnames = list(rows[0])
     writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()

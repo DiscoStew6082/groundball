@@ -1,5 +1,6 @@
 """FastAPI server for Groundball."""
 
+import asyncio
 import hashlib
 import html
 import math
@@ -294,17 +295,32 @@ async def _query_cors_middleware(request: Request, call_next):
     )
     if is_public_query_request:
         _ensure_public_execution_deadline(request)
-    if is_public_query_request and len(await request.body()) > _PUBLIC_QUERY_REQUEST_BYTES:
-        refusal = JSONResponse(
-            {
-                "error": "request_too_large",
-                "detail": "Public Query Run requests may not exceed 16384 bytes.",
-            },
-            status_code=413,
-        )
-        if _cors_origin_is_allowed(origin):
-            return _add_query_cors_headers(refusal, origin or "")
-        return refusal
+        body = bytearray()
+        refusal = None
+        try:
+            async with asyncio.timeout(_PUBLIC_EXECUTION_DEADLINE_SECONDS):
+                async for chunk in request.stream():
+                    if len(body) + len(chunk) > _PUBLIC_QUERY_REQUEST_BYTES:
+                        refusal = JSONResponse(
+                            {
+                                "error": "request_too_large",
+                                "detail": "Public Query Run requests may not exceed 16384 bytes.",
+                            },
+                            status_code=413,
+                        )
+                        break
+                    body.extend(chunk)
+        except TimeoutError:
+            refusal = JSONResponse(
+                {"error": "request_timeout", "detail": "Public request body receipt timed out."},
+                status_code=408,
+            )
+        if refusal is not None:
+            if _cors_origin_is_allowed(origin):
+                return _add_query_cors_headers(refusal, origin or "")
+            return refusal
+        # Starlette's cached middleware request replays this bounded body downstream.
+        request._body = bytes(body)
 
     response = await call_next(request)
     if (

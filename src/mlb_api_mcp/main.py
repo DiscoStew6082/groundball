@@ -1,10 +1,11 @@
 import argparse
+import asyncio
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 import uvicorn
 from fastmcp import FastMCP
-from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from generic_api import setup_generic_tools
@@ -16,6 +17,83 @@ mcp = FastMCP("MLB API MCP Server")
 # Setup all MLB and generic tools
 setup_mlb_tools(mcp)
 setup_generic_tools(mcp)
+
+
+class _HTTPBoundary:
+    """Bound MCP request receipt before the transport decodes JSON."""
+
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    def _loopback_authority(value: str, *, origin: bool = False) -> bool:
+        try:
+            parsed = urlsplit(value if origin else f"//{value}")
+            return (
+                parsed.hostname in {"127.0.0.1", "::1", "localhost"}
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.path
+                and not parsed.query
+                and not parsed.fragment
+                and (not origin or parsed.scheme in {"http", "https"})
+                and (parsed.port is None or 1 <= parsed.port <= 65_535)
+            )
+        except ValueError:
+            return False
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        try:
+            hosts = [value.decode("ascii") for key, value in scope.get("headers", []) if key.lower() == b"host"]
+            origins = [value.decode("ascii") for key, value in scope.get("headers", []) if key.lower() == b"origin"]
+            allowed = len(hosts) == 1 and self._loopback_authority(hosts[0])
+            allowed = (
+                allowed and len(origins) <= 1 and all(self._loopback_authority(value, origin=True) for value in origins)
+            )
+        except UnicodeDecodeError:
+            allowed = False
+        if not allowed:
+            await JSONResponse({"error": "HTTP MCP requires a loopback Host and Origin"}, status_code=403)(
+                scope, receive, send
+            )
+            return
+        if scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+        body = bytearray()
+        deadline = asyncio.get_running_loop().time() + 5
+        try:
+            while True:
+                remaining = max(0, deadline - asyncio.get_running_loop().time())
+                message = await asyncio.wait_for(receive(), timeout=remaining)
+                if message["type"] == "http.disconnect":
+                    return
+                chunk = message.get("body", b"")
+                if len(body) + len(chunk) > 65_536:
+                    await JSONResponse({"error": "MCP request exceeds byte budget"}, status_code=413)(
+                        scope, receive, send
+                    )
+                    return
+                body.extend(chunk)
+                if not message.get("more_body", False):
+                    break
+        except asyncio.TimeoutError:
+            await JSONResponse({"error": "MCP request receipt timed out"}, status_code=408)(scope, receive, send)
+            return
+
+        delivered = False
+
+        async def bounded_receive():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return await receive()
+
+        await self.app(scope, bounded_receive, send)
 
 
 # Add custom routes to the MCP server for documentation and info
@@ -127,7 +205,7 @@ async def docs(request):
     return HTMLResponse(content=docs_html)
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> None:
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="MLB API MCP Server")
     parser.add_argument("--http", action="store_true", help="Run server with HTTP transport (default: stdio transport)")
@@ -138,7 +216,10 @@ if __name__ == "__main__":
         default=8002,
         help="Port to run the server on (default: 8002, env PORT takes priority)",
     )
-    args = parser.parse_args()
+    parser.add_argument("--host", default="127.0.0.1", help="Loopback HTTP bind address")
+    args = parser.parse_args(argv)
+    if args.http and args.host not in {"127.0.0.1", "::1", "localhost"}:
+        parser.error("Remote HTTP exposure requires a separate authenticated gateway; bind to loopback")
 
     if args.http:
         # Environment variable takes priority over command line argument
@@ -151,41 +232,16 @@ if __name__ == "__main__":
         print(f"- Tools list: http://localhost:{port}/tools")
         print(f"- MCP protocol: http://localhost:{port}/mcp")
 
-        # Create CORS middleware configuration
-        from starlette.middleware import Middleware
+        app: Any = mcp.http_app()
 
-        cors_middleware = Middleware(
-            CORSMiddleware,
-            allow_origins=["*"],  # Configure this more restrictively in production
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["*"],
-            expose_headers=["mcp-session-id"],  # Allow client to read session ID
-            max_age=86400,
-        )
-
-        # Get the Starlette app with CORS middleware (using modern http_app method)
-        # Note: FastMCP uses Mount internally, which enforces trailing slashes per Starlette design
-        app: Any = mcp.http_app(middleware=[cors_middleware])
-
-        # Workaround for Starlette Mount trailing slash behavior (issue #869)
-        # https://github.com/encode/starlette/issues/869
-        # Create middleware that modifies the path scope to add trailing slash
-        class MCPPathRedirect:
-            def __init__(self, app):
-                self.app = app
-
-            async def __call__(self, scope, receive, send):
-                if scope.get("type") == "http" and scope.get("path") == "/mcp":
-                    scope["path"] = "/mcp/"
-                    scope["raw_path"] = b"/mcp/"
-                await self.app(scope, receive, send)
-
-        # Apply the middleware
-        app = MCPPathRedirect(app)
+        app = _HTTPBoundary(app)
 
         # Run the MCP server with HTTP transport using uvicorn
-        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+        uvicorn.run(app, host=args.host, port=port, log_level="info", limit_concurrency=8)
     else:
         # Run with stdio transport (for Smithery)
         mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

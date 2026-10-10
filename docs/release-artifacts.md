@@ -2,6 +2,8 @@
 
 Ground Ball release artifacts are identified by content and exact Git topology, never by a branch label.
 
+Release readiness requires an independently configured `GROUNDBALL_RELEASE_BUNDLE_DIGEST` alongside `GROUNDBALL_SOURCE_COMMIT` and `GROUNDBALL_RELEASE_BUNDLE`. The expected digest comes from the approved Release Artifact. Runtime consumers use a verified private snapshot so later replacement of the configured bundle path cannot change the loaded catalog, data or proof. See [security hardening](security-hardening.md) for adapter requirements.
+
 ## Artifact meanings
 
 - **Release Bundle digest**: SHA-256 of canonical `release/bundle/release-manifest.json`.

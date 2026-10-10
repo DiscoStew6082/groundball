@@ -7,6 +7,8 @@ from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from baseball_rag.query import (
     All,
     Compare,
@@ -26,6 +28,23 @@ from baseball_rag.query import runtime as query_runtime
 from baseball_rag.query.generate_catalog_compatibility import render_compatibility
 from baseball_rag.query.generate_raw_inventory import render_inventory
 from baseball_rag.query.registry import CATALOG_DIR
+
+
+@pytest.mark.parametrize(
+    "asset",
+    ["../outside.csv", "/etc/passwd", "a//b.csv", "./People.csv", r"a\People.csv", "linked.csv"],
+)
+def test_runtime_refuses_unsafe_catalog_asset_before_reading_it(tmp_path, monkeypatch, asset):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    shutil.copyfile(Path("data/manifest.json"), data_dir / "manifest.json")
+    (data_dir / "linked.csv").symlink_to(Path("data/People.csv").resolve())
+    sources = query_runtime._source_bindings()
+    monkeypatch.setattr(
+        query_runtime, "_source_bindings", lambda: (replace(sources[0], asset=asset),)
+    )
+    with pytest.raises(query_runtime.PublishedDataUnavailableError, match="Unsafe"):
+        query_runtime._runtime_for(str(data_dir))
 
 
 def test_discovery_exposes_every_raw_field_exactly_once():
@@ -199,7 +218,7 @@ def test_incompatible_installed_schema_is_unavailable_before_query_execution(tmp
     source_dir = Path("data").resolve()
     shutil.copyfile(source_dir / "manifest.json", tmp_path / "manifest.json")
     for filename in ("Batting.csv", "Pitching.csv", "Fielding.csv"):
-        (tmp_path / filename).symlink_to(source_dir / filename)
+        shutil.copyfile(source_dir / filename, tmp_path / filename)
     (tmp_path / "People.csv").write_text(
         "playerID,birthCity,unexpected\nprobe01,Brooklyn,drift\n",
         encoding="utf-8",
