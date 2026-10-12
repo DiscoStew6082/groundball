@@ -56,3 +56,20 @@ uv run python -m baseball_rag.release_bundle check release/bundle \
 ## Public proof boundary
 
 Public CI verifies the immutable bundle, admission policy, deterministic query parity, packaged web fallback, wheel and source distribution builds, and provider neutrality. It does not prove any external runtime, account, domain, or deployment state.
+
+
+## Source checks and artifact checks in CI
+
+The workflow records its mode and checked commit in `proof-context.json`. A source
+commit, including an ordinary merge that retains its first parent's bundle, runs
+source-contract, bundle-integrity, package, web, and neutrality checks. The retained
+bundle is checked against its own declared source, not relabeled as a release of
+the new source commit. Source mode does not emit a Release Artifact identity.
+
+Any commit that changes `release/bundle/**` relative to its first parent enters
+artifact mode and must satisfy the sole-parent, artifact-only contract above.
+Mixed source/bundle commits, a stale source SHA, missing manifest updates, and
+merges introducing bundle changes fail closed. Only a valid artifact-only child
+can emit `release-artifact.json`. Merge or squash workflows do not replace that
+exact topology; publish a source commit followed by its artifact-only child when
+producing a new release.

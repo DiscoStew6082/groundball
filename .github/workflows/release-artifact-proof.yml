@@ -5,7 +5,9 @@ on:
   pull_request:
     paths: &artifact-proof-paths
       - '.github/workflows/release-artifact-proof.yml'
-      - 'release/bundle/release-manifest.json'
+      - 'release/bundle/**'
+      - 'scripts/check_release_topology.py'
+      - 'tests/test_release_topology.py'
       - 'release/config/**'
       - 'scripts/check_provider_neutrality.py'
       - 'src/baseball_rag/release_artifact.py'
@@ -33,6 +35,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -50,24 +53,17 @@ jobs:
         working-directory: web
 
       - name: Establish exact source and artifact topology
+        env:
+          PR_BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_CHECKED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CHECKED_COMMIT"
           mkdir -p release-artifacts/evidence
-          artifact_commit="$(git rev-parse HEAD)"
-          artifact_parent_commit="$(git rev-parse HEAD^)"
-          source_commit="$(python -c 'import json; print(json.load(open("release/bundle/release-manifest.json"))["source_commit"])')"
-          test "$artifact_parent_commit" = "$source_commit"
-          git diff-tree --no-commit-id --name-only -r "$artifact_commit" > release-artifacts/artifact-changed-paths.txt
-          test -s release-artifacts/artifact-changed-paths.txt
-          test -z "$(grep -Ev '^release/bundle/' release-artifacts/artifact-changed-paths.txt || true)"
-          grep -Fx 'release/bundle/release-manifest.json' release-artifacts/artifact-changed-paths.txt
-          if test "${{ github.event_name }}" = "pull_request"; then
-            test "$artifact_commit" = "${{ github.event.pull_request.head.sha }}"
-            git merge-base --is-ancestor "${{ github.event.pull_request.base.sha }}" "$source_commit"
-          fi
-          printf 'SOURCE_COMMIT=%s\nARTIFACT_COMMIT=%s\nARTIFACT_PARENT_COMMIT=%s\n' \
-            "$source_commit" "$artifact_commit" "$artifact_parent_commit" >> "$GITHUB_ENV"
+          python scripts/check_release_topology.py \
+            --evidence release-artifacts/evidence --github-env "$GITHUB_ENV" \
+            --base-commit "$PR_BASE_COMMIT"
 
       - name: Verify source contracts and deterministic parity
         shell: bash
@@ -92,6 +88,7 @@ jobs:
             tests/test_release_artifact.py \
             tests/test_release_bundle.py \
             tests/test_release_runtime.py \
+            tests/test_release_topology.py \
             -q
 
       - name: Verify Release Bundle and Public Admission Policy
@@ -119,6 +116,7 @@ jobs:
           tar -xzf dist/*.tar.gz -C release-artifacts/package-contents/sdist
 
       - name: Build canonical Release Artifact identity
+        if: env.PROOF_KIND == 'artifact'
         shell: bash
         run: |
           set -euo pipefail
@@ -169,3 +167,4 @@ jobs:
           path: |
             dist/
             release-artifacts/
+
