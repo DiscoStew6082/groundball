@@ -27,10 +27,11 @@ def test_release_artifact_workflow_proves_exact_portable_artifacts() -> None:
     workflow = (ROOT / ".github/workflows/release-artifact-proof.yml").read_text(encoding="utf-8")
 
     required = (
-        'artifact_parent_commit="$(git rev-parse HEAD^)"',
-        'test "$artifact_parent_commit" = "$source_commit"',
-        "git diff-tree --no-commit-id --name-only -r",
-        "test -z \"$(grep -Ev '^release/bundle/'",
+        "python scripts/check_release_topology.py",
+        "if: env.PROOF_KIND == 'artifact'",
+        "'release/bundle/**'",
+        "'scripts/check_release_topology.py'",
+        "'tests/test_release_topology.py'",
         "python -m baseball_rag.release_bundle check",
         "python -m baseball_rag.public_release_config --check",
         "python -m baseball_rag.query.generate_catalog_compatibility --check",
