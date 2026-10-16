@@ -13,6 +13,7 @@ from baseball_rag.db.retrosheet_query_templates import (
     match_retrosheet_template,
 )
 from baseball_rag.query.runtime import published_data_runtime
+from baseball_rag.release_context import installed_release_context
 from baseball_rag.source_attribution import RETROSHEET_CREDIT, source_credit
 
 _QUERY_LOCK = threading.Lock()
@@ -27,9 +28,10 @@ def execute_retrosheet_query(question: str) -> dict[str, Any]:
         "yes",
         "on",
     }
-    if public_demo != bundle_configured:
+    context = installed_release_context()
+    if context is None and public_demo != bundle_configured:
         raise ValueError("Ground Ball public release configuration is incomplete.")
-    release_bound = public_demo
+    release_bound = context is not None or public_demo
     matcher = match_published_retrosheet_template if release_bound else match_retrosheet_template
     matched = matcher(question)
     if matched is None:

@@ -21,12 +21,18 @@ from baseball_rag.query.asset_paths import contained_asset_path
 from baseball_rag.query.data_identity import semantic_manifest_sha256
 from baseball_rag.query.fingerprint import RowFingerprint
 from baseball_rag.query.registry import (
-    CATALOG_DIR,
     _source_bindings,
     _SourceBinding,
+    catalog_directory,
     discover_fields,
 )
-from baseball_rag.release_bundle import configured_release_bundle_snapshot
+from baseball_rag.release_context import (
+    ReleaseContext,
+    configured_release_context,
+    install_release_context,
+    installed_release_context,
+    release_context_lock,
+)
 
 
 class PublishedDataUnavailableError(ValueError):
@@ -41,16 +47,31 @@ class PublishedDataRuntime:
     manifest: dict[str, Any]
     data_release: str
     source_fingerprints: Mapping[str, str]
+    release_context: ReleaseContext | None = None
 
 
 _installed_runtime_lock = RLock()
 _installed_runtime: PublishedDataRuntime | None = None
 
 
-def install_published_data_runtime(runtime: PublishedDataRuntime) -> None:
+def install_published_data_runtime(
+    runtime: PublishedDataRuntime, *, context: ReleaseContext | None = None
+) -> None:
+    """Install one validated runtime for this process without replacing it."""
+    with release_context_lock:
+        _install_runtime_locked(runtime, context=context)
+
+
+def _install_runtime_locked(
+    runtime: PublishedDataRuntime, *, context: ReleaseContext | None = None
+) -> None:
     """Install one validated runtime for this process without replacing it."""
     if not isinstance(runtime, PublishedDataRuntime):
         raise TypeError("runtime must be a PublishedDataRuntime.")
+    selected = context or runtime.release_context or configured_release_context()
+    if selected is not None:
+        _validate_runtime_context(runtime, selected)
+        install_release_context(selected)
     global _installed_runtime
     with _installed_runtime_lock:
         if _installed_runtime is None:
@@ -61,36 +82,103 @@ def install_published_data_runtime(runtime: PublishedDataRuntime) -> None:
             )
 
 
-def published_data_runtime() -> PublishedDataRuntime:
+def _validate_runtime_context(runtime: PublishedDataRuntime, context: ReleaseContext) -> None:
+    if (
+        runtime.release_context is not context
+        or runtime.data_dir != context.data_dir
+        or runtime.data_release != context.data_release
+        or semantic_manifest_sha256(runtime.manifest) != context.data_manifest_semantic_sha256
+        or dict(runtime.source_fingerprints) != dict(context.source_fingerprints)
+    ):
+        raise PublishedDataUnavailableError("Runtime does not match the verified ReleaseContext.")
+
+
+def published_data_runtime(context: ReleaseContext | None = None) -> PublishedDataRuntime:
+    """Use an explicitly selected release or the narrow legacy local configuration."""
+    with release_context_lock:
+        return _published_runtime_locked(context)
+
+
+def _published_runtime_locked(context: ReleaseContext | None) -> PublishedDataRuntime:
+    """Use an explicitly selected release or the narrow legacy local configuration."""
+    if context is not None:
+        install_release_context(context)
+    else:
+        context = configured_release_context()
     with _installed_runtime_lock:
         installed = _installed_runtime
     if installed is not None:
+        if context is not None:
+            _validate_runtime_context(installed, context)
         return installed
-
-    bundle_root = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
-    if bundle_root:
-        identity = configured_release_bundle_snapshot()
-        assert identity is not None
-        configured = identity.manifest_path.parent / "data"
-    else:
-        configured = Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
-    loaded = _runtime_for(str(configured))
-
+    configured = (
+        context.data_dir
+        if context is not None
+        else Path(os.environ.get("GROUNDBALL_DATA_DIR", DATA_DIR)).resolve()
+    )
+    loaded = _runtime_for(str(configured), context)
     with _installed_runtime_lock:
-        return _installed_runtime if _installed_runtime is not None else loaded
+        selected = _installed_runtime if _installed_runtime is not None else loaded
+    if context is not None:
+        _validate_runtime_context(selected, context)
+    return selected
+
+
+def create_published_data_runtime(context: ReleaseContext) -> PublishedDataRuntime:
+    """Build a verified release runtime for an explicit composition root or offline builder.
+
+    The caller owns the connection until installation. Catalog and data always
+    come from the same context; this factory never reads a data-path environment variable.
+    """
+    return _load_runtime(str(context.data_dir), context)
+
+
+def _runtime_for(
+    data_dir_value: str, context: ReleaseContext | None = None
+) -> PublishedDataRuntime:
+    """Resolve the immutable context before consulting the internal runtime cache."""
+    with release_context_lock:
+        if context is not None:
+            install_release_context(context)
+        else:
+            context = configured_release_context()
+        if context is not None and Path(data_dir_value) != context.data_dir:
+            raise PublishedDataUnavailableError(
+                "Runtime data is outside the verified ReleaseContext."
+            )
+        return _cached_runtime(data_dir_value, context)
 
 
 @lru_cache(maxsize=None)
-def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
+def _cached_runtime(data_dir_value: str, context: ReleaseContext | None) -> PublishedDataRuntime:
+    return _load_runtime(data_dir_value, context)
+
+
+def _load_runtime(
+    data_dir_value: str, context: ReleaseContext | None = None
+) -> PublishedDataRuntime:
+    with release_context_lock:
+        return _load_runtime_locked(data_dir_value, context)
+
+
+def _load_runtime_locked(
+    data_dir_value: str, context: ReleaseContext | None = None
+) -> PublishedDataRuntime:
+    if context is not None:
+        install_release_context(context)
+    else:
+        context = configured_release_context()
     data_dir = Path(data_dir_value)
+    if context is not None and data_dir != context.data_dir:
+        raise PublishedDataUnavailableError("Runtime data is outside the verified ReleaseContext.")
     manifest_path = _safe_asset(data_dir, "manifest.json")
-    compatibility = _read_json(CATALOG_DIR / "compatibility.json")
-    catalog = _read_json(CATALOG_DIR / "published_catalog.json")
-    inventory_path = CATALOG_DIR / "raw_fields.json"
+    compatibility = _read_json(catalog_directory() / "compatibility.json")
+    catalog = _read_json(catalog_directory() / "published_catalog.json")
+    inventory_path = catalog_directory() / "raw_fields.json"
     inventory = _read_json(inventory_path)
-    registry_path = CATALOG_DIR / "published_sources.json"
+    registry_path = catalog_directory() / "published_sources.json"
     registry = _read_json(registry_path)
-    team_manifest_path = CATALOG_DIR / "assets/team_reference.manifest.json"
+    team_manifest_path = catalog_directory() / "assets/team_reference.manifest.json"
     team_manifest = _read_json(team_manifest_path)
     try:
         manifest_content = manifest_path.read_bytes()
@@ -105,7 +193,7 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     if catalog["catalog_revision"] != compatibility["catalog_revision"]:
         raise PublishedDataUnavailableError("Published catalog revision is not compatible.")
     if (
-        hashlib.sha256((CATALOG_DIR / "published_catalog.json").read_bytes()).hexdigest()
+        hashlib.sha256((catalog_directory() / "published_catalog.json").read_bytes()).hexdigest()
         != compatibility["catalog_sha256"]
     ):
         raise PublishedDataUnavailableError("Published catalog content is not compatible.")
@@ -116,7 +204,7 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     if set(promoted_hashes) != expected_promoted:
         raise PublishedDataUnavailableError("Promoted catalog file set is not compatible.")
     for filename, expected_digest in promoted_hashes.items():
-        promoted_path = _safe_asset(CATALOG_DIR, filename)
+        promoted_path = _safe_asset(catalog_directory(), filename)
         try:
             observed_digest = hashlib.sha256(promoted_path.read_bytes()).hexdigest()
         except OSError as exc:
@@ -157,10 +245,8 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
     asset_paths = tuple(_asset_path(source.kind, source.asset, data_dir) for source in sources)
     for source in sources:
         if source.reference_manifest is not None:
-            _safe_asset(CATALOG_DIR, source.reference_manifest)
-    public_execution = os.environ.get("GROUNDBALL_PUBLIC_WORKER") == "1" or bool(
-        os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
-    )
+            _safe_asset(catalog_directory(), source.reference_manifest)
+    public_execution = context is not None or os.environ.get("GROUNDBALL_PUBLIC_WORKER") == "1"
     config: dict[str, Any] = (
         {"memory_limit": "256MB", "threads": 4, "temp_directory": ""} if public_execution else {}
     )
@@ -186,12 +272,15 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
             source_fingerprints[source.identity] = _source_fingerprint(
                 connection, source.identity, source.relation
             )
-        if os.environ.get("GROUNDBALL_RELEASE_BUNDLE"):
+        if context is not None:
             _load_release_retrosheet(connection, data_dir)
     except Exception:
         connection.close()
         raise
 
+    if installed_release_context() is not context:
+        connection.close()
+        raise PublishedDataUnavailableError("Release context changed during runtime construction.")
     data_release = str(manifest.get("dataset", {}).get("release_id") or "unavailable")
     return PublishedDataRuntime(
         connection=connection,
@@ -200,13 +289,14 @@ def _runtime_for(data_dir_value: str) -> PublishedDataRuntime:
         manifest=manifest,
         data_release=data_release,
         source_fingerprints=MappingProxyType(source_fingerprints),
+        release_context=context,
     )
 
 
 def _asset_path(kind: str, asset: str | None, data_dir: Path) -> Path | None:
     if asset is None:
         return None
-    root = CATALOG_DIR if kind == "synthesized_team_reference" else data_dir
+    root = catalog_directory() if kind == "synthesized_team_reference" else data_dir
     return _safe_asset(root, asset)
 
 
@@ -224,7 +314,7 @@ def _verify_reference(
 ) -> None:
     if manifest_name is None:
         raise PublishedDataUnavailableError("Team reference has no manifest binding.")
-    manifest = _read_json(_safe_asset(CATALOG_DIR, manifest_name))
+    manifest = _read_json(_safe_asset(catalog_directory(), manifest_name))
     if manifest["reference_version"] != expected_version:
         raise PublishedDataUnavailableError("Team-reference revision is not compatible.")
     digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()
@@ -266,7 +356,9 @@ def _verify_rows(
     manifest: dict[str, Any],
 ) -> None:
     if source.reference_manifest is not None:
-        expected = int(_read_json(_safe_asset(CATALOG_DIR, source.reference_manifest))["rows"])
+        expected = int(
+            _read_json(_safe_asset(catalog_directory(), source.reference_manifest))["rows"]
+        )
     else:
         matches = [
             item for item in manifest.get("files", []) if item.get("table") == source.manifest_table
@@ -323,7 +415,9 @@ def _source_fingerprint(
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        safe_path = _safe_asset(CATALOG_DIR, path.relative_to(CATALOG_DIR).as_posix())
+        safe_path = _safe_asset(
+            catalog_directory(), path.relative_to(catalog_directory()).as_posix()
+        )
         return json.loads(safe_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise PublishedDataUnavailableError(
@@ -343,8 +437,10 @@ def _load_release_retrosheet(connection: DuckDBPyConnection, data_dir: Path) -> 
     projection_manifest = _safe_asset(data_dir, "secondary_sources/retrosheet/manifest.json")
     verify_manifest_file(projection_manifest, projection)
 
-    reference = _safe_asset(CATALOG_DIR, "assets/retrosheet_team_reference.csv")
-    reference_manifest = _safe_asset(CATALOG_DIR, "assets/retrosheet_team_reference.manifest.json")
+    reference = _safe_asset(catalog_directory(), "assets/retrosheet_team_reference.csv")
+    reference_manifest = _safe_asset(
+        catalog_directory(), "assets/retrosheet_team_reference.manifest.json"
+    )
     reference_metadata = _read_json(reference_manifest)
     if hashlib.sha256(reference.read_bytes()).hexdigest() != reference_metadata.get("sha256"):
         raise PublishedDataUnavailableError(

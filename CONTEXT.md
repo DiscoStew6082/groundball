@@ -39,7 +39,7 @@ Interpretation guidance explicitly treats listed seasons as alternatives and one
 - `baseball_rag.release_artifact` binds the source commit, artifact-only child commit, bundle, Public Admission Policy, Coverage Report, and public interface revision.
 - Source changes are committed first. The next commit may change only `release/bundle/**`, and its direct parent must be the source commit.
 - Public CI proves the same source-to-artifact topology without deployment or external runtime evidence.
-- Release runtime independently pins the approved bundle digest and source commit, then uses one verified private snapshot for catalog, data and coverage consumption. Identity is configured before catalog imports. Pregame adapters retain fresh normalized fixture evidence; external model and research envelopes have mandatory structural budgets. See [security hardening](docs/security-hardening.md).
+- Release runtime independently pins the approved bundle digest and source commit, then uses one verified private snapshot for catalog, data and coverage consumption. The composition root constructs one immutable verified `ReleaseContext` from those independent pins and passes it to the runtime factory and readiness checks. Imports do not select a release or read its files; catalog and proof reads resolve the active context lazily. Changing release identity requires a fresh process. Pregame adapters retain fresh normalized fixture evidence; external model and research envelopes have mandatory structural budgets. See [security hardening](docs/security-hardening.md).
 
 ## Completed work, 2026-09-18
 
@@ -63,7 +63,8 @@ The architecture and assistant guides describe the current implementation. Earli
 - `src/baseball_rag/public_results.py`: bounded public pages and complete-or-refused exports.
 - `src/baseball_rag/public_release_config.py`: Public Admission Policy and strict local release configuration.
 - `src/baseball_rag/release_bundle.py`: deterministic Release Bundle assembly and verification.
-- `src/baseball_rag/release_runtime.py`: offline startup and readiness checks.
+- `src/baseball_rag/release_context.py`: explicit verified snapshot, independent identity pins, and immutable process selection.
+- `src/baseball_rag/release_runtime.py`: context-bound offline startup and readiness checks.
 - `src/baseball_rag/release_artifact.py`: canonical public Release Artifact identity.
 
 ## Frozen seams

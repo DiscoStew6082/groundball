@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 from baseball_rag.db.retrosheet_query_templates import (
     match_published_retrosheet_template,
@@ -20,7 +21,6 @@ from baseball_rag.release_bundle import check_release_bundle
 from baseball_rag.retrosheet_event_capabilities import (
     published_retrosheet_event_capabilities,
 )
-from baseball_rag.retrosheet_query import execute_retrosheet_query
 
 MATRIX_PATH = Path(__file__).with_name("eval_matrix.json")
 RELEASE_BUNDLE_PATH = Path(__file__).resolve().parents[3] / "release" / "bundle"
@@ -99,25 +99,37 @@ def _run_retrosheet_case(case: dict[str, Any]) -> dict[str, Any]:
         "public_advertised": case["public_capability_id"] in advertised,
         "public_match": public_match is not None,
     }
-    with patch.dict(
-        os.environ,
-        {
+    # Release activation is process-immutable. Run release parity in a child so
+    # this local catalog evaluation never switches its own data/proof context.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import json, sys
+from baseball_rag.retrosheet_query import execute_retrosheet_query
+question, template = json.load(sys.stdin)
+try:
+    payload = execute_retrosheet_query(question)
+except ValueError as exc:
+    payload = {"kind": "invalid", "detail": str(exc), "rows": [], "template": template}
+print(json.dumps(payload))
+""",
+        ],
+        input=json.dumps([question, local_match.template_id]),
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+        env={
+            **os.environ,
             "GROUNDBALL_PUBLIC_DEMO": "1",
             "GROUNDBALL_RELEASE_BUNDLE": str(RELEASE_BUNDLE_PATH),
             "GROUNDBALL_SOURCE_COMMIT": source_commit,
             "GROUNDBALL_RELEASE_BUNDLE_DIGEST": identity.digest,
         },
-        clear=False,
-    ):
-        try:
-            payload = execute_retrosheet_query(question)
-        except ValueError as exc:
-            payload = {
-                "kind": "invalid",
-                "detail": str(exc),
-                "rows": [],
-                "template": local_match.template_id,
-            }
+    )
+    payload = json.loads(completed.stdout)
     return {**payload, "parity": parity}
 
 

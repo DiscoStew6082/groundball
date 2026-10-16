@@ -19,6 +19,8 @@ The Codex Security Cloud repository scan reviewed source commit `bb70ff995aaa8b2
 
 Hosting remains outside public source. The deployment initializer must supply the approved source commit and bundle digest independently of the bundle being checked. Compute and approve these values during release publication; reading an expected digest from an untrusted replacement at startup defeats the pin.
 
+Release composition uses the immutable verified `ReleaseContext`. Catalog and Coverage Report paths are resolved lazily from the context, and prepared databases must carry its exact snapshot/data identities before installation. Independent source and digest checks still apply; this change does not authorize deriving deployment pins from bundle bytes at startup.
+
 Pregame adapters must retain `source.record.normalized` with the fixture identity, team IDs, start, status and optional venue that drive the answer. The source record fingerprint covers this retained record. Observation age is at most ten minutes, with sixty seconds of future clock skew. Existing current-leader and probable-pitcher evidence keeps its same normalized-record contract.
 
 The optional MCP HTTP server is for local use. Remote service requires a separately authenticated gateway with ingress and rate controls. HTTP requests must use a loopback Host and, when present, a loopback Origin to prevent browser DNS rebinding. Native clients may omit Origin. CORS is not authentication.

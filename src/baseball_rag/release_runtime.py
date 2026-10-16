@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from baseball_rag.query.coverage import load_passing_coverage_report
-from baseball_rag.query.registry import CATALOG_DIR
+from baseball_rag.query.registry import catalog_directory
 from baseball_rag.query.runtime import published_data_runtime
-from baseball_rag.release_bundle import ReleaseBundleError, configured_release_bundle_snapshot
+from baseball_rag.release_bundle import ReleaseBundleError
+from baseball_rag.release_context import (
+    ReleaseContext,
+    configured_release_context,
+    install_release_context,
+)
 from baseball_rag.retrosheet_event_capabilities import published_retrosheet_event_capabilities
 
 
@@ -34,23 +37,16 @@ class ReleaseReadiness:
         }
 
 
-def release_readiness() -> ReleaseReadiness:
-    """Fail closed unless the configured bundle, proof, and runtime agree exactly."""
-    configured = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
-    if not configured:
+def release_readiness(context: ReleaseContext | None = None) -> ReleaseReadiness:
+    """Fail closed unless the explicit bundle, proof, and runtime agree exactly."""
+    if context is not None:
+        install_release_context(context)
+    else:
+        context = configured_release_context()
+    if context is None:
         raise ReleaseBundleError("GROUNDBALL_RELEASE_BUNDLE is required for release readiness.")
-    expected_source_commit = os.environ.get("GROUNDBALL_SOURCE_COMMIT")
-    if not expected_source_commit:
-        raise ReleaseBundleError("GROUNDBALL_SOURCE_COMMIT is required for release readiness.")
-    identity = configured_release_bundle_snapshot()
-    assert identity is not None
-    manifest = json.loads(identity.manifest_path.read_text(encoding="utf-8"))
-    runtime = published_data_runtime()
-    verified_root = identity.manifest_path.parent
-    if (
-        runtime.data_dir != verified_root / "data"
-        or CATALOG_DIR != verified_root / "src/baseball_rag/query/catalog"
-    ):
+    runtime = published_data_runtime(context)
+    if runtime.data_dir != context.data_dir or catalog_directory() != context.catalog_dir:
         raise ReleaseBundleError("Release runtime is not bound to the verified snapshot.")
     coverage = load_passing_coverage_report()
     relation_rows = runtime.connection.execute(
@@ -64,8 +60,8 @@ def release_readiness() -> ReleaseReadiness:
     if not required_retrosheet <= set(relations):
         raise ReleaseBundleError("Bundle-backed Retrosheet capability relation is unavailable.")
     return ReleaseReadiness(
-        release_bundle_digest=identity.digest,
-        source_commit=str(manifest["source_commit"]),
+        release_bundle_digest=context.release_bundle_digest,
+        source_commit=context.source_commit,
         data_release=runtime.data_release,
         coverage_report={
             "status": coverage["status"],

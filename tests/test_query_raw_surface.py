@@ -247,7 +247,7 @@ def test_missing_installed_manifest_is_a_typed_unavailable_outcome(tmp_path, mon
 def test_missing_catalog_asset_is_a_typed_unavailable_outcome(tmp_path, monkeypatch):
     planned = prepare(QueryRecipe(source="People", selections=("People.playerID",)))
     assert isinstance(planned, Ready)
-    monkeypatch.setattr(query_runtime, "CATALOG_DIR", tmp_path)
+    monkeypatch.setattr(query_runtime, "catalog_directory", lambda: tmp_path)
     monkeypatch.setenv("GROUNDBALL_DATA_DIR", str(tmp_path / "uninstalled-data"))
 
     executed = execute(planned.plan)

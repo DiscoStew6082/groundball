@@ -45,8 +45,8 @@ from baseball_rag.query.promoted import (
     validate_promoted_plan,
 )
 from baseball_rag.query.registry import (
-    CATALOG_DIR,
     _SourceBinding,
+    catalog_directory,
     catalog_revision,
     combination_by_identity,
     direct_value_sources,
@@ -471,7 +471,7 @@ def _evidence(
         source_release = data_release
         if source.reference_manifest is not None:
             reference = json.loads(
-                contained_asset_path(CATALOG_DIR, source.reference_manifest).read_text(
+                contained_asset_path(catalog_directory(), source.reference_manifest).read_text(
                     encoding="utf-8"
                 )
             )

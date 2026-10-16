@@ -193,19 +193,11 @@ def verified_release_bundle_snapshot(
 
 
 def configured_release_bundle_snapshot() -> ReleaseBundleIdentity | None:
-    """Resolve the deployment's independently pinned release object, if configured."""
-    configured = os.environ.get("GROUNDBALL_RELEASE_BUNDLE")
-    if not configured:
-        return None
-    source_commit = os.environ.get("GROUNDBALL_SOURCE_COMMIT")
-    expected_digest = os.environ.get("GROUNDBALL_RELEASE_BUNDLE_DIGEST")
-    if not source_commit or not expected_digest:
-        raise ReleaseBundleError(
-            "GROUNDBALL_SOURCE_COMMIT and GROUNDBALL_RELEASE_BUNDLE_DIGEST are required."
-        )
-    return verified_release_bundle_snapshot(
-        configured, expected_source_commit=source_commit, expected_digest=expected_digest
-    )
+    """Compatibility reader for the process's explicit verified release context."""
+    from baseball_rag.release_context import configured_release_context
+
+    context = configured_release_context()
+    return context.identity if context is not None else None
 
 
 def assemble_release_bundle(
