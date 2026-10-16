@@ -4,21 +4,41 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, wraps
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, ParamSpec, TypeVar
 
 from baseball_rag.query.asset_paths import canonical_asset_name, contained_asset_path
-from baseball_rag.release_bundle import configured_release_bundle_snapshot
+from baseball_rag.release_context import configured_release_context, release_context_lock
 
-_PACKAGE_CATALOG_DIR = Path(__file__).with_name("catalog")
-_RELEASE_BUNDLE = configured_release_bundle_snapshot()
-CATALOG_DIR = (
-    _RELEASE_BUNDLE.manifest_path.parent / "src/baseball_rag/query/catalog"
-    if _RELEASE_BUNDLE
-    else _PACKAGE_CATALOG_DIR
-)
+# Static package location is retained for offline artifact writers only.
+CATALOG_DIR = Path(__file__).with_name("catalog")
+
+
+def catalog_directory() -> Path:
+    """Resolve metadata lazily from the one active verified release, if any."""
+    context = configured_release_context()
+    return context.catalog_dir if context is not None else CATALOG_DIR
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _catalog_cache(function: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Keep local metadata caches separate from explicitly activated release metadata."""
+
+    @lru_cache(maxsize=None)
+    def cached(_directory: Path, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        return function(*args, **kwargs)
+
+    @wraps(function)
+    def bound(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        with release_context_lock:
+            return cached(catalog_directory(), *args, **kwargs)  # type: ignore[arg-type]
+
+    return bound
 
 
 @dataclass(frozen=True)
@@ -139,7 +159,7 @@ class _CombinationBinding:
     grains: tuple[str, ...]
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _source_bindings() -> tuple[_SourceBinding, ...]:
     payload = _read_json("published_sources.json")
     for item in payload["sources"]:
@@ -161,7 +181,7 @@ def _source_bindings() -> tuple[_SourceBinding, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def published_sources() -> tuple[PublishedSourceView, ...]:
     return tuple(
         PublishedSourceView(
@@ -173,7 +193,7 @@ def published_sources() -> tuple[PublishedSourceView, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def discover_fields(*, source: str | None = None) -> tuple[RawField, ...]:
     payload = _read_json("raw_fields.json")
     fields = tuple(
@@ -193,7 +213,7 @@ def discover_fields(*, source: str | None = None) -> tuple[RawField, ...]:
     return tuple(field for field in fields if field.source == source)
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _promoted_payload() -> dict[str, Any]:
     catalog = _read_json("published_catalog.json")
     promoted_files = catalog.get("promoted", [])
@@ -424,7 +444,7 @@ def _expression_references(expression: object) -> tuple[set[str], set[str]]:
     return fields, values
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _promoted_value_bindings() -> tuple[_PromotedValueBinding, ...]:
     return tuple(
         _PromotedValueBinding(
@@ -457,7 +477,7 @@ def _promoted_value_bindings() -> tuple[_PromotedValueBinding, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _relationship_bindings() -> tuple[_RelationshipBinding, ...]:
     return tuple(
         _RelationshipBinding(
@@ -471,7 +491,7 @@ def _relationship_bindings() -> tuple[_RelationshipBinding, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _named_recipe_bindings() -> tuple[_NamedRecipeBinding, ...]:
     return tuple(
         _NamedRecipeBinding(
@@ -487,7 +507,7 @@ def _named_recipe_bindings() -> tuple[_NamedRecipeBinding, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _grain_bindings() -> tuple[_GrainBinding, ...]:
     return tuple(
         _GrainBinding(
@@ -499,7 +519,7 @@ def _grain_bindings() -> tuple[_GrainBinding, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def _combination_bindings() -> tuple[_CombinationBinding, ...]:
     return tuple(
         _CombinationBinding(
@@ -511,7 +531,7 @@ def _combination_bindings() -> tuple[_CombinationBinding, ...]:
     )
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def published_values() -> tuple[PromotedValueView, ...]:
     return tuple(
         PromotedValueView(
@@ -576,7 +596,7 @@ def _promoted_explanation(value: _PromotedValueBinding) -> str:
     return f"{value.friendly_name} from the published {', '.join(value.allowed_grains)} grains."
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def published_relationships() -> tuple[PublishedRelationshipView, ...]:
     return tuple(
         PublishedRelationshipView(
@@ -687,7 +707,7 @@ def direct_value_sources(identity: str) -> set[str]:
     return sources
 
 
-@lru_cache(maxsize=1)
+@_catalog_cache
 def catalog_revision() -> str:
     return str(_read_json("published_catalog.json")["catalog_revision"])
 
@@ -701,4 +721,6 @@ def field_by_identity(identity: str) -> RawField | None:
 
 
 def _read_json(filename: str) -> dict[str, Any]:
-    return json.loads(contained_asset_path(CATALOG_DIR, filename).read_text(encoding="utf-8"))
+    return json.loads(
+        contained_asset_path(catalog_directory(), filename).read_text(encoding="utf-8")
+    )

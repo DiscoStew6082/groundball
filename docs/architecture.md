@@ -51,6 +51,14 @@ Every successful execution produces QueryEvidence containing the canonical plan,
 
 The Coverage Report independently binds that evidence to generated release proof. If the proof is missing, failing, malformed, hash-invalid, or stale, application adapters return `unavailable` and do not expose unverified factual rows.
 
+## Explicit release composition
+
+A hosting initializer constructs `ReleaseContext(bundle_root, expected_source_commit=..., expected_digest=...)` using independently governed values. Construction verifies a bounded private snapshot. The frozen context owns the snapshot identity, catalog and data paths, coverage proof path and expected runtime fingerprints. Importing public modules does not select a release.
+
+`create_published_data_runtime(context)` reconstructs the database from that snapshot; an external prepared-database adapter may supply a `PublishedDataRuntime` carrying the same context. `install_published_data_runtime(runtime, context=context)` rejects mismatched data paths, release identities, semantic manifests and source fingerprints. `release_readiness(context)` binds the installed database, catalog and passing proof to that same snapshot. One process cannot replace its installed context or runtime.
+
+The existing Published Query Catalog remains the only semantic registry. Its caches are keyed by the selected snapshot path, so metadata inspected locally before activation cannot be reused as release metadata. Offline generators retain static package output paths. A narrow lazy environment reader supports the existing CLI and offline proof entrypoints; explicit hosting composition never needs to rewrite process environment before importing public code. Subprocess runners can receive a copied environment from their composition root rather than depending on later process mutations.
+
 ## Completeness proof
 
 `generate_coverage_report.py` blocks network access and exercises six fixed gates:

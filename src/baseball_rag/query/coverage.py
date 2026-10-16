@@ -10,27 +10,19 @@ from typing import Any
 
 from baseball_rag.query.contracts import QueryEvidence
 from baseball_rag.query.data_identity import semantic_manifest_sha256
-from baseball_rag.query.registry import CATALOG_DIR, catalog_revision
+from baseball_rag.query.registry import catalog_directory, catalog_revision
 from baseball_rag.query.runtime import published_data_runtime
-from baseball_rag.release_bundle import configured_release_bundle_snapshot
+from baseball_rag.release_context import configured_release_context
 
 REPORT_SCHEMA_VERSION = "query-coverage-report-v1"
 MODULE_DIR = Path(__file__).resolve().parent
 COVERAGE_DIR = MODULE_DIR / "coverage"
-_RELEASE_BUNDLE = configured_release_bundle_snapshot()
-COVERAGE_REPORT_PATH = (
-    _RELEASE_BUNDLE.manifest_path.parent / "src/baseball_rag/query/coverage/coverage-report.json"
-    if _RELEASE_BUNDLE
-    else COVERAGE_DIR / "coverage-report.json"
-)
+COVERAGE_REPORT_PATH = COVERAGE_DIR / "coverage-report.json"
 COVERAGE_MARKDOWN_PATH = COVERAGE_DIR / "coverage-report.md"
 
 _COMPILER_CONTRACT_FILES = (
     *tuple(sorted(MODULE_DIR.glob("*.py"))),
     MODULE_DIR / "eval_matrix.json",
-)
-_CATALOG_FILES = tuple(sorted(CATALOG_DIR.glob("*.json"))) + tuple(
-    sorted((CATALOG_DIR / "assets").glob("*"))
 )
 REQUIRED_GATE_IDS = (
     "catalog_schema_identity",
@@ -52,7 +44,10 @@ def current_proof_identity() -> dict[str, Any]:
     return {
         "report_schema_version": REPORT_SCHEMA_VERSION,
         "catalog_revision": catalog_revision(),
-        "catalog_sha256": _files_digest(_CATALOG_FILES),
+        "catalog_sha256": _files_digest(
+            tuple(sorted(catalog_directory().glob("*.json")))
+            + tuple(sorted((catalog_directory() / "assets").glob("*")))
+        ),
         "data_release": runtime.data_release,
         "data_manifest_semantic_sha256": semantic_manifest_sha256(runtime.manifest),
         "compiler_contract": "query-plan-v1",
@@ -64,7 +59,9 @@ def current_proof_identity() -> dict[str, Any]:
 def load_coverage_report() -> dict[str, Any]:
     """Load the canonical machine-readable report without asserting readiness."""
     try:
-        value = json.loads(COVERAGE_REPORT_PATH.read_text(encoding="utf-8"))
+        context = configured_release_context()
+        path = context.coverage_report_path if context is not None else COVERAGE_REPORT_PATH
+        value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CoverageProofUnavailableError("Coverage Report is unavailable.") from exc
     if not isinstance(value, dict):

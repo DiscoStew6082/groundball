@@ -6,7 +6,9 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Literal
 
 Operation = Literal["query", "retrosheet"]
@@ -36,9 +38,11 @@ class SubprocessExecutionRunner:
         *,
         command: tuple[str, ...] | None = None,
         termination_grace_seconds: float = 0.5,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
         self._command = command or (sys.executable, "-m", "baseball_rag.public_execution")
         self._termination_grace_seconds = termination_grace_seconds
+        self._environment = None if environment is None else MappingProxyType(dict(environment))
 
     def run(self, request: ExecutionRequest, *, timeout_seconds: float) -> ExecutionOutcome:
         if timeout_seconds <= 0:
@@ -58,6 +62,7 @@ class SubprocessExecutionRunner:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=self._environment,
             )
         except OSError:
             return ExecutionOutcome("failed", detail="Public Query Run execution failed.")
