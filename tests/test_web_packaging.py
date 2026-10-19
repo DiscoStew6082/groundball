@@ -20,7 +20,7 @@ def test_ci_builds_the_svelte_application_used_by_the_python_package() -> None:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     vite_config = (ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
 
-    assert "actions/setup-node@v6" in ci
+    assert "actions/setup-node@v7" in ci
     assert "npm ci" in ci
     assert "npm test" in ci
     assert "npm run build" in ci
