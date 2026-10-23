@@ -151,7 +151,7 @@ Once the server is running, visit `http://localhost:8002/docs` for comprehensive
 ## Development
 
 This project uses:
-- Python 3.10+
+- Python 3.11+
 - FastMCP for the web framework
 - uv for fast Python package management
 - Hatchling for build management
@@ -239,17 +239,18 @@ Example test structure:
 ```python
 def test_new_function_success(mcp):
     """Test successful execution of new function"""
-    new_function = get_tool(mcp, 'new_function')
-    with patch('mlb_api.external_api_call', return_value={'data': 'success'}):
-        result = new_function(param='value')
-        assert 'data' in result
+    new_function = get_tool(mcp, "new_function")
+    with patch("mlb_api.external_api_call", return_value={"data": "success"}):
+        result = new_function(param="value")
+        assert "data" in result
+
 
 def test_new_function_error_handling(mcp):
     """Test error handling in new function"""
-    new_function = get_tool(mcp, 'new_function')
-    with patch('mlb_api.external_api_call', side_effect=Exception("API Error")):
-        result = new_function(param='value')
-        assert 'error' in result
+    new_function = get_tool(mcp, "new_function")
+    with patch("mlb_api.external_api_call", side_effect=Exception("API Error")):
+        result = new_function(param="value")
+        assert "error" in result
 ```
 
 ### Resource and HTTP limits
