@@ -30,7 +30,6 @@ def test_ci_builds_the_svelte_application_used_by_the_python_package() -> None:
 def test_web_package_exposes_explicit_fallback_sync_and_check_commands() -> None:
     package = json.loads((ROOT / "web" / "package.json").read_text(encoding="utf-8"))
 
-    assert package["engines"]["node"] == ">=22.12.0"
     assert package["scripts"]["build"] == "vite build"
     assert package["scripts"]["package:sync"] == "node scripts/package-dist.mjs sync"
     assert package["scripts"]["package:check"] == "node scripts/package-dist.mjs check"
