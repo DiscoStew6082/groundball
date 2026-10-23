@@ -58,11 +58,13 @@ CI checks both Python locks and the web npm lock. Audit the complete locked depe
 ```bash
 uv lock --check
 uv export --frozen --format requirements-txt --no-emit-project --all-extras --all-groups > /tmp/groundball-dependencies.txt
-uvx pip-audit --progress-spinner off --no-deps --disable-pip -r /tmp/groundball-dependencies.txt
+uvx pip-audit --cache-dir "$(mktemp -d)" --progress-spinner off --no-deps --disable-pip -r /tmp/groundball-dependencies.txt
 (cd src/mlb_api_mcp && uv lock --check && uv export --frozen --format requirements-txt --no-emit-project --all-extras --all-groups > /tmp/groundball-mlb-dependencies.txt)
-uvx pip-audit --progress-spinner off --no-deps --disable-pip -r /tmp/groundball-mlb-dependencies.txt
+uvx pip-audit --cache-dir "$(mktemp -d)" --progress-spinner off --no-deps --disable-pip -r /tmp/groundball-mlb-dependencies.txt
 npm --prefix web audit --audit-level=low
 ```
+
+Use a new audit cache for each verification. By default, `pip-audit` reuses pip's cached PyPI responses, which can omit advisories reported by a fresh CI runner.
 
 Use targeted patched updates and locked installs. For oversized or sensitive parametrized inputs, supply short semantic pytest IDs so verbose CI logs and duration summaries do not print the entire payload.
 
