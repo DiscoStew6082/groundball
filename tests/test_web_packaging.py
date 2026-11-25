@@ -1,6 +1,7 @@
 """Release artifact contract for the unified Ground Ball web application."""
 
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -20,7 +21,15 @@ def test_ci_builds_the_svelte_application_used_by_the_python_package() -> None:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     vite_config = (ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
 
-    assert "actions/setup-node@v7" in ci
+    setup_node_refs = {
+        line.split("uses:", 1)[1].split("#", 1)[0].strip()
+        for line in ci.splitlines()
+        if "actions/setup-node@" in line and "uses:" in line
+    }
+    assert setup_node_refs, "ci.yml must use actions/setup-node"
+    assert all(re.fullmatch(r"actions/setup-node@[0-9a-f]{40}", ref) for ref in setup_node_refs), (
+        f"actions/setup-node must be pinned to a full commit SHA, got {sorted(setup_node_refs)}"
+    )
     assert "npm ci" in ci
     assert "npm test" in ci
     assert "npm run build" in ci
